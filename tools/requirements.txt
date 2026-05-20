@@ -1,0 +1,4 @@
+uv>=0.9.11
+google-auth>=2.43.0
+requests>=2.32.5
+fastmcp>=2.13.1

@@ -1,0 +1,104 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+steps:
+  # STEP 1: BUILD & PUSH
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build and Push'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        REGION="us-central1"
+        REPO_NAME="remote-mcp-servers"
+        # PROJECT_ID is built-in; no underscore needed
+        REGISTRY="$${REGION}-docker.pkg.dev/${PROJECT_ID}/$${REPO_NAME}"
+        
+        for TOOL_DIR in servers/*; do
+          if [ -d "$$TOOL_DIR" ] && [ -f "$$TOOL_DIR/Dockerfile" ]; then
+            TOOL_NAME=$(basename "$$TOOL_DIR")
+            IMAGE_URI="$$REGISTRY/$$TOOL_NAME:${_TAG}"
+            
+            docker build -t "$$IMAGE_URI" "$$TOOL_DIR"
+            docker push "$$IMAGE_URI"
+          fi
+        done
+
+  # STEP 2: DEPLOY
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'Deploy to Cloud Run'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        REGION="us-central1"
+        REPO_NAME="remote-mcp-servers"
+        REGISTRY="$${REGION}-docker.pkg.dev/${PROJECT_ID}/$${REPO_NAME}"
+
+        for TOOL_DIR in servers/*; do
+          if [ -d "$$TOOL_DIR" ] && [ -f "$$TOOL_DIR/Dockerfile" ]; then
+            TOOL_NAME=$(basename "$$TOOL_DIR")
+            IMAGE_URI="$$REGISTRY/$$TOOL_NAME:${_TAG}"
+
+            # Determine specific custom audience for the tool
+            if [ "$$TOOL_NAME" = "legacy-dms" ]; then
+              CUSTOM_AUDIENCE="http://dms.internal.gateway,http://dms.internal.gateway/mcp"
+            elif [ "$$TOOL_NAME" = "income-verification-api" ]; then
+              CUSTOM_AUDIENCE="http://income-verification.internal.gateway,http://income-verification.internal.gateway/mcp"
+            elif [ "$$TOOL_NAME" = "corporate-email" ]; then
+              CUSTOM_AUDIENCE="http://email.internal.gateway,http://email.internal.gateway/mcp"
+            else
+              CUSTOM_AUDIENCE="http://$${TOOL_NAME}.internal.gateway,http://$${TOOL_NAME}.internal.gateway/mcp"
+            fi
+
+            # We use ${PROJECT_ID} so Cloud Build injects it directly
+            gcloud run deploy "$$TOOL_NAME" \
+              --image "$$IMAGE_URI" \
+              --region "$$REGION" \
+              --project "${PROJECT_ID}" \
+              --no-allow-unauthenticated \
+              --ingress=internal-and-cloud-load-balancing \
+              --set-custom-audiences="$$CUSTOM_AUDIENCE" \
+              --quiet
+          fi
+        done
+
+  # STEP 3: REGISTER MCP TOOLS (Usa a imagem 'cloud-sdk' para python+gcloud)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'Register MCP Tools'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        # Instala python3 se necessário (cloud-sdk image tem python3)
+        # Executa script de registro
+        DEFAULT_REGION="us-central1"
+        if [ -f .env ]; then set -a; source .env; set +a; fi
+        
+        export REGION=$${REGION:-$$DEFAULT_REGION}
+        export PROJECT_ID=${PROJECT_ID}
+        
+        echo "📡 Registrando ferramentas MCP no API Hub..."
+        python3 register_mcp.py
+
+substitutions:
+  _TAG: "latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  
+serviceAccount: "projects/${PROJECT_ID}/serviceAccounts/cloud-build-sa@${PROJECT_ID}.iam.gserviceaccount.com"
