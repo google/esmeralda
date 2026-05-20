@@ -28,8 +28,8 @@ dependencies = [
     "opentelemetry-sdk>=1.25.0",
     "starlette>=0.41.0",
     "uvicorn>=0.34.0",
-    "python-multipart==0.0.26",
-    "authlib==1.6.11",
+    "python-multipart==0.0.27",
+    "authlib==1.6.12",
     "cryptography==46.0.7",
     "pygments==2.20.0",
 ]
