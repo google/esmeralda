@@ -17,7 +17,7 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# Ensure the current directory is in PYTHONPATH so we can import 'app' and 'root_agent'
+# Ensure the current directory is in PYTHONPATH so we can import 'app' and 'agent'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
 # Load environment variables (from .env or set them manually for testing)
@@ -31,16 +31,20 @@ if not os.getenv("EVENTS_DATASET_ID"):
     os.environ["EVENTS_DATASET_ID"] = "agent_logs"
 if not os.getenv("EVENTS_TABLE_ID"):
     os.environ["EVENTS_TABLE_ID"] = "agent_events"
-if not os.getenv("A2A_AGENT_URL"):
-    os.environ["A2A_AGENT_URL"] = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/PROJECT_NUM/locations/us-central1/reasoningEngines/ENGINE_ID/a2a"
+if not os.getenv("DMS_MCP_URL"):
+    os.environ["DMS_MCP_URL"] = "https://dms.internal.gateway/mcp"
+if not os.getenv("INCOME_VERIFICATION_URL"):
+    os.environ["INCOME_VERIFICATION_URL"] = "https://income-verification.internal.gateway/mcp"
+if not os.getenv("EMAIL_MCP_URL"):
+    os.environ["EMAIL_MCP_URL"] = "https://email.internal.gateway/mcp"
 if not os.getenv("GCS_BUCKET"):
      os.environ["GCS_BUCKET"] = "agent-ops-foundation-agent-logs-offload-8d47"
 
 # --- Configuration ---
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "your-gcp-project-id")
 DATASET_ID = os.environ.get("BIG_QUERY_DATASET_ID", "your-big-query-dataset-id")
-LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "US") # default location is US in the plugin
-GCS_BUCKET = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name") # Optional
+LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "US")
+GCS_BUCKET = os.environ.get("GCS_BUCKET_NAME", "your-gcs-bucket-name")
 
 if PROJECT_ID == "your-gcp-project-id":
     raise ValueError("Please set GOOGLE_CLOUD_PROJECT or update the code.")
@@ -50,33 +54,29 @@ os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
 try:
-    from agent_app import app, adk_app
+    from agent_app import adk_app
     from google.adk.runners import InMemoryRunner
 except ImportError as e:
     print(f"Error importing app: {e}")
-    print("Ensure you are running this script from the 'agents/base-adk-agent' directory or have PYTHONPATH set correctly.")
+    print("Ensure you are running this script from the 'agents/a2a-agent' directory or have PYTHONPATH set correctly.")
     sys.exit(1)
 
 async def main():
     print("🚀 Initializing Local Runner...")
-    
-    # Create the runner with the imported app
+
     runner = InMemoryRunner(app=adk_app)
-    
+
     print("✅ Runner initialized. Sending test query...")
-    
+
     user_input = "I'm reviewing the Rivera family's $700K loan. Can you summarize their 2024 tax returns?"
     print(f"User: {user_input}")
 
     try:
-        # Use run_debug for detailed output (requires ADK >= 1.18)
-        # Or runner.run() if you prefer standard execution
-        # Note: run_debug might not be available in all versions, checking...
         if hasattr(runner, "run_debug"):
              response = await runner.run_debug(user_input)
         else:
              response = await runner.run(user_input)
-        
+
         print("\n🤖 Agent Response:")
         print(response)
 
