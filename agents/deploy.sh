@@ -67,6 +67,13 @@ source .venv/bin/activate
 log_info "Installing dependencies from deployment/requirements.txt..."
 uv pip install -r deployment/requirements.txt
 
+log_info "Installing all agent dependencies..."
+AGENT_REQS=""
+for REQ in $(find . -mindepth 2 -maxdepth 2 -name "requirements.txt"); do
+    AGENT_REQS="$AGENT_REQS -r $REQ"
+done
+uv pip install $AGENT_REQS
+
 # --- Auto-Discovery
 if [ -z "$PROJECT_ID" ]; then
     log_info "Attempting to discover PROJECT_ID..."
@@ -79,19 +86,10 @@ if [ -z "$GCS_OFFLOAD_BUCKET_NAME" ] && [ -n "$PROJECT_ID" ]; then
     [[ -n "$GCS_OFFLOAD_BUCKET_NAME" ]] && echo "[*] Discovered GCS Bucket: $GCS_OFFLOAD_BUCKET_NAME"
 fi
 
-if [ -z "$PSC_NETWORK_ATTACHMENT" ] && [ -n "$PROJECT_ID" ]; then
-    log_info "Attempting to discover PSC Network Attachment..."
-    PSC_NETWORK_ATTACHMENT=$(gcloud compute network-attachments list --project "$PROJECT_ID" --region "${REGION:-us-central1}" --format="value(name)" 2>/dev/null | grep "psc-interface-attachment" | head -n 1 || echo "")
-    if [ -n "$PSC_NETWORK_ATTACHMENT" ]; then
-        PSC_NETWORK_ATTACHMENT="projects/${PROJECT_ID}/regions/${REGION:-us-central1}/networkAttachments/${PSC_NETWORK_ATTACHMENT}"
-        echo "[*] Discovered PSC Network Attachment: $PSC_NETWORK_ATTACHMENT"
-    fi
-fi
-
 if [ -n "$PSC_NETWORK_ATTACHMENT" ]; then
-    log_success "Using PSC Network Attachment: $PSC_NETWORK_ATTACHMENT"
+    log_success "Using PSC Network Attachment from context: $PSC_NETWORK_ATTACHMENT"
 else
-    log_info "No PSC Network Attachment found. The agent will be deployed without PSC."
+    log_info "No PSC Network Attachment found in context. The agent will be deployed without PSC."
 fi
 
 if [ -z "$VPC_NAME" ]; then
@@ -103,18 +101,11 @@ fi
 [[ -z "$GCS_OFFLOAD_BUCKET_NAME" ]] && log_error "GCS_OFFLOAD_BUCKET_NAME not set or discovered."
 
 # --- Main Deployment Loop
-if [ -n "$1" ]; then
-    log_info "Target agent specified: $1"
-    if [ ! -f "$1/agent.yaml" ]; then
-        log_error "Agent folder '$1' does not exist or missing agent.yaml"
-    fi
-    AGENTS="$1"
-else
-    log_info "Discovering agents to deploy..."
-    AGENTS=$(find . -mindepth 2 -maxdepth 2 -name "agent.yaml" | xargs -n1 dirname | sed 's|^\./||')
-    if [ -z "$AGENTS" ]; then
-        log_error "No agents found! Ensure your agent directories contain an agent.yaml file."
-    fi
+log_info "Discovering agents to deploy..."
+AGENTS=$(find . -mindepth 2 -maxdepth 2 -name "agent.yaml" | xargs -n1 dirname | sed 's|^\./||')
+
+if [ -z "$AGENTS" ]; then
+    log_error "No agents found! Ensure your agent directories contain an agent.yaml file."
 fi
 
 for AGENT_DIR in $AGENTS; do
@@ -139,7 +130,7 @@ EOF
 
     # Deploy
     DEPLOY_CMD=(
-        "uv" "run" "--active" "../deployment/deploy_agent.py"
+        "uv" "run" "--active" "--no-sync" "../deployment/deploy_agent.py"
         "--project_id=${PROJECT_ID}"
         "--location=${REGION:-us-central1}"
         "--config-file=agent.yaml"
@@ -156,10 +147,25 @@ EOF
     # Use the dedicated service account instead of Agent Identity so OIDC tokens can be generated
     DEPLOY_CMD+=("--service-account=test-vm-sa@${PROJECT_ID}.iam.gserviceaccount.com")
 
-    (
+    DEPLOY_OUTPUT=$(
         export PYTHONPATH="$(pwd)/$AGENT_DIR:$PYTHONPATH"
         cd "$AGENT_DIR"
-        "${DEPLOY_CMD[@]}"
-    )
+        "${DEPLOY_CMD[@]}" 2>&1
+    ) || { echo "$DEPLOY_OUTPUT"; log_error "Deployment of $AGENT_NAME failed."; }
+    echo "$DEPLOY_OUTPUT"
     log_success "$AGENT_NAME deployed successfully."
+
+    # After A2A agent deploys, capture its Engine URL for base-adk-agent
+    if [[ "$AGENT_DIR" == "a2a-agent" ]]; then
+        ENGINE_RESOURCE=$(echo "$DEPLOY_OUTPUT" | grep -o "projects/[^'\"]*reasoningEngines/[0-9]*" | tail -1)
+        if [[ -n "$ENGINE_RESOURCE" ]]; then
+            LOCATION="${REGION:-us-central1}"
+            A2A_URL="https://${LOCATION}-aiplatform.googleapis.com/v1beta1/${ENGINE_RESOURCE}/a2a"
+            log_info "A2A agent deployed at: $A2A_URL"
+            if [[ -f "base-adk-agent/agent.yaml" ]]; then
+                sed -i "s|A2A_AGENT_URL:.*|A2A_AGENT_URL: ${A2A_URL}|g" "base-adk-agent/agent.yaml"
+                log_info "Updated A2A_AGENT_URL in base-adk-agent/agent.yaml"
+            fi
+        fi
+    fi
 done

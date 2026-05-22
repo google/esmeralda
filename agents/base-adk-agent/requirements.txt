@@ -1,13 +1,9 @@
 google-cloud-aiplatform[adk,agent_engines]>=1.128.0
-google-adk>=1.31.0
+google-adk[a2a]>=1.34.0
 google-auth
+google-cloud-logging
 pyyaml
-opentelemetry-instrumentation-google-genai>=0.4b0
-opentelemetry-instrumentation-sqlite3
-opentelemetry-exporter-gcp-logging
-opentelemetry-exporter-gcp-monitoring
-opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-instrumentation-vertexai>=2.0b0
+opentelemetry-api>=1.36.0,<1.39.0
+opentelemetry-sdk>=1.36.0,<1.39.0
 fsspec[gcs]
 httpx
-a2a-sdk@git+https://github.com/a2aproject/a2a-python

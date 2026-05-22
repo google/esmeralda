@@ -56,27 +56,13 @@ env:
 
   PROJECT_NAME: "base-adk-agent"
   GCS_BUCKET: agent-ops-foundation-agent-logs-offload-e34b
-  DMS_MCP_URL: "http://dms.internal.gateway/mcp"
-  INCOME_VERIFICATION_URL: "http://income-verification.internal.gateway/mcp"
-  EMAIL_MCP_URL: "http://email.internal.gateway/mcp"
+  A2A_AGENT_URL: ""
   EVENTS_DATASET_ID: "agent_logs"
   EVENTS_TABLE_ID: "agent_events"
   MODEL_NAME: "gemini-2.5-flash"
-
-  # Proxy configuration for PSC-I egress
-  HTTP_PROXY: "http://swp.internal.gateway:443"
-  HTTPS_PROXY: "http://swp.internal.gateway:443"
 
 labels:
   author: "your-name"
   version: "latest"
 
 framework: google-adk
-
-psc_interface_config:
-  network_attachment: "gateway-psc-interface-attachment"
-  dns_peering_configs:
-    - domain: "internal.gateway."
-      # Replace with your actual GCP project ID where the VPC is hosted
-      target_project: "agent-ops-foundation-e34b"
-      target_network: "gateway-vpc"

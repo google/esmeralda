@@ -25,6 +25,7 @@ import google.auth
 import vertexai
 from vertexai import agent_engines
 from vertexai._genai import _agent_engines_utils
+from vertexai._genai.types import AgentEngineConfig
 
 # Configure logging
 logging.basicConfig(
@@ -232,7 +233,6 @@ def deploy_agent_engine_app(
     resource_limits: str | None,
     container_concurrency: str | None,
     agent_framework: str | None,
-    psc_interface_config: dict | None = None,
 ) -> Any:
     """Deploys or updates a Vertex AI Agent Engine application from source."""
     env_vars = set_env_vars or {}
@@ -255,7 +255,7 @@ def deploy_agent_engine_app(
     # Extract class_methods dynamically from the application object
     try:
         import importlib
-        
+
         # Inject parsed env vars into local os.environ so the module can initialize
         if set_env_vars:
             for k, v in set_env_vars.items():
@@ -264,13 +264,25 @@ def deploy_agent_engine_app(
         sys.path.insert(0, os.path.abspath(source_packages[0]))
         module = importlib.import_module(entrypoint_module)
         app_obj = getattr(module, entrypoint_object)
-        
+
         try:
             class_methods = generate_class_methods_from_agent(app_obj)
             logger.info(f"Successfully extracted {len(class_methods)} class methods from {entrypoint_module}.{entrypoint_object}")
         except Exception as e_extract:
-            logger.warning(f"Failed to automatically extract class methods: {e_extract}. Using empty class_methods.")
+            logger.warning(f"Spec generation failed: {e_extract}. Building class methods from register_operations().")
             class_methods = []
+            if hasattr(app_obj, "register_operations"):
+                for api_mode, methods in app_obj.register_operations().items():
+                    for method in (methods if isinstance(methods, list) else [methods]):
+                        method_name = method.__name__ if hasattr(method, "__name__") else str(method)
+                        class_methods.append({
+                            "name": method_name,
+                            "description": f"Handles {api_mode} {method_name} requests.",
+                            "parameters": {"type": "object", "properties": {}},
+                            "api_mode": api_mode,
+                        })
+            if class_methods:
+                logger.info(f"Built {len(class_methods)} class methods from register_operations()")
 
     except Exception as e:
         logger.error(f"Failed to extract class_methods dynamically: {e}")
@@ -329,7 +341,6 @@ def deploy_agent_engine_app(
         # Support for PSC Interface
         network_attachment = getattr(sys.modules["__main__"].args, "network_attachment", None) if hasattr(sys.modules["__main__"], "args") else None
         if network_attachment:
-            # Environment / CLI Args take precedence
             psc_config = {"network_attachment": network_attachment}
             dns_peering_domain = getattr(sys.modules["__main__"].args, "dns_peering_domain", None)
             if dns_peering_domain:
@@ -339,9 +350,6 @@ def deploy_agent_engine_app(
                     "target_network": getattr(sys.modules["__main__"].args, "dns_peering_target_network", None),
                 }]
             config["psc_interface_config"] = psc_config
-        elif psc_interface_config:
-            # Fallback to YAML configuration
-            config["psc_interface_config"] = psc_interface_config
 
         # Support for Agent Identity
         enable_agent_identity = getattr(sys.modules["__main__"].args, "enable_agent_identity", False) if hasattr(sys.modules["__main__"], "args") else False
@@ -355,6 +363,13 @@ def deploy_agent_engine_app(
         # Remove empty values from config
         config = {k: v for k, v in config.items() if v}
 
+        # Workaround: agent_framework="a2a" is valid at deploy time but fails
+        # Pydantic validation (not in the Literal type). Pop before validation,
+        # set on the validated object after.
+        actual_agent_framework = config.pop("agent_framework", None)
+        config_obj = AgentEngineConfig.model_validate(config)
+        config_obj.agent_framework = actual_agent_framework
+
         # Check if an agent with this name already exists
         existing_agents = list(client.agent_engines.list())
         matching_agents = [
@@ -367,12 +382,12 @@ def deploy_agent_engine_app(
             logging.info(f"\n📝 Updating existing agent: {agent_name}")
             remote_agent = client.agent_engines.update(
                 name=matching_agents[0].api_resource.name,
-                config=config
+                config=config_obj
             )
         else:
             logging.info(f"\n🚀 Creating new agent: {agent_name}")
             remote_agent = client.agent_engines.create(
-                config=config
+                config=config_obj
             )
 
         logging.info(f"✅ Deployment successful! Agent Engine ID: {remote_agent.api_resource.name}")
@@ -531,7 +546,7 @@ if __name__ == "__main__":
     container_concurrency = get_val("container_concurrency", "resources.concurrency")
     
     agent_framework = get_val("agent_framework", "framework")
-    
+
     # Labels
     # CLI overrides config completely? Or merges?
     # Let's assume override or use config if CLI is None.
@@ -584,8 +599,6 @@ if __name__ == "__main__":
              # Legacy default
              source_packages = ["./app"]
 
-    psc_interface_config = get_val("dummy", "psc_interface_config")
-
     deploy_agent_engine_app(
         project_id=project_id,
         location=location,
@@ -605,5 +618,4 @@ if __name__ == "__main__":
         resource_limits=resource_limits_val,
         container_concurrency=container_concurrency,
         agent_framework=agent_framework,
-        psc_interface_config=psc_interface_config,
     )

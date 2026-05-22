@@ -23,7 +23,7 @@ from google.adk.apps import App
 from vertexai.agent_engines.templates.adk import AdkApp
 
 # Delay these imports to ensure they see the instrumented environment
-from agent.agent import root_agent
+from agent import root_agent
 from utils.base_agent_engine_app import BaseAgentEngineApp
 
 # Configure Logging to stdout

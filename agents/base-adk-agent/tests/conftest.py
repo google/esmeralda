@@ -12,18 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+"""Mock heavy dependencies so unit tests don't require ADK installed."""
 
-import google.auth
+import sys
+from unittest.mock import MagicMock
 
-from .agent import root_agent  # noqa: F401
-
-try:
-    _, project_id = google.auth.default()
-    if project_id:
-        os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
-except Exception:
-    pass
-
-os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
-os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "True")
+for mod in [
+    "google.adk",
+    "google.adk.agents",
+    "google.adk.agents.llm_agent",
+    "google.adk.agents.remote_a2a_agent",
+    "google.adk.agents.callback_context",
+    "google.adk.tools",
+    "google.adk.tools.base_tool",
+    "google.adk.tools.tool_context",
+    "google.adk.tools.mcp_tool",
+    "google.adk.tools.mcp_tool.mcp_session_manager",
+    "google.genai",
+    "google.genai.types",
+]:
+    sys.modules.setdefault(mod, MagicMock())
