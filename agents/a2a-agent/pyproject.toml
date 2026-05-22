@@ -13,12 +13,12 @@
 # limitations under the License.
 
 [project]
-name = "mortgage-agent"
+name = "a2a-mortgage-agent"
 version = "0.1.0"
-description = "ADK mortgage assistant agent with Agent Gateway MCP connections"
+description = "A2A mortgage assistant agent with MCP tool connections"
 requires-python = ">=3.12"
 dependencies = [
-    "google-adk>=1.31.0",
+    "google-adk[a2a]>=1.31.0",
     "google-cloud-aiplatform>=1.74.0",
     "opentelemetry-instrumentation-google-genai",
     "opentelemetry-instrumentation-grpc",
@@ -39,4 +39,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-

@@ -14,17 +14,5 @@
 
 .PHONY: agents
 
-# Extract any arguments passed after "agents"
-ifeq (agents,$(firstword $(MAKECMDGOALS)))
-  # Use the rest as arguments
-  AGENT_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  # Turn them into do-nothing targets
-  $(eval $(AGENT_ARGS):;@:)
-endif
-
 agents:
-	@if [ -n "$(AGENT_ARGS)" ]; then \
-		bash deploy.sh $(AGENT_ARGS); \
-	else \
-		bash deploy.sh; \
-	fi
+	@bash deploy.sh

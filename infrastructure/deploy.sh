@@ -31,7 +31,7 @@ check_dependencies() {
             log_error "Required command not found: '$dep'. Please ensure it is installed and in your PATH."
         fi
     done
-    
+
     # Special check for gke-gcloud-auth-plugin
     if ! command -v gke-gcloud-auth-plugin &> /dev/null; then
         log_error "gke-gcloud-auth-plugin not found. Please install it using: sudo apt-get install google-cloud-sdk-gke-gcloud-auth-plugin"
