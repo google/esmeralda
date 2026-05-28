@@ -42,6 +42,8 @@ resource "google_project_iam_member" "apihub_service_identity_permission" {
   project = var.project_id
   role    = each.key
   member  = "serviceAccount:${google_project_service_identity.apihub_service_identity.email}"
+
+  depends_on = [google_project_service_identity.apihub_service_identity]
 }
 
 # Register the host project for API Hub
