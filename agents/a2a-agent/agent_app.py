@@ -18,9 +18,6 @@ import sys
 import traceback
 
 import google.auth
-from google.adk.plugins.bigquery_agent_analytics_plugin import (
-    BigQueryAgentAnalyticsPlugin, BigQueryLoggerConfig
-)
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.adk.sessions.vertex_ai_session_service import VertexAiSessionService
 from google.adk.runners import Runner
@@ -36,6 +33,7 @@ if os.getenv("USE_CUSTOM_TELEMETRY", "False").lower() == "true":
         print(f"Telemetry setup failed: {e}", flush=True)
 
 from agent.agent import mortgage_assistant_agent
+from plugins.bq_analytics import create_bq_plugin
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -44,35 +42,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- BigQuery Analytics Setup (optional) ---
 try:
-    credentials, project_id_detected = google.auth.default()
-    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", project_id_detected)
+    _, _detected_project = google.auth.default()
+    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", _detected_project)
 except Exception:
     GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 
-EVENTS_DATASET_ID = os.getenv("EVENTS_DATASET_ID")
-EVENTS_TABLE_ID = os.getenv("EVENTS_TABLE_ID")
-GCS_BUCKET = os.getenv("GCS_BUCKET")
-
-bq_logging_plugin = None
-if GOOGLE_CLOUD_PROJECT and EVENTS_DATASET_ID and EVENTS_TABLE_ID:
-    bq_config = BigQueryLoggerConfig(
-        enabled=True,
-        gcs_bucket_name=GCS_BUCKET,
-        log_multi_modal_content=True,
-        max_content_length=500 * 1024,
-        batch_size=1,
-        shutdown_timeout=10.0
-    )
-    bq_logging_plugin = BigQueryAgentAnalyticsPlugin(
-        project_id=GOOGLE_CLOUD_PROJECT,
-        dataset_id=EVENTS_DATASET_ID,
-        table_id=EVENTS_TABLE_ID,
-        config=bq_config,
-        location='US'
-    )
-    logger.info("BigQuery analytics plugin initialized.")
+bq_logging_plugin = create_bq_plugin()
 
 
 def _create_session_service():
@@ -136,9 +112,17 @@ def create_a2a_app():
         ]
     )
     plugins = [bq_logging_plugin] if bq_logging_plugin else []
+
+    task_store_builder = None
+    if os.environ.get("CLOUD_SQL_INSTANCE"):
+        from plugins.task_store import build_cloud_sql_taskstore
+        task_store_builder = build_cloud_sql_taskstore
+        logger.info("Using Cloud SQL DatabaseTaskStore for A2A task persistence.")
+
     return A2aAgent(
         agent_card=card,
-        agent_executor_builder=AdkAgentExecutorBuilder(mortgage_assistant_agent, plugins=plugins)
+        agent_executor_builder=AdkAgentExecutorBuilder(mortgage_assistant_agent, plugins=plugins),
+        task_store_builder=task_store_builder,
     )
 
 

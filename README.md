@@ -24,7 +24,7 @@
 ESMERALDA is an opinionated, commercial-grade blueprint designed to accelerate the path to production for AI Agents. The acronym represents the framework's four core pillars:
 
 *   **ES – Enterprise Standard:** A zero-trust, secure-by-default foundational architecture built for enterprise compliance and scale.
-*   **ME – Multi-agent Engine:** The core orchestration layer utilizing a Self-Managed Agent Gateway (GKE + Gateway API) or Apigee to govern inter-agent communication and secure egress via Private Service Connect (PSC).
+*   **ME – Multi-agent Engine:** The core orchestration layer utilizing Apigee to govern inter-agent communication and secure egress via Private Service Connect (PSC).
 *   **RAL – Reasoning & Action Layer:** Powered by Gemini 2.5 Flash and Model Context Protocol (MCP) standards for complex reasoning and structured JSON execution.
 *   **DA – Deployment Accelerator:** A "business-in-a-box" toolkit featuring pre-packaged SOWs, cost simulators, and a Terraform-driven CI/CD pipeline.
 
@@ -87,7 +87,7 @@ The beauty of this modular design is its simplicity. Each folder is a self-conta
 
 ### 1. Infrastructure (`infrastructure/`)
 
-Manages the Google Cloud project, IAM, VPC networks, GKE Self-Managed Gateway, and security guardrails (Model Armor).
+Manages the Google Cloud project, IAM, VPC networks, and security guardrails (Model Armor).
 *   **Configure**: `cp env.example .env`
 *   **To deploy**: `cd infrastructure && make infra`
 *   **CI/CD**: See `infrastructure/cloudbuild.yaml`

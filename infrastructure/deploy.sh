@@ -113,6 +113,16 @@ EOL
 log_info "Initializing Terraform..."
 terraform init
 
+log_info "Importing existing resources (safe re-run)..."
+ACTUAL_PROJECT=$(terraform output -raw project_id 2>/dev/null || echo "")
+if [[ -n "$ACTUAL_PROJECT" ]]; then
+    RANDOM_SUFFIX=$(terraform output -raw random_suffix 2>/dev/null || echo "")
+    if [[ -n "$RANDOM_SUFFIX" ]]; then
+        terraform import "module.apihub.google_apihub_api_hub_instance.main" \
+          "projects/${ACTUAL_PROJECT}/locations/${REGION}/apiHubInstances/default-instance-${RANDOM_SUFFIX}" 2>/dev/null || true
+    fi
+fi
+
 log_info "Applying Terraform..."
 terraform apply
 
