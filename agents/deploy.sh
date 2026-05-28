@@ -96,6 +96,11 @@ if [ -z "$VPC_NAME" ]; then
     VPC_NAME=$(terraform -chdir=../infrastructure/terraform output -raw vpc_name 2>/dev/null || echo "gateway-vpc")
 fi
 
+if [ -z "$CLOUD_SQL_INSTANCE" ]; then
+    CLOUD_SQL_INSTANCE=$(terraform -chdir=../infrastructure/terraform output -raw cloud_sql_instance_connection_name 2>/dev/null || echo "")
+    [[ -n "$CLOUD_SQL_INSTANCE" ]] && echo "[*] Discovered Cloud SQL Instance: $CLOUD_SQL_INSTANCE"
+fi
+
 # --- Final Validation
 [[ -z "$PROJECT_ID" ]] && log_error "PROJECT_ID not set or discovered."
 [[ -z "$GCS_OFFLOAD_BUCKET_NAME" ]] && log_error "GCS_OFFLOAD_BUCKET_NAME not set or discovered."
@@ -113,6 +118,11 @@ for AGENT_DIR in $AGENTS; do
     log_info "Preparing deployment for: $AGENT_NAME ($AGENT_DIR)"
 
     # --- Update agent.yaml ---
+    if [ -n "$CLOUD_SQL_INSTANCE" ]; then
+        sed -i "s|CLOUD_SQL_INSTANCE:.*|CLOUD_SQL_INSTANCE: ${CLOUD_SQL_INSTANCE}|g" "$AGENT_DIR/agent.yaml"
+        DB_IAM_USER="test-vm-sa@${PROJECT_ID}.iam"
+        sed -i "s|DB_IAM_USER:.*|DB_IAM_USER: ${DB_IAM_USER}|g" "$AGENT_DIR/agent.yaml"
+    fi
     if [ -n "$GCS_OFFLOAD_BUCKET_NAME" ]; then
         sed -i "s|GCS_BUCKET:.*|GCS_BUCKET: $GCS_OFFLOAD_BUCKET_NAME|g" "$AGENT_DIR/agent.yaml"
     fi

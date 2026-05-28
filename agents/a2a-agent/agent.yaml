@@ -45,6 +45,9 @@ env:
   MODEL_NAME: "gemini-2.5-flash"
   EVENTS_DATASET_ID: "agent_logs"
   EVENTS_TABLE_ID: "agent_events"
+  CLOUD_SQL_INSTANCE: PROJECT_ID:us-central1:a2a-agent-pg
+  DB_IAM_USER: test-vm-sa@PROJECT_ID.iam
+  DB_NAME: "a2a_tasks"
 
 labels:
   author: "your-name"
