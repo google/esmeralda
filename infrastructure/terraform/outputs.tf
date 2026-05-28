@@ -56,3 +56,8 @@ output "psc_interface_network_attachment_id" {
   description = "The ID of the PSC interface network attachment."
   value       = module.networking.psc_interface_network_attachment_id
 }
+
+output "cloud_sql_instance_connection_name" {
+  description = "Cloud SQL instance connection name (project:region:instance)."
+  value       = module.cloud_sql.instance_connection_name
+}

@@ -74,7 +74,9 @@ module "foundation" {
     "telemetry.googleapis.com",
     "texttospeech.googleapis.com",
     "serviceusage.googleapis.com",
-    "bigquery.googleapis.com"
+    "bigquery.googleapis.com",
+    "sqladmin.googleapis.com",
+    "servicenetworking.googleapis.com"
   ]
   
   enable_psc_interface = true
@@ -160,6 +162,27 @@ module "internal_load_balancer" {
   network_self_link    = module.networking.network_self_link
   subnetwork_self_link = module.networking.subnet_self_link
   ip_address           = module.networking.internal_gateway_ip
+
+  depends_on = [module.foundation, module.networking]
+}
+
+# --- Cloud SQL (A2A Task Store) ---
+provider "postgresql" {
+  scheme   = "gcppostgres"
+  host     = module.cloud_sql.instance_connection_name
+  port     = 5432
+  username = module.cloud_sql.bootstrap_user
+  password = module.cloud_sql.bootstrap_password
+  sslmode  = "disable"
+}
+
+module "cloud_sql" {
+  source = "./modules/cloud-sql"
+
+  project_id            = local.project_id
+  region                = var.region
+  vpc_id                = module.networking.network_id
+  agent_service_account = "test-vm-sa@${local.project_id}.iam"
 
   depends_on = [module.foundation, module.networking]
 }
