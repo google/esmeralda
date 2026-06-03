@@ -253,20 +253,7 @@ resource "google_logging_project_sink" "to_analytics_bucket" {
   unique_writer_identity = true
 }
 
-# =================================================================================
-# 2. Logging Sink (Standard Logs)
-# =================================================================================
 
-resource "google_logging_project_sink" "to_bigquery" {
-  project                = var.project_id
-  name                   = "agent-logs-sink"
-  destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.agent_logs.dataset_id}"
-  filter                 = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND (logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\")"
-  unique_writer_identity = true
-  bigquery_options {
-    use_partitioned_tables = true
-  }
-}
 
 # =================================================================================
 # 3. Cloud Trace Export
@@ -292,11 +279,6 @@ resource "google_logging_linked_dataset" "linked_traces" {
 # 4. Permissions
 # =================================================================================
 
-resource "google_project_iam_member" "bigquery_writer" {
-  project = var.project_id
-  role    = "roles/bigquery.dataEditor"
-  member  = google_logging_project_sink.to_bigquery.writer_identity
-}
 
 resource "google_project_iam_audit_config" "vertex_ai_audit" {
   project = var.project_id
