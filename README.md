@@ -138,3 +138,9 @@ cURL \
 -H "Authorization: Bearer $(gcloud auth print-access-token)" \
 -H "Content-Type: application/json" \
 https://<YOUR_PROJECT_REGION>[-aiplatform.googleapis.com/v1/projects/](https://-aiplatform.googleapis.com/v1/projects/)<YOUR_PROJECT_ID_FROM_TERRAFORM>/locations/<LOCATION>/reasoningEngines/<REASONING_ENGINE_ID>:query -d '{"class_method": "async_create_session", "input": {"user_id": "USER_ID"},}'
+
+---
+
+## 🔮 Future Architecture & Improving Developer Inner Loop
+
+To see our full proposal on how to eliminate friction, avoid dirty git workspaces (by removing dynamic `sed` edits), run parallel deployments, and add local mocking capabilities, please check our detailed suggestions in the [Deployment Recommendations Guide](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/DEPLOYMENT_RECOMMENDATIONS.md).

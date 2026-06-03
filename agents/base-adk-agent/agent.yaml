@@ -55,8 +55,8 @@ env:
   # GENAI_TELEMETRY_PATH: "completions"
 
   PROJECT_NAME: "base-adk-agent"
-  GCS_BUCKET: agent-ops-foundation-agent-logs-offload-e34b
-  A2A_AGENT_URL: https://us-central1-aiplatform.googleapis.com/v1beta1/projects/PROJECT_NUMBER/locations/us-central1/reasoningEngines/ENGINE_ID/a2a
+  GCS_BUCKET: agent-ops-foundation-agent-logs-offload-953d
+  A2A_AGENT_URL: https://us-central1-aiplatform.googleapis.com/v1beta1/projects/agent-ops-foundation-953d/locations/us-central1/reasoningEngines/7033983251941163008/a2a
   EVENTS_DATASET_ID: "agent_logs"
   EVENTS_TABLE_ID: "agent_events"
   MODEL_NAME: "gemini-2.5-flash"

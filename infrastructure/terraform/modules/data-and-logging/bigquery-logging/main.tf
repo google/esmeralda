@@ -253,7 +253,7 @@ resource "google_logging_project_sink" "to_bigquery" {
   project                = var.project_id
   name                   = "agent-logs-sink"
   destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.agent_logs.dataset_id}"
-  filter                 = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND logName=~\"gen_ai\""
+  filter                 = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND (logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\")"
   unique_writer_identity = true
   bigquery_options {
     use_partitioned_tables = true

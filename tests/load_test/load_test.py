@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+import random
 import time
 
 from locust import HttpUser, between, task
@@ -55,11 +56,18 @@ class ChatStreamUser(HttpUser):
         headers = {"Content-Type": "application/json"}
         headers["Authorization"] = f"Bearer {os.environ['_AUTH_TOKEN']}"
 
+        # Simulate callers from two fictional FinOps teams
+        team = random.choice([
+            {"project_id": "fictional-team-alpha", "agent_name": "alpha-coordinator"},
+            {"project_id": "fictional-team-beta", "agent_name": "beta-coordinator"}
+        ])
+
         data = {
             "class_method": "async_stream_query",
             "input": {
                 "user_id": "test",
                 "message": "I'm reviewing the Rivera family's $700K loan. Can you summarize their 2024 tax returns?",
+                "caller_context": team
             },
         }
 

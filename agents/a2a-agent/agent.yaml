@@ -38,15 +38,15 @@ env:
   OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
 
   PROJECT_NAME: "a2a-mortgage-agent"
-  GCS_BUCKET: agent-ops-foundation-agent-logs-offload-e34b
+  GCS_BUCKET: agent-ops-foundation-agent-logs-offload-953d
   DMS_MCP_URL: "http://dms.internal.gateway/mcp"
   INCOME_VERIFICATION_URL: "http://income-verification.internal.gateway/mcp"
   EMAIL_MCP_URL: "http://email.internal.gateway/mcp"
   MODEL_NAME: "gemini-2.5-flash"
   EVENTS_DATASET_ID: "agent_logs"
   EVENTS_TABLE_ID: "agent_events"
-  CLOUD_SQL_INSTANCE: PROJECT_ID:us-central1:a2a-agent-pg
-  DB_IAM_USER: test-vm-sa@PROJECT_ID.iam
+  CLOUD_SQL_INSTANCE: agent-ops-foundation-953d:us-central1:a2a-agent-pg
+  DB_IAM_USER: test-vm-sa@agent-ops-foundation-953d.iam
   DB_NAME: "a2a_tasks"
 
 labels:
