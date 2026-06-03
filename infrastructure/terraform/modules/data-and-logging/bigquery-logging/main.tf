@@ -237,12 +237,20 @@ EOF
   }
 }
 
-resource "google_bigquery_dataset" "trace_export" {
-  project                    = var.project_id
-  dataset_id                 = "cloud_trace_export"
-  friendly_name              = "Exportação de Spans do Cloud Trace"
-  location                   = "US"
-  delete_contents_on_destroy = true
+resource "google_logging_project_bucket_config" "analytics_bucket" {
+  project          = var.project_id
+  location         = "global"
+  bucket_id        = "esmeralda-analytics-bucket"
+  enable_analytics = true
+  retention_days   = 30
+}
+
+resource "google_logging_project_sink" "to_analytics_bucket" {
+  project                = var.project_id
+  name                   = "agent-logs-analytics-sink"
+  destination            = "logging.googleapis.com/${google_logging_project_bucket_config.analytics_bucket.id}"
+  filter                 = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND (logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\")"
+  unique_writer_identity = true
 }
 
 # =================================================================================
@@ -264,45 +272,20 @@ resource "google_logging_project_sink" "to_bigquery" {
 # 3. Cloud Trace Export
 # =================================================================================
 
-resource "null_resource" "create_trace_sink" {
-  triggers = {
-    dataset_id = google_bigquery_dataset.trace_export.dataset_id
-  }
+resource "google_logging_linked_dataset" "linked_logs" {
+  link_id     = "esmeralda_linked_logs"
+  parent      = "projects/${var.project_id}"
+  bucket      = google_logging_project_bucket_config.analytics_bucket.id
+  location    = google_logging_project_bucket_config.analytics_bucket.location
+  description = "BigQuery-linked dataset for Esmeralda's application logs"
+}
 
-  provisioner "local-exec" {
-    command = <<EOT
-      # 1. Create Sink (Safe to run multiple times)
-      gcloud alpha trace sinks create trace-to-bq \
-        bigquery.googleapis.com/projects/${var.project_number}/datasets/${google_bigquery_dataset.trace_export.dataset_id} \
-        --project=${var.project_id} || echo "Sink exists, continuing..."
-
-      # 2. Get the Writer Identity
-      WRITER_IDENTITY=$(gcloud alpha trace sinks describe trace-to-bq --project=${var.project_id} --format="value(writer_identity)")
-      echo "Identity found: $WRITER_IDENTITY"
-
-      # 3. UPDATE DATASET ACL (Classic Method)
-      # This avoids the "allowlisting" error of 'bq add-iam-policy-binding'
-      
-      # a. Download current dataset config to JSON
-      bq show --format=json ${var.project_id}:${google_bigquery_dataset.trace_export.dataset_id} > current_access.json
-
-      # b. Use jq to append the new Service Account to the access list
-      # We filter to ensure we don't add duplicates, then add the new one
-      jq --arg email "$WRITER_IDENTITY" \
-         '.access += [{"role":"WRITER", "userByEmail": $email}]' \
-         current_access.json > new_access.json
-
-      # c. Upload the updated config
-      bq update --source new_access.json ${var.project_id}:${google_bigquery_dataset.trace_export.dataset_id}
-
-      # Cleanup temporary files
-      rm current_access.json new_access.json
-    EOT
-  }
-
-  depends_on = [
-    google_bigquery_dataset.trace_export
-  ]
+resource "google_logging_linked_dataset" "linked_traces" {
+  link_id     = "esmeralda_linked_traces"
+  parent      = "projects/${var.project_id}"
+  bucket      = "_Trace"
+  location    = "global"
+  description = "BigQuery-linked dataset for Esmeralda's Cloud Trace spans"
 }
 
 # =================================================================================

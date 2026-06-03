@@ -178,3 +178,110 @@ SQL
   ]
 }
 
+resource "google_bigquery_dataset" "trace_analytics" {
+  project                     = var.project_id
+  dataset_id                  = "trace_analytics"
+  friendly_name               = "Esmeralda Trace Analytics"
+  description                 = "Analytical views and tables for Esmeralda traces"
+  location                    = "US"
+  default_table_expiration_ms = 31536000000
+  delete_contents_on_destroy  = true
+}
+
+resource "google_bigquery_table" "trace_costs_view" {
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.trace_analytics.dataset_id
+  table_id            = "v_trace_costs"
+  deletion_protection = false
+
+  view {
+    query          = <<SQL
+SELECT 
+  trace_id,
+  MIN(start_time) AS trace_start_time,
+  TIMESTAMP_DIFF(MAX(end_time), MIN(start_time), MILLISECOND) AS trace_duration_ms,
+  
+  -- Caller Context (Injected via Baggage)
+  MAX(JSON_VALUE(attributes, '$."caller.project_id"')) AS caller_project_id,
+  MAX(JSON_VALUE(attributes, '$."caller.agent_name"')) AS caller_agent_name,
+  MAX(JSON_VALUE(attributes, '$."user.id"')) AS user_id,
+  
+  -- Model & Telemetry
+  ARRAY_AGG(DISTINCT JSON_VALUE(attributes, '$."gen_ai.request.model"') IGNORE NULLS) AS models_used,
+  COUNTIF(name LIKE 'generate_content%') AS total_llm_calls,
+  
+  -- Token Usage
+  SUM(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64)) AS total_input_tokens,
+  SUM(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64)) AS total_output_tokens,
+  SUM(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.experimental.reasoning_tokens"') AS INT64)) AS total_reasoning_tokens,
+  SUM(
+    COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) + 
+    COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0)
+  ) AS total_tokens,
+  
+  -- Cost Calculations (Gemini Retail Pricing per 1 Million Tokens: Flash=$0.075/$0.30, Pro=$1.25/$5.00)
+  SUM(
+    CASE 
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%flash%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) * 0.000000075
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%pro%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) * 0.00000125
+      ELSE 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) * 0.000000075 -- default flash
+    END
+  ) AS estimated_input_cost_usd,
+  
+  SUM(
+    CASE 
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%flash%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0) * 0.00000030
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%pro%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0) * 0.00000500
+      ELSE 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0) * 0.00000030 -- default flash
+    END
+  ) AS estimated_output_cost_usd,
+  
+  SUM(
+    CASE 
+      -- Input Costs
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%flash%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) * 0.000000075
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%pro%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) * 0.00000125
+      ELSE 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.input_tokens"') AS INT64), 0) * 0.000000075
+    END +
+    CASE 
+      -- Output Costs
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%flash%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0) * 0.00000030
+      WHEN JSON_VALUE(attributes, '$."gen_ai.request.model"') LIKE '%pro%' THEN 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0) * 0.00000500
+      ELSE 
+        COALESCE(CAST(JSON_VALUE(attributes, '$."gen_ai.usage.output_tokens"') AS INT64), 0) * 0.00000030
+    END
+  ) AS estimated_total_cost_usd
+
+FROM 
+  `${var.project_id}.esmeralda_linked_traces._AllSpans`
+GROUP BY 
+  trace_id
+HAVING 
+  total_tokens > 0
+SQL
+    use_legacy_sql = false
+  }
+
+  labels = {
+    "created_by" = "terraform"
+  }
+
+  depends_on = [
+    time_sleep.wait_30_seconds,
+    google_logging_linked_dataset.linked_traces,
+    google_bigquery_dataset.trace_analytics
+  ]
+}
+
+
