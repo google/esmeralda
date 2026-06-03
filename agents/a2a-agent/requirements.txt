@@ -8,3 +8,6 @@ opentelemetry-sdk>=1.36.0,<1.39.0
 httpx
 cloud-sql-python-connector[asyncpg]
 asyncpg
+opentelemetry-instrumentation-google-genai
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-grpc

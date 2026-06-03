@@ -107,13 +107,29 @@ fi
 
 # --- Main Deployment Loop
 log_info "Discovering agents to deploy..."
-AGENTS=$(find . -mindepth 2 -maxdepth 2 -name "agent.yaml" | xargs -n1 dirname | sed 's|^\./||')
+DISCOVERED_AGENTS=$(find . -mindepth 2 -maxdepth 2 -name "agent.yaml" | xargs -n1 dirname | sed 's|^\./||' | sort)
 
-if [ -z "$AGENTS" ]; then
+if [ -z "$DISCOVERED_AGENTS" ]; then
     log_error "No agents found! Ensure your agent directories contain an agent.yaml file."
 fi
 
+# Ensure a2a-agent is ALWAYS at the beginning of the deployment list to resolve dependencies first
+AGENTS=""
+if echo "$DISCOVERED_AGENTS" | grep -q "a2a-agent"; then
+    AGENTS="a2a-agent"
+fi
+for AGENT in $DISCOVERED_AGENTS; do
+    if [[ "$AGENT" != "a2a-agent" ]]; then
+        AGENTS="$AGENTS $AGENT"
+    fi
+done
+AGENTS=$(echo "$AGENTS" | xargs)
+
 for AGENT_DIR in $AGENTS; do
+    if [ -n "$AGENT_FILTER" ] && [[ "$AGENT_DIR" != *"$AGENT_FILTER"* ]]; then
+        log_info "Skipping $AGENT_DIR (does not match AGENT_FILTER=$AGENT_FILTER)"
+        continue
+    fi
     AGENT_NAME=$(grep "^name:" "$AGENT_DIR/agent.yaml" | cut -d':' -f2 | xargs | tr -d '"' | tr -d "'")
     log_info "Preparing deployment for: $AGENT_NAME ($AGENT_DIR)"
 
@@ -125,6 +141,34 @@ for AGENT_DIR in $AGENTS; do
     fi
     if [ -n "$GCS_OFFLOAD_BUCKET_NAME" ]; then
         sed -i "s|GCS_BUCKET:.*|GCS_BUCKET: $GCS_OFFLOAD_BUCKET_NAME|g" "$AGENT_DIR/agent.yaml"
+    fi
+
+    # --- Auto-resolve A2A Agent URL if deploying base-adk-agent ---
+    if [[ "$AGENT_DIR" == "base-adk-agent" ]]; then
+        log_info "Attempting to auto-resolve latest A2A Agent URL from Vertex AI..."
+        RESOLVED_A2A_URL=$(python3 -c "
+import os
+try:
+    import vertexai
+    from vertexai import agent_engines
+    project = '${PROJECT_ID}'
+    location = '${REGION:-us-central1}'
+    vertexai.init(project=project, location=location)
+    engines = agent_engines.list()
+    engines = sorted([e for e in engines if e.display_name == 'a2a-mortgage-agent'], key=lambda e: e.create_time, reverse=True)
+    if engines:
+        print(f'https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project}/locations/{location}/reasoningEngines/{engines[0].name}/a2a')
+except Exception as e:
+    pass
+" 2>/dev/null)
+
+        if [[ -n "$RESOLVED_A2A_URL" ]]; then
+            log_success "Auto-resolved deployed A2A Agent URL: $RESOLVED_A2A_URL"
+            sed -i "s|A2A_AGENT_URL:.*|A2A_AGENT_URL: ${RESOLVED_A2A_URL}|g" "$AGENT_DIR/agent.yaml"
+            log_info "Updated A2A_AGENT_URL in $AGENT_DIR/agent.yaml"
+        else
+            log_info "Could not auto-resolve A2A Agent URL from Vertex AI. Will use existing configuration if present."
+        fi
     fi
     
     # Create .gcloudignore

@@ -7,3 +7,6 @@ opentelemetry-api>=1.36.0,<1.39.0
 opentelemetry-sdk>=1.36.0,<1.39.0
 fsspec[gcs]
 httpx
+opentelemetry-instrumentation-google-genai
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-grpc
