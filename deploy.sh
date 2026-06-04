@@ -59,7 +59,7 @@ deploy_tools() {
 
 deploy_agent() {
     log_info "Phase 3: Vertex AI Agents (Topological DAG)"
-    python3 agents/infra/dag_deployer.py
+    python3 agents/infra/python/dag_deployer.py
 }
 
 case "$ACTION" in
