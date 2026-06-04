@@ -24,7 +24,7 @@ tools: ## Deploy tools only (MCP Servers)
 	@bash deploy.sh tools
 
 agent: ## Deploy agents only (Topological DAG)
-	@python3 agents/infra/dag_deployer.py
+	@python3 agents/infra/python/dag_deployer.py
 
 preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
 	@bash ./preflight.sh
