@@ -62,15 +62,34 @@ async def main(user_input: str):
     # Run the setup which configures Cloud Logging and OTel BaggageSpanProcessor
     adk_app.set_up()
     
-    print("✅ AdkApp initialized. Sending test query via async_stream_query...")
-    print(f"User: {user_input}\n")
+    print("✅ AdkApp initialized.\n")
+    print(f"User Input: {user_input}\n")
 
     caller_context = {
         "project_id": "team-a-billing-project",
         "agent_name": "esmeralda-caller-agent"
     }
 
-    print("--- INITIATING ASYNC STREAM QUERY ---")
+    # 1. Synchronous Query (matching test_observability_v2.py)
+    print("--- 1. INITIATING SYNCHRONOUS QUERY (matching test_observability_v2.py) ---")
+    try:
+        # Pass `caller_context` directly as a keyword argument
+        response = adk_app.query(
+            input=user_input,
+            caller_context=caller_context
+        )
+        print("\n🤖 Agent Response:")
+        print(response)
+        sys.stdout.flush()
+
+    except Exception as e:
+        print(f"\n❌ An error occurred during synchronous query execution: {e}")
+        import traceback
+        traceback.print_exc()
+    print("-------------------------------------------------------------------------\n")
+
+    # 2. Asynchronous Stream Query (kept as requested)
+    print("--- 2. INITIATING ASYNC STREAM QUERY (kept) ---")
     try:
         # Call async_stream_query directly with adk_app
         async for event in adk_app.async_stream_query(
@@ -89,9 +108,10 @@ async def main(user_input: str):
         print("\n\n--- STREAM COMPLETED ---")
 
     except Exception as e:
-        print(f"\n❌ An error occurred during execution: {e}")
+        print(f"\n❌ An error occurred during async stream query execution: {e}")
         import traceback
         traceback.print_exc()
+    print("------------------------------------------------\n")
 
 if __name__ == "__main__":
     test_query = sys.argv[1] if len(sys.argv) > 1 else "I'm reviewing the Rivera family's $700K loan. Can you summarize their 2024 tax returns?"
