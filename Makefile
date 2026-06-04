@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: all infra tools agent help
+.PHONY: all infra tools agent preflight help
 
-all: ## Run the full deployment pipeline (Infra, Tools, Agent)
+all: preflight ## Run the full deployment pipeline (Infra, Tools, Agent)
 	@bash deploy.sh all
 
 infra: ## Deploy infrastructure only (Terraform)
@@ -25,6 +25,9 @@ tools: ## Deploy tools only (MCP Servers)
 
 agent: ## Deploy agents only
 	@bash deploy.sh agent
+
+preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
+	@bash ./preflight.sh
 
 stress-test: ## Run the Locust stress test against the deployed agent
 	@echo "🔑 Checking authentication..."
