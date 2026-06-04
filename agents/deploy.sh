@@ -222,4 +222,18 @@ EOF
             fi
         fi
     fi
+
+    # After base-adk-agent deploys, capture its Engine resource and update REMOTE_AGENT_ENGINE_ID in root .env
+    if [[ "$AGENT_DIR" == "base-adk-agent" ]]; then
+        ENGINE_RESOURCE=$(echo "$DEPLOY_OUTPUT" | grep -o "projects/[^'\"]*reasoningEngines/[0-9]*" | tail -1)
+        if [[ -n "$ENGINE_RESOURCE" ]]; then
+            ENV_FILE=$(find_context)
+            if [[ -f "$ENV_FILE" ]]; then
+                # Support both macOS and Linux sed syntaxes safely by removing first, then appending
+                sed -i '/^REMOTE_AGENT_ENGINE_ID=/d' "$ENV_FILE"
+                echo "REMOTE_AGENT_ENGINE_ID=\"$ENGINE_RESOURCE\"" >> "$ENV_FILE"
+                log_success "Updated REMOTE_AGENT_ENGINE_ID in root .env context: $ENGINE_RESOURCE"
+            fi
+        fi
+    fi
 done
