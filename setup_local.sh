@@ -12,6 +12,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIRS=(
     "agents/remotes/a2a-agent"
     "agents/root_agents/base-adk-agent"
+    "agents/root_agents/network-test-agent"
     "tools_mcp"
 )
 
