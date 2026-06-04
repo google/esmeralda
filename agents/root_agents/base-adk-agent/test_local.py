@@ -23,6 +23,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 # Load environment variables (from .env or set them manually for testing)
 load_dotenv()
 
+if os.getenv("LOCAL_MODE") == "true":
+    print("\n🔌 ==================================================")
+    print("🔌 RUNNING IN LOCAL SANDBOX MODE (MOCK ROUTER)")
+    print("🔌 ==================================================\n")
+
 # Explicitly set required env vars for testing if missing
 # First fallback to PROJECT_ID from root .env if GOOGLE_CLOUD_PROJECT is not set
 if not os.getenv("GOOGLE_CLOUD_PROJECT"):

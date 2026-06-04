@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: all infra tools agent preflight help
+.PHONY: all infra tools agent preflight bootstrap run-mcp help
 
 all: preflight ## Run the full deployment pipeline (Infra, Tools, Agent)
 	@bash deploy.sh all
@@ -23,11 +23,17 @@ infra: ## Deploy infrastructure only (Terraform)
 tools: ## Deploy tools only (MCP Servers)
 	@bash deploy.sh tools
 
-agent: ## Deploy agents only
-	@bash deploy.sh agent
+agent: ## Deploy agents only (Topological DAG)
+	@python3 agents/infra/dag_deployer.py
 
 preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
 	@bash ./preflight.sh
+
+bootstrap: ## Setup local Python virtual environments and install dependencies for all agents
+	@bash ./setup_local.sh
+
+run-mcp: ## Run the 3 MCP servers locally on dedicated localhost ports
+	@bash ./tools_mcp/run_local.sh
 
 stress-test: ## Run the Locust stress test against the deployed agent
 	@echo "🔑 Checking authentication..."

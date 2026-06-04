@@ -53,13 +53,13 @@ deploy_infrastructure() {
 
 deploy_tools() {
     log_info "Phase 2: Tools (MCP Servers)"
-    (cd tools && bash deploy.sh)
+    (cd tools_mcp && bash deploy.sh)
     [[ -f ".env" ]] && export $(grep -v '^#' .env | xargs)
 }
 
 deploy_agent() {
-    log_info "Phase 3: Vertex AI Agents"
-    (cd agents && bash deploy.sh)
+    log_info "Phase 3: Vertex AI Agents (Topological DAG)"
+    python3 agents/infra/dag_deployer.py
 }
 
 case "$ACTION" in
