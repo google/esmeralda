@@ -72,8 +72,16 @@ def _make_header_provider(mcp_url: str):
 
     def header_provider(context):
         """Provides service-to-service ID token and forwards user auth token."""
-        id_token = _get_oidc_token(audience)
-        headers = {"Authorization": f"Bearer {id_token}"}
+        headers = {}
+        # Bypass OIDC token generation if running against local servers or in local mode
+        if "localhost" in mcp_url or "127.0.0.1" in mcp_url or os.getenv("LOCAL_MODE") == "true":
+            logger.info("Bypassing OIDC token generation for local MCP server: %s", mcp_url)
+        else:
+            try:
+                id_token = _get_oidc_token(audience)
+                headers["Authorization"] = f"Bearer {id_token}"
+            except Exception as e:
+                logger.error("Failed to generate OIDC token, continuing without it: %s", e)
 
         if context and context.state:
             user_token = context.state.get(USER_AUTH_TOKEN_KEY)

@@ -1,0 +1,7 @@
+uv>=0.9.11
+google-auth>=2.43.0
+requests>=2.32.5
+fastmcp>=3.2.0
+-e ./servers/corporate-email
+-e ./servers/income-verification-api
+-e ./servers/legacy-dms

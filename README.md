@@ -4,10 +4,9 @@
   <p>An opinionated, commercial-grade blueprint designed to accelerate the path to production for AI Agents.</p>
 
   <p>
-    <a href="#-the-before-you-start-checklist">Checklist</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+    <a href="#-dont-come-crying-to-me-later-checklist">Checklist</a> &nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="#-quick-start-monorepo-mode">Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="#-modular-deployment-silo-mode">Architecture</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="#-troubleshooting">Troubleshooting</a>
+    <a href="#-modular-deployment-silo-mode">Architecture</a>
   </p>
 
   <p>
@@ -33,37 +32,25 @@ ESMERALDA is an opinionated, commercial-grade blueprint designed to accelerate t
 ## 📖 Overview
 
 **ESMERALDA** is a code-first deployment blueprint designed to bridge the gap between "prototype" and "production" for AI Agents. It applies software engineering best practices—like modularity, Infrastructure as Code (IaC), and automated discovery—to the **Vertex AI Reasoning Engine** ecosystem. It integrates advanced security mechanisms such as Model Armor for prompt/response safety and Envoy `ext_proc` sidecars for DLP redaction.
+## 😭 "Don't come crying to me later" Checklist
 
-## ✅ The "Don't come crying to me later" Checklist
+To save you time, tears, and deployment errors, we provide an automated preflight checklist script that verifies all prerequisites (CLI tools, authentication state, active project context, and billing status).
 
-To save you time and tears, make sure you've covered these points.
+Before attempting any deployment, run:
+```bash
+make preflight
+```
 
-**1. Run from Cloud Shell (Strongly Recommended)**
+The script will automatically verify and report on:
+1. **Python 3.10+** (is installed and meets minimum version requirement)
+2. **Terraform 1.5+** (is installed and meets minimum version requirement)
+3. **Google Cloud SDK (`gcloud`)** (is installed)
+4. **Active Google Cloud Project** (ensures your project context is set correctly)
+5. **Application Default Credentials (ADC)** (verifies active authenticated credentials for Terraform)
+6. **Project Billing Status** (ensures Google Cloud billing is active for the target project)
 
-The easiest and fastest way to deploy is using **Google Cloud Shell**.
-
-*   **Why?** All required tools (`gcloud`, `terraform`, `python`) are pre-installed and your authentication is already configured.
-
-**2. If Running Locally, Check Your Tools**
-
-If you prefer running from your local machine, you must have:
-*   Google Cloud SDK (`gcloud`)
-    *   **Note**: To install alpha-level commands, run `gcloud components install alpha` or `sudo apt-get install google-cloud-sdk-alpha` if you installed via `apt`.
-    *   **Note**: To enable GKE cluster access, run `gcloud components install gke-gcloud-auth-plugin` or `sudo apt-get install google-cloud-sdk-gke-gcloud-auth-plugin`.
-*   Terraform (`>= 1.5`)
-*   Python (`>= 3.10`)
-
-**3. Authenticate Correctly**
-
-This is the most common point of failure. Terraform needs permission to act on your behalf.
-*   **Run this first:**
-    ```bash
-    gcloud auth login
-    ```
-*   **And then run this:** This command is critical for Terraform.
-    ```bash
-    gcloud auth application-default login
-    ```
+> [!TIP]
+> If any checks fail, follow the interactive hints printed by the script (e.g. commands to authenticate or configure your context) to quickly resolve them.
 
 ## 🚀 Quick Start (Monorepo Mode)
 
@@ -79,6 +66,32 @@ If you are a single developer deploying everything from this repository:
     make all
     ```
 
+## 💻 Local Testing & Inner Loop
+
+For local development and testing, ESMERALDA supports zero-dependency local simulation of MCP servers and agents without requiring OIDC/IAM cloud credentials.
+
+1.  **Bootstrap Local Python Environments**:
+    Provision dedicated virtual environments and install all required packages:
+    ```bash
+    make bootstrap
+    ```
+
+2.  **Run Mock MCP Servers Locally**:
+    Spin up all three local mock MCP servers concurrently on dedicated loopback ports (`8011`, `8012`, `8013`) with built-in healthchecks:
+    ```bash
+    make run-mcp
+    ```
+
+3.  **Run Agent Integration Tests**:
+    With local servers running, you can execute the agent test suite in local mode. Open another terminal and run:
+    ```bash
+    export DMS_MCP_URL="http://localhost:8013/mcp"
+    export INCOME_VERIFICATION_URL="http://localhost:8012/mcp"
+    export EMAIL_MCP_URL="http://localhost:8011/mcp"
+    export LOCAL_MODE="true"
+    ./agents/a2a-agent/.venv/bin/python agents/a2a-agent/test_local.py
+    ```
+
 ## 🏗️ Modular Deployment (Silo Mode)
 
 The true power of this framework is its modularity. Each folder is **self-contained** and can be moved to its own Git repository to be managed by different teams.
@@ -92,12 +105,12 @@ Manages the Google Cloud project, IAM, VPC networks, and security guardrails (Mo
 *   **To deploy**: `cd infrastructure && make infra`
 *   **CI/CD**: See `infrastructure/cloudbuild.yaml`
 
-### 2. Tools (`tools/`)
+### 2. Tools (`tools_mcp/`)
 
 Deploys Model Context Protocol servers to Cloud Run, automatically registering them to the Agent Registry and API Hub by dynamically discovering the live endpoints. Includes demo tools such as Corporate Email, Income Verification API, and Legacy DMS.
 *   **Configure**: `cp env.example .env`
-*   **To deploy**: `cd tools && make tools`
-*   **CI/CD**: See `tools/cloudbuild.yaml`
+*   **To deploy**: `cd tools_mcp && make tools`
+*   **CI/CD**: See `tools_mcp/cloudbuild.yaml`
 
 ### 3. Agents (`agents/`)
 
@@ -106,41 +119,30 @@ Deploys Vertex AI Reasoning Engines with secure Private Service Connect (PSC) at
 *   **Configure**: `cp env.example .env`
 *   **To deploy**: `cd agents && make agent`
 *   **CI/CD**: See `agents/cloudbuild.yaml`
-
-## 🛠️ Troubleshooting
-
-If you hit an error, don't panic. It's usually one of two things.
-
-#### **Error 1: `invalid token` or `permission denied` on Billing Account**
-
-This is likelly an authentication issue. Your local credentials have expired.
-*   **The Fix**: Re-authenticate.
-    ```bash
-    gcloud auth application-default login
-    ```
-
 ## 🏛️ Key Architectural Features
 
 *   **Zero-Dependency Silos**: Each folder has its own `Makefile`, `env.example`, and deployment logic. No shared script files.
 *   **Context Discovery**: Scripts are "intelligent"—if a variable is missing from `.env`, they will attempt to discover it using the `gcloud` CLI.
 *   **Safe Resume**: State is automatically saved to `.env`. If a step fails, you can fix it and rerun **only that silo**.
+*   **Local Developer Inner Loop**: Concurrent mock MCP runner (`make run-mcp`) and isolated Python virtual environments (`make bootstrap`) let developers build, test, and debug agents offline with zero OIDC/IAM credential overhead.
+*   **Automated Preflight Guardrails**: Instant CLI validation (`make preflight`) verifying all prerequisites (Python version, Terraform version, active project, and billing state) to prevent deployment headaches before they start.
+
 
 ## 🔍 Usage
 
 ### Curl Query Examples
 
-Once deployed, you can interact with your agent using the following commands. Replace the placeholders with your actual values.
-
-#### 1. Create a session
+Once deployed, you can interact with your agent using the following streaming query command (replace the placeholders with your actual values):
 
 ```bash
-cURL \
--H "Authorization: Bearer $(gcloud auth print-access-token)" \
+curl -H "Authorization: Bearer \$(gcloud auth application-default print-access-token)" \
 -H "Content-Type: application/json" \
-https://<YOUR_PROJECT_REGION>[-aiplatform.googleapis.com/v1/projects/](https://-aiplatform.googleapis.com/v1/projects/)<YOUR_PROJECT_ID_FROM_TERRAFORM>/locations/<LOCATION>/reasoningEngines/<REASONING_ENGINE_ID>:query -d '{"class_method": "async_create_session", "input": {"user_id": "USER_ID"},}'
-
----
-
-## 🔮 Future Architecture & Improving Developer Inner Loop
-
-To see our full proposal on how to eliminate friction, avoid dirty git workspaces (by removing dynamic `sed` edits), run parallel deployments, and add local mocking capabilities, please check our detailed suggestions in the [Deployment Recommendations Guide](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/DEPLOYMENT_RECOMMENDATIONS.md).
+https://<YOUR_PROJECT_LOCATION>-aiplatform.googleapis.com/v1/projects/<YOUR_PROJECT_ID>/locations/<YOUR_PROJECT_LOCATION>/reasoningEngines/<YOUR_REASONING_ENGINE_ID>:streamQuery?alt=sse -d '{
+  "class_method": "async_stream_query",
+  "input": {
+    "user_id": "test-user-1",
+    "message": "what is your network config with proxy?",
+    "caller_context": "observability-context"
+  }
+}'
+```

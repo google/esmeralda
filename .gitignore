@@ -243,3 +243,6 @@ mcp-spec.json
 
 # Local env overrides
 agents/env
+
+# Local MCP log files
+tools_mcp/logs/

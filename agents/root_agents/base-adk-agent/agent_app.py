@@ -88,7 +88,7 @@ class BaggageSpanProcessor(SpanProcessor):
 try:
     # We extend AdkApp to inject custom initialization logic
     # when the Agent Engine instance starts up in the cloud.
-    class AgentEngineApp(agent_engines.AdkApp):
+    class AgentRuntimeApp(agent_engines.AdkApp):
         def set_up(self) -> None:
             import vertexai
             import google.auth
@@ -232,9 +232,10 @@ try:
                 logger.error(f"⚠️ Failed to flush telemetry: {e}", exc_info=True)
 
     # Wrap the root agent for Vertex AI Agent Engine deployment
-    adk_app = AgentEngineApp(
+    agent_runtime_app = AgentRuntimeApp(
         agent=root_agent
     )
+    adk_app = agent_runtime_app
 
     # Standard ADK App instance
     app = App(

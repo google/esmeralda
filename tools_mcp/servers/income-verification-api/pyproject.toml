@@ -40,6 +40,9 @@ dev = [
     "ty>=0.0.1a0",
 ]
 
+[tool.setuptools]
+py-modules = ["main", "otel_setup"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"

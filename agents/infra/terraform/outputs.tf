@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-steps:
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        export PROJECT_ID=${_PROJECT_ID:-$(gcloud config get-value project)}
-        export REGION=${_REGION:-us-central1}
-        bash deploy.sh
+output "engine_id" {
+  value       = google_vertex_ai_reasoning_engine.agent.id
+  description = "The fully qualified resource name of the deployed reasoning engine"
+}
 
-options:
-  logging: CLOUD_LOGGING_ONLY
+output "endpoint_url" {
+  value       = "https://${var.region}-aiplatform.googleapis.com/v1beta1/${google_vertex_ai_reasoning_engine.agent.id}"
+  description = "The HTTP endpoint URL for the reasoning engine"
+}
