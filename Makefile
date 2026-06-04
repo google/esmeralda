@@ -26,5 +26,17 @@ tools: ## Deploy tools only (MCP Servers)
 agent: ## Deploy agents only
 	@bash deploy.sh agent
 
+stress-test: ## Run the Locust stress test against the deployed agent
+	@echo "🔑 Checking authentication..."
+	@gcloud auth print-access-token >/dev/null 2>&1 || (echo "❌ Session expired or not authenticated. Please run 'gcloud auth login' and try again." && exit 1)
+	@echo "🚀 Initiating Locust load test..."
+	@export _AUTH_TOKEN=$$(gcloud auth print-access-token -q) && \
+	.locust_env/bin/locust -f tests/load_test/load_test.py \
+		--headless \
+		-t 30s -u 5 -r 2 \
+		--csv=tests/load_test/.results/results \
+		--html=tests/load_test/.results/report.html
+	@echo "✅ Load test complete! Results saved in tests/load_test/.results/"
+
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
