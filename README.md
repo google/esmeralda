@@ -89,7 +89,7 @@ For local development and testing, ESMERALDA supports zero-dependency local simu
     export INCOME_VERIFICATION_URL="http://localhost:8012/mcp"
     export EMAIL_MCP_URL="http://localhost:8011/mcp"
     export LOCAL_MODE="true"
-    ./agents/a2a-agent/.venv/bin/python agents/a2a-agent/test_local.py
+    ./agents/remotes/a2a-agent/.venv/bin/python agents/remotes/a2a-agent/test_local.py
     ```
 
 ## 🏗️ Modular Deployment (Silo Mode)
@@ -117,8 +117,8 @@ Deploys Model Context Protocol servers to Cloud Run, automatically registering t
 Deploys Vertex AI Reasoning Engines with secure Private Service Connect (PSC) attachments.
 *   **Important**: Before deploying, set your gcloud project context: `gcloud config set project [YOUR_NEWLY_CREATED_PROJECT_ID]`. This is required for auto-discovery to work.
 *   **Configure**: `cp env.example .env`
-*   **To deploy**: `cd agents && make agent`
-*   **CI/CD**: See `agents/cloudbuild.yaml`
+*   **To deploy**: `cd agents && make deploy-python` (or `make deploy-terraform` / `make deploy-python-cb` / `make deploy-terraform-cb`)
+*   **CI/CD**: See `agents/infra/python/cloudbuild.yaml` and `agents/infra/terraform/cloudbuild.yaml`
 ## 🏛️ Key Architectural Features
 
 *   **Zero-Dependency Silos**: Each folder has its own `Makefile`, `env.example`, and deployment logic. No shared script files.
