@@ -19,7 +19,7 @@ logger = logging.getLogger("dag_deployer")
 
 def load_context():
     """Loads root .env context variables into environment."""
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
     env_file = os.path.join(root_dir, ".env")
     if os.path.exists(env_file):
         logger.info(f"Loading context from {env_file}")
@@ -59,7 +59,7 @@ def topological_sort(components):
 
 def run_preflight():
     """Executes preflight checklist first."""
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
     preflight_script = os.path.join(root_dir, "preflight.sh")
     if os.path.exists(preflight_script):
         logger.info("Executing pre-flight checks...")
@@ -76,7 +76,7 @@ def deploy_component(comp, project_id, region):
     path = comp["path"]
     logger.info(f"🚀 Deploying component: {name} ({path})")
     
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
     abs_path = os.path.join(root_dir, path)
     
     agent_yaml_path = os.path.join(abs_path, "agent.yaml")
@@ -262,7 +262,7 @@ def deploy_with_dependencies(comp, project_id, region, futures_dict):
 def main():
     load_context()
     
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
     manifest_path = os.path.join(root_dir, "esmeralda.yaml")
     
     if not os.path.exists(manifest_path):
