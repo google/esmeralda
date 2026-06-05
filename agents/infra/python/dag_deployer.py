@@ -173,6 +173,12 @@ def deploy_component(comp, project_id, region):
             env = os.environ.copy()
             env["PYTHONPATH"] = f"{abs_path}:{env.get('PYTHONPATH', '')}"
             
+            # Explicitly activate the agent's virtual environment if it exists
+            venv_path = os.path.join(abs_path, ".venv")
+            if os.path.exists(venv_path):
+                env["VIRTUAL_ENV"] = venv_path
+                env["PATH"] = f"{os.path.join(venv_path, 'bin')}:{env.get('PATH', '')}"
+            
             logger.info(f"Running deployment command for {name}: {' '.join(deploy_cmd)}")
             res = subprocess.run(deploy_cmd, cwd=abs_path, env=env, capture_output=True, text=True)
         
