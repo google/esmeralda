@@ -380,10 +380,24 @@ def deploy_agent_engine_app(
 
         if matching_agents:
             logging.info(f"\n📝 Updating existing agent: {agent_name}")
-            remote_agent = client.agent_engines.update(
-                name=matching_agents[0].api_resource.name,
-                config=config_obj
-            )
+            try:
+                remote_agent = client.agent_engines.update(
+                    name=matching_agents[0].api_resource.name,
+                    config=config_obj
+                )
+            except Exception as e:
+                logging.warning(f"Failed to update Agent Engine: {e}. Retrying by deleting and recreating...")
+                try:
+                    # The delete method might be synchronous or asynchronous depending on the SDK version,
+                    # but typically it deletes the resource or initiates delete.
+                    client.agent_engines.delete(name=matching_agents[0].api_resource.name)
+                    logging.info(f"Existing agent {agent_name} deleted successfully.")
+                except Exception as del_err:
+                    logging.warning(f"Failed to delete existing agent {agent_name}: {del_err}")
+                logging.info(f"\n🚀 Creating new agent: {agent_name}")
+                remote_agent = client.agent_engines.create(
+                    config=config_obj
+                )
         else:
             logging.info(f"\n🚀 Creating new agent: {agent_name}")
             remote_agent = client.agent_engines.create(
