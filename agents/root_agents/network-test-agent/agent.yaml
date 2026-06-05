@@ -55,7 +55,7 @@ env:
   # GENAI_TELEMETRY_PATH: "completions"
 
   PROJECT_NAME: "network-test-agent"
-  GCS_BUCKET: agent-ops-foundation-agent-logs-offload-e34b
+  GCS_BUCKET: ${GCS_OFFLOAD_BUCKET_NAME}
   EVENTS_DATASET_ID: "agent_logs"
   EVENTS_TABLE_ID: "agent_events"
   MODEL: "gemini-2.5-flash"
@@ -71,5 +71,5 @@ psc_interface_config:
   dns_peering_configs:
     - domain: "internal.gateway."
       # Replace with your actual GCP project ID where the VPC is hosted
-      target_project: "agent-ops-foundation-e34b"
+      target_project: ${PROJECT_ID}
       target_network: "gateway-vpc"
