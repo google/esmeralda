@@ -198,26 +198,30 @@ def deploy_component(comp, project_id, region):
         print(f"==================================================")
         for line in stdout_lines[-num_lines:]:
             print(line)
+        
+        # Extract the actual deployed Agent Engine ID from combined output
+        import re
+        combined_output = (res.stdout or "") + "\n" + (res.stderr or "")
+        success_match = re.search(r"Agent Engine ID:\s*(projects/[^'\"]*reasoningEngines/[0-9]*)", combined_output)
+        if success_match:
+            deployed_id = success_match.group(1)
+            print(f"🎯 Deployed Agent Engine ID: {deployed_id}")
         print(f"==================================================\n")
         
         # Capture Base ADK Agent Engine ID to update .env
-        if name == "base-adk-agent":
-            import re
-            combined_output = (res.stdout or "") + "\n" + (res.stderr or "")
-            match = re.search(r"projects/[^'\"]*reasoningEngines/[0-9]*", combined_output)
-            if match:
-                engine_id = match.group(0)
-                env_file = os.path.join(root_dir, ".env")
-                if os.path.exists(env_file):
-                    # Update root .env
-                    with open(env_file, "r") as f:
-                        lines = f.readlines()
-                    # Exclude REMOTE_AGENT_ENGINE_ID
-                    lines = [l for l in lines if not l.strip().startswith("REMOTE_AGENT_ENGINE_ID=")]
-                    lines.append(f'\nREMOTE_AGENT_ENGINE_ID="{engine_id}"\n')
-                    with open(env_file, "w") as f:
-                        f.writelines(lines)
-                    logger.info(f"Updated REMOTE_AGENT_ENGINE_ID in root .env context: {engine_id}")
+        if name == "base-adk-agent" and success_match:
+            engine_id = success_match.group(1)
+            env_file = os.path.join(root_dir, ".env")
+            if os.path.exists(env_file):
+                # Update root .env
+                with open(env_file, "r") as f:
+                    lines = f.readlines()
+                # Exclude REMOTE_AGENT_ENGINE_ID
+                lines = [l for l in lines if not l.strip().startswith("REMOTE_AGENT_ENGINE_ID=")]
+                lines.append(f'\nREMOTE_AGENT_ENGINE_ID="{engine_id}"\n')
+                with open(env_file, "w") as f:
+                    f.writelines(lines)
+                logger.info(f"Updated REMOTE_AGENT_ENGINE_ID in root .env context: {engine_id}")
 
         return {
             "name": name,
@@ -253,9 +257,9 @@ def deploy_with_dependencies(comp, project_id, region, futures_dict):
                 a2a_res = a2a_future.result()
                 combined_a2a_out = (a2a_res.get("stdout") or "") + "\n" + (a2a_res.get("stderr") or "")
                 import re
-                match = re.search(r"projects/[^'\"]*reasoningEngines/[0-9]*", combined_a2a_out)
+                match = re.search(r"Agent Engine ID:\s*(projects/[^'\"]*reasoningEngines/[0-9]*)", combined_a2a_out)
                 if match:
-                    engine_resource = match.group(0)
+                    engine_resource = match.group(1)
                     a2a_url = f"https://{region}-aiplatform.googleapis.com/v1beta1/{engine_resource}/a2a"
                     logger.info(f"Dynamic Resolve: Extracted A2A URL from deployment logs: {a2a_url}")
                     # Set as environment variable so it gets expanded in base-adk-agent's template compile
