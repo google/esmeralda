@@ -79,6 +79,7 @@ resource "random_password" "postgres" {
 }
 
 resource "google_sql_user" "iam_user" {
+  count    = var.enable_iam_user ? 1 : 0
   project  = var.project_id
   instance = google_sql_database_instance.default.name
   name     = var.agent_service_account
@@ -90,8 +91,9 @@ resource "google_sql_user" "iam_user" {
 # --- Grants ---
 
 resource "postgresql_grant" "iam_user_database" {
+  count       = var.enable_iam_user ? 1 : 0
   database    = google_sql_database.a2a_tasks.name
-  role        = google_sql_user.iam_user.name
+  role        = google_sql_user.iam_user[0].name
   object_type = "database"
   privileges  = ["ALL"]
 
@@ -99,8 +101,9 @@ resource "postgresql_grant" "iam_user_database" {
 }
 
 resource "postgresql_grant" "iam_user_schema" {
+  count       = var.enable_iam_user ? 1 : 0
   database    = google_sql_database.a2a_tasks.name
-  role        = google_sql_user.iam_user.name
+  role        = google_sql_user.iam_user[0].name
   schema      = "public"
   object_type = "schema"
   privileges  = ["ALL"]

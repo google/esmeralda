@@ -184,6 +184,7 @@ module "cloud_sql" {
   region                = var.region
   vpc_id                = module.networking.network_id
   agent_service_account = "test-vm-sa@${local.project_id}.iam"
+  enable_iam_user       = var.enable_iam_user
 
   depends_on = [module.foundation, module.networking]
 }

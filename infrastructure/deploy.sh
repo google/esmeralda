@@ -109,6 +109,7 @@ project_id                = "$PROJECT_ID_BASE"
 agent_name                = "$AGENT_NAME"
 region                    = "$REGION"
 enable_trace_logging_link = ${ENABLE_TRACE_LOGGING_LINK:-false}
+enable_iam_user           = ${ENABLE_IAM_USER:-false}
 EOL
 
 log_info "Initializing Terraform..."

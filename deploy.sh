@@ -45,8 +45,14 @@ ACTION="${1:-all}"
 
 # --- Execution Logic
 deploy_infrastructure() {
-    log_info "Phase 1: Infrastructure"
+    log_info "Phase 1: Infrastructure (Bootstrap - without Cloud SQL IAM user)"
+    export ENABLE_IAM_USER="false"
     (cd infrastructure && bash deploy.sh)
+    
+    log_info "Phase 1.5: Enabling Cloud SQL IAM user (Database is now active and ready)"
+    export ENABLE_IAM_USER="true"
+    (cd infrastructure && bash deploy.sh)
+
     # Reload root context after infrastructure deployment might have updated it
     [[ -f ".env" ]] && export $(grep -v '^#' .env | xargs)
 }
