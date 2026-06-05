@@ -122,7 +122,94 @@ Deploys Vertex AI Reasoning Engines with secure Private Service Connect (PSC) at
 *   **Configure**: `cp env.example .env`
 *   **To deploy**: `cd agents && make deploy-python` (or `make deploy-terraform` / `make deploy-python-cb` / `make deploy-terraform-cb`)
 *   **CI/CD**: See `agents/infra/python/cloudbuild.yaml` and `agents/infra/terraform/cloudbuild.yaml`
-## 🏛️ Key Architectural Features
+## 🏗️ Esmeralda Agent Platform Architecture
+
+Esmeralda deploys a commercial-grade, multi-tier private architecture designed to orchestrate secure Vertex AI Reasoning Engines (AI Agents) and Model Context Protocol (MCP) servers.
+
+```mermaid
+graph TD
+    subgraph "Google Managed Tenant VPC"
+        subgraph "Vertex AI Reasoning Engines"
+            A2A[a2a-mortgage-agent]
+            ADK[base-adk-agent]
+            NET[network-test-agent]
+        end
+    end
+
+    subgraph "Consumer VPC (gateway-vpc)"
+        direction TB
+        subgraph "Networking Subnets"
+            S_GKE[gke-subnet: 10.0.0.0/20]
+            S_PROXY[gateway-proxy-subnet: 10.9.0.0/24]
+            S_PSC_NAT[gateway-psc-subnet: 10.10.0.0/24]
+            S_PSC_INT[psc-interface-subnet: 10.11.0.0/28]
+        end
+
+        ILB[Internal Load Balancer]
+        DNS[Private DNS Zone: internal.gateway.]
+        
+        subgraph "Private Compute & Data"
+            VM[test-vm]
+            DB[("Cloud SQL Postgres DB")]
+        end
+
+        subgraph "Cloud Run MCP Servers"
+            CR_EMAIL[corporate-email]
+            CR_INCOME[income-verification-api]
+            CR_DMS[legacy-dms]
+        end
+    end
+
+    %% Networking & DNS Connections
+    A2A -->|PSC Interface| S_PSC_INT
+    ADK -->|PSC Interface| S_PSC_INT
+    NET -->|PSC Interface| S_PSC_INT
+    
+    S_PSC_INT -->|Secure Egress Routing| ILB
+    ILB -->|HTTP Internal routing| CR_EMAIL
+    ILB -->|HTTP Internal routing| CR_INCOME
+    ILB -->|HTTP Internal routing| CR_DMS
+    
+    A2A -->|IAM Auth Connect| DB
+    VM -->|Private SQL Connect| DB
+
+    classDef gcp fill:#4285F4,stroke:#333,stroke-width:1px,color:#fff;
+    classDef comp fill:#34A853,stroke:#333,stroke-width:1px,color:#fff;
+    class A2A,ADK,NET,CR_EMAIL,CR_INCOME,CR_DMS,VM,DB gcp;
+```
+
+### 1. Secure VPC Networking Core
+* **Private VPC (`gateway-vpc`)**: Isolated virtual private network including:
+  * **Primary Subnet (`gke-subnet` - `10.0.0.0/20`)**: Hosts the private GCE `test-vm`.
+  * **Managed Proxy Subnet (`10.9.0.0/24`)**: Powers regional/internal managed HTTPS load balancers.
+  * **PSC NAT Subnet (`10.10.0.0/24`)**: Manages IPs for Private Service Connect network attachments.
+  * **PSC Interface Subnet (`10.11.0.0/28`)**: Connects the Vertex AI Reasoning Engines (agents) to the VPC via a Private Service Connect Network Attachment (`gateway-psc-interface-attachment`).
+* **Internal Load Balancer (ILB)**: Serves as the central private ingress gateway inside the VPC, exposing private HTTPS endpoints for all MCP servers.
+* **Private DNS Zone (`internal.gateway.`)**: Automatically resolves internal service domain names like `email.internal.gateway`, `income-verification.internal.gateway`, and `dms.internal.gateway` directly to the ILB's private IP.
+
+### 2. Model Context Protocol (MCP) Tier
+Three fully managed MCP servers are deployed securely onto **Google Cloud Run**:
+1. **Corporate Email (`corporate-email`)**: Exposes mock corporate email operations.
+2. **Income Verification API (`income-verification-api`)**: Validates customer income statements.
+3. **Legacy DMS (`legacy-dms`)**: Manages mock document repository operations.
+
+* **Zero-Trust Access**: Cloud Run instances are configured with `--no-allow-unauthenticated` and `--ingress=internal-and-cloud-load-balancing` to ensure no public internet access is permitted.
+* **Service Discovery**: The `register_mcp.py` utility automatically scans and registers these live server endpoints in both **API Hub** and **Agent Registry** for seamless discovery.
+
+### 3. Vertex AI Reasoning Engines (AI Agents Tier)
+Three autonomous reasoning engines are deployed as Vertex AI Reasoning Engines. Since they run in a Google-managed tenant VPC, they use **PSC Interfaces** to peer with the customer VPC and route requests via the `internal.gateway.` DNS zone:
+1. **`a2a-agent` (A2A Mortgage Agent)**: An orchestration engine powered by `gemini-2.5-flash` that interacts with the private Cloud SQL database, utilizing the custom-registered MCP tools (Email, DMS, Income Verification) via the private ILB endpoints.
+2. **`base-adk-agent`**: A root consumer agent utilizing the Google Agent Development Kit (ADK) that connects to and orchestrates the downstream `a2a-agent`.
+3. **`network-test-agent`**: A utility agent used to test the secure private egress networking and OIDC token generation over the PSC interface.
+
+### 4. Enterprise Governance, State, and Telemetry
+* **Model Armor**: Provides input and output safety guardrails (prompt injection filtering, toxic content defense).
+* **State / Task Store (Cloud SQL PostgreSQL)**: A private Postgres DB instance (`a2a-agent-pg`) within the VPC that persists agent state and transaction histories, utilizing IAM-based database authentication.
+* **OpenTelemetry Observability**: Automatically instruments reasoning engines to collect and export GenAI-specific traces and metrics.
+* **GCS Log Offloading**: Secure Cloud Storage buckets offload and archive raw trace files and multimodal completion payloads.
+* **BigQuery Logging (`agent_logs`)**: Automatically captures structured agent events and spans for real-time compliance audits, dashboards, and BI reports.
+
+## ⚙️ Esmeralda Repository & Framework Features
 
 *   **Zero-Dependency Silos**: Each folder has its own `Makefile`, `env.example`, and deployment logic. No shared script files.
 *   **Context Discovery**: Scripts are "intelligent"—if a variable is missing from `.env`, they will attempt to discover it using the `gcloud` CLI.
