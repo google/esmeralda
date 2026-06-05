@@ -189,6 +189,7 @@ resource "google_bigquery_dataset" "trace_analytics" {
 }
 
 resource "google_bigquery_table" "trace_costs_view" {
+  count               = var.enable_trace_logging_link ? 1 : 0
   project             = var.project_id
   dataset_id          = google_bigquery_dataset.trace_analytics.dataset_id
   table_id            = "v_trace_costs"

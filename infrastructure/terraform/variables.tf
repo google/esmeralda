@@ -52,5 +52,11 @@ variable "billing_account" {
   default     = null
 }
 
+variable "enable_trace_logging_link" {
+  type        = bool
+  description = "Set to true to link Cloud Trace to BigQuery. Requires _Trace bucket to exist."
+  default     = false
+}
+
 
 
