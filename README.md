@@ -106,6 +106,7 @@ The beauty of this modular design is its simplicity. Each folder is a self-conta
 Manages the Google Cloud project, IAM, VPC networks, and security guardrails (Model Armor).
 *   **Configure**: `cp env.example .env`
 *   **To deploy**: `cd infrastructure && make infra`
+*   **Telemetry & Cloud Trace Link**: On a fresh GCP project, the system-reserved `_Trace` logging bucket is not provisioned until tracing logs are actively generated. Therefore, trace linking is disabled by default. Once you have deployed the full stack and invoked your agent a few times (or run a stress-test), update your `.env` to include `ENABLE_TRACE_LOGGING_LINK=true` and run `make infra` again to successfully link Cloud Trace to BigQuery and deploy the `v_trace_costs` analytics view.
 *   **CI/CD**: See `infrastructure/cloudbuild.yaml`
 
 ### 2. Tools (`tools_mcp/`)

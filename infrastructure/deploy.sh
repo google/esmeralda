@@ -103,11 +103,12 @@ cd terraform
 
 log_info "Creating terraform.tfvars file..."
 cat > terraform.tfvars << EOL
-org_id          = "$ORG_ID"
-billing_account = "$BILLING_ACCOUNT"
-project_id      = "$PROJECT_ID_BASE"
-agent_name      = "$AGENT_NAME"
-region          = "$REGION"
+org_id                    = "$ORG_ID"
+billing_account           = "$BILLING_ACCOUNT"
+project_id                = "$PROJECT_ID_BASE"
+agent_name                = "$AGENT_NAME"
+region                    = "$REGION"
+enable_trace_logging_link = ${ENABLE_TRACE_LOGGING_LINK:-false}
 EOL
 
 log_info "Initializing Terraform..."

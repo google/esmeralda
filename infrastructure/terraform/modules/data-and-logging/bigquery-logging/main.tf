@@ -237,6 +237,71 @@ EOF
   }
 }
 
+# =================================================================================
+# 1.3. Pre-create the aiplatform_googleapis_com_reasoning_engine_stdout table
+# =================================================================================
+
+resource "google_bigquery_table" "reasoning_engine_stdout" {
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.agent_logs.dataset_id
+  table_id            = "aiplatform_googleapis_com_reasoning_engine_stdout"
+  deletion_protection = false
+
+  schema = <<EOF
+[
+  { "name": "timestamp", "type": "TIMESTAMP", "mode": "NULLABLE" },
+  { "name": "textPayload", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "jsonPayload", "type": "JSON", "mode": "NULLABLE" },
+  { "name": "logName", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "trace", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "spanId", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "resource", "type": "JSON", "mode": "NULLABLE" },
+  { "name": "labels", "type": "JSON", "mode": "NULLABLE" }
+]
+EOF
+
+  lifecycle {
+    ignore_changes = [
+      schema,
+      friendly_name,
+      description
+    ]
+  }
+}
+
+# =================================================================================
+# 1.4. Pre-create the aiplatform_googleapis_com_reasoning_engine_stderr table
+# =================================================================================
+
+resource "google_bigquery_table" "reasoning_engine_stderr" {
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.agent_logs.dataset_id
+  table_id            = "aiplatform_googleapis_com_reasoning_engine_stderr"
+  deletion_protection = false
+
+  schema = <<EOF
+[
+  { "name": "timestamp", "type": "TIMESTAMP", "mode": "NULLABLE" },
+  { "name": "textPayload", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "jsonPayload", "type": "JSON", "mode": "NULLABLE" },
+  { "name": "logName", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "trace", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "spanId", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "resource", "type": "JSON", "mode": "NULLABLE" },
+  { "name": "labels", "type": "JSON", "mode": "NULLABLE" }
+]
+EOF
+
+  lifecycle {
+    ignore_changes = [
+      schema,
+      friendly_name,
+      description
+    ]
+  }
+}
+
+
 resource "google_logging_project_bucket_config" "analytics_bucket" {
   project          = var.project_id
   location         = "global"
@@ -268,6 +333,7 @@ resource "google_logging_linked_dataset" "linked_logs" {
 }
 
 resource "google_logging_linked_dataset" "linked_traces" {
+  count       = var.enable_trace_logging_link ? 1 : 0
   link_id     = "esmeralda_linked_traces"
   parent      = "projects/${var.project_id}"
   bucket      = "_Trace"
@@ -294,7 +360,9 @@ resource "google_project_iam_audit_config" "vertex_ai_audit" {
 resource "time_sleep" "wait_30_seconds" {
   depends_on = [
     google_bigquery_table.gen_ai_choice,
-    google_bigquery_table.gen_ai_user_message
+    google_bigquery_table.gen_ai_user_message,
+    google_bigquery_table.reasoning_engine_stdout,
+    google_bigquery_table.reasoning_engine_stderr
   ]
 
   create_duration = "30s"

@@ -99,9 +99,10 @@ module "data_and_logging" {
   source = "./modules/data-and-logging"
   depends_on = [module.foundation]
 
-  project_id     = local.project_id
-  project_number = var.create_project ? module.foundation[0].project_number : data.google_project.project_details[0].number
-  region         = var.region
+  project_id                = local.project_id
+  project_number            = var.create_project ? module.foundation[0].project_number : data.google_project.project_details[0].number
+  region                    = var.region
+  enable_trace_logging_link = var.enable_trace_logging_link
   bucket_names = {
     "agent-engine"               = "${var.project_id}-agent-engine-${random_id.suffix.hex}",
     "bucket-adk-agent-artifacts" = "${var.project_id}-bucket-adk-agent-artifacts-${random_id.suffix.hex}",
