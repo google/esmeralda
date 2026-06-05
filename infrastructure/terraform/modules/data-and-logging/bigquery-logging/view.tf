@@ -24,30 +24,30 @@ WITH all_logs AS (
   SELECT 
     timestamp,
     trace,
-    UPPER(jsonPayload.content.role) as log_role,
+    UPPER(JSON_VALUE(jsonPayload, '$.content.role')) as log_role,
     CASE 
-      WHEN labels.event_name = 'gen_ai.choice' THEN 'SOURCE_CHOICE'
+      WHEN JSON_VALUE(labels, '$.event_name') = 'gen_ai.choice' THEN 'SOURCE_CHOICE'
       ELSE 'SOURCE_USER_MSG'
     END as source_table,
     
     -- Extrai Texto (Pega o item 0 do array parts)
-    jsonPayload.content.parts[SAFE_OFFSET(0)].text as text_content,
+    JSON_VALUE(jsonPayload, '$.content.parts[0].text') as text_content,
     
     -- Extrai Function Call Name
-    jsonPayload.content.parts[SAFE_OFFSET(0)].function_call.name as fc_name,
+    JSON_VALUE(jsonPayload, '$.content.parts[0].function_call.name') as fc_name,
     
     -- Extrai Function Call Args (Usa TO_JSON_STRING para o struct args)
-    TO_JSON_STRING(jsonPayload.content.parts[SAFE_OFFSET(0)].function_call.args) as fc_args,
+    TO_JSON_STRING(jsonPayload.content.parts[0].function_call.args) as fc_args,
     
     -- Extrai Function Response Name
-    jsonPayload.content.parts[SAFE_OFFSET(0)].function_response.name as fr_name,
+    JSON_VALUE(jsonPayload, '$.content.parts[0].function_response.name') as fr_name,
     
     -- Extrai Function Response Result (Usa TO_JSON_STRING para o struct response)
-    TO_JSON_STRING(jsonPayload.content.parts[SAFE_OFFSET(0)].function_response.response) as fr_result
+    TO_JSON_STRING(jsonPayload.content.parts[0].function_response.response) as fr_result
   FROM 
     `${var.project_id}.${google_bigquery_dataset.agent_logs.dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout`
   WHERE 
-    labels.event_name IN ('gen_ai.user.message', 'gen_ai.choice')
+    JSON_VALUE(labels, '$.event_name') IN ('gen_ai.user.message', 'gen_ai.choice')
 ),
 
 classified_events AS (
@@ -115,18 +115,18 @@ WITH caller_contexts AS (
   SELECT 
     REGEXP_EXTRACT(trace, r'/([a-zA-Z0-9]+)$') as trace_id,
     COALESCE(
-      JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.project_id'),
+      JSON_VALUE(jsonPayload, '$.project_id'),
       REGEXP_EXTRACT(textPayload, r"['\"]project_id['\"]:\s*['\"]([^'\"]+)['\"]")
     ) as project_id,
     COALESCE(
-      JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.agent_name'),
+      JSON_VALUE(jsonPayload, '$.agent_name'),
       REGEXP_EXTRACT(textPayload, r"['\"]agent_name['\"]:\s*['\"]([^'\"]+)['\"]")
     ) as agent_name,
     ROW_NUMBER() OVER (PARTITION BY REGEXP_EXTRACT(trace, r'/([a-zA-Z0-9]+)$') ORDER BY timestamp DESC) as rn
   FROM 
     `${var.project_id}.${google_bigquery_dataset.agent_logs.dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout`
   WHERE 
-    JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.message') LIKE '%Injecting caller context as OTel baggage%'
+    JSON_VALUE(jsonPayload, '$.message') LIKE '%Injecting caller context as OTel baggage%'
     OR textPayload LIKE '%Injecting caller context as OTel baggage%'
 ),
 
