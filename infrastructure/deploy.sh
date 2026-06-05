@@ -126,7 +126,7 @@ if [[ -n "$ACTUAL_PROJECT" ]]; then
 fi
 
 log_info "Applying Terraform..."
-terraform apply
+terraform apply -auto-approve
 
 # --- Update Context
 log_info "Updating deployment context..."
