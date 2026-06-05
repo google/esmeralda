@@ -36,10 +36,18 @@ ESMERALDA is an opinionated, commercial-grade blueprint designed to accelerate t
 
 To save you time, tears, and deployment errors, we provide an automated preflight checklist script that verifies all prerequisites (CLI tools, authentication state, active project context, and billing status).
 
-Before attempting any deployment, run:
-```bash
-make preflight
-```
+1. **Configure**:
+   First, create and configure your environment file:
+   ```bash
+   cp env.example .env
+   # Fill in your ORG_ID and BILLING_ACCOUNT in the new .env file.
+   ```
+
+2. **Preflight**:
+   Once configured, run the preflight check:
+   ```bash
+   make preflight
+   ```
 
 The script will automatically verify and report on:
 1. **Python 3.10+** (is installed and meets minimum version requirement)
@@ -56,12 +64,7 @@ The script will automatically verify and report on:
 
 If you are a single developer deploying everything from this repository:
 
-1.  **Configure**:
-    ```bash
-    cp env.example .env
-    # Fill in your ORG_ID and BILLING_ACCOUNT in the new .env file.
-    ```
-2.  **Deploy All**:
+1.  **Deploy All**:
     ```bash
     make all
     ```
