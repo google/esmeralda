@@ -14,7 +14,7 @@
 
 .PHONY: all infra tools agent preflight bootstrap run-mcp help
 
-all: preflight ## Run the full deployment pipeline and enable trace analytics
+all: preflight bootstrap ## Run the full deployment pipeline and enable trace analytics
 	@bash deploy.sh all
 	@$(MAKE) stress-test
 	@echo "🔄 Re-deploying infrastructure to link Cloud Trace BigQuery dataset..."

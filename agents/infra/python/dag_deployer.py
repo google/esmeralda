@@ -203,7 +203,8 @@ def deploy_component(comp, project_id, region):
         # Capture Base ADK Agent Engine ID to update .env
         if name == "base-adk-agent":
             import re
-            match = re.search(r"projects/[^'\"]*reasoningEngines/[0-9]*", res.stdout)
+            combined_output = (res.stdout or "") + "\n" + (res.stderr or "")
+            match = re.search(r"projects/[^'\"]*reasoningEngines/[0-9]*", combined_output)
             if match:
                 engine_id = match.group(0)
                 env_file = os.path.join(root_dir, ".env")
@@ -250,9 +251,9 @@ def deploy_with_dependencies(comp, project_id, region, futures_dict):
         if a2a_future:
             try:
                 a2a_res = a2a_future.result()
-                a2a_out = a2a_res.get("stdout", "")
+                combined_a2a_out = (a2a_res.get("stdout") or "") + "\n" + (a2a_res.get("stderr") or "")
                 import re
-                match = re.search(r"projects/[^'\"]*reasoningEngines/[0-9]*", a2a_out)
+                match = re.search(r"projects/[^'\"]*reasoningEngines/[0-9]*", combined_a2a_out)
                 if match:
                     engine_resource = match.group(0)
                     a2a_url = f"https://{region}-aiplatform.googleapis.com/v1beta1/{engine_resource}/a2a"
@@ -285,6 +286,8 @@ def main():
         sys.exit(1)
         
     region = manifest.get("project", {}).get("region", "us-central1")
+    os.environ["PROJECT_ID"] = project_id
+    os.environ["REGION"] = region
     components = manifest.get("components", [])
     
     logger.info("Computing Directed Acyclic Graph (DAG) for components...")
