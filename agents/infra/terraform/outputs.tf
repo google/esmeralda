@@ -12,24 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# modules/bigquery-logging/variables.tf
-
-variable "project_id" {
-  description = "The ID of the Google Cloud project."
-  type        = string
+output "engine_id" {
+  value       = google_vertex_ai_reasoning_engine.agent.id
+  description = "The fully qualified resource name of the deployed reasoning engine"
 }
 
-variable "region" {
-  description = "The region for the BigQuery dataset."
-  type        = string
-}
-
-variable "project_number" {
-  description = "The number of the Google Cloud project."
-  type        = string
-}
-
-variable "enable_trace_logging_link" {
-  description = "Whether to create the Cloud Trace logging linked dataset and view."
-  type        = bool
+output "endpoint_url" {
+  value       = "https://${var.region}-aiplatform.googleapis.com/v1beta1/${google_vertex_ai_reasoning_engine.agent.id}"
+  description = "The HTTP endpoint URL for the reasoning engine"
 }
