@@ -48,17 +48,6 @@ variable "subnet_name" {
   type        = string
 }
 
-variable "pods_range_name" {
-  description = "Name of the secondary range for pods"
-  type        = string
-  default     = "pods"
-}
-
-variable "services_range_name" {
-  description = "Name of the secondary range for services"
-  type        = string
-  default     = "services"
-}
 
 variable "name_prefix" {
   description = "Prefix for resource names (typically cluster name)"
@@ -71,17 +60,6 @@ variable "primary_subnet_cidr" {
   default     = "10.0.0.0/20"
 }
 
-variable "pods_cidr" {
-  description = "CIDR range for the pods secondary range"
-  type        = string
-  default     = "10.4.0.0/14"
-}
-
-variable "services_cidr" {
-  description = "CIDR range for the services secondary range"
-  type        = string
-  default     = "10.8.0.0/20"
-}
 
 variable "proxy_subnet_cidr" {
   description = "CIDR range for the proxy-only subnet"
