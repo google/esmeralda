@@ -31,3 +31,9 @@ variable "bucket_names" {
   description = "Map of bucket names"
   type        = map(string)
 }
+
+variable "enable_trace_logging_link" {
+  description = "Whether to create the Cloud Trace logging linked dataset and view (may fail if the _Trace system bucket is not yet provisioned)."
+  type        = bool
+  default     = false
+}

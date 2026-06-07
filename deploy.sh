@@ -46,20 +46,31 @@ ACTION="${1:-all}"
 # --- Execution Logic
 deploy_infrastructure() {
     log_info "Phase 1: Infrastructure"
+    export ENABLE_IAM_USER="${ENABLE_IAM_USER:-true}"
     (cd infrastructure && bash deploy.sh)
+    
+    # Persist setting to root .env to prevent silent teardowns in future runs
+    if [[ -f ".env" ]]; then
+        if grep -q "^ENABLE_IAM_USER=" .env; then
+            sed -i "s/^ENABLE_IAM_USER=.*/ENABLE_IAM_USER=\"$ENABLE_IAM_USER\"/" .env
+        else
+            echo "ENABLE_IAM_USER=\"$ENABLE_IAM_USER\"" >> .env
+        fi
+    fi
+
     # Reload root context after infrastructure deployment might have updated it
     [[ -f ".env" ]] && export $(grep -v '^#' .env | xargs)
 }
 
 deploy_tools() {
     log_info "Phase 2: Tools (MCP Servers)"
-    (cd tools && bash deploy.sh)
+    (cd tools_mcp && bash deploy.sh)
     [[ -f ".env" ]] && export $(grep -v '^#' .env | xargs)
 }
 
 deploy_agent() {
-    log_info "Phase 3: Vertex AI Agents"
-    (cd agents && bash deploy.sh)
+    log_info "Phase 3: Vertex AI Agents (Topological DAG)"
+    python3 agents/infra/python/dag_deployer.py
 }
 
 case "$ACTION" in
@@ -75,3 +86,4 @@ case "$ACTION" in
 esac
 
 log_success "Deployment process finished."
+

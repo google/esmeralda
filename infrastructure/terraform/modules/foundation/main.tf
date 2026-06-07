@@ -40,17 +40,19 @@ resource "google_project_service_identity" "aiplatform" {
 }
 
 resource "google_project_iam_member" "aiplatform_network_admin" {
-  count   = var.enable_psc_interface ? 1 : 0
-  project = google_project.project.project_id
-  role    = "roles/compute.networkAdmin"
-  member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = google_project.project.project_id
+  role       = "roles/compute.networkAdmin"
+  member     = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+  depends_on = [time_sleep.aiplatform_identity_propagation]
 }
 
 resource "google_project_iam_member" "aiplatform_dns_peer" {
-  count   = var.enable_psc_interface ? 1 : 0
-  project = google_project.project.project_id
-  role    = "roles/dns.peer"
-  member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+  count      = var.enable_psc_interface ? 1 : 0
+  project    = google_project.project.project_id
+  role       = "roles/dns.peer"
+  member     = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+  depends_on = [time_sleep.aiplatform_identity_propagation]
 }
 
 resource "time_sleep" "aiplatform_identity_propagation" {

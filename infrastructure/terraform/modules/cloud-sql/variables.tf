@@ -50,3 +50,9 @@ variable "agent_service_account" {
   description = "Service account email used by Agent Engine"
   type        = string
 }
+
+variable "enable_iam_user" {
+  description = "Enable creation of the CLOUD_IAM_SERVICE_ACCOUNT user and database grants"
+  type        = bool
+  default     = false
+}

@@ -28,3 +28,8 @@ variable "project_number" {
   description = "The number of the Google Cloud project."
   type        = string
 }
+
+variable "enable_trace_logging_link" {
+  description = "Whether to create the Cloud Trace logging linked dataset and view."
+  type        = bool
+}

@@ -52,5 +52,17 @@ variable "billing_account" {
   default     = null
 }
 
+variable "enable_trace_logging_link" {
+  type        = bool
+  description = "Set to true to link Cloud Trace to BigQuery. Requires _Trace bucket to exist."
+  default     = false
+}
+
+variable "enable_iam_user" {
+  type        = bool
+  description = "Set to true to create the Cloud SQL IAM user and grants. Set to false during initial bootstrap if system roles are not yet initialized in PostgreSQL."
+  default     = false
+}
+
 
 

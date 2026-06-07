@@ -99,9 +99,10 @@ module "data_and_logging" {
   source = "./modules/data-and-logging"
   depends_on = [module.foundation]
 
-  project_id     = local.project_id
-  project_number = var.create_project ? module.foundation[0].project_number : data.google_project.project_details[0].number
-  region         = var.region
+  project_id                = local.project_id
+  project_number            = var.create_project ? module.foundation[0].project_number : data.google_project.project_details[0].number
+  region                    = var.region
+  enable_trace_logging_link = var.enable_trace_logging_link
   bucket_names = {
     "agent-engine"               = "${var.project_id}-agent-engine-${random_id.suffix.hex}",
     "bucket-adk-agent-artifacts" = "${var.project_id}-bucket-adk-agent-artifacts-${random_id.suffix.hex}",
@@ -134,13 +135,8 @@ module "networking" {
   subnet_name = "gke-subnet"
   
   primary_subnet_cidr = "10.0.0.0/20"
-  pods_cidr           = "10.4.0.0/14"
-  services_cidr       = "10.8.0.0/20"
   proxy_subnet_cidr   = "10.9.0.0/24"
   psc_subnet_cidr     = "10.10.0.0/24"
-  
-  pods_range_name     = "pods"
-  services_range_name = "services"
   
   gateway_scope = "regional"
   
@@ -183,6 +179,7 @@ module "cloud_sql" {
   region                = var.region
   vpc_id                = module.networking.network_id
   agent_service_account = "test-vm-sa@${local.project_id}.iam"
+  enable_iam_user       = var.enable_iam_user
 
   depends_on = [module.foundation, module.networking]
 }

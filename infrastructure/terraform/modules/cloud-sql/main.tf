@@ -79,6 +79,7 @@ resource "random_password" "postgres" {
 }
 
 resource "google_sql_user" "iam_user" {
+  count    = var.enable_iam_user ? 1 : 0
   project  = var.project_id
   instance = google_sql_database_instance.default.name
   name     = var.agent_service_account
@@ -87,25 +88,65 @@ resource "google_sql_user" "iam_user" {
   depends_on = [google_sql_user.postgres]
 }
 
+# --- Wait for DB Readiness ---
+
+resource "null_resource" "wait_for_db" {
+  count = var.enable_iam_user ? 1 : 0
+
+  depends_on = [
+    google_sql_database_instance.default,
+    google_sql_database.a2a_tasks,
+    google_sql_user.postgres,
+    google_sql_user.iam_user[0]
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "⏳ Waiting for Cloud SQL instance ${google_sql_database_instance.default.name} to be fully online and ready..."
+      for i in {1..30}; do
+        STATE=$(gcloud sql instances describe ${google_sql_database_instance.default.name} --project=${var.project_id} --format="value(state)" 2>/dev/null || echo "UNKNOWN")
+        if [ "$STATE" = "RUNNABLE" ]; then
+          echo "✅ Cloud SQL Instance state is RUNNABLE! Sleeping 15s to allow PostgreSQL engine startup..."
+          sleep 15
+          exit 0
+        fi
+        echo "🔄 Database state is $STATE. Retrying in 10 seconds (Attempt $i/30)..."
+        sleep 10
+      done
+      echo "❌ Timeout waiting for database engine"
+      exit 1
+    EOT
+  }
+}
+
 # --- Grants ---
 
 resource "postgresql_grant" "iam_user_database" {
+  count       = var.enable_iam_user ? 1 : 0
   database    = google_sql_database.a2a_tasks.name
-  role        = google_sql_user.iam_user.name
+  role        = google_sql_user.iam_user[0].name
   object_type = "database"
   privileges  = ["ALL"]
 
-  depends_on = [google_sql_user.iam_user, google_sql_database.a2a_tasks]
+  depends_on = [
+    google_sql_user.iam_user,
+    google_sql_database.a2a_tasks,
+    null_resource.wait_for_db[0]
+  ]
 }
 
 resource "postgresql_grant" "iam_user_schema" {
+  count       = var.enable_iam_user ? 1 : 0
   database    = google_sql_database.a2a_tasks.name
-  role        = google_sql_user.iam_user.name
+  role        = google_sql_user.iam_user[0].name
   schema      = "public"
   object_type = "schema"
   privileges  = ["ALL"]
 
-  depends_on = [google_sql_user.iam_user]
+  depends_on = [
+    google_sql_user.iam_user,
+    null_resource.wait_for_db[0]
+  ]
 }
 
 # --- IAM ---
