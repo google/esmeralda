@@ -23,7 +23,8 @@ module "gcs" {
 module "bigquery_logging" {
   source = "./bigquery-logging"
 
-  project_id     = var.project_id
-  project_number = var.project_number
-  region         = var.region
+  project_id                = var.project_id
+  project_number            = var.project_number
+  region                    = var.region
+  enable_trace_logging_link = var.enable_trace_logging_link
 }

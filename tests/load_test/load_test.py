@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+import random
 import time
 
 from locust import HttpUser, between, task
@@ -25,9 +26,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Vertex AI and load agent config
-with open("deployment_metadata.json") as f:
-    remote_agent_engine_id = json.load(f)["remote_agent_engine_id"]
+# Try to load remote_agent_engine_id from env, fallback to parsing root .env file
+remote_agent_engine_id = os.getenv("REMOTE_AGENT_ENGINE_ID")
+
+if not remote_agent_engine_id:
+    # Try to parse the root .env file manually (to avoid python-dotenv requirement)
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"))
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                if line.strip().startswith("REMOTE_AGENT_ENGINE_ID="):
+                    val = line.split("=", 1)[1].strip()
+                    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                        val = val[1:-1]
+                    remote_agent_engine_id = val
+                    break
+
+if not remote_agent_engine_id:
+    raise ValueError("REMOTE_AGENT_ENGINE_ID not found in environment or root .env file.")
 
 parts = remote_agent_engine_id.split("/")
 project_id = parts[1]
@@ -55,11 +71,18 @@ class ChatStreamUser(HttpUser):
         headers = {"Content-Type": "application/json"}
         headers["Authorization"] = f"Bearer {os.environ['_AUTH_TOKEN']}"
 
+        # Simulate callers from two fictional FinOps teams
+        team = random.choice([
+            {"project_id": "fictional-team-alpha", "agent_name": "alpha-coordinator"},
+            {"project_id": "fictional-team-beta", "agent_name": "beta-coordinator"}
+        ])
+
         data = {
             "class_method": "async_stream_query",
             "input": {
                 "user_id": "test",
                 "message": "I'm reviewing the Rivera family's $700K loan. Can you summarize their 2024 tax returns?",
+                "caller_context": team
             },
         }
 
