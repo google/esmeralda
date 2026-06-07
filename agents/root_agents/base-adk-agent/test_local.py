@@ -37,7 +37,7 @@ if not os.getenv("EVENTS_DATASET_ID"):
 if not os.getenv("EVENTS_TABLE_ID"):
     os.environ["EVENTS_TABLE_ID"] = "agent_events"
 if not os.getenv("A2A_AGENT_URL"):
-    os.environ["A2A_AGENT_URL"] = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/693826639943/locations/us-central1/reasoningEngines/7033983251941163008/a2a"
+    os.environ["A2A_AGENT_URL"] = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/agent-ops-foundation-435f/locations/us-central1/reasoningEngines/5403187605623799808/a2a"
 if not os.getenv("GCS_BUCKET"):
      os.environ["GCS_BUCKET"] = os.getenv("GCS_OFFLOAD_BUCKET_NAME", "agent-ops-foundation-agent-logs-offload-953d")
 

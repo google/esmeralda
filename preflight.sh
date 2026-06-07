@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash -i
 # preflight.sh
 set -euo pipefail
 
@@ -47,7 +47,7 @@ if ! command -v terraform &>/dev/null; then
     exit 1
 fi
 
-tf_ver_str=$(terraform -version | head -n1)
+tf_ver_str=$(terraform -version | sed -n '1p')
 if [[ "$tf_ver_str" =~ [vV]([0-9]+)\.([0-9]+) ]]; then
     major="${BASH_REMATCH[1]}"
     minor="${BASH_REMATCH[2]}"
