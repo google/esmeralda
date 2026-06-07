@@ -38,7 +38,7 @@ fi
 
 # Create temporary status and log directories
 TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TEMP_DIR"' EXIT
+trap 'if [ "${failed:-0}" -ne 0 ]; then echo -e "\n🔍 DUMPING BOOTSTRAP LOGS ON FAILURE:\n"; cat "$TEMP_DIR"/*.log 2>/dev/null; fi; rm -rf "$TEMP_DIR"' EXIT
 
 setup_directory() {
     local relative_dir="$1"
