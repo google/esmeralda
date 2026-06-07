@@ -18,7 +18,7 @@ all: preflight bootstrap ## Run the full deployment pipeline and enable trace an
 	@bash deploy.sh all
 	@$(MAKE) stress-test
 	@echo "🔄 Re-deploying infrastructure to link Cloud Trace BigQuery dataset..."
-	@export ENABLE_TRACE_LOGGING_LINK=true && bash deploy.sh infra
+	@export ENABLE_TRACE_LOGGING_LINK=true ENABLE_IAM_USER=true && bash deploy.sh infra
 
 infra: ## Deploy infrastructure only (Terraform)
 	@bash deploy.sh infra

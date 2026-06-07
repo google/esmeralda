@@ -45,13 +45,18 @@ ACTION="${1:-all}"
 
 # --- Execution Logic
 deploy_infrastructure() {
-    log_info "Phase 1: Infrastructure (Bootstrap - without Cloud SQL IAM user)"
-    export ENABLE_IAM_USER="false"
+    log_info "Phase 1: Infrastructure"
+    export ENABLE_IAM_USER="${ENABLE_IAM_USER:-true}"
     (cd infrastructure && bash deploy.sh)
     
-    log_info "Phase 1.5: Enabling Cloud SQL IAM user (Database is now active and ready)"
-    export ENABLE_IAM_USER="true"
-    (cd infrastructure && bash deploy.sh)
+    # Persist setting to root .env to prevent silent teardowns in future runs
+    if [[ -f ".env" ]]; then
+        if grep -q "^ENABLE_IAM_USER=" .env; then
+            sed -i "s/^ENABLE_IAM_USER=.*/ENABLE_IAM_USER=\"$ENABLE_IAM_USER\"/" .env
+        else
+            echo "ENABLE_IAM_USER=\"$ENABLE_IAM_USER\"" >> .env
+        fi
+    fi
 
     # Reload root context after infrastructure deployment might have updated it
     [[ -f ".env" ]] && export $(grep -v '^#' .env | xargs)
@@ -81,3 +86,4 @@ case "$ACTION" in
 esac
 
 log_success "Deployment process finished."
+
