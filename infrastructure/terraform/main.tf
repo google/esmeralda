@@ -135,13 +135,8 @@ module "networking" {
   subnet_name = "gke-subnet"
   
   primary_subnet_cidr = "10.0.0.0/20"
-  pods_cidr           = "10.4.0.0/14"
-  services_cidr       = "10.8.0.0/20"
   proxy_subnet_cidr   = "10.9.0.0/24"
   psc_subnet_cidr     = "10.10.0.0/24"
-  
-  pods_range_name     = "pods"
-  services_range_name = "services"
   
   gateway_scope = "regional"
   

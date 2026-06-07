@@ -214,6 +214,23 @@ def _ge_deploy(
     except urllib.error.HTTPError as e:
         logger.error(f"ERROR registering agent in Gemini Enterprise: {e.code}")
 
+def _create_agent_with_retry(client, config_obj, max_retries=3, delay=60):
+    """Creates a Reasoning Engine agent with automatic retries for transient Code 13 errors."""
+    import time
+    for attempt in range(max_retries):
+        try:
+            return client.agent_engines.create(config=config_obj)
+        except RuntimeError as e:
+            error_msg = str(e)
+            if "code': 13" in error_msg and attempt < max_retries - 1:
+                logging.warning(
+                    f"⚠️ Vertex AI returned transient Code 13 error (internal setup race). "
+                    f"Retrying in {delay}s... (Attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+            else:
+                raise e
+
 def deploy_agent_engine_app(
     project_id: str | None,
     location: str,
@@ -395,14 +412,10 @@ def deploy_agent_engine_app(
                 except Exception as del_err:
                     logging.warning(f"Failed to delete existing agent {agent_name}: {del_err}")
                 logging.info(f"\n🚀 Creating new agent: {agent_name}")
-                remote_agent = client.agent_engines.create(
-                    config=config_obj
-                )
+                remote_agent = _create_agent_with_retry(client, config_obj)
         else:
             logging.info(f"\n🚀 Creating new agent: {agent_name}")
-            remote_agent = client.agent_engines.create(
-                config=config_obj
-            )
+            remote_agent = _create_agent_with_retry(client, config_obj)
 
         logging.info(f"✅ Deployment successful! Agent Engine ID: {remote_agent.api_resource.name}")
 
