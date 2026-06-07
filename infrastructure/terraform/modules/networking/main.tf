@@ -52,14 +52,6 @@ module "vpc" {
       name          = var.subnet_name
       region        = var.region
       ip_cidr_range = var.primary_subnet_cidr
-      secondary_ip_ranges = {
-        (var.pods_range_name) = {
-          ip_cidr_range = var.pods_cidr
-        }
-        (var.services_range_name) = {
-          ip_cidr_range = var.services_cidr
-        }
-      }
     }
   ]
 

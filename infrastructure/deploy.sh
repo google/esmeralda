@@ -88,14 +88,17 @@ fi
 check_dependencies terraform gcloud kubectl envsubst
 
 # --- Validate Input
-ORG_ID=${ORG_ID}
-BILLING_ACCOUNT=${BILLING_ACCOUNT}
+CREATE_PROJECT=${CREATE_PROJECT:-true}
+ORG_ID=${ORG_ID:-}
+BILLING_ACCOUNT=${BILLING_ACCOUNT:-}
 PROJECT_ID_BASE=${PROJECT_ID_BASE:-agent-ops-foundation}
 AGENT_NAME=${AGENT_NAME:-base-adk-agent}
 REGION=${REGION:-us-central1}
 
-if [[ -z "$ORG_ID" ]] || [[ -z "$BILLING_ACCOUNT" ]]; then
-    log_error "ORG_ID and BILLING_ACCOUNT must be set in .env or as environment variables."
+if [[ "$CREATE_PROJECT" = "true" ]]; then
+    if [[ -z "$ORG_ID" ]] || [[ -z "$BILLING_ACCOUNT" || "$ORG_ID" = "your-org-id" || "$BILLING_ACCOUNT" = "your-billing-account" ]]; then
+        log_error "ORG_ID and BILLING_ACCOUNT must be set in .env or as environment variables when CREATE_PROJECT=true."
+    fi
 fi
 
 # --- Run terraform
@@ -103,6 +106,7 @@ cd terraform
 
 log_info "Creating terraform.tfvars file..."
 cat > terraform.tfvars << EOL
+create_project            = $CREATE_PROJECT
 org_id                    = "$ORG_ID"
 billing_account           = "$BILLING_ACCOUNT"
 project_id                = "$PROJECT_ID_BASE"
