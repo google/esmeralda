@@ -161,7 +161,7 @@ locals {
 inputs = {
   # Dynamically deploys into the isolated A2A agent platform project!
   project_id            = dependency.projects.outputs.a2a_project_id
-  region                = "us-central1"
+  region                = local.env_vars.locals.region
   vpc_id                = dependency.networking.outputs.network_id
   subnet_id             = dependency.networking.outputs.subnet_id
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
@@ -202,10 +202,14 @@ dependency "a2a_agent" {
   config_path = "../a2a-agent"
 }
 
+locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+}
+
 inputs = {
   # Deploys into the isolated customer-facing Line of Business (LOB) project!
   project_id            = dependency.projects.outputs.root_project_id
-  region                = "us-central1"
+  region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.root_agent_sa_email
 
   # Inject downstream endpoints
@@ -314,6 +318,14 @@ locals {
   byo_networking = lookup(local.env_vars.locals, "byo_networking", false)
 }
 
+dependency "projects" {
+  config_path = "../../../stage-1-projects"
+}
+
+dependency "security" {
+  config_path = "../../../stage-3-security"
+}
+
 dependency "networking" {
   config_path = "../../../stage-2-networking"
   
@@ -331,6 +343,7 @@ inputs = {
   # Dynamically fetches workload project IDs provisioned dynamically by Esmeralda's Stage 1!
   project_id            = dependency.projects.outputs.a2a_project_id
   region                = local.env_vars.locals.region
+  agent_service_account = dependency.security.outputs.a2a_agent_sa_email
   
   # Dynamic Fallback: Use client's existing VPC if BYO is active, else use dependency outputs
   vpc_id                = local.byo_networking ? local.env_vars.locals.existing_vpc_id  : dependency.networking.outputs.network_id
