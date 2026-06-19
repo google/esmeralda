@@ -1022,27 +1022,7 @@ variable "existing_subnet_id" {
   default     = ""
 }
 
-# Workload Project Numbers (Required for subnet-level Service Agent IAM permissions)
-variable "mcps_project_number" {
-  description = "The numeric project number for prj-esmeralda-mcps"
-  type        = string
-}
-
-variable "a2a_project_number" {
-  description = "The numeric project number for prj-esmeralda-a2a-agents"
-  type        = string
-}
-
-variable "root_project_number" {
-  description = "The numeric project number for prj-esmeralda-root-agent"
-  type        = string
-}
-
-variable "gateway_project_number" {
-  description = "The numeric project number for prj-gateway"
-  type        = string
-  default     = ""
-}
+# Workload Project Numbers are resolved dynamically in main.tf via data "google_project" to avoid manual inputs and automation locks.
 
 # Explicit Proxy & PSC Options
 variable "enable_psc_interface" {
@@ -1061,6 +1041,19 @@ variable "enable_secure_web_proxy" {
 ##### 3. Implementation Logic (`main.tf`)
 ```hcl
 # infrastructure/modules/2-networking/main.tf
+
+# Resolve dynamically generated project numbers to avoid manual inputs and automation locks
+data "google_project" "mcps" {
+  project_id = var.mcps_project_id
+}
+
+data "google_project" "a2a" {
+  project_id = var.a2a_project_id
+}
+
+data "google_project" "root_agent" {
+  project_id = var.root_project_id
+}
 
 # ====================================================================
 # 1. SHARED VPC HOST & SERVICE PROJECTS ATTACHMENTS
@@ -1156,7 +1149,7 @@ resource "google_compute_subnetwork" "psc" {
 
 # PSC Interface Subnet for Serverless Agent Incoming Tunnels
 resource "google_compute_subnetwork" "psc_interface" {
-  count         = var.byo_networking && var.enable_psc_interface ? 0 : 1
+  count         = !var.byo_networking && var.enable_psc_interface ? 1 : 0
   name          = "sb-esmeralda-psc-interface"
   project       = var.net_host_project_id
   region        = var.region
@@ -1212,7 +1205,7 @@ resource "google_compute_network_attachment" "psc_interface" {
   name                  = "gateway-psc-interface-attachment"
   region                = var.region
   connection_preference = "ACCEPT_AUTOMATIC"
-  subnetworks           = [var.byo_networking ? var.existing_subnet_id : google_compute_subnetwork.psc_interface[0].self_link]
+  subnetworks           = [var.byo_networking ? var.existing_subnet_id : try(google_compute_subnetwork.psc_interface[0].self_link, "")]
 }
 
 # Ingress Firewall to accept traffic from the PSC Interface Subnet
@@ -1266,8 +1259,8 @@ module "secure_web_proxy" {
 # ====================================================================
 
 locals {
-  target_vpc_id    = var.byo_networking ? var.existing_vpc_id : google_compute_network.shared_vpc[0].id
-  target_subnet_id = var.byo_networking ? var.existing_subnet_id : google_compute_subnetwork.core[0].id
+  target_vpc_id    = var.byo_networking ? var.existing_vpc_id : try(google_compute_network.shared_vpc[0].id, "")
+  target_subnet_id = var.byo_networking ? var.existing_subnet_id : try(google_compute_subnetwork.core[0].id, "")
   
   # Parse subnet name and region from the subnet ID URI
   subnet_parsed_name   = element(split("/", local.target_subnet_id), length(split("/", local.target_subnet_id)) - 1)
@@ -1276,17 +1269,17 @@ locals {
   # Consolidate all Service accounts that need Subnet Network User access
   subnet_network_users = [
     # 1. MCP Central Tools Project Service SAs
-    "serviceAccount:service-${var.mcps_project_number}@cloudservices.gserviceaccount.com",
-    "serviceAccount:service-${var.mcps_project_number}@serverless-robot-prod.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.mcps.number}@cloudservices.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.mcps.number}@serverless-robot-prod.iam.gserviceaccount.com",
 
     # 2. Core AI Platform Project Service SAs
-    "serviceAccount:service-${var.a2a_project_number}@cloudservices.gserviceaccount.com",
-    "serviceAccount:service-${var.a2a_project_number}@serverless-robot-prod.iam.gserviceaccount.com",
-    "serviceAccount:service-${var.a2a_project_number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@cloudservices.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@serverless-robot-prod.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
 
     # 3. LOB Root Agent Project Service SAs
-    "serviceAccount:service-${var.root_project_number}@cloudservices.gserviceaccount.com",
-    "serviceAccount:service-${var.root_project_number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+    "serviceAccount:service-${data.google_project.root_agent.number}@cloudservices.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
   ]
 }
 
@@ -1338,10 +1331,11 @@ module "psc_interface_dns_zone" {
     "A swp" = { records = ["10.0.1.100"] }
   }
 }
+```
 
-# ====================================================================
-# 7. OUTPUTS SPECIFICATION
-# ====================================================================
+##### 4. Outputs Specification (`outputs.tf`)
+```hcl
+# infrastructure/modules/2-networking/outputs.tf
 
 output "network_id" {
   description = "The resolved Shared VPC network resource ID"
@@ -1370,13 +1364,14 @@ output "dns_zone_dns_name" {
 
 output "psc_network_attachment_id" {
   description = "The URI of the Private Service Connect Network Attachment"
-  value       = var.enable_psc_interface ? google_compute_network_attachment.psc_interface[0].id : ""
+  value       = try(google_compute_network_attachment.psc_interface[0].id, "")
 }
 
 output "secure_web_proxy_ip" {
   description = "The private IP address of the Secure Web Proxy"
   value       = var.enable_secure_web_proxy && !var.byo_networking ? "10.0.1.100" : ""
 }
+```
 
 ### 7.3 Stage 3: `modules/3-security/` Specification
 
@@ -1506,22 +1501,13 @@ variable "governance_project_id" {
   type        = string
 }
 
-variable "governance_project_number" {
-  description = "The numeric project number for prj-esmeralda-governance"
-  type        = string
-}
-
 variable "region" {
   description = "The primary region where regional security resources are placed"
   type        = string
   default     = "us-central1"
 }
 
-# Workload Project Numbers (Required for Service Robot KMS Key grants)
-variable "a2a_project_number" {
-  description = "The numeric project number for prj-esmeralda-a2a-agents"
-  type        = string
-}
+# Workload and Governance project numbers are resolved dynamically in main.tf via data "google_project"
 
 # BYO Security Toggles
 variable "byo_security" {
@@ -1572,6 +1558,15 @@ variable "dns_zone_name" {
 ```hcl
 # infrastructure/modules/3-security/main.tf
 
+# Resolve dynamically generated project numbers to avoid manual inputs and automation locks
+data "google_project" "governance" {
+  project_id = var.governance_project_id
+}
+
+data "google_project" "a2a" {
+  project_id = var.a2a_project_id
+}
+
 # ====================================================================
 # 1. CUSTOMER-MANAGED ENCRYPTION KEYS (CMEK) via CLOUD KMS
 # ====================================================================
@@ -1610,8 +1605,8 @@ resource "google_kms_crypto_key" "secrets_key" {
 
 # Dynamic key IDs resolution based on BYO toggle
 locals {
-  resolved_database_key_id = var.byo_security ? var.existing_database_key_id : google_kms_crypto_key.database_key[0].id
-  resolved_secrets_key_id  = var.byo_security ? var.existing_secrets_key_id  : google_kms_crypto_key.secrets_key[0].id
+  resolved_database_key_id = var.byo_security ? var.existing_database_key_id : try(google_kms_crypto_key.database_key[0].id, "")
+  resolved_secrets_key_id  = var.byo_security ? var.existing_secrets_key_id  : try(google_kms_crypto_key.secrets_key[0].id, "")
 }
 
 # --------------------------------------------------------------------
@@ -1623,7 +1618,7 @@ resource "google_kms_crypto_key_iam_member" "sql_kms" {
   count         = var.byo_security ? 0 : 1
   crypto_key_id = google_kms_crypto_key.database_key[0].id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:service-${var.a2a_project_number}@gcp-sa-cloudsql.iam.gserviceaccount.com"
+  member        = "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-cloudsql.iam.gserviceaccount.com"
 }
 
 # Grant Secret Manager service identity (residing in governance project) access to decrypt/encrypt credentials CMEK
@@ -1631,7 +1626,7 @@ resource "google_kms_crypto_key_iam_member" "secrets_kms" {
   count         = var.byo_security ? 0 : 1
   crypto_key_id = google_kms_crypto_key.secrets_key[0].id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:service-${var.governance_project_number}@gcp-sa-secretmanager.iam.gserviceaccount.com"
+  member        = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-secretmanager.iam.gserviceaccount.com"
 }
 
 # ====================================================================
@@ -1673,7 +1668,7 @@ resource "google_secret_manager_secret_version" "db_password" {
 
 # Local resolution for Secret resource name
 locals {
-  resolved_db_password_secret_id = var.byo_security ? var.existing_db_password_secret_id : google_secret_manager_secret.db_password[0].id
+  resolved_db_password_secret_id = var.byo_security ? var.existing_db_password_secret_id : try(google_secret_manager_secret.db_password[0].id, "")
 }
 
 # ====================================================================
@@ -1730,10 +1725,9 @@ resource "google_project_iam_member" "a2a_roles" {
   member   = "serviceAccount:${google_service_account.a2a_sa.email}"
 }
 
-# Grant A2A Service account reading rights on the Database Master secret
+# Grant A2A Service account reading rights on the Database Master secret (resolves to existing or new)
 resource "google_secret_manager_secret_iam_member" "a2a_secret_accessor" {
-  count     = var.byo_security ? 0 : 1
-  secret_id = google_secret_manager_secret.db_password[0].id
+  secret_id = local.resolved_db_password_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.a2a_sa.email}"
 }
@@ -1872,15 +1866,10 @@ resource "google_certificate_manager_certificate" "internal_regional" {
 # --------------------------------------------------------------------
 # DNS Validation Record sets (Created Dynamically inside prj-net-host)
 # --------------------------------------------------------------------
-provider "google" {
-  alias   = "net_host"
-  project = var.net_host_project_id
-}
 
 # Dynamically updates the managed Cloud DNS zone in the NetHost project with validation record
 resource "google_dns_record_set" "cert_validation" {
   count        = var.enable_certificate_manager && var.dns_zone_domain != null ? 1 : 0
-  provider     = google.net_host
   project      = var.net_host_project_id
   managed_zone = var.dns_zone_name != null ? var.dns_zone_name : replace(trimsuffix(var.dns_zone_domain, "."), ".", "-")
   
@@ -1898,7 +1887,7 @@ resource "google_dns_record_set" "cert_validation" {
 resource "google_bigquery_dataset" "telemetry_logs" {
   dataset_id                  = "esmeralda_telemetry_logs"
   project                     = var.governance_project_id
-  location                    = "US"
+  location                    = var.region
   description                 = "Centralized dataset for Esmeralda micro-agent audit and observability logs"
   default_table_expiration_ms = 2592000000 # 30 Days Retention
 }
@@ -1977,12 +1966,12 @@ output "test_vm_sa_email" {
 
 output "regional_certificate_name" {
   description = "The resource name of the regional certificate for public ingress"
-  value       = var.enable_certificate_manager && var.dns_zone_domain != null ? google_certificate_manager_certificate.regional[0].name : ""
+  value       = try(google_certificate_manager_certificate.regional[0].name, "")
 }
 
 output "internal_certificate_name" {
   description = "The resource name of the regional certificate for private internal gateways"
-  value       = var.enable_certificate_manager && var.dns_zone_domain != null ? google_certificate_manager_certificate.internal_regional[0].name : ""
+  value       = try(google_certificate_manager_certificate.internal_regional[0].name, "")
 }
 
 output "telemetry_dataset_id" {
