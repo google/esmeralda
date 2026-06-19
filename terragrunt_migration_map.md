@@ -8,14 +8,14 @@ Under this design, your `/modules` folder is the **Product Shelf**, your `env.ya
 
 ## 1. The FAST-Aligned Platform Layout
 
-We organize Esmeralda's lifecycle stages to map directly to Google Cloud's enterprise landing zone standards. We divide our workloads across **four independent service projects** representing distinct engineering and business teams, connected back to a central Shared VPC, alongside a dedicated telemetry project for centralized FinOps and logging:
+We organize Esmeralda's lifecycle stages to map directly to Google Cloud's enterprise landing zone standards. We divide our workloads across **four independent service projects** representing distinct engineering and business teams, connected back to a central Shared VPC, alongside a dedicated central governance and telemetry hub project:
 
 ```mermaid
 graph TD
     %% Base Projects (FAST Aligned)
     S1_NetHost[prj-net-host <br/>Shared VPC Host Network] -. Binds Subnets .-> S2_SharedVPC[Stage 2: Shared VPC Networking]
     S1_Gateway[prj-gateway <br/>API Gateway Ingress] --> S3_Ingress[Stage 4: Gateway Choice <br/>Apigee, Kong, or ILB]
-    S1_Telemetry[prj-esmeralda-telemetry <br/>Central Hub Telemetry Plane]
+    S1_Gov[prj-esmeralda-governance <br/>Governance & Telemetry Hub]
 
     %% Decoupled Workloads Projects (Stage 4)
     subgraph "prj-esmeralda-mcps (Central Tools Team)"
@@ -35,18 +35,18 @@ graph TD
     S2_SharedVPC -. Attaches Service Projects .-> prj-esmeralda-mcps
     S2_SharedVPC -. Attaches Service Projects .-> prj-esmeralda-a2a-agents
     S2_SharedVPC -. Attaches Service Projects .-> prj-esmeralda-root-agent
-    S2_SharedVPC -. Attaches Service Projects .-> prj-esmeralda-telemetry
+    S2_SharedVPC -. Attaches Service Projects .-> prj-esmeralda-governance
 
     S4_Root -. Consumes Tool Endpoints .-> S4_MCP_DMS
     S4_Root -. Consumes Tool Endpoints .-> S4_MCP_Calc
     S4_Root -. Calls Remote Agent .-> S4_A2A
 
-    %% Telemetry Sinks
-    prj-esmeralda-mcps -- Sinks logs & traces --> S1_Telemetry
-    prj-esmeralda-a2a-agents -- Sinks logs & traces --> S1_Telemetry
-    prj-esmeralda-root-agent -- Sinks logs & traces --> S1_Telemetry
-    S1_NetHost -- Sinks logs --> S1_Telemetry
-    S1_Gateway -- Sinks logs --> S1_Telemetry
+    %% Telemetry Sinks & Security CMEK Links
+    prj-esmeralda-mcps -- Sinks logs & traces --> S1_Gov
+    prj-esmeralda-a2a-agents -- Sinks logs, traces & reads CMEK/Secrets --> S1_Gov
+    prj-esmeralda-root-agent -- Sinks logs & traces --> S1_Gov
+    S1_NetHost -- Sinks logs --> S1_Gov
+    S1_Gateway -- Sinks logs --> S1_Gov
 ```
 
 ### The Architecture Design Philosophy:
@@ -55,7 +55,7 @@ graph TD
 *   **The Central Tools Project (`prj-esmeralda-mcps`)**: Managed by the AppDev Team. Deploys the reusable corporate tool API servers.
 *   **The AI Platform Project (`prj-esmeralda-a2a-agents`)**: Managed by the Core AI Team. Hosts cross-company re-usable assistant agents and their SQL task stores.
 *   **The LOB App Project (`prj-esmeralda-root-agent`)**: Managed by a specific business unit. Owns the customer-facing user reasoning engine, which orchestrates calls to the other projects.
-*   **The Telemetry Project (`prj-esmeralda-telemetry`)**: Managed by PlatformOps / FinOps. Centralizes Log Analytics buckets, Cloud Trace datasets, BigQuery tables, and cost-center dashboard views, completely isolating analytical compute budgets from core AI runtimes.
+*   **The Governance & Telemetry Hub Project (`prj-esmeralda-governance`)**: Managed by SecOps / PlatformOps. Centralizes security elements (KMS Keyrings, Secrets, Certificate Manager certificates) and telemetry components (Log Analytics buckets, Cloud Trace datasets, BigQuery tables), completely separating security/observability governance from core workloads.
 
 ---
 
@@ -115,15 +115,15 @@ infrastructure/
 
 | Monolithic Component | Target Terragrunt Stage | Target GCP Project | Dependency Inputs |
 | :--- | :--- | :--- | :--- |
-| `module.foundation` (Core APIs) | **`stage-1-projects`** | *Pre-workloads* | `billing_account`, `byo_net_host_project`, `byo_gateway_project`, `byo_telemetry_project` |
-| `module.networking` | **`stage-2-networking`** | `prj-net-host` | `net_host_project_id` (from stage-1), `telemetry_project_id` (from stage-1) |
+| `module.foundation` (Core APIs) | **`stage-1-projects`** | *Pre-workloads* | `billing_account`, `byo_net_host_project`, `byo_gateway_project`, `byo_governance_project` |
+| `module.networking` | **`stage-2-networking`** | `prj-net-host` | `net_host_project_id` (from stage-1), `governance_project_id` (from stage-1) |
 | IAM, SAs & Encryption Keys | **`stage-3-security`** | Split across all | Project IDs from Stage 1 |
 | Ingress / Load Balancer | **`stage-4-workloads/gateway`** | `prj-gateway` | `gateway_project_id` (stage-1), `network_id` (stage-2) |
 | DMS MCP Service | **`stage-4-workloads/mcp-servers/mcp-dms`** | `prj-esmeralda-mcps` | `mcps_project_id` (stage-1), `subnet_id` (stage-2) |
 | Calculator MCP Service | **`stage-4-workloads/mcp-servers/mcp-calculator`** | `prj-esmeralda-mcps` | `mcps_project_id` (stage-1), `subnet_id` (stage-2) |
 | Cloud SQL & A2A Agent | **`stage-4-workloads/agents/a2a-agent`** | `prj-esmeralda-a2a-agents` | `a2a_project_id` (stage-1), `vpc_id` (stage-2), `subnet_id` (stage-2) |
 | Root / Orchestrator Agent | **`stage-4-workloads/agents/base-adk-agent`** | `prj-esmeralda-root-agent` | `root_project_id` (stage-1), `a2a_agent_endpoint_url` (from `a2a-agent`), tool endpoints |
-| Telemetry Logs & Datasets | **`stage-3-security`** | `prj-esmeralda-telemetry` | `telemetry_project_id` (stage-1), sinks across all 6 projects |
+| Security, Governance, & Telemetry | **`stage-3-security`** | `prj-esmeralda-governance` | `governance_project_id` (stage-1), sinks across all 6 projects |
 
 ---
 
@@ -258,13 +258,13 @@ locals {
   # 🔌 BYO INFRA TOGGLES: Client already has host network and gateway projects!
   byo_net_host_project = true
   byo_gateway_project  = true
-  byo_telemetry_project = false
+  byo_governance_project = false
   byo_networking       = true
   byo_apigee           = true
 
   # 1. Existing project links
   existing_net_host_project = "prj-client-shared-net-host"
-  existing_telemetry_project = ""
+  existing_governance_project = ""
   existing_gateway_project  = "prj-client-apigee-ingress"
   existing_vpc_id           = "projects/prj-client-shared-net-host/global/networks/vpc-prod-shared"
   existing_subnet_id        = "projects/prj-client-shared-net-host/regions/us-central1/subnetworks/sb-prod-gke"
@@ -361,7 +361,7 @@ To simulate a real-world enterprise multi-tenant landing zone, we split our arch
 | **AppDev Tools Team** | `prj-esmeralda-mcps` | Creates, maintains, and packages reusable Model Context Protocol (MCP) tool servers for the whole company. | Cloud Run (DMS Server, Calculator Server), Artifact Registry. |
 | **Core AI Platform Team** | `prj-esmeralda-a2a-agents` | Develops reusable, cross-company Assistant-to-Assistant (A2A) agents, handling centralized business domain reasoning. | Cloud SQL PostgreSQL, Cloud Run Database Bootstrapping Job, Vertex AI Reasoning Engine (A2A). |
 | **Line-of-Business Team (LOB)** | `prj-esmeralda-root-agent` | Develops the final client-facing user reasoning engine, which acts as the frontend orchestrator and orchestrates upstream agents. | Vertex AI Reasoning Engine (Root), client-facing IAM roles, GCS Buckets. |
-| **Telemetry & FinOps Plane** | `prj-esmeralda-telemetry` | Provides centralized telemetry analysis, log storage, trace aggregations, and business metrics without cost-pollution on AI runtimes. | Log Analytics Buckets, Cloud Trace Datasets, BigQuery Audit Sinks and Billing Views. |
+| **Security & Governance Hub** | `prj-esmeralda-governance` | Consolidates central security/governance (KMS keys, secrets, certs) and central telemetry/observability (BigQuery dataset, trace views, log sinks), establishing strict Separation of Concerns (SoC) between Platform Governance and Workload Runtimes. | KMS Keyrings, secrets, Certificate Manager certificates, BigQuery Audit Sinks, and log buckets. |
 
 ---
 
@@ -515,8 +515,8 @@ variable "byo_gateway_project" {
   default     = false
 }
 
-variable "byo_telemetry_project" {
-  description = "Set to true if the customer is bringing a pre-existing telemetry/central logging project"
+variable "byo_governance_project" {
+  description = "Set to true if the customer is bringing a pre-existing governance/security/telemetry project"
   type        = bool
   default     = false
 }
@@ -533,8 +533,8 @@ variable "existing_gateway_project" {
   default     = ""
 }
 
-variable "existing_telemetry_project" {
-  description = "The project ID of the pre-existing telemetry/central logging project. Required if byo_telemetry_project is true."
+variable "existing_governance_project" {
+  description = "The project ID of the pre-existing governance/security/telemetry project. Required if byo_governance_project is true."
   type        = string
   default     = ""
 }
@@ -561,7 +561,7 @@ locals {
   # Resolve Project IDs dynamically: Use existing ID if BYO, otherwise generate unique name
   net_host_id   = var.byo_net_host_project ? var.existing_net_host_project : "${var.project_prefix}-net-host-${local.suffix}"
   gateway_id    = var.byo_gateway_project  ? var.existing_gateway_project  : "${var.project_prefix}-gateway-${local.suffix}"
-  telemetry_id  = var.byo_telemetry_project ? var.existing_telemetry_project : "${var.project_prefix}-telemetry-${local.suffix}"
+  governance_id = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
   mcps_id       = "${var.project_prefix}-mcps-${local.suffix}"
   a2a_id        = "${var.project_prefix}-a2a-${local.suffix}"
   root_agent_id = "${var.project_prefix}-root-agent-${local.suffix}"
@@ -607,12 +607,14 @@ locals {
     "storage.googleapis.com"
   ]
 
-  telemetry_apis = [
+  governance_apis = [
     "bigquery.googleapis.com",
     "logging.googleapis.com",
     "clouderrorreporting.googleapis.com",
     "cloudtrace.googleapis.com",
-    "monitoring.googleapis.com"
+    "monitoring.googleapis.com",
+    "cloudkms.googleapis.com",
+    "secretmanager.googleapis.com"
   ]
 }
 
@@ -692,18 +694,18 @@ resource "google_project" "root_agent" {
   })
 }
 
-# Telemetry and FinOps Project: Conditional creation
-resource "google_project" "telemetry" {
-  count           = var.byo_telemetry_project ? 0 : 1
-  name            = "Esmeralda Central Telemetry"
-  project_id      = local.telemetry_id
+# Governance and Telemetry Hub Project: Conditional creation
+resource "google_project" "governance" {
+  count           = var.byo_governance_project ? 0 : 1
+  name            = "Esmeralda Central Governance & Telemetry Hub"
+  project_id      = local.governance_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   billing_account = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
-    "cost-center" = "central-telemetry-plane"
-    "team"        = "platformops"
+    "cost-center" = "central-governance-and-telemetry"
+    "team"        = "security-and-platformops"
   })
 }
 
@@ -766,15 +768,15 @@ resource "google_project_service" "root_agent" {
   depends_on = [google_project.root_agent]
 }
 
-# Enable Telemetry APIs only if created by Esmeralda
-resource "google_project_service" "telemetry" {
-  for_each                   = var.byo_telemetry_project ? [] : toset(local.telemetry_apis)
-  project                    = local.telemetry_id
+# Enable Governance and Telemetry APIs only if created by Esmeralda
+resource "google_project_service" "governance" {
+  for_each                   = var.byo_governance_project ? [] : toset(local.governance_apis)
+  project                    = local.governance_id
   service                    = each.key
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.telemetry]
+  depends_on = [google_project.governance]
 }
 
 # ====================================================================
@@ -806,9 +808,9 @@ output "root_project_id" {
   value       = local.root_agent_id
 }
 
-output "telemetry_project_id" {
-  description = "The active project ID hosting central telemetry/logging"
-  value       = local.telemetry_id
+output "governance_project_id" {
+  description = "The active project ID hosting central governance, encryption, secrets, and telemetry"
+  value       = local.governance_id
 }
 ```
 *(With this, any client's NetOps/PlatformOps teams can hand over pre-configured net_host and gateway projects, and Esmeralda will automatically provision and deploy the isolated workload projects and attach them securely to their Shared VPC.)*
@@ -985,14 +987,14 @@ variable "byo_networking" {
   default     = false
 }
 
-variable "byo_telemetry_project" {
-  description = "Set to true if the customer is bringing a pre-existing telemetry/central logging project"
+variable "byo_governance_project" {
+  description = "Set to true if the customer is bringing a pre-existing governance/security/telemetry project"
   type        = bool
   default     = false
 }
 
-variable "telemetry_project_id" {
-  description = "The project ID allocated for central telemetry"
+variable "governance_project_id" {
+  description = "The project ID allocated for central governance, security, and telemetry"
   type        = string
 }
 
@@ -1099,11 +1101,11 @@ resource "google_compute_shared_vpc_service_project" "gateway" {
   depends_on      = [google_compute_shared_vpc_host_project.host]
 }
 
-# Attach the Telemetry project conditionally as a service project
-resource "google_compute_shared_vpc_service_project" "telemetry" {
-  count           = var.byo_telemetry_project ? 0 : 1
+# Attach the Governance project conditionally as a service project
+resource "google_compute_shared_vpc_service_project" "governance" {
+  count           = var.byo_governance_project ? 0 : 1
   host_project    = var.net_host_project_id
-  service_project = var.telemetry_project_id
+  service_project = var.governance_project_id
   depends_on      = [google_compute_shared_vpc_host_project.host]
 }
 
@@ -1375,16 +1377,15 @@ output "secure_web_proxy_ip" {
   description = "The private IP address of the Secure Web Proxy"
   value       = var.enable_secure_web_proxy && !var.byo_networking ? "10.0.1.100" : ""
 }
-```
-
-*(With this Stage 2 Networking implementation, the customer can supply their existing Shared VPC ID and Subnet ID. Esmeralda will skip core network creation, attach the three workload projects as Service Projects to the host network, authorize all Cloud Run and Vertex AI system service accounts with the required Subnet permissions, provision the incoming PSC Network Attachment for Reasoning Engine ingress, and establish Secure Web Proxy (SWP) for egress auditing automatically.)*
 
 ### 7.3 Stage 3: `modules/3-security/` Specification
 
-This module establishes customer-managed cryptographic keys (CMEK) via Cloud KMS, configures secure secret storage boundaries in Secret Manager, provisions isolated, least-privilege workload Service Accounts for each engineering domain (including a dedicated Test VM service account and full-parity roles from Esmeralda's monolithic `test-vm-sa`), and hooks up enterprise audit and telemetry log sinks. Additionally, it integrates Google Cloud's **Certificate Manager** to provision SSL/TLS certificates in `prj-gateway` and write validation records to the DNS zone in `prj-net-host` dynamically.
+This module establishes central customer-managed cryptographic keys (CMEK) via Cloud KMS, configures secure secret storage boundaries in Secret Manager, provisions isolated, least-privilege workload Service Accounts for each engineering domain (including a dedicated Test VM service account and full-parity roles from Esmeralda's monolithic `test-vm-sa`), and hooks up enterprise audit and telemetry log sinks. Additionally, it integrates Google Cloud's **Certificate Manager** to provision SSL/TLS certificates in `prj-gateway` and write validation records to the DNS zone in `prj-net-host` dynamically.
+
+Under our centralized governance design, all KMS keyrings, keys, and secrets are created in the centralized **`prj-esmeralda-governance`** project during Stage 3. Workload runtimes (e.g. Cloud SQL in `prj-esmeralda-a2a-agents`) merely consume these resources over cross-project IAM bindings.
 
 #### A. Cryptographic, Secrets, and Identity Isolation Architecture
-Stage 3 establishes separate encryption-at-rest keys, credentials, and cryptographic identities to satisfy strict corporate infosec rules:
+Stage 3 establishes centralized encryption-at-rest keys, credentials, and cryptographic identities to satisfy strict corporate infosec rules:
 
 ```mermaid
 graph TD
@@ -1397,30 +1398,26 @@ graph TD
         DNSAuth["DNS Authorization<br/>(esmeralda-regional-dns-auth)"]
     end
 
-    subgraph "prj-esmeralda-telemetry (Telemetry Plane)"
+    subgraph "prj-esmeralda-governance (Governance & Telemetry Hub)"
         TelemetryLogs["BigQuery Dataset<br/>(esmeralda_telemetry_logs)"]
-    end
-
-    subgraph "prj-esmeralda-a2a-agents (AI Platform Project)"
+        
         KeyRing["KMS Keyring<br/>(keyring-esmeralda)"]
         KeySQL["Database Key (CMEK)<br/>(key-esmeralda-sql)"]
         KeySecrets["Secrets Key (CMEK)<br/>(key-esmeralda-secrets)"]
         
         SecretDB["Database Password Secret<br/>(secret-pg-admin-password)"]
-        GenPass["Random Password Generator<br/>(random_password)"]
-        
-        KeyRing --> KeySQL
-        KeyRing --> KeySecrets
-        GenPass -. Inject Payload .-> SecretDB
-        SecretDB -. Encrypted By .-> KeySecrets
     end
 
     %% Validation Links & Bindings
     DNSAuth -. Validation Record .-> DNS
     Cert -. Validated By .-> DNSAuth
 
-    SQLRobot["Cloud SQL Service Robot<br/>(service-prj-a2a-sql...)"] -->|roles/cloudkms.cryptoKeyEncrypterDecrypter| KeySQL
-    SecRobot["Secret Manager Service Robot<br/>(service-prj-a2a-sm...)"] -->|roles/cloudkms.cryptoKeyEncrypterDecrypter| KeySecrets
+    subgraph "prj-esmeralda-a2a-agents (AI Platform Project)"
+        SQLRobot["Cloud SQL Service Robot<br/>(service-prj-a2a-sql...)"]
+    end
+
+    SQLRobot -->|roles/cloudkms.cryptoKeyEncrypterDecrypter <br/> Cross-Project CMEK Grant| KeySQL
+    SecRobot["Secret Manager Service Robot<br/>(service-prj-gov-sm...)"] -->|roles/cloudkms.cryptoKeyEncrypterDecrypter| KeySecrets
 ```
 
 ##### 1. Key Refinements and Additions:
@@ -1504,8 +1501,13 @@ variable "root_project_id" {
   type        = string
 }
 
-variable "telemetry_project_id" {
-  description = "The project ID allocated for central telemetry"
+variable "governance_project_id" {
+  description = "The project ID allocated for central security, governance, and telemetry"
+  type        = string
+}
+
+variable "governance_project_number" {
+  description = "The numeric project number for prj-esmeralda-governance"
   type        = string
 }
 
@@ -1574,11 +1576,11 @@ variable "dns_zone_name" {
 # 1. CUSTOMER-MANAGED ENCRYPTION KEYS (CMEK) via CLOUD KMS
 # ====================================================================
 
-# Regional Key Ring for AI platform security
+# Regional Key Ring for central security & governance
 resource "google_kms_key_ring" "keyring" {
   count    = var.byo_security ? 0 : 1
-  name     = "keyring-esmeralda-a2a"
-  project  = var.a2a_project_id
+  name     = "keyring-esmeralda"
+  project  = var.governance_project_id
   location = var.region
 }
 
@@ -1616,7 +1618,7 @@ locals {
 # KMS IAM Grants: Authorizing Service Project Robots
 # --------------------------------------------------------------------
 
-# Grant Cloud SQL service identity access to decrypt/encrypt Postgres disk CMEK
+# Grant Cloud SQL service identity (residing in workloads project) access to decrypt/encrypt Postgres disk CMEK
 resource "google_kms_crypto_key_iam_member" "sql_kms" {
   count         = var.byo_security ? 0 : 1
   crypto_key_id = google_kms_crypto_key.database_key[0].id
@@ -1624,12 +1626,12 @@ resource "google_kms_crypto_key_iam_member" "sql_kms" {
   member        = "serviceAccount:service-${var.a2a_project_number}@gcp-sa-cloudsql.iam.gserviceaccount.com"
 }
 
-# Grant Secret Manager service identity access to decrypt/encrypt credentials CMEK
+# Grant Secret Manager service identity (residing in governance project) access to decrypt/encrypt credentials CMEK
 resource "google_kms_crypto_key_iam_member" "secrets_kms" {
   count         = var.byo_security ? 0 : 1
   crypto_key_id = google_kms_crypto_key.secrets_key[0].id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:service-${var.a2a_project_number}@gcp-sa-secretmanager.iam.gserviceaccount.com"
+  member        = "serviceAccount:service-${var.governance_project_number}@gcp-sa-secretmanager.iam.gserviceaccount.com"
 }
 
 # ====================================================================
@@ -1644,11 +1646,11 @@ resource "random_password" "db_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-# Secret container for database master credentials
+# Secret container for database master credentials, now centralized in Governance project
 resource "google_secret_manager_secret" "db_password" {
   count     = var.byo_security ? 0 : 1
   secret_id = "secret-pg-admin-password"
-  project   = var.a2a_project_id
+  project   = var.governance_project_id
 
   replication {
     user_managed {
@@ -1895,7 +1897,7 @@ resource "google_dns_record_set" "cert_validation" {
 # Set up BigQuery Dataset to centralize OpenTelemetry and Gemini executions logs
 resource "google_bigquery_dataset" "telemetry_logs" {
   dataset_id                  = "esmeralda_telemetry_logs"
-  project                     = var.telemetry_project_id
+  project                     = var.governance_project_id
   location                    = "US"
   description                 = "Centralized dataset for Esmeralda micro-agent audit and observability logs"
   default_table_expiration_ms = 2592000000 # 30 Days Retention
@@ -1903,12 +1905,12 @@ resource "google_bigquery_dataset" "telemetry_logs" {
 
 locals {
   monitored_projects = {
-    net_host  = var.net_host_project_id
-    gateway   = var.gateway_project_id
-    mcps      = var.mcps_project_id
-    a2a       = var.a2a_project_id
-    root      = var.root_project_id
-    telemetry = var.telemetry_project_id
+    net_host   = var.net_host_project_id
+    gateway    = var.gateway_project_id
+    mcps       = var.mcps_project_id
+    a2a        = var.a2a_project_id
+    root       = var.root_project_id
+    governance = var.governance_project_id
   }
 }
 
@@ -1917,7 +1919,7 @@ resource "google_logging_project_sink" "central_sinks" {
   for_each    = local.monitored_projects
   name        = "esmeralda-central-telemetry-sink"
   project     = each.value
-  destination = "bigquery.googleapis.com/projects/${var.telemetry_project_id}/datasets/${google_bigquery_dataset.telemetry_logs.dataset_id}"
+  destination = "bigquery.googleapis.com/projects/${var.governance_project_id}/datasets/${google_bigquery_dataset.telemetry_logs.dataset_id}"
 
   # Target Vertex AI stdout logs, custom tool traces, and database auditing events
   filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\""
@@ -1929,7 +1931,7 @@ resource "google_logging_project_sink" "central_sinks" {
 resource "google_bigquery_dataset_iam_member" "dataset_writers" {
   for_each   = google_logging_project_sink.central_sinks
   dataset_id = google_bigquery_dataset.telemetry_logs.dataset_id
-  project    = var.telemetry_project_id
+  project    = var.governance_project_id
   role       = "roles/bigquery.dataEditor"
   member     = each.value.writer_identity
 }
