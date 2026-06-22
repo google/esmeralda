@@ -60,7 +60,7 @@ QUERY ?= Can you verify Julian Sterling's income?
 
 test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MCP servers via run-mcp-local)
 	@already_running=0; \
-	if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+	if curl -s --connect-timeout 1 http://localhost:8001 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003 &>/dev/null; then \
 		already_running=1; \
 		echo "ℹ️  MCP servers are already running locally. Running tests directly..."; \
 	fi; \
@@ -70,7 +70,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 		trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill -TERM -$$make_pid 2>/dev/null || true; pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; fi; exit 1' INT TERM EXIT; \
 		echo "⏳ Waiting for MCP servers to initialize..."; \
 		for i in {1..15}; do \
-			if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+			if curl -s --connect-timeout 1 http://localhost:8001 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003 &>/dev/null; then \
 				break; \
 			fi; \
 			sleep 1; \
@@ -95,7 +95,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 
 test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins up & tears down MCP servers via run-mcp-local)
 	@already_running=0; \
-	if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+	if curl -s --connect-timeout 1 http://localhost:8001 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003 &>/dev/null; then \
 		already_running=1; \
 		echo "ℹ️  MCP servers are already running locally. Running tests directly..."; \
 	fi; \
@@ -105,7 +105,7 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 		trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill -TERM -$$make_pid 2>/dev/null || true; pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; fi; exit 1' INT TERM EXIT; \
 		echo "⏳ Waiting for MCP servers to initialize..."; \
 		for i in {1..15}; do \
-			if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+			if curl -s --connect-timeout 1 http://localhost:8001 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002 &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003 &>/dev/null; then \
 				break; \
 			fi; \
 			sleep 1; \
