@@ -10,6 +10,7 @@ Este documento unifica todas as especificações das cargas de trabalho do Esmer
    - [B. Standalone API Hub (Português e Códigos Completos)](#s4-apihub)
    - [C. Servidores MCP Composíveis (Português e Códigos Completos)](#s4-mcp)
    - [D. Motores de Raciocínio de Agentes Atômicos (Português e Códigos Completos)](#s4-agents)
+   - [E. Configurações de Orquestração Live (Terragrunt Live HCL)](#s4-live-hcl)
 2. [Estratégia de Deploy: Greenfield vs. Brownfield (BYOInfra)](#byoinfra)
 3. [Ciclo de Vida do Database Bootstrap (PostgreSQL & Cloud SQL)](#db-bootstrap)
 4. [Ecossistema Onboarding DX: Testes Simétricos (Local vs. Remoto)](#symmetric-tests)
@@ -1715,6 +1716,105 @@ The runtime linkage in `terragrunt.hcl` is established as follows:
 
 ---
 
+<a name="s4-live-hcl"></a>
+### E. Configurações de Orquestração Live (Terragrunt Live HCL)
+
+Para entender como esses microserviços e agentes independentes são montados e encadeados de forma dinâmica no ambiente real sob a árvore `live/dev/stage-4-workloads/`, veja os arquivos de configuração Terragrunt abaixo. Eles utilizam blocos `dependency` para injetar saídas de recursos reais de estágios anteriores de forma transparente, permitindo total automação e eliminando parâmetros manuais:
+
+These HCL declarations demonstrate how the micro-services are configured and chained in your live environment:
+
+### A. The A2A Agent (`live/dev/stage-4-workloads/agents/a2a-agent/terragrunt.hcl`)
+```hcl
+# infrastructure/live/dev/stage-4-workloads/agents/a2a-agent/terragrunt.hcl
+include "root" {
+  path = find_in_parent_folders()
+}
+
+terraform {
+  source = "../../../../../modules//4-workloads/agents/a2a-agent"
+}
+
+dependency "projects" {
+  config_path = "../../../stage-1-projects"
+}
+
+dependency "networking" {
+  config_path = "../../../stage-2-networking"
+}
+
+dependency "security" {
+  config_path = "../../../stage-3-security"
+}
+
+locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+}
+
+inputs = {
+  # Dynamically deploys into the isolated A2A agent platform project!
+  project_id            = dependency.projects.outputs.a2a_project_id
+  region                = local.env_vars.locals.region
+  vpc_id                = dependency.networking.outputs.network_id
+  subnet_id             = dependency.networking.outputs.subnet_id
+  agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+
+  database_product      = local.env_vars.locals.database_product
+  database_name         = "a2a_tasks"
+}
+```
+
+### B. The Root Orchestrator (`live/dev/stage-4-workloads/agents/base-adk-agent/terragrunt.hcl`)
+```hcl
+# infrastructure/live/dev/stage-4-workloads/agents/base-adk-agent/terragrunt.hcl
+include "root" {
+  path = find_in_parent_folders()
+}
+
+terraform {
+  source = "../../../../../modules//4-workloads/agents/base-adk-agent"
+}
+
+dependency "projects" {
+  config_path = "../../../stage-1-projects"
+}
+
+dependency "security" {
+  config_path = "../../../stage-3-security"
+}
+
+dependency "mcp_dms" {
+  config_path = "../../mcp-servers/mcp-dms"
+}
+
+dependency "mcp_calc" {
+  config_path = "../../mcp-servers/mcp-calculator"
+}
+
+dependency "a2a_agent" {
+  config_path = "../a2a-agent"
+}
+
+locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+}
+
+inputs = {
+  # Deploys into the isolated customer-facing Line of Business (LOB) project!
+  project_id            = dependency.projects.outputs.root_project_id
+  region                = local.env_vars.locals.region
+  agent_service_account = dependency.security.outputs.root_agent_sa_email
+
+  # Inject downstream endpoints
+  mcp_dms_url           = dependency.mcp_dms.outputs.mcp_dms_url
+  mcp_calc_url          = dependency.mcp_calc.outputs.mcp_calc_url
+  a2a_agent_url         = dependency.a2a_agent.outputs.a2a_agent_endpoint_url
+}
+```
+
+---
+
+---
+
 <a name="byoinfra"></a>
 ## 🔌 2. Greenfield vs. Brownfield (BYOInfra) Toggle Design
 
@@ -1823,6 +1923,119 @@ inputs = {
   subnet_id             = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
   
   database_name         = "a2a_tasks"
+}
+```
+
+---
+
+### 📐 Detalhes Técnicos de Implementação e Arquivo de Configuração BYOInfra (Inglês)
+
+Abaixo, encontre os fluxos de bypass de compilação reais e as receitas de fallback dinâmico utilizadas para orquestrar implantações sobre redes corporativas legadas de clientes. Ao definir as flags de skip correspondentes no arquivo `env.yaml`, o Terragrunt de downstream herda os mapeamentos de subnets e VPCs corporativas sem tentar recriar os backbones de rede centrais do Stage 2:
+
+To allow seamless deployment inside enterprise client environments with pre-existing resources, the architecture implements the **BYOInfra Pattern** natively using Terragrunt's skip parameters and input-fallbacks:
+
+### A. The Client's Environment Parameters (`live/client-prod/env.yaml`)
+The client declares their pre-existing resources and toggles the dynamic skip flags:
+
+```yaml
+# infrastructure/live/client-prod/env.yaml
+locals {
+  environment         = "prod"
+  project_prefix      = "client"
+  region              = "us-central1"
+
+  # 🔌 BYO INFRA TOGGLES: Client already has host network and gateway projects!
+  byo_net_host_project = true
+  byo_gateway_project  = true
+  byo_governance_project = false
+  byo_networking       = true
+  byo_apigee           = true
+
+  # 1. Existing project links
+  existing_net_host_project = "prj-client-shared-net-host"
+  existing_governance_project = ""
+  existing_gateway_project  = "prj-client-apigee-ingress"
+  existing_vpc_id           = "projects/prj-client-shared-net-host/global/networks/vpc-prod-shared"
+  existing_subnet_id        = "projects/prj-client-shared-net-host/regions/us-central1/subnetworks/sb-prod-gke"
+
+  # 🛒 THE PRODUCTS THEY WANT ESMERALDA TO CREATE FROM SCRATCH:
+  gateway_product     = "apigee" # Point to existing Apigee gateway settings
+  database_product    = "cloud-sql"
+}
+```
+
+### B. Dynamically Skipping Stage 2 (`live/client-prod/stage-2-networking/terragrunt.hcl`)
+The networking configuration skips compilation and returns instantly if `byo_networking` is configured:
+
+```hcl
+# infrastructure/live/client-prod/stage-2-networking/terragrunt.hcl
+include "root" {
+  path = find_in_parent_folders()
+}
+
+terraform {
+  source = "../../../modules//2-networking"
+}
+
+locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+}
+
+# Skips execution entirely if networking is pre-configured
+skip = local.env_vars.locals.byo_networking
+```
+
+### C. Downstream Fallback Lookup (`live/client-prod/stage-4-workloads/agents/a2a-agent/terragrunt.hcl`)
+Downstream persistence components safely switch their inputs between Stage 2 outputs or `env.yaml` static resource IDs based on the active flag:
+
+```hcl
+# infrastructure/live/client-prod/stage-4-workloads/agents/a2a-agent/terragrunt.hcl
+include "root" {
+  path = find_in_parent_folders()
+}
+
+terraform {
+  source = "../../../../../modules//4-workloads/agents/a2a-agent"
+}
+
+locals {
+  env_vars       = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  byo_networking = lookup(local.env_vars.locals, "byo_networking", false)
+}
+
+dependency "projects" {
+  config_path = "../../../stage-1-projects"
+}
+
+dependency "security" {
+  config_path = "../../../stage-3-security"
+}
+
+dependency "networking" {
+  config_path = "../../../stage-2-networking"
+  
+  # Avoid running output lookups on skipped modules
+  skip_outputs = local.byo_networking
+  
+  # Satisfy parser during evaluation with mock variables
+  mock_outputs = {
+    network_id = local.env_vars.locals.existing_vpc_id
+    subnet_id  = local.env_vars.locals.existing_subnet_id
+  }
+}
+
+inputs = {
+  # Dynamically fetches workload project IDs provisioned dynamically by Esmeralda's Stage 1!
+  project_id            = dependency.projects.outputs.a2a_project_id
+  region                = local.env_vars.locals.region
+  agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+  
+  # Dynamic Fallback: Use client's existing VPC if BYO is active, else use dependency outputs
+  vpc_id                = local.byo_networking ? local.env_vars.locals.existing_vpc_id  : dependency.networking.outputs.network_id
+  subnet_id             = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
+  
+  database_name         = "a2a_tasks"
+  enable_iam_user       = true
 }
 ```
 
@@ -2011,6 +2224,32 @@ resource "null_resource" "trigger_bootstrap" {
     EOT
   }
 }
+```
+
+---
+
+### 📊 Sequenciamento de Inicialização e Inicialização de Privilégios (Inglês)
+
+Abaixo, apresentamos o fluxo detalhado de coordenação do ciclo de vida que garante que o banco de dados Cloud SQL privado PostgreSQL esteja 100% provisionado, inicializado com senhas administrativas seguras armazenadas no Secret Manager e estruturado com permissões estritas para a Service Account dedicada do Agente A2A antes que o motor de Vertex AI Reasoning Engine seja instanciado:
+
+By packaging Cloud SQL, bootstrapping, and the Vertex AI Reasoning engine inside the `modules/4-workloads/agents/a2a-agent` pure module, we obtain an atomic, self-contained workload.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant TG as Terragrunt / TF Apply
+    participant SQL as Cloud SQL Instance
+    participant Secret as Secret Manager
+    participant Run as Cloud Run Bootstrap Job<br/>(Within VPC)
+    participant Vertex as Vertex AI Reasoning Engine
+
+    Note over TG: Deploy A2A Agent Module
+    TG->>SQL: 1. Provision private DB & IAM SQL user
+    TG->>Secret: 2. Store PostgreSQL admin password securely
+    TG->>Run: 3. Trigger VPC-internal Bootstrap Job to apply SQL grants
+    Run->>SQL: 4. Connect over private IP & GRANT ALL PRIVILEGES...
+    Note over Run: Bootstrap Job Exits
+    TG->>Vertex: 5. Deploy Reasoning Engine (ADK)<br/>Binds private DB Host IP to Agent variables
 ```
 
 ---
