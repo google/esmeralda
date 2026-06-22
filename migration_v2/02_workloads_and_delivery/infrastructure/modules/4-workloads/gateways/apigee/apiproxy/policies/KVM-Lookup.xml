@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<KeyValueMapOperations async="false" continueOnError="false" enabled="true" name="KVM-Lookup">
+    <DisplayName>KVM-Lookup</DisplayName>
+    <Get assignTo="target.url">
+        <Key>
+            <Parameter ref="request.header.host.prefix"/> <!-- Logic inside Proxy Flow extracts prefix e.g. a2a-agent -->
+        </Key>
+    </Get>
+    <Scope>environment</Scope>
+</KeyValueMapOperations>
