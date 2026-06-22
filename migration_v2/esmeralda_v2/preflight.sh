@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # preflight.sh
 set -euo pipefail
 
@@ -11,11 +11,12 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 echo -e "${CYAN}==================================================${NC}"
-echo -e "${CYAN}🔍 Running Esmeralda v2 Preflight Checklist...${NC}"
+echo -e "${CYAN}🔍 Running Esmeralda Preflight Checklist...${NC}"
 echo -e "${CYAN}==================================================${NC}"
 
-# Ensure common binary directories are in PATH
-export PATH="$PATH:$HOME/.local/bin:$HOME/bin:/usr/local/bin:/opt/homebrew/bin:$HOME/google-cloud-sdk/bin"
+# Ensure common binary directories are in PATH, including custom terraform and terragrunt paths
+export PATH="$PATH:$HOME/.local/bin:$HOME/bin:/usr/local/bin:/opt/homebrew/bin:$HOME/google-cloud-sdk/bin:$HOME/.terraform/bin:$HOME/.terragrunt/bin"
+
 
 # 1. Check Python 3 & version >= 3.10
 echo -e "${BLUE}[*] Checking Python installation...${NC}"
