@@ -33,22 +33,22 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
 	@uv run --package corporate-email pytest app/mcp-servers/corporate-email/test_main.py
-	@echo "🧪 Running unit tests for income-verification..."
-	@uv run --package income-verification pytest app/mcp-servers/income-verification/test_main.py
+	@echo "🧪 Running unit tests for income-verification-api..."
+	@uv run --package income-verification-api pytest app/mcp-servers/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms pytest app/mcp-servers/legacy-dms/test_server.py
-	@echo "🧪 Running unit tests for base-adk-agent..."
-	@uv run --package base-adk-agent pytest app/agents/base-adk-agent/test_local.py
-	@echo "🧪 Running unit tests for a2a-agent..."
-	@uv run --package a2a-agent pytest app/agents/a2a-agent/test_local.py
+	@echo "🧪 Running unit tests for mortgage-agent..."
+	@uv run --package mortgage-agent pytest app/agents/base-adk-agent/tests/test_remote_agent.py
+	@echo "🧪 Running unit tests for a2a-mortgage-agent..."
+	@uv run --package a2a-mortgage-agent pytest app/agents/a2a-agent/tests/test_agent.py
 	@echo "✅ All unit tests passed!"
 
 run-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@echo "🚀 Launching MCP Servers..."
 	@echo "📧 corporate-email running on http://localhost:8001"
 	@uv run --package corporate-email uvicorn main:app --port 8001 & \
-	 echo "💰 income-verification running on http://localhost:8002" && \
-	 uv run --package income-verification uvicorn main:app --port 8002 & \
+	 echo "💰 income-verification-api running on http://localhost:8002" && \
+	 uv run --package income-verification-api uvicorn main:app --port 8002 & \
 	 echo "🗄️ legacy-dms running on http://localhost:8003" && \
 	 uv run --package legacy-dms uvicorn server:app --port 8003 & \
 	 wait
