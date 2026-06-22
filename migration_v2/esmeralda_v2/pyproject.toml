@@ -1,0 +1,16 @@
+[project]
+name = "esmeralda-monorepo"
+version = "2.0.0"
+description = "Esmeralda: A Cloud-Native Serverless AI Agent Orchestration Monorepo"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+  "app/agents/base-adk-agent",
+  "app/agents/a2a-agent",
+  "app/mcp-servers/corporate-email",
+  "app/mcp-servers/income-verification",
+  "app/mcp-servers/legacy-dms",
+]
