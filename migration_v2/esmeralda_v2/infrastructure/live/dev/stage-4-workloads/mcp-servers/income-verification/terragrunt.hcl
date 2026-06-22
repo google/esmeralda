@@ -24,8 +24,14 @@ locals {
 }
 
 inputs = {
-  project_id = dependency.projects.outputs.mcps_project_id
-  region     = local.env_vars.locals.region
-  vpc_id     = dependency.networking.outputs.network_id
-  subnet_id  = dependency.networking.outputs.subnet_id
+  project_id               = dependency.projects.outputs.mcps_project_id
+  region                   = local.env_vars.locals.region
+  network_id               = dependency.networking.outputs.network_id
+  subnet_id                = dependency.networking.outputs.subnet_id
+  container_image          = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.mcps_project_id}/remote-mcp-servers/income-verification-api:latest"
+  invoker_service_accounts = [
+    dependency.security.outputs.root_agent_sa_email,
+    dependency.security.outputs.test_vm_sa_email
+  ]
 }
+

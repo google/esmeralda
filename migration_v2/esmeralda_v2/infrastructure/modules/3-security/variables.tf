@@ -82,5 +82,6 @@ variable "backend_subnet_id" {
 variable "gateway_subnet_id" {
   description = "The resource ID/name of the gateway subnet on the Shared VPC for Gateway Egress"
   type        = string
+  default     = ""
 }
 

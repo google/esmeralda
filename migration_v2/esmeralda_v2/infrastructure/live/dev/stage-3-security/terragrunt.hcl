@@ -11,23 +11,35 @@ dependency "projects" {
   config_path = "../stage-1-projects"
 }
 
-dependency "networking" {
-  config_path = "../stage-2-networking"
+locals {
+  env_vars       = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  byo_networking = lookup(local.env_vars.locals, "byo_networking", false)
 }
 
-locals {
-  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+dependency "networking" {
+  config_path = "../stage-2-networking"
+  
+  # Avoid running output lookups on skipped modules
+  skip_outputs = local.byo_networking
+  
+  # Satisfy parser during evaluation with mock variables
+  mock_outputs = {
+    subnet_id = local.env_vars.locals.existing_subnet_id
+  }
 }
 
 inputs = {
+  net_host_project_id   = dependency.projects.outputs.net_host_project_id
+  gateway_project_id    = dependency.projects.outputs.gateway_project_id
+  mcps_project_id       = dependency.projects.outputs.mcps_project_id
+  a2a_project_id        = dependency.projects.outputs.a2a_project_id
+  root_project_id       = dependency.projects.outputs.root_project_id
   governance_project_id = dependency.projects.outputs.governance_project_id
-  project_ids = {
-    net_host   = dependency.projects.outputs.net_host_project_id
-    gateway    = dependency.projects.outputs.gateway_project_id
-    mcps       = dependency.projects.outputs.mcps_project_id
-    a2a        = dependency.projects.outputs.a2a_project_id
-    root       = dependency.projects.outputs.root_project_id
-    governance = dependency.projects.outputs.governance_project_id
-  }
+  project_suffix        = dependency.projects.outputs.project_suffix
+
   region                = local.env_vars.locals.region
+  environment           = local.env_vars.locals.environment
+
+  backend_subnet_id     = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 }
+
