@@ -32,25 +32,26 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
-	@uv run --package corporate-email pytest app/mcp-servers/corporate-email/test_main.py
+	@uv run --package corporate-email --extra dev pytest app/mcp-servers/corporate-email/test_main.py
 	@echo "🧪 Running unit tests for income-verification-api..."
-	@uv run --package income-verification-api pytest app/mcp-servers/income-verification/test_main.py
+	@uv run --package income-verification-api --extra dev pytest app/mcp-servers/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
-	@uv run --package legacy-dms pytest app/mcp-servers/legacy-dms/test_server.py
+	@uv run --package legacy-dms --extra dev pytest app/mcp-servers/legacy-dms/test_server.py
 	@echo "🧪 Running unit tests for mortgage-agent..."
-	@uv run --package mortgage-agent pytest app/agents/base-adk-agent/tests/test_remote_agent.py
+	@uv run --package mortgage-agent --extra dev pytest app/agents/base-adk-agent/tests/test_remote_agent.py
 	@echo "🧪 Running unit tests for a2a-mortgage-agent..."
-	@uv run --package a2a-mortgage-agent pytest app/agents/a2a-agent/tests/test_agent.py
+	@uv run --package a2a-mortgage-agent --extra dev pytest app/agents/a2a-agent/tests/test_agent.py
 	@echo "✅ All unit tests passed!"
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@echo "🚀 Launching MCP Servers..."
-	@echo "📧 corporate-email running on http://localhost:8001"
-	@uv run --package corporate-email uvicorn main:app --app-dir app/mcp-servers/corporate-email --port 8001 & \
-	 echo "💰 income-verification-api running on http://localhost:8002" && \
-	 uv run --package income-verification-api uvicorn main:app --app-dir app/mcp-servers/income-verification --port 8002 & \
-	 echo "🗄️ legacy-dms running on http://localhost:8003" && \
-	 uv run --package legacy-dms uvicorn server:app --app-dir app/mcp-servers/legacy-dms --port 8003 & \
+	@uv run --package corporate-email uvicorn main:app --app-dir app/mcp-servers/corporate-email --port 8001 & pid_email=$$! ; \
+	 echo "📧 corporate-email running on http://localhost:8001" ; \
+	 uv run --package income-verification-api uvicorn main:app --app-dir app/mcp-servers/income-verification --port 8002 & pid_income=$$! ; \
+	 echo "💰 income-verification-api running on http://localhost:8002" ; \
+	 uv run --package legacy-dms uvicorn server:app --app-dir app/mcp-servers/legacy-dms --port 8003 & pid_dms=$$! ; \
+	 echo "🗄️ legacy-dms running on http://localhost:8003" ; \
+	 trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill $$pid_email $$pid_income $$pid_dms 2>/dev/null || true' INT TERM EXIT; \
 	 wait
 
 # Default query used for local agent testing
