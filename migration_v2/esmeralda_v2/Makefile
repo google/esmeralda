@@ -46,11 +46,11 @@ test: ## Run unit tests across all workspace members
 run-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@echo "🚀 Launching MCP Servers..."
 	@echo "📧 corporate-email running on http://localhost:8001"
-	@uv run --package corporate-email uvicorn main:app --port 8001 & \
+	@uv run --package corporate-email uvicorn main:app --app-dir app/mcp-servers/corporate-email --port 8001 & \
 	 echo "💰 income-verification-api running on http://localhost:8002" && \
-	 uv run --package income-verification-api uvicorn main:app --port 8002 & \
+	 uv run --package income-verification-api uvicorn main:app --app-dir app/mcp-servers/income-verification --port 8002 & \
 	 echo "🗄️ legacy-dms running on http://localhost:8003" && \
-	 uv run --package legacy-dms uvicorn server:app --port 8003 & \
+	 uv run --package legacy-dms uvicorn server:app --app-dir app/mcp-servers/legacy-dms --port 8003 & \
 	 wait
 
 deploy-foundations: ## Deploy core foundations (Projects, Networking, Security) via Terragrunt
