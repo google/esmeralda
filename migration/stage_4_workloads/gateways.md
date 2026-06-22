@@ -189,7 +189,7 @@ Inside the Apigee API Proxy (`/apiproxy/policies/`), we implement:
 ```hcl
 output "gateway_ingress_ip" {
   description = "The internal VIP of the Private Service Connect endpoint routing to Apigee"
-  value       = "10.10.1.50" # Reserved IP for Apigee PSC endpoint in Shared VPC
+  value       = "10.10.0.50" # Reserved IP for Apigee PSC endpoint in Shared VPC (AUDIT-02 Fix)
 }
 
 output "gateway_agent_ingress_host" {
@@ -331,7 +331,7 @@ services:
 ```hcl
 output "gateway_ingress_ip" {
   description = "The regional internal IP address allocated for the Cloud Run Serverless NEG fronting Kong"
-  value       = "10.10.1.60" # Internal static IP pointing to the Kong front-end ingress
+  value       = "10.10.0.60" # Internal static IP pointing to the Kong front-end ingress (AUDIT-02 Fix)
 }
 
 output "gateway_agent_ingress_host" {
@@ -354,8 +354,9 @@ Includes the standard Swappable Gateway variables contract defined above, plus:
 variable "routing_broker_image" {
   description = "The container image URL of the esmeralda-routing-broker proxy service"
   type        = string
-  default     = "gcr.io/prj-esmeralda/routing-broker:latest"
+  default     = "us-central1-docker.pkg.dev/prj-esmeralda-mcps/mcp-repo/routing-broker:latest" # AUDIT-05 Fix
 }
+
 ```
 
 ###### 2. Implementation Blueprint (`main.tf`)
