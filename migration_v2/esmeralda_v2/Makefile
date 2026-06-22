@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: help bootstrap test run-local deploy-foundations deploy-workloads clean preflight
+.PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-workloads clean preflight
 
 help: ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
 	@chmod +x ./preflight.sh
@@ -43,7 +43,7 @@ test: ## Run unit tests across all workspace members
 	@uv run --package a2a-mortgage-agent pytest app/agents/a2a-agent/tests/test_agent.py
 	@echo "✅ All unit tests passed!"
 
-run-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
+run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@echo "🚀 Launching MCP Servers..."
 	@echo "📧 corporate-email running on http://localhost:8001"
 	@uv run --package corporate-email uvicorn main:app --app-dir app/mcp-servers/corporate-email --port 8001 & \
@@ -52,6 +52,80 @@ run-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	 echo "🗄️ legacy-dms running on http://localhost:8003" && \
 	 uv run --package legacy-dms uvicorn server:app --app-dir app/mcp-servers/legacy-dms --port 8003 & \
 	 wait
+
+# Default query used for local agent testing
+QUERY ?= Can you verify Julian Sterling's income?
+
+test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MCP servers via run-mcp-local)
+	@already_running=0; \
+	if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+		already_running=1; \
+		echo "ℹ️  MCP servers are already running locally. Running tests directly..."; \
+	fi; \
+	if [ $$already_running -eq 0 ]; then \
+		echo "🚀 Launching MCP Servers in background via run-mcp-local..."; \
+		make run-mcp-local & make_pid=$$! ; \
+		trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill -TERM -$$make_pid 2>/dev/null || true; pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; fi; exit 1' INT TERM EXIT; \
+		echo "⏳ Waiting for MCP servers to initialize..."; \
+		for i in {1..15}; do \
+			if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+				break; \
+			fi; \
+			sleep 1; \
+		done; \
+	fi; \
+	export EMAIL_MCP_URL="http://localhost:8001/mcp" && \
+	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
+	export DMS_MCP_URL="http://localhost:8003/mcp"; \
+	echo "🤖 Running A2A Agent test locally..."; \
+	uv run --package a2a-mortgage-agent python app/agents/a2a-agent/test_local.py "$(QUERY)"; \
+	status=$$?; \
+	if [ $$already_running -eq 0 ]; then \
+		echo "🧹 Tearing down background MCP servers..."; \
+		trap - INT TERM EXIT; \
+		kill -TERM -$$make_pid 2>/dev/null || true; \
+		pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); \
+		if [ -n "$$pids" ]; then \
+			kill -TERM $$pids 2>/dev/null || true; \
+		fi; \
+	fi; \
+	exit $$status
+
+test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins up & tears down MCP servers via run-mcp-local)
+	@already_running=0; \
+	if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+		already_running=1; \
+		echo "ℹ️  MCP servers are already running locally. Running tests directly..."; \
+	fi; \
+	if [ $$already_running -eq 0 ]; then \
+		echo "🚀 Launching MCP Servers in background via run-mcp-local..."; \
+		make run-mcp-local & make_pid=$$! ; \
+		trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill -TERM -$$make_pid 2>/dev/null || true; pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; fi; exit 1' INT TERM EXIT; \
+		echo "⏳ Waiting for MCP servers to initialize..."; \
+		for i in {1..15}; do \
+			if (echo > /dev/tcp/127.0.0.1/8001) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8002) &>/dev/null && (echo > /dev/tcp/127.0.0.1/8003) &>/dev/null; then \
+				break; \
+			fi; \
+			sleep 1; \
+		done; \
+	fi; \
+	export LOCAL_MODE="true" && \
+	export EMAIL_MCP_URL="http://localhost:8001/mcp" && \
+	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
+	export DMS_MCP_URL="http://localhost:8003/mcp"; \
+	echo "👑 Running Root Agent integration test locally (in-memory mock routing)..."; \
+	uv run --package mortgage-agent python app/agents/base-adk-agent/test_local.py "$(QUERY)"; \
+	status=$$?; \
+	if [ $$already_running -eq 0 ]; then \
+		echo "🧹 Tearing down background MCP servers..."; \
+		trap - INT TERM EXIT; \
+		kill -TERM -$$make_pid 2>/dev/null || true; \
+		pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); \
+		if [ -n "$$pids" ]; then \
+			kill -TERM $$pids 2>/dev/null || true; \
+		fi; \
+	fi; \
+	exit $$status
 
 deploy-foundations: ## Deploy core foundations (Projects, Networking, Security) via Terragrunt
 	@echo "🏗️  Deploying Stage 1: Projects..."

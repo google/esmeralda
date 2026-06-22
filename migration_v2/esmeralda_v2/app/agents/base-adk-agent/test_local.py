@@ -119,5 +119,5 @@ async def main(user_input: str):
     print("------------------------------------------------\n")
 
 if __name__ == "__main__":
-    test_query = sys.argv[1] if len(sys.argv) > 1 else "I'm reviewing the Rivera family's $700K loan. Can you summarize their 2024 tax returns?"
+    test_query = sys.argv[1] if len(sys.argv) > 1 else "Can you verify Julian Sterling's income?"
     asyncio.run(main(test_query))

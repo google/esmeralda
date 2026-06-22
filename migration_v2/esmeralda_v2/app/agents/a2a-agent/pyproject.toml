@@ -20,6 +20,8 @@ requires-python = ">=3.12"
 dependencies = [
     "google-adk[a2a]>=1.31.0",
     "google-cloud-aiplatform>=1.74.0",
+    "google-cloud-bigquery-storage",
+    "pyarrow",
     "opentelemetry-instrumentation-google-genai",
     "opentelemetry-instrumentation-grpc",
     "opentelemetry-instrumentation-httpx",
