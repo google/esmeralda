@@ -1049,7 +1049,7 @@ resource "google_cloud_run_v2_job" "schema_bootstrap" {
         image   = "alpine:latest"
         command = ["/bin/sh", "-c"]
         args = [
-          "apk add --no-cache postgresql-client && psql \"postgresql://postgres:${random_password.postgres_pwd.result}@${google_sql_database_instance.task_store.private_ip_address}/${var.database_name}\" -c \"GRANT ALL PRIVILEGES ON DATABASE ${var.database_name} TO \\\"${google_sql_user.agent_iam_user.name}\\\";\""
+          "apk add --no-cache postgresql-client && psql \"postgresql://postgres:${random_password.postgres_pwd.result}@${google_sql_database_instance.task_store.private_ip_address}/${var.database_name}\" -c \"GRANT ALL PRIVILEGES ON DATABASE ${var.database_name} TO \\\"${google_sql_user.agent_iam_user.name}\\\"; GRANT ALL PRIVILEGES ON SCHEMA public TO \\\"${google_sql_user.agent_iam_user.name}\\\";\""
         ]
       }
 
