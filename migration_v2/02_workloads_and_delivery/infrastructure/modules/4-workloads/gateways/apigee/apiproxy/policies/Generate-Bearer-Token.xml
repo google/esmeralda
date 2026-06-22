@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<AssignMessage async="false" continueOnError="false" enabled="true" name="Generate-Bearer-Token">
+    <DisplayName>Generate Bearer Token</DisplayName>
+    <Set>
+        <Headers>
+            <Header name="Authorization">Bearer {private.gcp.idToken}</Header>
+        </Set>
+    </Set>
+    <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</AssignMessage>
