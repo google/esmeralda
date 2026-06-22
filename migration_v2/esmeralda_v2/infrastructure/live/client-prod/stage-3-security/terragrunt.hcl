@@ -1,10 +1,10 @@
-# infrastructure/live/dev/stage-2-networking/terragrunt.hcl
+# infrastructure/live/client-prod/stage-3-security/terragrunt.hcl
 include "root" {
   path = find_in_parent_folders()
 }
 
 terraform {
-  source = "../../../modules//2-networking"
+  source = "../../../modules//3-security"
 }
 
 dependency "projects" {
@@ -12,7 +12,20 @@ dependency "projects" {
 }
 
 locals {
-  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  env_vars       = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  byo_networking = lookup(local.env_vars.locals, "byo_networking", false)
+}
+
+dependency "networking" {
+  config_path = "../stage-2-networking"
+  
+  # Avoid running output lookups on skipped modules
+  skip_outputs = local.byo_networking
+  
+  # Satisfy parser during evaluation with mock variables
+  mock_outputs = {
+    subnet_id = local.env_vars.locals.existing_subnet_id
+  }
 }
 
 inputs = {
@@ -26,11 +39,6 @@ inputs = {
 
   region                = local.env_vars.locals.region
   environment           = local.env_vars.locals.environment
-  byo_networking        = local.env_vars.locals.byo_networking
-  byo_net_host_project   = local.env_vars.locals.byo_net_host_project
-  byo_gateway_project    = local.env_vars.locals.byo_gateway_project
-  byo_governance_project = local.env_vars.locals.byo_governance_project
 
-  existing_vpc_id       = local.env_vars.locals.existing_vpc_id
-  existing_subnet_id    = local.env_vars.locals.existing_subnet_id
+  backend_subnet_id     = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 }
