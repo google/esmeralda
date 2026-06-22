@@ -163,6 +163,17 @@ variable "project_suffix" {
   description = "The random project suffix generated in Stage 1"
   type        = string
 }
+
+variable "backend_subnet_id" {
+  description = "The resource ID/name of the backend subnet on the Shared VPC for Direct VPC Egress"
+  type        = string
+}
+
+variable "gateway_subnet_id" {
+  description = "The resource ID/name of the gateway subnet on the Shared VPC for Gateway Egress"
+  type        = string
+}
+
 ```
 
 ##### 3. Implementation Logic (`main.tf`)
@@ -466,6 +477,37 @@ resource "google_bigquery_dataset_iam_member" "dataset_writers" {
   project    = var.governance_project_id
   role       = "roles/bigquery.dataEditor"
   member     = each.value.writer_identity
+}
+
+# --------------------------------------------------------------------
+# Direct VPC Egress Subnet User Permissions (AUDIT-01 Fix)
+# --------------------------------------------------------------------
+
+# Grant Network User role to the A2A Agent Service Account on the backend subnet
+resource "google_compute_subnetwork_iam_member" "a2a_subnet_user" {
+  project    = var.net_host_project_id
+  region     = var.region
+  subnetwork = var.backend_subnet_id
+  role       = "roles/compute.networkUser"
+  member     = "serviceAccount:${google_service_account.a2a_sa.email}"
+}
+
+# Grant Network User role to the MCP tools Service Account on the backend subnet (for Direct VPC Egress)
+resource "google_compute_subnetwork_iam_member" "mcps_subnet_user" {
+  project    = var.net_host_project_id
+  region     = var.region
+  subnetwork = var.backend_subnet_id
+  role       = "roles/compute.networkUser"
+  member     = "serviceAccount:${google_service_account.mcps_sa.email}"
+}
+
+# Grant Network User role to the Root Agent Service Account on the backend subnet
+resource "google_compute_subnetwork_iam_member" "root_subnet_user" {
+  project    = var.net_host_project_id
+  region     = var.region
+  subnetwork = var.backend_subnet_id
+  role       = "roles/compute.networkUser"
+  member     = "serviceAccount:${google_service_account.root_sa.email}"
 }
 
 # ====================================================================

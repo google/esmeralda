@@ -120,7 +120,8 @@ resource "google_cloud_run_v2_service_custom_audiences" "audiences" {
   project  = var.project_id
   audiences = [
     "http://email.internal.gateway",
-    "http://email.internal.gateway/mcp"
+    "https://email.internal.gateway",
+    "https://email.internal.gateway/mcp"
   ]
 }
 
@@ -256,7 +257,8 @@ resource "google_cloud_run_v2_service_custom_audiences" "audiences" {
   project  = var.project_id
   audiences = [
     "http://income-verification.internal.gateway",
-    "http://income-verification.internal.gateway/mcp"
+    "https://income-verification.internal.gateway",
+    "https://income-verification.internal.gateway/mcp"
   ]
 }
 
@@ -392,7 +394,8 @@ resource "google_cloud_run_v2_service_custom_audiences" "audiences" {
   project  = var.project_id
   audiences = [
     "http://dms.internal.gateway",
-    "http://dms.internal.gateway/mcp"
+    "https://dms.internal.gateway",
+    "https://dms.internal.gateway/mcp"
   ]
 }
 
