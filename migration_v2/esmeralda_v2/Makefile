@@ -44,6 +44,7 @@ test: ## Run unit tests across all workspace members
 	@echo "✅ All unit tests passed!"
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
+	@[ -n "$$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null)" ] && kill -9 $$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null) 2>/dev/null || true
 	@echo "🚀 Launching MCP Servers..."
 	@uv run --package corporate-email uvicorn main:app --app-dir app/mcp-servers/corporate-email --port 8001 & pid_email=$$! ; \
 	 echo "📧 corporate-email running on http://localhost:8001" ; \
