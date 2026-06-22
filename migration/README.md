@@ -114,11 +114,11 @@ infrastructure/
 
 
 ## Navigation Map
-- [01_migration_strategy.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/01_migration_strategy.md)
-- [02_workloads_assembly.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/02_workloads_assembly.md)
-- [stage_1_projects.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_1_projects.md)
-- [stage_2_networking.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_2_networking.md)
-- [stage_3_security.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_3_security.md)
+- [01_platform_foundations.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/01_platform_foundations.md)
+- [02_workloads_and_delivery.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/02_workloads_and_delivery.md)
+- [stage_1_projects.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_1_projects/stage_1_projects.md)
+- [stage_2_networking.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_2_networking/stage_2_networking.md)
+- [stage_3_security.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_3_security/stage_3_security.md)
 - [stage_4_workloads/gateways.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_4_workloads/gateways.md)
 - [stage_4_workloads/mcp_servers.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_4_workloads/mcp_servers.md)
 - [stage_4_workloads/agents.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/migration/stage_4_workloads/agents.md)
