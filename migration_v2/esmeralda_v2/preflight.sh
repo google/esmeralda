@@ -99,9 +99,21 @@ echo -e "${GREEN}✅ Application Default Credentials (ADC) are active${NC}"
 # 8. Check if the active GCP project has billing enabled
 echo -e "${BLUE}[*] Checking billing status for project '$ACTIVE_PROJECT'...${NC}"
 if ! BILLING_OUT=$(gcloud billing projects describe "$ACTIVE_PROJECT" --format="value(billingEnabled)" 2>&1); then
-    echo -e "${YELLOW}⚠️  [WARNING] Could not verify billing status automatically. Details: ${BILLING_OUT}${NC}"
-    echo -e "${YELLOW}👉 Make sure billing is linked to project '$ACTIVE_PROJECT'.${NC}"
-    echo -e "${YELLOW}👉 If you see 'Reauthentication required', run 'gcloud auth login' and try again.${NC}"
+    echo -e "${RED}❌ [ERROR] Failed to verify billing status for project '$ACTIVE_PROJECT'.${NC}"
+    
+    if [[ "$BILLING_OUT" =~ "Reauthentication" || "$BILLING_OUT" =~ "auth tokens" || "$BILLING_OUT" =~ "expired" ]]; then
+        echo -e "${YELLOW}👉 [REASON] Your active gcloud CLI session has expired and re-authentication is required.${NC}"
+        echo -e "${YELLOW}👉 [SOLUTION] Please refresh your active CLI credentials by running:${NC}"
+        echo -e "   gcloud auth login"
+        echo -e "   gcloud auth application-default login"
+    elif [[ "$BILLING_OUT" =~ "Permission" || "$BILLING_OUT" =~ "denied" || "$BILLING_OUT" =~ "forbidden" ]]; then
+        echo -e "${YELLOW}👉 [REASON] Insufficient IAM permissions to view project billing details (missing 'billing.projects.get').${NC}"
+        echo -e "${YELLOW}👉 [SOLUTION] Please ensure your active account has the 'Billing Viewer' or 'Project Viewer' role on project '$ACTIVE_PROJECT'.${NC}"
+    else
+        echo -e "${YELLOW}👉 [REASON] Raw Output: ${BILLING_OUT}${NC}"
+        echo -e "${YELLOW}👉 [SOLUTION] Please verify that billing is correctly linked to project '$ACTIVE_PROJECT' and your active account has viewer access.${NC}"
+    fi
+    exit 1
 else
     billing_status="${BILLING_OUT,,}"
     if [ "$billing_status" != "true" ]; then
