@@ -99,11 +99,24 @@ To go from a freshly cloned repository to a fully-deployed secure application in
 4. **Run MCP Servers Locally**:
    Run the MCP servers concurrently on separate localhost ports for local development:
    ```bash
-   make run-local
+   make run-mcp-local
    ```
    - **Corporate Email**: `http://localhost:8001`
    - **Income Verification**: `http://localhost:8002`
    - **Legacy DMS**: `http://localhost:8003`
+
+5. **Local Agent Integration Testing (Automated Server Management)**:
+   You can run local integration tests for the downstream (A2A) and root coordinator agents. These targets automatically spin up the 3 local MCP servers in the background (using `make run-mcp-local`), wait for them to initialize, execute the integration query, and cleanly tear down all background servers on completion or interruption (e.g. `Ctrl+C`).
+
+   Run Downstream Agent (A2A) integration test:
+   ```bash
+   make test-a2a-local
+   ```
+
+   Run Root Coordinator Agent integration test (in-memory routing):
+   ```bash
+   make test-root-local
+   ```
 
 ---
 
