@@ -1,4 +1,4 @@
-#!/usr/bin/env bash -i
+#!/bin/bash
 # preflight.sh
 set -euo pipefail
 
@@ -14,17 +14,9 @@ echo -e "${CYAN}==================================================${NC}"
 echo -e "${CYAN}🔍 Running Esmeralda Preflight Checklist...${NC}"
 echo -e "${CYAN}==================================================${NC}"
 
-# --- Environment Setup ---
-# Safely append common developer paths to ensure tools like terraform and gcloud are found
-# even in non-interactive shells where .bashrc might exit early.
-export PATH="$PATH:$HOME/.local/bin:$HOME/bin:/usr/local/bin:/opt/homebrew/bin:$HOME/google-cloud-sdk/bin:$HOME/.terraform/bin"
+# Ensure common binary directories are in PATH, including custom terraform and terragrunt paths
+export PATH="$PATH:$HOME/.local/bin:$HOME/bin:/usr/local/bin:/opt/homebrew/bin:$HOME/google-cloud-sdk/bin:$HOME/.terraform/bin:$HOME/.terragrunt/bin"
 
-# Explicitly check direct home path for Terraform if not found in default PATH
-if ! command -v terraform &>/dev/null; then
-    if [ -f "$HOME/.terraform/bin/terraform" ]; then
-        export PATH="$PATH:$HOME/.terraform/bin"
-    fi
-fi
 
 # 1. Check Python 3 & version >= 3.10
 echo -e "${BLUE}[*] Checking Python installation...${NC}"
@@ -38,12 +30,22 @@ if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 
     echo -e "${RED}❌ [ERROR] Python 3.10+ is required. Found: $py_version${NC}"
     exit 1
 fi
-echo -e "${GREEN}✅ Python is ready (${SYS_PY_VER:-$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')})${NC}"
+echo -e "${GREEN}✅ Python is ready (${_PY_VER:-$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')})${NC}"
 
-# 2. Check Terraform & version >= 1.5
+# 2. Check uv installation
+echo -e "${BLUE}[*] Checking Astral uv...${NC}"
+if ! command -v uv &>/dev/null; then
+    echo -e "${YELLOW}⚠️  [WARNING] Astral uv is not installed or not in PATH.${NC}"
+    echo -e "${YELLOW}👉 Run the following command to install it:${NC}"
+    echo -e "   curl -LsSf https://astral.sh/uv/install.sh | sh"
+    exit 1
+fi
+echo -e "${GREEN}✅ uv is ready ($(uv --version))${NC}"
+
+# 3. Check Terraform & version >= 1.5
 echo -e "${BLUE}[*] Checking Terraform installation...${NC}"
 if ! command -v terraform &>/dev/null; then
-    echo -e "${RED}❌ [ERROR] Terraform is not installed or not in PATH. Please install Terraform >= 1.5.${NC}"
+    echo -e "${RED}❌ [ERROR] Terraform is not installed. Please install Terraform >= 1.5.${NC}"
     exit 1
 fi
 
@@ -58,7 +60,15 @@ if [[ "$tf_ver_str" =~ [vV]([0-9]+)\.([0-9]+) ]]; then
 fi
 echo -e "${GREEN}✅ Terraform is ready ($tf_ver_str)${NC}"
 
-# 3. Check Google Cloud SDK (gcloud)
+# 4. Check Terragrunt installation
+echo -e "${BLUE}[*] Checking Terragrunt...${NC}"
+if ! command -v terragrunt &>/dev/null; then
+    echo -e "${RED}❌ [ERROR] Terragrunt is not installed. Please install Terragrunt first.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Terragrunt is ready ($(terragrunt -v))${NC}"
+
+# 5. Check Google Cloud SDK (gcloud)
 echo -e "${BLUE}[*] Checking Google Cloud SDK...${NC}"
 if ! command -v gcloud &>/dev/null; then
     echo -e "${RED}❌ [ERROR] Google Cloud SDK ('gcloud') is not installed. Please install it first.${NC}"
@@ -66,7 +76,7 @@ if ! command -v gcloud &>/dev/null; then
 fi
 echo -e "${GREEN}✅ Google Cloud SDK is ready${NC}"
 
-# 4. Check active GCP project
+# 6. Check active GCP project
 echo -e "${BLUE}[*] Checking active gcloud project context...${NC}"
 ACTIVE_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "")
 if [ -z "$ACTIVE_PROJECT" ] || [ "$ACTIVE_PROJECT" == "(unset)" ]; then
@@ -75,7 +85,7 @@ if [ -z "$ACTIVE_PROJECT" ] || [ "$ACTIVE_PROJECT" == "(unset)" ]; then
 fi
 echo -e "${GREEN}✅ Active GCP Project: $ACTIVE_PROJECT${NC}"
 
-# 5. Check Application Default Credentials (ADC)
+# 7. Check Application Default Credentials (ADC)
 echo -e "${BLUE}[*] Checking Application Default Credentials...${NC}"
 if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
     echo -e "${RED}❌ [ERROR] Application Default Credentials (ADC) are missing or expired.${NC}"
@@ -86,14 +96,25 @@ if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
 fi
 echo -e "${GREEN}✅ Application Default Credentials (ADC) are active${NC}"
 
-# 6. Check if the active GCP project is billable (billing enabled)
+# 8. Check if the active GCP project has billing enabled
 echo -e "${BLUE}[*] Checking billing status for project '$ACTIVE_PROJECT'...${NC}"
 if ! BILLING_OUT=$(gcloud billing projects describe "$ACTIVE_PROJECT" --format="value(billingEnabled)" 2>&1); then
-    echo -e "${YELLOW}⚠️  [WARNING] Could not verify billing status automatically. Details: ${BILLING_OUT}${NC}"
-    echo -e "${YELLOW}👉 Make sure billing is linked to project '$ACTIVE_PROJECT'.${NC}"
-    echo -e "${YELLOW}👉 If you see 'Reauthentication required', run 'gcloud auth login' and try again.${NC}"
+    echo -e "${RED}❌ [ERROR] Failed to verify billing status for project '$ACTIVE_PROJECT'.${NC}"
+    
+    if [[ "$BILLING_OUT" =~ "Reauthentication" || "$BILLING_OUT" =~ "auth tokens" || "$BILLING_OUT" =~ "expired" ]]; then
+        echo -e "${YELLOW}👉 [REASON] Your active gcloud CLI session has expired and re-authentication is required.${NC}"
+        echo -e "${YELLOW}👉 [SOLUTION] Please refresh your active CLI credentials by running:${NC}"
+        echo -e "   gcloud auth login"
+        echo -e "   gcloud auth application-default login"
+    elif [[ "$BILLING_OUT" =~ "Permission" || "$BILLING_OUT" =~ "denied" || "$BILLING_OUT" =~ "forbidden" ]]; then
+        echo -e "${YELLOW}👉 [REASON] Insufficient IAM permissions to view project billing details (missing 'billing.projects.get').${NC}"
+        echo -e "${YELLOW}👉 [SOLUTION] Please ensure your active account has the 'Billing Viewer' or 'Project Viewer' role on project '$ACTIVE_PROJECT'.${NC}"
+    else
+        echo -e "${YELLOW}👉 [REASON] Raw Output: ${BILLING_OUT}${NC}"
+        echo -e "${YELLOW}👉 [SOLUTION] Please verify that billing is correctly linked to project '$ACTIVE_PROJECT' and your active account has viewer access.${NC}"
+    fi
+    exit 1
 else
-    # Case-insensitive comparison
     billing_status="${BILLING_OUT,,}"
     if [ "$billing_status" != "true" ]; then
         echo -e "${RED}❌ [ERROR] Project '$ACTIVE_PROJECT' does not have billing enabled.${NC}"
@@ -105,5 +126,5 @@ else
 fi
 
 echo -e "${CYAN}==================================================${NC}"
-echo -e "${GREEN}🎉 All preflight checks passed!${NC}"
+echo -e "${GREEN}🎉 All preflight checks completed!${NC}"
 echo -e "${CYAN}==================================================${NC}"
