@@ -104,12 +104,48 @@ def main():
         print(f"❌ Error during serialization: {e}")
         sys.exit(1)
 
-    # Copy requirements.txt to output_dir
+    # Copy requirements.txt to output_dir, or extract it dynamically from pyproject.toml
     req_src = os.path.join(agent_dir, "requirements.txt")
     req_dst = os.path.join(output_dir, "requirements.txt")
+    pyproject_src = os.path.join(agent_dir, "pyproject.toml")
     if os.path.exists(req_src):
         print(f"[*] Copying requirements.txt to {req_dst}...")
         shutil.copy2(req_src, req_dst)
+    elif os.path.exists(pyproject_src):
+        print(f"[*] Extracting requirements dynamically from {pyproject_src} to {req_dst}...")
+        try:
+            import tomllib
+            with open(pyproject_src, "rb") as f_toml:
+                pyproject_data = tomllib.load(f_toml)
+        except ImportError:
+            try:
+                import toml
+                with open(pyproject_src, "r") as f_toml:
+                    pyproject_data = toml.load(f_toml)
+            except ImportError:
+                # Custom lightweight parser for pyproject.toml dependencies if toml/tomllib not available
+                pyproject_data = {}
+                deps = []
+                in_deps = False
+                with open(pyproject_src, "r") as f_toml:
+                    for line in f_toml:
+                        line = line.strip()
+                        if line.startswith("dependencies = ["):
+                            in_deps = True
+                            continue
+                        if in_deps:
+                            if line.startswith("]"):
+                                in_deps = False
+                                break
+                            dep = line.strip('", \t\'')
+                            if dep:
+                                deps.append(dep)
+                pyproject_data["project"] = {"dependencies": deps}
+
+        deps = pyproject_data.get("project", {}).get("dependencies", [])
+        with open(req_dst, "w") as f_req:
+            for dep in deps:
+                f_req.write(f"{dep}\n")
     else:
         # Create empty requirements file if not present
         with open(req_dst, "w") as f:
