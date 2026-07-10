@@ -30,7 +30,7 @@ flowchart TD
 
     Stage1 ==>|Provides Project IDs & Service Agents| Stage2
     Stage2 ==>|Provides VPC, Subnet & DNS Self-Links| Stage3
-    Stage3 ==>|Ready for AI Application Catalog Workloads| Catalog([Stage 4: Composable Workloads Catalog])
+    Stage3 ==>|Ready for AI Application Catalog Workloads| Catalog["Stage 4: Composable Workloads Catalog"]
 ```
 
 ---
