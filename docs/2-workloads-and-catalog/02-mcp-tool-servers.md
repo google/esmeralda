@@ -61,8 +61,8 @@ graph TD
 
     Root & TestVM -->|1. OIDC Token with roles/run.invoker| ILB
     ILB -->|2. Private Routing| Email & Income & DMS
-    Email & Income & DMS -. 3. Direct VPC Egress .-> Egress
-    Email & Income & DMS -. 4. Post-deploy Script Registration .-> Registry
+    Email & Income & DMS -.->|3. Direct VPC Egress| Egress
+    Email & Income & DMS -.->|4. Post-deploy Script Registration| Registry
 ```
 
 ```text
