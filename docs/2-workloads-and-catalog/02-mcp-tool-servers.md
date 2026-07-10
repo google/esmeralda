@@ -96,6 +96,34 @@ To help operators configure their Terragrunt dependency blocks, this matrix maps
 
 A code analysis of `infrastructure/modules/4-workloads/apihub/` and `infrastructure/modules/4-workloads/services/` reveals how Esmeralda provisions enterprise tool catalogs, container registries, and verification jumpboxes:
 
+```mermaid
+flowchart TD
+    subgraph Gov["prj-gateway & prj-esmeralda-governance"]
+        Hub["API Hub Instance (apihub/main.tf)<br/>Catalog Governance & Search"]
+        Reg["GCP Agent Registry<br/>Dynamic Python Script Registration"]
+    end
+
+    subgraph CICD["prj-esmeralda-cicd-artifacts"]
+        AR["Artifact Registry Docker Repo<br/>esmeralda-containers"]
+    end
+
+    subgraph Root["prj-esmeralda-root-agent"]
+        VM["Private Test Jumpbox VM<br/>e2-micro, Shielded, OS Login, Zero-External-IP"]
+    end
+
+    subgraph Tools["prj-esmeralda-mcps (Cloud Run v2 Services)"]
+        Email["services/corporate-email (Port 8080)"]
+        Income["services/income-verification (Port 8080)"]
+        DMS["services/legacy-dms (Port 8080)"]
+    end
+
+    AR -->|Pulls Docker Images| Email & Income & DMS
+    Email & Income & DMS -->|1. Direct VPC Egress (ALL_TRAFFIC)| Root & Gov
+    Email & Income & DMS -->|2. OTLP Exporter| Telemetry["http://collector.telemetry.internal:4317"]
+    Email & Income & DMS -.->|3. register_mcp.py| Reg
+    VM -.->|IAP SSH & curl test| Email & Income & DMS
+```
+
 ### 1. Standalone API Hub (`4-workloads/apihub/main.tf`)
 *   **Service Identity Bootstrapping**: Deploys `google_project_service_identity.apihub_service_identity` (`apihub.googleapis.com`) using the `google-beta` provider.
 *   **Administrative Permissions**: Binds `roles/apihub.admin` and `roles/apihub.runtimeProjectServiceAgent` onto the API Hub service identity.

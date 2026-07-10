@@ -145,6 +145,39 @@ flowchart TD
 
 A granular inspection of `infrastructure/modules/1-projects/` reveals exactly how Esmeralda orchestrates project creation, API enablements, and service identities:
 
+```mermaid
+flowchart TD
+    subgraph Inputs["Stage 1 Inputs (variables.tf)"]
+        Prefix["project_suffix (2 hex bytes)"]
+        BYO["BYO Toggles & Existing IDs"]
+    end
+
+    subgraph Projects["7 Enterprise Landing Zone Projects"]
+        Cond["4 Conditional Projects<br/>(net_host, gateway, cicd, governance)"]
+        Uncond["3 Unconditional Workloads<br/>(mcps, a2a, root_agent)"]
+    end
+
+    subgraph APIs["Service API Enablements"]
+        APIList["Least-Privilege APIs<br/>(aiplatform, run, sqladmin, secretmanager, etc.)"]
+    end
+
+    subgraph Sleep["Propagation Buffer"]
+        Delay["time_sleep.api_propagation<br/>(30 Seconds Convergence Delay)"]
+    end
+
+    subgraph Identities["9 Bootstrapped Service Identities"]
+        SA_Build["cicd_build (Cloud Build)"]
+        SA_Run["mcps_run, gateway_run, a2a_run, root_run"]
+        SA_Vertex["a2a_vertex, root_vertex"]
+        SA_Data["a2a_sql, governance_secrets"]
+    end
+
+    Inputs -->|Resolve IDs & Labels| Projects
+    Projects -->|for_each conditional enablement| APIs
+    APIs -->|depends_on| Sleep
+    Sleep -->|Request Google-Managed Robots| Identities
+```
+
 #### 1. Dynamic Project ID & Label Resolution
 *   **Hex Suffix**: A 2-byte random hex string (`random_id.project_suffix`) ensures global project ID uniqueness across Google Cloud.
 *   **ID Resolution**: For conditional projects (`net_host`, `gateway`, `governance`, `cicd`), ternary lookups (`var.byo_* ? var.existing_* : "..."`) dynamically select either the existing customer ID or generate a new one using `var.project_prefix`.

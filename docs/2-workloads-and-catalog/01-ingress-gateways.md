@@ -105,6 +105,42 @@ This preserves the unified interface contract! The ILB routes all `*.esmeralda.i
 
 A code inspection of `infrastructure/modules/4-workloads/services/` reveals the exact Terraform and serverless resources deployed by each gateway adapter:
 
+```mermaid
+flowchart TD
+    subgraph Client["Incoming Traffic (*.esmeralda.internal)"]
+        Req["Client Prompt / Root Orchestrator"]
+    end
+
+    subgraph Adapters["Swappable Gateway Adapters (modules/4-workloads/services/)"]
+        subgraph OptA["Option A: services/apigee"]
+            A_Org["Apigee Organization & Env Group"]
+            A_Inst["Apigee Instance (Peering 10.12.0.0/22)"]
+            A_KVM["KVM Sync Trigger (null_resource)"]
+        end
+
+        subgraph OptB["Option B: services/kong"]
+            B_Secret["Secret Manager (kong.yml)"]
+            B_Run["Cloud Run DB-less Container (Port 8000)"]
+            B_SA["kong-gateway-sa (OIDC Plugin)"]
+        end
+
+        subgraph OptC["Option C: services/ilb"]
+            C_ILB["Forwarding Rule & URL Map"]
+            C_NEG["Serverless NEG (neg-broker)"]
+            C_Broker["Routing Broker Cloud Run Container"]
+        end
+    end
+
+    subgraph Backend["Target Workloads"]
+        Vertex["Vertex AI Reasoning Engine API"]
+    end
+
+    Req -->|Select source path in terragrunt.hcl| Adapters
+    A_Inst & A_KVM -->|1. KVM Lookup & Token Exchange| Vertex
+    B_Run & B_SA -->|2. Direct VPC Egress & OIDC Injection| Vertex
+    C_Broker -->|3. AGENT_ENDPOINTS_JSON & Metadata Token| Vertex
+```
+
 ### 1. Option A: Apigee X Enterprise Gateway (`services/apigee/main.tf`)
 *   **Organization & Environment Plane**: Provisions `google_apigee_organization.apigee_org` bound directly to `var.vpc_id`, alongside `google_apigee_environment.apigee_env` (`var.environment`).
 *   **Environment Group**: Creates `google_apigee_envgroup.apigee_envgroup` registering the corporate domain hostname `*.esmeralda.internal`, attached via `google_apigee_envgroup_attachment.env_to_group`.
