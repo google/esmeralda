@@ -11,6 +11,7 @@ locals {
   net_host_id   = var.byo_net_host_project ? var.existing_net_host_project : "${var.project_prefix}-net-host-${local.suffix}"
   gateway_id    = var.byo_gateway_project  ? var.existing_gateway_project  : "${var.project_prefix}-gateway-${local.suffix}"
   governance_id = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
+  cicd_id       = var.byo_cicd_project     ? var.existing_cicd_project     : "${var.project_prefix}-cicd-artifacts-${local.suffix}"
   mcps_id       = "${var.project_prefix}-mcps-${local.suffix}"
   a2a_id        = "${var.project_prefix}-a2a-${local.suffix}"
   root_agent_id = "${var.project_prefix}-root-agent-${local.suffix}"
@@ -24,21 +25,41 @@ locals {
   net_host_apis = [
     "compute.googleapis.com",
     "dns.googleapis.com",
-    "servicenetworking.googleapis.com"
+    "servicenetworking.googleapis.com",
+    "networksecurity.googleapis.com",
+    "networkservices.googleapis.com",
+    "certificatemanager.googleapis.com",
+    "logging.googleapis.com"
   ]
 
   gateway_apis = [
     "compute.googleapis.com",
     "apigee.googleapis.com",
-    "certificatemanager.googleapis.com"
+    "certificatemanager.googleapis.com",
+    "logging.googleapis.com",
+    "secretmanager.googleapis.com",
+    "run.googleapis.com",
+    "iam.googleapis.com"
+  ]
+
+  cicd_apis = [
+    "compute.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "logging.googleapis.com",
+    "storage.googleapis.com",
+    "secretmanager.googleapis.com"
   ]
 
   mcps_apis = [
     "compute.googleapis.com",
     "run.googleapis.com",
     "artifactregistry.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "logging.googleapis.com",
+    "cloudbuild.googleapis.com"
   ]
+
 
   a2a_apis = [
     "compute.googleapis.com",
@@ -47,14 +68,20 @@ locals {
     "storage.googleapis.com",
     "secretmanager.googleapis.com",
     "run.googleapis.com", # Required to trigger the private VPC bootstrapping Cloud Run Job!
-    "artifactregistry.googleapis.com"
+    "artifactregistry.googleapis.com",
+    "logging.googleapis.com",
+    "servicenetworking.googleapis.com"
   ]
 
   root_agent_apis = [
     "compute.googleapis.com",
     "aiplatform.googleapis.com",
-    "storage.googleapis.com"
+    "storage.googleapis.com",
+    "run.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "logging.googleapis.com"
   ]
+
 
   governance_apis = [
     "bigquery.googleapis.com",
@@ -100,6 +127,23 @@ resource "google_project" "gateway" {
   labels = merge(local.common_labels, {
     "cost-center" = "ingress-gateways"
     "team"        = "platformops"
+  })
+}
+
+# Central CI/CD & Artifacts Project: Conditional creation
+resource "google_project" "cicd" {
+  count           = var.byo_cicd_project ? 0 : 1
+  name            = "Esmeralda CI-CD Artifacts"
+  project_id      = local.cicd_id
+
+  folder_id       = var.folder_id != "" ? var.folder_id : null
+  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account = var.billing_account
+  auto_create_network = false
+
+  labels = merge(local.common_labels, {
+    "cost-center" = "shared-cicd-and-artifacts"
+    "team"        = "platform-engineering"
   })
 }
 
@@ -151,7 +195,7 @@ resource "google_project" "root_agent" {
 # Governance and Telemetry Hub Project: Conditional creation
 resource "google_project" "governance" {
   count           = var.byo_governance_project ? 0 : 1
-  name            = "Esmeralda Central Governance & Telemetry Hub"
+  name            = "Esmeralda Governance Hub"
   project_id      = local.governance_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
@@ -190,6 +234,17 @@ resource "google_project_service" "gateway" {
   depends_on = [google_project.gateway]
 }
 
+# Enable CI/CD & Artifacts APIs
+resource "google_project_service" "cicd" {
+  for_each                   = var.byo_cicd_project ? [] : toset(local.cicd_apis)
+  project                    = local.cicd_id
+  service                    = each.key
+  disable_on_destroy         = false
+  disable_dependent_services = false
+
+  depends_on = [google_project.cicd]
+}
+
 # Enable Central Tools APIs
 resource "google_project_service" "mcps" {
   for_each                   = toset(local.mcps_apis)
@@ -200,6 +255,7 @@ resource "google_project_service" "mcps" {
 
   depends_on = [google_project.mcps]
 }
+
 
 # Enable Core AI Platform APIs
 resource "google_project_service" "a2a" {
@@ -245,6 +301,7 @@ resource "time_sleep" "api_propagation" {
   depends_on = [
     google_project_service.net_host,
     google_project_service.gateway,
+    google_project_service.cicd,
     google_project_service.mcps,
     google_project_service.a2a,
     google_project_service.root_agent,
@@ -258,9 +315,29 @@ data "google_project" "governance" {
   project_id = var.existing_governance_project
 }
 
+# Force provision Cloud Build Service Agent in CI/CD project
+resource "google_project_service_identity" "cicd_build" {
+  provider = google-beta
+  project  = local.cicd_id
+  service  = "cloudbuild.googleapis.com"
+
+  depends_on = [time_sleep.api_propagation]
+}
+
 # Force provision Cloud Run Service Agent in MCP central tools project
 resource "google_project_service_identity" "mcps_run" {
+  provider = google-beta
   project  = local.mcps_id
+  service  = "run.googleapis.com"
+
+  depends_on = [time_sleep.api_propagation]
+}
+
+
+# Force provision Cloud Run Service Agent in Gateway project
+resource "google_project_service_identity" "gateway_run" {
+  provider = google-beta
+  project  = local.gateway_id
   service  = "run.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]
@@ -268,6 +345,7 @@ resource "google_project_service_identity" "mcps_run" {
 
 # Force provision Cloud Run Service Agent in Core AI platform project
 resource "google_project_service_identity" "a2a_run" {
+  provider = google-beta
   project  = local.a2a_id
   service  = "run.googleapis.com"
 
@@ -276,6 +354,7 @@ resource "google_project_service_identity" "a2a_run" {
 
 # Force provision Vertex AI Service Agent in Core AI platform project
 resource "google_project_service_identity" "a2a_vertex" {
+  provider = google-beta
   project  = local.a2a_id
   service  = "aiplatform.googleapis.com"
 
@@ -284,14 +363,26 @@ resource "google_project_service_identity" "a2a_vertex" {
 
 # Force provision Vertex AI Service Agent in Root Agent project
 resource "google_project_service_identity" "root_vertex" {
+  provider = google-beta
   project  = local.root_agent_id
   service  = "aiplatform.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]
 }
 
+# Force provision Cloud Run Service Agent in Root Agent project
+resource "google_project_service_identity" "root_run" {
+  provider = google-beta
+  project  = local.root_agent_id
+  service  = "run.googleapis.com"
+
+  depends_on = [time_sleep.api_propagation]
+}
+
+
 # Force provision Cloud SQL Service Agent in Core AI platform project
 resource "google_project_service_identity" "a2a_sql" {
+  provider = google-beta
   project  = local.a2a_id
   service  = "sqladmin.googleapis.com"
 
@@ -300,6 +391,7 @@ resource "google_project_service_identity" "a2a_sql" {
 
 # Force provision Secret Manager Service Agent in Governance project (skipped if BYO to avoid Project IAM Admin requirements)
 resource "google_project_service_identity" "governance_secrets" {
+  provider = google-beta
   count    = var.byo_governance_project ? 0 : 1
   project  = local.governance_id
   service  = "secretmanager.googleapis.com"

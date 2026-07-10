@@ -19,7 +19,7 @@ import uuid
 from dotenv import load_dotenv
 
 # Ensure the current directory is in PYTHONPATH so we can import 'agent_app'
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Load environment variables (from .env or set them manually for testing)
 load_dotenv()

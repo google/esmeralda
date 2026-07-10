@@ -12,6 +12,11 @@ output "gateway_project_id" {
   value       = local.gateway_id
 }
 
+output "cicd_project_id" {
+  description = "The project ID allocated for central CI/CD pipelines and Artifact Registry repository"
+  value       = local.cicd_id
+}
+
 output "mcps_project_id" {
   description = "The project ID allocated for corporate MCP servers"
   value       = local.mcps_id
@@ -37,9 +42,20 @@ output "project_suffix" {
   value       = local.suffix
 }
 
+output "cicd_build_service_agent" {
+  description = "The Cloud Build Service Agent email in CI/CD project"
+  value       = google_project_service_identity.cicd_build.email
+}
+
 output "mcps_run_service_agent" {
   description = "The Cloud Run Service Agent email in MCPS project"
   value       = google_project_service_identity.mcps_run.email
+}
+
+
+output "gateway_run_service_agent" {
+  description = "The Cloud Run Service Agent email in Gateway project"
+  value       = google_project_service_identity.gateway_run.email
 }
 
 output "a2a_run_service_agent" {
@@ -56,6 +72,12 @@ output "root_vertex_service_agent" {
   description = "The Vertex AI Service Agent email in Root Agent project"
   value       = google_project_service_identity.root_vertex.email
 }
+
+output "root_run_service_agent" {
+  description = "The Cloud Run Service Agent email in Root Agent project"
+  value       = google_project_service_identity.root_run.email
+}
+
 
 output "a2a_sql_service_agent" {
   description = "The Cloud SQL Service Agent email in A2A project"

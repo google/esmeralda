@@ -35,6 +35,7 @@ inputs = {
   existing_subnet_id    = local.env_vars.locals.existing_subnet_id
 
   mcps_run_service_agent    = dependency.projects.outputs.mcps_run_service_agent
+  gateway_run_service_agent = dependency.projects.outputs.gateway_run_service_agent
   a2a_run_service_agent     = dependency.projects.outputs.a2a_run_service_agent
   a2a_vertex_service_agent  = dependency.projects.outputs.a2a_vertex_service_agent
   root_vertex_service_agent = dependency.projects.outputs.root_vertex_service_agent

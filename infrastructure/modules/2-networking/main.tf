@@ -13,6 +13,10 @@ data "google_project" "root_agent" {
   project_id = var.root_project_id
 }
 
+data "google_project" "gateway" {
+  project_id = var.gateway_project_id
+}
+
 # ====================================================================
 # 1. SHARED VPC HOST & SERVICE PROJECTS ATTACHMENTS
 # ====================================================================
@@ -189,6 +193,23 @@ resource "google_compute_firewall" "psc_interface_allow" {
   }
 }
 
+# Allow IAP secure tunnel to reach private instances on SSH port 22
+resource "google_compute_firewall" "allow_iap_ssh" {
+  count         = var.byo_networking ? 0 : 1
+  project       = var.net_host_project_id
+  name          = "allow-iap-ssh-${var.environment}"
+  network       = google_compute_network.shared_vpc[0].id
+  direction     = "INGRESS"
+  priority      = 1000
+  source_ranges = ["35.235.240.0/20"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+}
+
+
 # ====================================================================
 # 4. SECURE WEB PROXY (SWP) egres filtering
 # ====================================================================
@@ -233,17 +254,21 @@ locals {
   # Consolidate all Service accounts that need Subnet Network User access
   subnet_network_users = [
     # 1. MCP Central Tools Project Service SAs
-    "serviceAccount:service-${data.google_project.mcps.number}@cloudservices.gserviceaccount.com",
     "serviceAccount:${var.mcps_run_service_agent}",
 
     # 2. Core AI Platform Project Service SAs
-    "serviceAccount:service-${data.google_project.a2a.number}@cloudservices.gserviceaccount.com",
     "serviceAccount:${var.a2a_run_service_agent}",
     "serviceAccount:${var.a2a_vertex_service_agent}",
 
     # 3. LOB Root Agent Project Service SAs
-    "serviceAccount:service-${data.google_project.root_agent.number}@cloudservices.gserviceaccount.com",
-    "serviceAccount:${var.root_vertex_service_agent}"
+    "serviceAccount:${var.root_vertex_service_agent}",
+
+    # 4. Gateway Project Service SAs
+    "serviceAccount:${var.gateway_run_service_agent}",
+
+    # 5. Vertex AI Reasoning Engine Service Agents (-re)
+    "serviceAccount:${replace(var.a2a_vertex_service_agent, "@gcp-sa-aiplatform.iam.gserviceaccount.com", "@gcp-sa-aiplatform-re.iam.gserviceaccount.com")}",
+    "serviceAccount:${replace(var.root_vertex_service_agent, "@gcp-sa-aiplatform.iam.gserviceaccount.com", "@gcp-sa-aiplatform-re.iam.gserviceaccount.com")}"
   ]
 }
 
@@ -254,7 +279,8 @@ resource "time_sleep" "iam_propagation" {
   depends_on = [
     data.google_project.mcps,
     data.google_project.a2a,
-    data.google_project.root_agent
+    data.google_project.root_agent,
+    data.google_project.gateway
   ]
 }
 
@@ -265,6 +291,19 @@ resource "google_compute_subnetwork_iam_member" "network_users" {
   region     = local.subnet_parsed_region
   subnetwork = local.subnet_parsed_name
   role       = "roles/compute.networkUser"
+  member     = each.value
+
+  depends_on = [time_sleep.iam_propagation]
+}
+
+# Grant compute.networkUser on the PSC Interface subnet to all service project robots
+resource "google_compute_subnetwork_iam_member" "psc_interface_users" {
+  for_each   = !var.byo_networking && var.enable_psc_interface ? toset(local.subnet_network_users) : toset([])
+  project    = var.net_host_project_id
+  region     = var.region
+  subnetwork = google_compute_subnetwork.psc_interface[0].name
+  role       = "roles/compute.networkUser"
+  member     = each.value
 
   depends_on = [time_sleep.iam_propagation]
 }
@@ -280,7 +319,7 @@ resource "google_dns_managed_zone" "private_dns" {
   dns_name    = "esmeralda.internal."
   description = "Central Private DNS Zone for Esmeralda micro-agent communications"
 
-  visibility = "PRIVATE"
+  visibility = "private"
 
   private_visibility_config {
     networks {
