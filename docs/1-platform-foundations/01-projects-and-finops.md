@@ -65,25 +65,49 @@ graph TD
         Export["Cloud Billing BigQuery Export"]
     end
 
-    subgraph "prj-esmeralda-mcps (AppDev Budget)"
+    subgraph "prj-net-host (NetOps Budget)"
+        C0["Shared VPC & Network Egress Costs"]
+        L0["Label: cost-center=netops-core"]
+    end
+
+    subgraph "prj-gateway (PlatformOps Budget)"
+        C_GW["API Gateway Appliance / ILB Costs"]
+        L_GW["Label: cost-center=platformops-ingress"]
+    end
+
+    subgraph "prj-esmeralda-cicd-artifacts (Platform Eng Budget)"
+        C_CI["Cloud Build & Artifact Registry Storage"]
+        L_CI["Label: cost-center=platform-engineering"]
+    end
+
+    subgraph "prj-esmeralda-mcps (AppDev Tools Budget)"
         C1["Cloud Run Compute Costs"]
         L1["Label: cost-center=appdev-tools"]
     end
 
-    subgraph "prj-esmeralda-a2a-agents (AI Platform Budget)"
+    subgraph "prj-esmeralda-a2a (Core AI Platform Budget)"
         C2["Vertex AI Model API Calls"]
         C3["Cloud SQL DB (Continuous Run)"]
         L2["Label: cost-center=core-ai-platform"]
     end
 
-    subgraph "prj-esmeralda-root-agent (Business Unit Revenue Center)"
+    subgraph "prj-esmeralda-root-agent (Business Unit Budget)"
         C4["Vertex AI Orchestrator API Calls"]
         L3["Label: cost-center=bu-mortgage"]
     end
 
+    subgraph "prj-esmeralda-governance (SecOps Budget)"
+        C_GOV["KMS Key Rings & BigQuery Telemetry Storage"]
+        L_GOV["Label: cost-center=secops-governance"]
+    end
+
+    C0 & L0 -. Billing Record .-> Export
+    C_GW & L_GW -. Billing Record .-> Export
+    C_CI & L_CI -. Billing Record .-> Export
     C1 & L1 -. Billing Record .-> Export
     C2 & C3 & L2 -. Billing Record .-> Export
     C4 & L3 -. Billing Record .-> Export
+    C_GOV & L_GOV -. Billing Record .-> Export
 ```
 
 ##### 1. Vertex AI Model API Billing Attribution
