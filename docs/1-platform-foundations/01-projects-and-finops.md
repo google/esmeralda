@@ -141,13 +141,68 @@ flowchart TD
 
 ---
 
-#### D. File Inventory & Blueprints
+### D. Exhaustive Resource & Identity Provisioning Breakdown
+
+A granular inspection of `infrastructure/modules/1-projects/` reveals exactly how Esmeralda orchestrates project creation, API enablements, and service identities:
+
+#### 1. Dynamic Project ID & Label Resolution
+*   **Hex Suffix**: A 2-byte random hex string (`random_id.project_suffix`) ensures global project ID uniqueness across Google Cloud.
+*   **ID Resolution**: For conditional projects (`net_host`, `gateway`, `governance`, `cicd`), ternary lookups (`var.byo_* ? var.existing_* : "..."`) dynamically select either the existing customer ID or generate a new one using `var.project_prefix`.
+*   **Cost & FinOps Labels**: Every project receives systematic attribution metadata: `"env" = var.environment` and `"managed-by" = "terragrunt-esmeralda"`, merged with project-specific `cost-center` and `team` tags.
+
+#### 2. Four Conditional Infrastructure & Governance Projects
+Created with `count = var.byo_* ? 0 : 1` to respect enterprise brownfield environments:
+1.  **`google_project.net_host`**: Tagged with `cost-center = networking-infrastructure`, `team = netops`.
+2.  **`google_project.gateway`**: Tagged with `cost-center = ingress-gateways`, `team = platformops`.
+3.  **`google_project.cicd`**: Tagged with `cost-center = shared-cicd-and-artifacts`, `team = platform-engineering`.
+4.  **`google_project.governance`**: Tagged with `cost-center = central-governance-and-telemetry`, `team = security-and-platformops`.
+
+#### 3. Three Unconditional Workload Projects
+Always created from scratch by Esmeralda for runtime isolation:
+1.  **`google_project.mcps`**: Tagged with `cost-center = central-developer-tools`, `team = appdev-tools`.
+2.  **`google_project.a2a`**: Tagged with `cost-center = enterprise-ai-platform`, `team = core-ai-agents`.
+3.  **`google_project.root_agent`**: Tagged with `cost-center = lob-business-solutions`, `team = lob-root-agent`.
+
+#### 4. Service API Activation Matrix (`google_project_service`)
+Each project receives a precise, least-privilege list of Google Cloud service APIs. Conditional projects only enable APIs if created by Esmeralda (`for_each = var.byo_* ? [] : toset(...)`):
+
+| Project | Enabled Service APIs |
+| :--- | :--- |
+| **`net_host`** | `compute`, `dns`, `servicenetworking`, `networksecurity`, `networkservices`, `certificatemanager`, `logging` |
+| **`gateway`** | `compute`, `apigee`, `certificatemanager`, `logging`, `secretmanager`, `run`, `iam` |
+| **`cicd`** | `compute`, `artifactregistry`, `cloudbuild`, `logging`, `storage`, `secretmanager` |
+| **`mcps`** | `compute`, `run`, `artifactregistry`, `secretmanager`, `logging`, `cloudbuild` |
+| **`a2a`** | `compute`, `aiplatform`, `sqladmin`, `storage`, `secretmanager`, `run` *(for DB bootstrap job)*, `artifactregistry`, `logging`, `servicenetworking` |
+| **`root_agent`** | `compute`, `aiplatform`, `storage`, `run`, `artifactregistry`, `logging` |
+| **`governance`** | `bigquery`, `logging`, `clouderrorreporting`, `cloudtrace`, `monitoring`, `cloudkms`, `secretmanager` |
+
+#### 5. Propagation Buffer & Service Identity Bootstrapping
+To avoid race conditions where IAM role bindings fail because Google-managed service identities do not yet exist in newly enabled APIs, Esmeralda implements a sequential bootstrap:
+*   **`time_sleep.api_propagation`**: Enforces a 30-second delay after all `google_project_service` resources complete, allowing GCP metadata servers to converge.
+*   **Nine Google-Managed Service Identities (`google_project_service_identity`)**: Explicitly requested and created across target projects:
+    1.  **`cicd_build`**: `cloudbuild.googleapis.com` in `cicd`.
+    2.  **`mcps_run`**: `run.googleapis.com` in `mcps`.
+    3.  **`gateway_run`**: `run.googleapis.com` in `gateway`.
+    4.  **`a2a_run`**: `run.googleapis.com` in `a2a`.
+    5.  **`a2a_vertex`**: `aiplatform.googleapis.com` in `a2a`.
+    6.  **`a2a_sql`**: `sqladmin.googleapis.com` in `a2a`.
+    7.  **`root_vertex`**: `aiplatform.googleapis.com` in `root_agent`.
+    8.  **`root_run`**: `run.googleapis.com` in `root_agent`.
+    9.  **`governance_secrets`**: `secretmanager.googleapis.com` in `governance` *(conditional on BYO, fallback via data source)*.
+
+#### 6. Module Outputs (`outputs.tf`)
+The module exports precisely 17 values: the 7 active project IDs (`net_host_project_id`, `gateway_project_id`, `cicd_project_id`, `mcps_project_id`, `a2a_project_id`, `root_project_id`, `governance_project_id`), the random suffix (`project_suffix`), and the exact email addresses for all 9 bootstrapped service identities (`cicd_build_service_agent`, `mcps_run_service_agent`, `gateway_run_service_agent`, `a2a_run_service_agent`, `a2a_vertex_service_agent`, `root_vertex_service_agent`, `root_run_service_agent`, `a2a_sql_service_agent`, `governance_secrets_service_agent`).
+
+---
+
+### E. File Inventory & Blueprints
 
 ```text
 infrastructure/modules/1-projects/
 ├── versions.tf          # Mandates HashiCorp Google provider bounds (>= 5.0)
 ├── variables.tf         # Inputs for billing, organization folders, prefix, and BYO parameters
-└── outputs.tf           # Exposes project IDs & numbers to downstream stages
+├── main.tf              # Implements projects, API enablement, billing bindings, and labels
+└── outputs.tf           # Exposes project IDs, numbers, and service identities
 ```
 
 *(With this, any client's NetOps/PlatformOps teams can hand over pre-configured net_host and gateway projects, and Esmeralda will automatically provision and deploy the isolated workload projects and attach them securely to their Shared VPC.)*
