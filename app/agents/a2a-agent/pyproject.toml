@@ -28,12 +28,6 @@ dependencies = [
     "httpx",
     "cloud-sql-python-connector[asyncpg]",
     "asyncpg",
-    "google-cloud-bigquery-storage",
-    "pyarrow",
-    "opentelemetry-instrumentation-google-genai",
-    "opentelemetry-instrumentation-httpx",
-    "opentelemetry-instrumentation-grpc",
-    "opentelemetry-instrumentation-fastapi",
     "a2a-sdk",
 ]
 

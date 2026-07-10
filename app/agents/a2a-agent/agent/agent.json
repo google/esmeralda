@@ -1,0 +1,52 @@
+{
+  "additionalInterfaces": [
+    {
+      "transport": "jsonrpc",
+      "url": "/a2a/agent"
+    }
+  ],
+  "capabilities": {
+    "streaming": false
+  },
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "application/json"
+  ],
+  "description": "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities.",
+  "name": "a2a-mortgage-agent",
+  "preferredTransport": "jsonrpc",
+  "protocolVersion": "0.3.0",
+  "skills": [
+    {
+      "description": "Search and retrieve mortgage application documents from the legacy document management system.",
+      "id": "document-search",
+      "name": "Document Search",
+      "tags": [
+        "dms",
+        "documents"
+      ]
+    },
+    {
+      "description": "Verify applicant income against employer records and tax filings.",
+      "id": "income-verification",
+      "name": "Income Verification",
+      "tags": [
+        "income",
+        "verification"
+      ]
+    },
+    {
+      "description": "Read corporate email inbox for mortgage-related communications.",
+      "id": "corporate-email",
+      "name": "Corporate Email",
+      "tags": [
+        "email"
+      ]
+    }
+  ],
+  "supportsAuthenticatedExtendedCard": true,
+  "url": "/a2a/agent",
+  "version": "1.0.0"
+}

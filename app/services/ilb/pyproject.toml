@@ -1,0 +1,13 @@
+[project]
+name = "esmeralda-ilb-proxy"
+version = "0.1.0"
+description = "Internal Routing Broker and ILB Proxy for Esmeralda Reasoning Engines & MCP tools"
+authors = [{ name = "Afonso Menegola", email = "test-user@example.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+    "httpx>=0.27.0",
+    "google-auth>=2.30.0",
+    "pydantic>=2.7.0",
+]

@@ -207,54 +207,104 @@ resource "google_storage_bucket" "logs" {
   uniform_bucket_level_access = true
 }
 
-# Upload serialized agent.pkl to GCS Staging Bucket
-resource "google_storage_bucket_object" "agent_pickle" {
-  name   = "agents/${var.agent_name}-${var.environment}/agent.pkl"
-  bucket = google_storage_bucket.staging.name
-  source = var.pickle_object_path
-}
-
-# Upload requirements.txt dependencies mapping
-resource "google_storage_bucket_object" "requirements" {
-  name   = "agents/${var.agent_name}-${var.environment}/requirements.txt"
-  bucket = google_storage_bucket.staging.name
-  source = var.requirements_path
-}
-
-# Upload compiled dependencies tarball
-resource "google_storage_bucket_object" "dependencies" {
-  name   = "agents/${var.agent_name}-${var.environment}/dependencies.tar.gz"
-  bucket = google_storage_bucket.staging.name
-  source = var.dependencies_path
-}
-
 # Declaratively define the Vertex AI Reasoning Engine agent
+locals {
+  # Read and decode agent.yaml if path is provided
+  agent_config = try(yamldecode(file(var.agent_config_path)), {})
+
+
+  # 1. Metadata
+  yaml_name = try(local.agent_config.name, var.agent_name)
+  yaml_desc = try(local.agent_config.description, "A2A Mortgage Assistant downstream reasoning engine deployed modularly")
+
+  # 2. Compute Resources & Scaling
+  yaml_min_inst    = try(local.agent_config.resources.min_instances, null)
+  yaml_max_inst    = try(local.agent_config.resources.max_instances, null)
+  yaml_concurrency = try(local.agent_config.resources.concurrency, null)
+  yaml_cpu         = try(tostring(local.agent_config.resources.cpu), null)
+  yaml_memory      = try(local.agent_config.resources.memory, null)
+
+  # 3. Framework (Mapping custom aliases like "a2a" to Vertex AI's "google-adk")
+  yaml_framework   = try(local.agent_config.framework == "a2a" ? "google-adk" : local.agent_config.framework, "google-adk")
+
+  # 4. Environment Variables & Runtime Infrastructure Overrides
+  yaml_env_vars = try(local.agent_config.env, {})
+
+  runtime_overrides = {
+    GCS_BUCKET         = try(google_storage_bucket.logs.name, null)
+    CLOUD_SQL_INSTANCE = try("${var.project_id}:${var.region}:${google_sql_database_instance.task_store.name}", null)
+    DB_IAM_USER        = try(google_sql_user.agent_iam_user.name, null)
+    DB_NAME            = try(var.database_name, null)
+  }
+
+  final_env_vars = merge(
+    local.yaml_env_vars,
+    { for k, v in local.runtime_overrides : k => v if v != "" && v != null }
+  )
+
+  # Split the URI to get registry, repository, and image details dynamically
+  image_uri_parts = split("/", var.agent_image_uri)
+  registry_host   = local.image_uri_parts[0]
+  registry_project= local.image_uri_parts[1]
+  registry_repo   = local.image_uri_parts[2]
+  
+  image_name_and_tag = split(":", local.image_uri_parts[3])
+  image_name         = local.image_name_and_tag[0]
+  image_tag          = length(local.image_name_and_tag) > 1 ? local.image_name_and_tag[1] : "latest"
+  
+  registry_region = replace(split(".", local.registry_host)[0], "-docker", "")
+}
+
+data "google_artifact_registry_docker_image" "agent_image" {
+
+  project       = local.registry_project
+  location      = local.registry_region
+  repository_id = local.registry_repo
+  image_name    = "${local.image_name}:${local.image_tag}"
+}
+
 resource "google_vertex_ai_reasoning_engine" "agent" {
-  display_name = "${var.agent_name}-${var.environment}"
-  description  = "A2A Mortgage Assistant downstream reasoning engine deployed modularly"
+  display_name = "${local.yaml_name}-${var.environment}"
+  description  = local.yaml_desc
   region       = var.region
   project      = var.project_id
   depends_on   = [null_resource.trigger_bootstrap, google_storage_bucket.staging]
 
   spec {
-    agent_framework = "google-adk"
-    service_account = var.agent_service_account
+    agent_framework = local.yaml_framework
 
-    package_spec {
-      python_version           = "3.12"
-      pickle_object_gcs_uri    = "gs://${google_storage_bucket.staging.name}/${google_storage_bucket_object.agent_pickle.name}"
-      requirements_gcs_uri     = "gs://${google_storage_bucket.staging.name}/${google_storage_bucket_object.requirements.name}"
-      dependency_files_gcs_uri = "gs://${google_storage_bucket.staging.name}/${google_storage_bucket_object.dependencies.name}"
+    container_spec {
+      image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"
     }
 
-    # Binds reasoning engine container inside private VPC via PSC Network Attachment if specified
-    dynamic "deployment_spec" {
-      for_each = var.network_attachment != "" ? [1] : []
-      content {
-        psc_interface_config {
+
+
+    deployment_spec {
+      min_instances         = local.yaml_min_inst
+      max_instances         = local.yaml_max_inst
+      container_concurrency = local.yaml_concurrency
+
+      resource_limits = (local.yaml_cpu != null || local.yaml_memory != null) ? {
+        cpu    = local.yaml_cpu
+        memory = local.yaml_memory
+      } : null
+
+
+      dynamic "env" {
+        for_each = local.final_env_vars
+        content {
+          name  = env.key
+          value = tostring(env.value)
+        }
+      }
+
+      dynamic "psc_interface_config" {
+        for_each = var.network_attachment != "" ? [1] : []
+        content {
           network_attachment = var.network_attachment
         }
       }
     }
   }
 }
+

@@ -24,7 +24,7 @@ resource "random_id" "bucket_suffix" {
 # 1. Atomic Deployment Dependencies Staging Bucket (Code/Pickle/Deps)
 resource "google_storage_bucket" "staging" {
   project                     = var.project_id
-  name                        = "${var.project_id}-${var.agent_name}-staging-${var.environment}-${random_id.bucket_suffix.hex}"
+  name                        = "${var.project_id}-staging-${var.environment}-${random_id.bucket_suffix.hex}"
   location                    = var.region
   force_destroy               = true # Set to false in sandbox/dev environments
   uniform_bucket_level_access = true
@@ -33,7 +33,7 @@ resource "google_storage_bucket" "staging" {
 # 2. Atomic Runtime Task Artifacts Bucket (Agent operational assets)
 resource "google_storage_bucket" "artifacts" {
   project                     = var.project_id
-  name                        = "${var.project_id}-${var.agent_name}-artifacts-${var.environment}-${random_id.bucket_suffix.hex}"
+  name                        = "${var.project_id}-artifacts-${var.environment}-${random_id.bucket_suffix.hex}"
   location                    = var.region
   force_destroy               = true
   uniform_bucket_level_access = true
@@ -42,60 +42,115 @@ resource "google_storage_bucket" "artifacts" {
 # 3. Atomic Logs Offload Bucket (Long-term tracing and logging)
 resource "google_storage_bucket" "logs" {
   project                     = var.project_id
-  name                        = "${var.project_id}-${var.agent_name}-logs-${var.environment}-${random_id.bucket_suffix.hex}"
+  name                        = "${var.project_id}-logs-${var.environment}-${random_id.bucket_suffix.hex}"
+
   location                    = var.region
   force_destroy               = true
   uniform_bucket_level_access = true
 }
 
-# Upload serialized agent.pkl to GCS Staging Bucket
-resource "google_storage_bucket_object" "agent_pickle" {
-  name   = "agents/${var.agent_name}-${var.environment}/agent.pkl"
-  bucket = google_storage_bucket.staging.name
-  source = var.pickle_object_path
-}
-
-# Upload requirements.txt dependencies mapping
-resource "google_storage_bucket_object" "requirements" {
-  name   = "agents/${var.agent_name}-${var.environment}/requirements.txt"
-  bucket = google_storage_bucket.staging.name
-  source = var.requirements_path
-}
-
-# Upload compiled dependencies tarball
-resource "google_storage_bucket_object" "dependencies" {
-  name   = "agents/${var.agent_name}-${var.environment}/dependencies.tar.gz"
-  bucket = google_storage_bucket.staging.name
-  source = var.dependencies_path
-}
-
 # Declaratively define the Vertex AI Reasoning Engine master orchestrator
+locals {
+  # Read and decode agent.yaml if path is provided
+  agent_config = try(yamldecode(file(var.agent_config_path)), {})
+
+
+  # 1. Metadata
+  yaml_name = try(local.agent_config.name, var.agent_name)
+  yaml_desc = try(local.agent_config.description, "Root Orchestrator reasoning engine coordinating comopsable multi-agent graph flows")
+
+  # 2. Compute Resources & Scaling
+  yaml_min_inst    = try(local.agent_config.resources.min_instances, null)
+  yaml_max_inst    = try(local.agent_config.resources.max_instances, null)
+  yaml_concurrency = try(local.agent_config.resources.concurrency, null)
+  yaml_cpu         = try(tostring(local.agent_config.resources.cpu), null)
+  yaml_memory      = try(local.agent_config.resources.memory, null)
+
+  # 3. Framework (Mapping custom aliases like "a2a" to Vertex AI's "google-adk")
+  yaml_framework   = try(local.agent_config.framework == "a2a" ? "google-adk" : local.agent_config.framework, "google-adk")
+
+  # 4. Environment Variables & Runtime Infrastructure Overrides
+  yaml_env_vars = try(local.agent_config.env, {})
+
+  runtime_overrides = {
+    GCS_BUCKET      = try(google_storage_bucket.logs.name, null)
+    GATEWAY_MCP_URL = try(var.gateway_mcp_url, null)
+    A2A_AGENT_URL   = try(var.a2a_agent_url, null)
+  }
+
+  final_env_vars = merge(
+    local.yaml_env_vars,
+    { for k, v in local.runtime_overrides : k => v if v != "" && v != null }
+  )
+
+  # Split the URI to get registry, repository, and image details dynamically
+  image_uri_parts = split("/", var.agent_image_uri)
+  registry_host   = local.image_uri_parts[0]
+  registry_project= local.image_uri_parts[1]
+  registry_repo   = local.image_uri_parts[2]
+  
+  image_name_and_tag = split(":", local.image_uri_parts[3])
+  image_name         = local.image_name_and_tag[0]
+  image_tag          = length(local.image_name_and_tag) > 1 ? local.image_name_and_tag[1] : "latest"
+  
+  registry_region = replace(split(".", local.registry_host)[0], "-docker", "")
+}
+
+
+data "google_artifact_registry_docker_image" "agent_image" {
+  project       = local.registry_project
+  location      = local.registry_region
+  repository_id = local.registry_repo
+  image_name    = "${local.image_name}:${local.image_tag}"
+}
+
 resource "google_vertex_ai_reasoning_engine" "agent" {
-  display_name = "${var.agent_name}-${var.environment}"
-  description  = "Root Orchestrator reasoning engine coordinating comopsable multi-agent graph flows"
+  display_name = "${local.yaml_name}-${var.environment}"
+  description  = local.yaml_desc
   region       = var.region
   project      = var.project_id
   depends_on   = [google_storage_bucket.staging]
 
   spec {
-    agent_framework = "google-adk"
-    service_account = var.agent_service_account
+    agent_framework = local.yaml_framework
 
-    package_spec {
-      python_version           = "3.12"
-      pickle_object_gcs_uri    = "gs://${google_storage_bucket.staging.name}/${google_storage_bucket_object.agent_pickle.name}"
-      requirements_gcs_uri     = "gs://${google_storage_bucket.staging.name}/${google_storage_bucket_object.requirements.name}"
-      dependency_files_gcs_uri = "gs://${google_storage_bucket.staging.name}/${google_storage_bucket_object.dependencies.name}"
+    container_spec {
+      image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"
     }
 
-    # Connect reasoning engine container inside private VPC via PSC Network Attachment
+
+
     deployment_spec {
-      psc_interface_config {
-        network_attachment = var.network_attachment
+      min_instances         = local.yaml_min_inst
+      max_instances         = local.yaml_max_inst
+      container_concurrency = local.yaml_concurrency
+
+      resource_limits = (local.yaml_cpu != null || local.yaml_memory != null) ? {
+        cpu    = local.yaml_cpu
+        memory = local.yaml_memory
+      } : null
+
+
+      dynamic "env" {
+        for_each = local.final_env_vars
+        content {
+          name  = env.key
+          value = tostring(env.value)
+        }
+      }
+
+      dynamic "psc_interface_config" {
+        for_each = var.network_attachment != "" ? [1] : []
+        content {
+          network_attachment = var.network_attachment
+        }
       }
     }
   }
 }
+
+
+
 
 # Update agent.yaml runtime values on local filesystem or environment parameters 
 # after deployment to link runtime endpoints securely

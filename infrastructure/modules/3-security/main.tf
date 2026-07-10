@@ -9,6 +9,14 @@ data "google_project" "a2a" {
   project_id = var.a2a_project_id
 }
 
+data "google_project" "mcps" {
+  project_id = var.mcps_project_id
+}
+
+data "google_project" "root_agent" {
+  project_id = var.root_project_id
+}
+
 # ====================================================================
 # 1. CUSTOMER-MANAGED ENCRYPTION KEYS (CMEK) via CLOUD KMS
 # ====================================================================
@@ -99,6 +107,8 @@ resource "google_secret_manager_secret" "db_password" {
       }
     }
   }
+
+  depends_on = [google_kms_crypto_key_iam_member.secrets_kms]
 }
 
 # Put the generated password into the secret container
@@ -138,6 +148,27 @@ resource "google_project_iam_member" "mcps_roles" {
   member   = "serviceAccount:${google_service_account.mcps_sa.email}"
 }
 
+# Dedicated Cloud Build & Container Delivery Identity for CI/CD Hub
+resource "google_service_account" "cicd_builder_sa" {
+  account_id   = "sa-esmeralda-builder-${var.environment}"
+  display_name = "Esmeralda CI/CD Container Builder Workload Service Account"
+  project      = var.cicd_project_id
+}
+
+# Grant dedicated builder SA least-privilege rights to build and push containers in CI/CD project
+resource "google_project_iam_member" "cicd_builder_roles" {
+  for_each = toset([
+    "roles/cloudbuild.builds.editor",
+    "roles/storage.admin",
+    "roles/artifactregistry.admin",
+    "roles/logging.logWriter"
+  ])
+  project  = var.cicd_project_id
+  role     = each.key
+  member   = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
+}
+
+
 # --------------------------------------------------------------------
 # B. Core AI Platform Agent Identity (A2A Agent & Bootstrapping Job)
 # --------------------------------------------------------------------
@@ -174,6 +205,18 @@ resource "google_secret_manager_secret_iam_member" "a2a_secret_accessor" {
   member    = "serviceAccount:${google_service_account.a2a_sa.email}"
 }
 
+# Allow Vertex AI Reasoning Engine robots to act as A2A Service Account
+resource "google_project_iam_member" "a2a_vertex_sa_user" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@serverless-robot-prod.iam.gserviceaccount.com"
+  ])
+  project = var.a2a_project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = each.value
+}
+
 # --------------------------------------------------------------------
 # C. Line-of-Business Root Orchestrator Identity (Root Agent)
 # --------------------------------------------------------------------
@@ -200,6 +243,86 @@ resource "google_project_iam_member" "root_roles" {
   role     = each.key
   member   = "serviceAccount:${google_service_account.root_sa.email}"
 }
+
+# Allow Vertex AI Reasoning Engine robots to act as Root Service Account
+resource "google_project_iam_member" "root_vertex_sa_user" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  ])
+  project = var.root_project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = each.value
+}
+
+# Grant required runtime roles to A2A Reasoning Engine P6SA (-re) robot
+resource "google_project_iam_member" "a2a_vertex_re_roles" {
+  for_each = toset([
+    "roles/storage.objectViewer",
+    "roles/aiplatform.user",
+    "roles/cloudsql.client",
+    "roles/cloudsql.instanceUser"
+  ])
+  project = var.a2a_project_id
+  role    = each.key
+  member  = "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+# Grant required runtime roles to Root Reasoning Engine P6SA (-re) robot
+resource "google_project_iam_member" "root_vertex_re_roles" {
+  for_each = toset([
+    "roles/storage.objectViewer",
+    "roles/aiplatform.user"
+  ])
+  project = var.root_project_id
+  role    = each.key
+  member  = "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+# Grant Root Reasoning Engine service agent access to A2A Reasoning Engine in A2A project
+resource "google_project_iam_member" "root_re_to_a2a_project_access" {
+  for_each = toset([
+    "roles/aiplatform.user",
+    "roles/serviceusage.serviceUsageConsumer"
+  ])
+  project = var.a2a_project_id
+  role    = each.key
+  member  = "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+
+
+# Grant Artifact Registry Reader on CI/CD project to Reasoning Engine & Cloud Run tenant service agents for BYOC image pulling
+resource "google_project_iam_member" "re_cicd_ar_reader" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@serverless-robot-prod.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@serverless-robot-prod.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.mcps.number}@serverless-robot-prod.iam.gserviceaccount.com"
+  ])
+  project = var.cicd_project_id
+  role    = "roles/artifactregistry.reader"
+  member  = each.value
+}
+
+
+# Grant Network User role on Host project to Reasoning Engine robots for PSC network attachments
+resource "google_project_iam_member" "re_net_host_user" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  ])
+  project = var.net_host_project_id
+  role    = "roles/compute.networkUser"
+  member  = each.value
+}
+
+
 
 # STRICT SERVICE-TO-SERVICE IMPERSONATION BINDING:
 # Root Agent is authorized to generate identity/ID tokens under A2A Agent's identity
@@ -270,12 +393,14 @@ locals {
   monitored_projects = {
     net_host   = var.net_host_project_id
     gateway    = var.gateway_project_id
+    cicd       = var.cicd_project_id
     mcps       = var.mcps_project_id
     a2a        = var.a2a_project_id
     root       = var.root_project_id
     governance = var.governance_project_id
   }
 }
+
 
 # Deploy Log Sinks across all six isolated project boundaries
 resource "google_logging_project_sink" "central_sinks" {

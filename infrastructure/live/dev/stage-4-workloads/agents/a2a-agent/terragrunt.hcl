@@ -30,13 +30,19 @@ inputs = {
   subnet_id             = dependency.networking.outputs.subnet_id
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
 
-  # Packaging paths for the ADK bundle (dynamically evaluated relative to root)
-  pickle_object_path    = "${get_parent_terragrunt_dir()}/../app/agents/a2a-agent/dist/agent.pkl"
-  requirements_path     = "${get_parent_terragrunt_dir()}/../app/agents/a2a-agent/dist/requirements.txt"
-  dependencies_path     = "${get_parent_terragrunt_dir()}/../app/agents/a2a-agent/dist/dependencies.tar.gz"
+  # BYOC Container Image URI
+  agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/a2a-agent:latest"
 
-  # Optional PSC attachment
-  network_attachment    = dependency.networking.outputs.psc_network_attachment_id
+
+
+
+  # Optional PSC attachment (omitted for standard managed BYOC network routing)
+  # network_attachment    = dependency.networking.outputs.psc_network_attachment_id
 
   database_name         = "a2a_tasks"
+
+  # Path to application YAML configuration
+  agent_config_path     = "${get_repo_root()}/app/agents/a2a-agent/agent.yaml"
 }
+
+

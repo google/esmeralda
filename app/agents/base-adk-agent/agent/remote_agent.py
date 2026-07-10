@@ -110,6 +110,21 @@ class CustomRemoteA2aAgent(RemoteA2aAgent):
                 timeout=httpx.Timeout(60.0),
             )
 
+    async def _ensure_resolved(self) -> None:
+        await super()._ensure_resolved()
+        if self._agent_card and A2A_AGENT_URL:
+            # Rewrite URL to JSON-RPC endpoint on Vertex AI Reasoning Engine gateway
+            logger.info("Rewriting remote A2A agent card URL to use Vertex AI gateway: %s/a2a/agent", A2A_AGENT_URL)
+            self._agent_card.url = f"{A2A_AGENT_URL}/a2a/agent"
+            if self._agent_card.additional_interfaces:
+                for interface in self._agent_card.additional_interfaces:
+                    if interface.transport == "jsonrpc":
+                        interface.url = f"{A2A_AGENT_URL}/a2a/agent"
+            # Re-create the client with the updated agent card URL
+            if self._a2a_client_factory:
+                self._a2a_client = self._a2a_client_factory.create(self._agent_card)
+
+
 
 if not LOCAL_MODE:
     _httpx_client = httpx.AsyncClient(

@@ -1,0 +1,5 @@
+# Kong Gateway declarative serverless configuration for Google Cloud Run v2
+database = off
+declarative_config = /etc/kong/kong.yml
+proxy_listen = 0.0.0.0:8000
+admin_listen = off

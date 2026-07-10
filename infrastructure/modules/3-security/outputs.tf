@@ -22,6 +22,17 @@ output "mcps_sa_email" {
   value       = google_service_account.mcps_sa.email
 }
 
+output "cicd_builder_sa_email" {
+  description = "The email address of the dedicated Cloud Build container delivery service account in CI/CD project"
+  value       = google_service_account.cicd_builder_sa.email
+}
+
+output "mcps_builder_sa_email" {
+  description = "Alias for backwards compatibility"
+  value       = google_service_account.cicd_builder_sa.email
+}
+
+
 output "a2a_agent_sa_email" {
   description = "The email address of the A2A agent service account"
   value       = google_service_account.a2a_sa.email
