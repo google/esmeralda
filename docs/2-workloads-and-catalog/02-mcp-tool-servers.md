@@ -118,7 +118,7 @@ flowchart TD
     end
 
     AR -->|Pulls Docker Images| Email & Income & DMS
-    Email & Income & DMS -->|1. Direct VPC Egress (ALL_TRAFFIC)| Root & Gov
+    Email & Income & DMS -->|1. Direct VPC Egress ALL_TRAFFIC| Root & Gov
     Email & Income & DMS -->|2. OTLP Exporter| Telemetry["http://collector.telemetry.internal:4317"]
     Email & Income & DMS -.->|3. register_mcp.py| Reg
     VM -.->|IAP SSH & curl test| Email & Income & DMS
