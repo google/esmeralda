@@ -1,42 +1,40 @@
-# Guia Mestre: Cargas de Trabalho, Integração & Delivery (Estágio 4 e Estratégia)
+# Master Guide: Workloads, Integration & Delivery (Stage 4 and Strategy)
 
-Este documento unifica todas as especificações das cargas de trabalho do Esmeralda (Gateways, Servidores MCP e Agentes de IA), a arquitetura de alternância Greenfield vs. Brownfield (BYOInfra), o fluxo integrado de Bootstrap do Banco de Dados Cloud SQL e o ecossistema de testes simétricos. Ele consolida os conceitos em português com os códigos HCL e scripts em inglês prontos para Ctrl+C / Ctrl+V.
+This document unifies all specifications for Esmeralda's workloads (Gateways, MCP Servers, and AI Agents), the Greenfield vs. Brownfield (BYOInfra) toggle architecture, the Cloud SQL Database Bootstrap flow, and the symmetric testing ecosystem. It consolidates conceptual explanations and complete HCL and Python blueprints ready for seamless production deployment.
 
 ---
 
-## 🗺️ Índice de Cargas de Trabalho e Delivery
-1. [Estágio 4: Catálogo de Cargas de Trabalho](#stage-4)
-   - [A. Gateways de Ingress Intercambiáveis (Português e Códigos Completos)](#s4-gateways)
-   - [B. Standalone API Hub (Português e Códigos Completos)](#s4-apihub)
-   - [C. Servidores MCP Composíveis (Português e Códigos Completos)](#s4-mcp)
-   - [D. Motores de Raciocínio de Agentes Atômicos (Português e Códigos Completos)](#s4-agents)
-   - [E. Configurações de Orquestração Live (Terragrunt Live HCL)](#s4-live-hcl)
-2. [Estratégia de Deploy: Greenfield vs. Brownfield (BYOInfra)](#byoinfra)
-3. [Ciclo de Vida do Database Bootstrap (PostgreSQL & Cloud SQL)](#db-bootstrap)
-4. [Ecossistema Onboarding DX: Testes Simétricos (Local vs. Remoto)](#symmetric-tests)
-5. [Revolução na DX: Eliminação de deploy.sh e Arquivos .env](#dx-revolution)
+## 🗺️ Workloads & Delivery Index
+1. [Stage 4: Workloads Catalog](#stage-4)
+   - [A. Swappable Ingress Gateways](#s4-gateways)
+   - [B. Standalone API Hub](#s4-apihub)
+   - [C. Composable MCP Server Tools](#s4-mcp)
+   - [D. Atomic Agent Reasoning Engines](#s4-agents)
+   - [E. Live Orchestrator Configurations (Terragrunt Live HCL)](#s4-live-hcl)
+2. [Deployment Strategy: Greenfield vs. Brownfield (BYOInfra)](#byoinfra)
+3. [Database Bootstrap Lifecycle (PostgreSQL & Cloud SQL)](#db-bootstrap)
+4. [DX Onboarding Ecosystem: Symmetric Testing (Local vs. Remote)](#symmetric-tests)
+5. [DX Automation: Declarative Deployments without deploy.sh and .env Files](#dx-revolution)
 
 ---
 
 <a name="stage-4"></a>
-## 🏗️ 1. Estágio 4: Catálogo de Cargas de Trabalho
+## 🏗️ 1. Stage 4: Workloads Catalog (`modules/4-workloads/`)
 
 <a name="s4-gateways"></a>
-### A. Padrão Gateway Adapter: Gateways de Ingress Intercambiáveis
+### A. Gateway Adapter Pattern: Swappable Ingress Gateways
 
-## 🏗️ 1. Stage 4: Prateleira de Cargas de Trabalho (`modules/4-workloads/`)
-
-O Stage 4 faz a transição do Esmeralda de fundações brutas de rede e segurança para o espaço de **Aplicações de IA Composíveis**. O design adota o padrão de catálogo independente: cada gateway, ferramenta MCP ou agente de IA é tratado como um módulo reaproveitável, permitindo deploys granulares sobre os projetos criados no Stage 1.
+Stage 4 transitions Esmeralda from foundational infrastructure into **Composable AI Applications**. The architecture adopts an independent catalog pattern: every gateway, MCP tool, or AI agent is structured as a reusable module, enabling granular deployments onto the foundational projects provisioned in Stage 1.
 
 ---
 
-### A. Padrão Gateway Adapter: Gateways de Ingress Intercambiáveis
+### A. Gateway Adapter Pattern: Swappable Ingress Gateways
 
-Para garantir que a plataforma possa ser implantada em qualquer cliente corporativo (desde sandboxes ágeis até ambientes de alta governança), o Esmeralda adota o **Padrão Gateway Adapter**. Os agentes do Vertex AI Reasoning Engine permanecem completamente agnósticos sobre qual tecnologia de gateway está ativa na rede.
+To ensure the platform can be deployed into any enterprise environment (from agile developer sandboxes to highly governed corporate networks), Esmeralda enforces the **Gateway Adapter Pattern**. Downstream Vertex AI Reasoning Engine agents remain completely agnostic of which ingress gateway technology is active on the network.
 
-Definimos três adaptadores de entrada sob `/modules/4-workloads/gateways/` que atendem ao mesmo **contrato unificado de variáveis**:
+We define three ingress adapters under `/modules/4-workloads/gateways/` that adhere to the exact same **unified variable interface contract**:
 
-#### Blueprint e Códigos Completos para Gateways (Inglês)
+#### Swappable Gateways Technical Specifications
 
 # Stage 4 Workloads: Swappable Ingress Gateways
 
@@ -66,8 +64,8 @@ infrastructure/modules/4-workloads/gateways/
 To maintain complete interchangeability, all three gateway sub-modules **must accept the exact same input variables** and **expose the exact same output variables**. This contract enforces the **Gateway Adapter Pattern**: downstream agents (the reasoning engine workloads) remain completely agnostic of *how* ingress is routed or which API gateway is active.
 
 > [!TIP]
-> 📁 **Contrato Unificado de Variáveis:**
-> O contrato comum e padronizado de variáveis de entrada que garante a swappabilidade dos gateways está disponível em:
+> 📁 **Unified Variable Contract:**
+> The common, standardized input variable interface contract that enforces gateway interchangeability is available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/variables.tf)
 
 
@@ -84,8 +82,8 @@ Includes the standard Swappable Gateway variables contract defined above.
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> A implementação principal do Ingress Gateway corporativo Apigee X está disponível em:
+> 📁 **Source Code File Available:**
+> The main Terraform configuration for enterprise Apigee X Ingress Gateway is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/main.tf)
 
 
@@ -94,22 +92,22 @@ Includes the standard Swappable Gateway variables contract defined above.
 Inside the Apigee API Proxy (`/apiproxy/policies/`), we implement:
 *   **KVM-Lookup.xml** (extracts the sub-domain e.g. `a2a-agent` from `request.header.host`, looks up target in KVM):
 > [!TIP]
-> 📁 **Políticas Apigee XML Disponíveis:**
-> A política de roteamento dinâmico via KVM Lookup do Apigee Proxy está disponível em:
+> 📁 **Apigee XML Policies Available:**
+> The dynamic KVM Lookup routing policy for the Apigee Proxy is available at:
 > 👉 [`KVM-Lookup.xml`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/apiproxy/policies/KVM-Lookup.xml)
 
 
 *   **Generate-Bearer-Token.xml** (uses Google Application Default Credentials or the Apigee Service Account's Identity Token to authenticate with Vertex AI):
 > [!TIP]
-> 📁 **Políticas Apigee XML Disponíveis:**
-> A política para gerar e injetar tokens de autenticação Bearer está disponível em:
+> 📁 **Apigee XML Policies Available:**
+> The policy for generating and injecting Bearer authentication tokens is available at:
 > 👉 [`Generate-Bearer-Token.xml`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/apiproxy/policies/Generate-Bearer-Token.xml)
 
 
 ###### 4. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As saídas geradas pelo adaptador de gateway Apigee X estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported outputs from the Apigee X gateway adapter module are available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/outputs.tf)
 
 
@@ -124,29 +122,29 @@ To support swappability, we compile the DB-less `kong.yml` dynamically inside Te
 ###### 1. Variables Specification (`variables.tf`)
 Includes the standard Swappable Gateway variables contract defined above, plus:
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis adicionais específicas do Kong Gateway (imagem de container) estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The additional variables specific to Kong Gateway (such as container image overrides) are available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> A receita de implantação do Kong Gateway no Cloud Run DB-less está disponível em:
+> 📁 **Source Code File Available:**
+> The Cloud Run DB-less deployment configuration for Kong Gateway is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/main.tf)
 
 
 ###### 3. Declarative Config Template (`templates/kong.yml.tpl`)
 > [!TIP]
-> 📁 **Template de Configuração Disponível:**
-> O arquivo template declarativo `kong.yml.tpl` que configura as rotas dinâmicas do Kong está disponível em:
+> 📁 **Configuration Template Available:**
+> The declarative template file `kong.yml.tpl` configuring Kong's dynamic routing rules is available at:
 > 👉 [`kong.yml.tpl`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/templates/kong.yml.tpl)
 
 
 ###### 4. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As saídas geradas para o Ingress do Kong Gateway estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported outputs generated by the Kong Gateway ingress module are available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/outputs.tf)
 
 
@@ -161,22 +159,22 @@ This preserves the unified interface contract! The ILB routes all `*.esmeralda.i
 ###### 1. Variables Specification (`variables.tf`)
 Includes the standard Swappable Gateway variables contract defined above, plus:
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis específicas do adaptador de balanceador interno (ILB + Broker) estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The input variables specific to the internal load balancer adapter (ILB + Broker) are available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/ilb/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O provisionamento do Internal Load Balancer regional e do Routing Broker correspondente está disponível em:
+> 📁 **Source Code File Available:**
+> The provisioning of the regional Internal Load Balancer and its companion Routing Broker container is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/ilb/main.tf)
 
 
 ###### 3. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As saídas do Ingress Gateway por ILB regional estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported outputs generated by the regional ILB ingress module are available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/ilb/outputs.tf)
 
 
@@ -189,11 +187,11 @@ Includes the standard Swappable Gateway variables contract defined above, plus:
 
 (`modules/4-workloads/apihub/`)
 
-O catálogo de governança do API Hub é executado como uma carga de trabalho adjacente isolada no projeto `prj-gateway`. Ele registra automaticamente o diretório corporativo de APIs sem influenciar os roteamentos de tráfego ativos.
+The API Hub governance catalog runs as an isolated adjacent workload within `prj-gateway`. It automatically catalogs enterprise APIs without interfering with active live traffic routing.
 
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> A receita Terraform com a criação e ativação autônoma do API Hub está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform implementation for standalone API Hub creation and activation is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/apihub/main.tf)
 
 
@@ -206,13 +204,13 @@ O catálogo de governança do API Hub é executado como uma carga de trabalho ad
 
 (`modules/4-workloads/mcp-servers/`)
 
-As utilidades e conexões de backend corporativas expostas pelo protocolo MCP (DMS, Email, Income Verification) residem no projeto de ferramentas `prj-esmeralda-mcps`. Cada servidor é implantado de forma independente no Cloud Run sob regras rígidas de segurança:
-*   `no-allow-unauthenticated` ativado.
-*   Tráfego de saída obrigado a fluir 100% via Direct VPC Egress dentro da VPC Compartilhada.
-*   Audiências customizadas explícitas apontando para o IP estável de rede do Gateway de Ingress.
-*   Post-deployment trigger executando um script em Python que cataloga automaticamente a ferramenta de forma programática no Google Agent Registry.
+Shared enterprise backend utilities exposed via the Model Context Protocol (DMS, Email, Income Verification) reside in the `prj-esmeralda-mcps` tool project. Each server is deployed independently to Cloud Run under strict security controls:
+*   `no-allow-unauthenticated` status enforced.
+*   Outbound traffic mandated to flow 100% via Direct VPC Egress into the Shared VPC network.
+*   Explicit custom audiences configured targeting the stable network IP of the Ingress Gateway.
+*   Post-deployment triggers executing Python scripts to dynamically catalog tools inside Google Agent Registry.
 
-#### Blueprint e Códigos Completos para Servidores MCP (Inglês)
+#### Composable MCP Servers Technical Specifications
 
 # Stage 4 Workloads: Composable MCP Server Tools
 
@@ -253,22 +251,22 @@ This module deploys the `corporate-email` tool server on Cloud Run. It mounts th
 
 ###### 1. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis correspondentes ao servidor MCP Corporate Email estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The Terraform variables configuration for the Corporate Email MCP tool server is available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/corporate-email/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> A implantação do servidor MCP Corporate Email no Cloud Run e amarração à VPC Compartilhada está disponível em:
+> 📁 **Source Code File Available:**
+> The Cloud Run deployment configuration and Shared VPC binding for Corporate Email is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/corporate-email/main.tf)
 
 
 ###### 3. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As saídas e URLs geradas pelo módulo do servidor MCP Corporate Email estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported service URLs from the Corporate Email MCP module are available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/corporate-email/outputs.tf)
 
 
@@ -280,22 +278,22 @@ This module deploys the `income-verification` tool server. It integrates the ver
 
 ###### 1. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis para o servidor MCP Income Verification estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The Terraform variables configuration for the Income Verification MCP tool server is available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/income-verification/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código principal para implantação segura do servidor MCP Income Verification está disponível em:
+> 📁 **Source Code File Available:**
+> The secure deployment blueprint for the Income Verification tool server is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/income-verification/main.tf)
 
 
 ###### 3. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O URL de saída do servidor MCP Income Verification está disponível em:
+> 📁 **Source Code File Available:**
+> The exported endpoint URL for Income Verification is available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/income-verification/outputs.tf)
 
 
@@ -307,22 +305,22 @@ This module deploys the `legacy-dms` (Document Management System) tool server on
 
 ###### 1. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis para o servidor MCP Legacy DMS estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The Terraform variables configuration for Legacy DMS is available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/legacy-dms/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> A receita principal para implantação privada do servidor MCP Legacy DMS está disponível em:
+> 📁 **Source Code File Available:**
+> The private Cloud Run deployment configuration for Legacy DMS is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/legacy-dms/main.tf)
 
 
 ###### 3. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O URL de saída gerado pelo servidor MCP Legacy DMS está disponível em:
+> 📁 **Source Code File Available:**
+> The exported URL generated by the Legacy DMS module is available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/mcp-servers/legacy-dms/outputs.tf)
 
 
@@ -345,9 +343,9 @@ To help operators configure their Terragrunt dependency blocks, this matrix maps
 
 (`modules/4-workloads/agents/`)
 
-No novo modelo Esmeralda, os agentes ADK operam em ambientes perfeitamente isolados e com injeção dinâmica de dependências declarativas via Terragrunt:
+In Esmeralda, ADK agents operate in completely isolated environments with declarative dynamic dependency injection orchestrated by Terragrunt:
 
-#### Blueprint e Códigos Completos para Agentes AI ADK (Inglês)
+#### Atomic ADK AI Agent Technical Specifications
 
 # Stage 4 Workloads: Atomic Agent Reasoning Engines
 
@@ -379,22 +377,22 @@ To guarantee absolute **self-contained portability**, the Cloud SQL PostgreSQL t
 
 ###### 1. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis de entrada para o módulo atômico do A2A Agent estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The input variables for the atomic A2A Agent module are available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O provisionamento completo do A2A Agent, incluindo as tabelas PostgreSQL, SA do Vertex AI e o Reasoning Engine está disponível em:
+> 📁 **Source Code File Available:**
+> The complete A2A Agent provisioning script, including PostgreSQL instance creation, Vertex AI service account binding, and Reasoning Engine deployment, is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/main.tf)
 
 
 ###### 3. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As saídas geradas e IDs exclusivos do motor A2A Reasoning Engine estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported resource names and Reasoning Engine IDs are available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/outputs.tf)
 
 
@@ -428,22 +426,22 @@ graph TD
 
 ###### 1. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As variáveis do módulo de orquestração Root Orchestrator estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The variables for the Root Orchestrator module are available at:
 > 👉 [`variables.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/base-adk-agent/variables.tf)
 
 
 ###### 2. Implementation Blueprint (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> A receita Terraform que empacota o Root Orchestrator e seu motor de Reasoning Engine Vertex AI está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform configuration packaging the Root Orchestrator Reasoning Engine is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/base-adk-agent/main.tf)
 
 
 ###### 3. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> Os outputs mapeados do Root Orchestrator Reasoning Engine estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported outputs from the Root Orchestrator Reasoning Engine are available at:
 > 👉 [`outputs.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/base-adk-agent/outputs.tf)
 
 
@@ -485,23 +483,21 @@ The runtime linkage in `terragrunt.hcl` is established as follows:
 ---
 
 <a name="s4-live-hcl"></a>
-### E. Configurações de Orquestração Live (Terragrunt Live HCL)
+### E. Live Orchestrator Configurations (Terragrunt Live HCL)
 
-Para entender como esses microserviços e agentes independentes são montados e encadeados de forma dinâmica no ambiente real sob a árvore `live/dev/stage-4-workloads/`, veja os arquivos de configuração Terragrunt abaixo. Eles utilizam blocos `dependency` para injetar saídas de recursos reais de estágios anteriores de forma transparente, permitindo total automação e eliminando parâmetros manuais:
-
-These HCL declarations demonstrate how the micro-services are configured and chained in your live environment:
+To understand how these independent microservices and agents are dynamically assembled and wired in live environments under `live/dev/stage-4-workloads/`, see the Terragrunt configurations below. They use `dependency` blocks to inject real resource outputs from preceding stages transparently, enabling 100% automation without manual IP or parameter entry:
 
 ### A. The A2A Agent (`live/dev/stage-4-workloads/agents/a2a-agent/terragrunt.hcl`)
 > [!TIP]
-> 📁 **Configuração Terragrunt Live Disponível:**
-> A receita Terragrunt live para o deploy do A2A Agent no ambiente de desenvolvimento está disponível em:
+> 📁 **Live Terragrunt Configuration Available:**
+> The live Terragrunt deployment configuration for the A2A Agent is available at:
 > 👉 [`terragrunt.hcl`](./02_workloads_and_delivery/infrastructure/live/dev/stage-4-workloads/agents/a2a-agent/terragrunt.hcl)
 
 
 ### B. The Root Orchestrator (`live/dev/stage-4-workloads/agents/base-adk-agent/terragrunt.hcl`)
 > [!TIP]
-> 📁 **Configuração Terragrunt Live Disponível:**
-> A receita Terragrunt live para o deploy do Root Orchestrator em desenvolvimento está disponível em:
+> 📁 **Live Terragrunt Configuration Available:**
+> The live Terragrunt deployment configuration for the Root Orchestrator is available at:
 > 👉 [`terragrunt.hcl`](./02_workloads_and_delivery/infrastructure/live/dev/stage-4-workloads/agents/base-adk-agent/terragrunt.hcl)
 
 
@@ -512,74 +508,36 @@ These HCL declarations demonstrate how the micro-services are configured and cha
 <a name="byoinfra"></a>
 ## 🔌 2. Greenfield vs. Brownfield (BYOInfra) Toggle Design
 
-## 🔌 2. Greenfield vs. Brownfield (BYOInfra) Toggle Design
+In real corporate production environments, network and security teams (NetOps and SecOps) rarely allow Terraform scripts to create Shared VPC networks, subnets, internet DNS zones, or billing projects from scratch. Enterprise clients require deploying workloads onto pre-existing resources (**Brownfield** / **BYOInfra**).
 
-Em ambientes produtivos reais de clientes corporativos, o time de infraestrutura (NetOps e SecOps) raramente autoriza que scripts Terraform criem redes VPC Compartilhadas, subredes, rotas DNS de internet ou projetos corporativos de faturamento do zero. O cliente exige consumir recursos preexistentes (**Brownfield** / **BYOInfra**).
-
-O Esmeralda resolve esse bloqueio implementando de forma transparente chaves de alternância dinâmica em suas receitas de Terragrunt (`live/dev/env.yaml`), utilizando o parâmetro de bypass nativo `skip` e mapeando fallbacks condicionais:
-
-### A. Configuração de Variáveis de Controle do Cliente (`live/client-prod/env.yaml`)
-
-Neste arquivo, o cliente define quais infraestruturas deseja reutilizar (`true`) e fornece os ponteiros explícitos dessas conexões reais:
-
-> [!TIP]
-> 📁 **Arquivo de Parâmetros do Cliente Disponível:**
-> As configurações estáticas de bypass e rede corporativa no ambiente de produção do cliente estão disponíveis em:
-> 👉 [`env.yaml`](./02_workloads_and_delivery/infrastructure/live/client-prod/env.yaml)
-
-
-### B. Bypass Dinâmico de Estágios de Infraestrutura (`live/client-prod/stage-2-networking/terragrunt.hcl`)
-
-Utilizando o bloco de bypass nativo do Terragrunt, o módulo de provisionamento de rede é desativado instantaneamente na esteira se a variável `byo_networking` estiver ativa:
-
-> [!TIP]
-> 📁 **Configuração Terragrunt Live Disponível:**
-> O arquivo Terragrunt live que implementa o skip de infraestrutura de rede no cliente está disponível em:
-> 👉 [`terragrunt.hcl`](./02_workloads_and_delivery/infrastructure/live/client-prod/stage-2-networking/terragrunt.hcl)
-
-
-### C. Fallbacks Condicionais em Dependências Downstream (`live/client-prod/stage-4-workloads/agents/a2a-agent/terragrunt.hcl`)
-
-Cargas de trabalho que consomem as saídas de estágios pulados desviam de forma transparente suas leituras de variáveis para os campos estáticos do `env.yaml` do cliente, evitando estouros de avaliação no analisador do Terragrunt usando mocks estruturados:
-
-> [!TIP]
-> 📁 **Configuração Terragrunt Live Disponível:**
-> O arquivo Terragrunt live que faz o fallback dinâmico para os dados estáticos do cliente no deploy do A2A Agent está disponível em:
-> 👉 [`terragrunt.hcl`](./02_workloads_and_delivery/infrastructure/live/client-prod/stage-4-workloads/agents/a2a-agent/terragrunt.hcl)
-
-
----
-
-### 📐 Detalhes Técnicos de Implementação e Arquivo de Configuração BYOInfra (Inglês)
-
-Abaixo, encontre os fluxos de bypass de compilação reais e as receitas de fallback dinâmico utilizadas para orquestrar implantações sobre redes corporativas legadas de clientes. Ao definir as flags de skip correspondentes no arquivo `env.yaml`, o Terragrunt de downstream herda os mapeamentos de subnets e VPCs corporativas sem tentar recriar os backbones de rede centrais do Stage 2:
+Esmeralda solves this constraint by implementing dynamic toggle switches in its Terragrunt environment configs (`live/dev/env.yaml`), utilizing native `skip` parameters and conditional fallbacks:
 
 To allow seamless deployment inside enterprise client environments with pre-existing resources, the architecture implements the **BYOInfra Pattern** natively using Terragrunt's skip parameters and input-fallbacks:
 
 ### A. The Client's Environment Parameters (`live/client-prod/env.yaml`)
-The client declares their pre-existing resources and toggles the dynamic skip flags:
+The client declares their pre-existing resources and toggles dynamic skip flags (`true`):
 
 > [!TIP]
-> 📁 **Arquivo de Parâmetros do Cliente Disponível:**
-> As configurações estáticas de bypass e rede corporativa no ambiente de produção do cliente estão disponíveis em:
+> 📁 **Client Environment Parameters File Available:**
+> The static bypass settings and corporate network pointers for enterprise client environments are available at:
 > 👉 [`env.yaml`](./02_workloads_and_delivery/infrastructure/live/client-prod/env.yaml)
 
 
 ### B. Dynamically Skipping Stage 2 (`live/client-prod/stage-2-networking/terragrunt.hcl`)
-The networking configuration skips compilation and returns instantly if `byo_networking` is configured:
+Using Terragrunt's native skip block, the networking stage skips compilation and returns instantly if `byo_networking` is active:
 
 > [!TIP]
-> 📁 **Configuração Terragrunt Live Disponível:**
-> O arquivo Terragrunt live que implementa o skip de infraestrutura de rede no cliente está disponível em:
+> 📁 **Live Terragrunt Configuration Available:**
+> The live Terragrunt file implementing infrastructure skip logic in client environments is available at:
 > 👉 [`terragrunt.hcl`](./02_workloads_and_delivery/infrastructure/live/client-prod/stage-2-networking/terragrunt.hcl)
 
 
 ### C. Downstream Fallback Lookup (`live/client-prod/stage-4-workloads/agents/a2a-agent/terragrunt.hcl`)
-Downstream persistence components safely switch their inputs between Stage 2 outputs or `env.yaml` static resource IDs based on the active flag:
+Workloads consuming outputs from skipped stages dynamically switch their inputs to read from the static fields in `env.yaml`, preventing Terragrunt parser evaluation errors:
 
 > [!TIP]
-> 📁 **Configuração Terragrunt Live Disponível:**
-> O arquivo Terragrunt live que faz o fallback dinâmico para os dados estáticos do cliente no deploy do A2A Agent está disponível em:
+> 📁 **Live Terragrunt Configuration Available:**
+> The live Terragrunt configuration implementing dynamic fallback to client static data for the A2A Agent is available at:
 > 👉 [`terragrunt.hcl`](./02_workloads_and_delivery/infrastructure/live/client-prod/stage-4-workloads/agents/a2a-agent/terragrunt.hcl)
 
 
@@ -590,11 +548,9 @@ Downstream persistence components safely switch their inputs between Stage 2 out
 <a name="db-bootstrap"></a>
 ## 🔄 3. Database Bootstrap & SQL Lifecycle
 
-## 🔄 3. Ciclo de Vida do Database Bootstrap (A2A Agent & Cloud SQL)
+A frequent challenge in corporate CI/CD pipelines is tightly coupled and insecure database privilege provisioning. To guarantee a 100% atomic and secure deployment, Esmeralda encapsulates the PostgreSQL database and its bootstrap initialization directly within the `a2a-agent` workload module:
 
-Um dos grandes problemas de esteiras de infraestrutura corporativas é o provisionamento acoplado e inseguro de privilégios de banco de dados. Para garantir um deploy 100% atômico e seguro, o Esmeralda encapsula o banco PostgreSQL e seu ciclo de inicialização diretamente dentro do módulo do `a2a-agent`:
-
-### Sequenciamento de Orquestração do Banco de Dados
+### Database Orchestration Sequencing
 
 ```mermaid
 sequenceDiagram
@@ -602,31 +558,31 @@ sequenceDiagram
     participant TG as Terragrunt / TF Apply
     participant SQL as Cloud SQL Instance
     participant Secret as Secret Manager
-    participant Run as Cloud Run Bootstrap Job<br/>(Dentro da VPC)
+    participant Run as Cloud Run Bootstrap Job<br/>(Within VPC)
     participant Vertex as Vertex AI Reasoning Engine
 
-    Note over TG: Deploy do A2A Agent Module
-    TG->>SQL: 1. Provisiona instância PostgreSQL privada & Ativa IAM Auth
-    TG->>Secret: 2. Salva senha master aleatória do superuser 'postgres'
-    TG->>Run: 3. Dispara Job temporário no Cloud Run via Rede Privada
-    Run->>SQL: 4. Conecta via IP interno e aplica GRANT de privilégios para a SA do Agente
-    Note over Run: Container de Bootstrap finaliza (Sucesso)
-    TG->>Vertex: 5. Deplora Reasoning Engine empacotado amarrando o IP privado do Banco nas variáveis
+    Note over TG: Deploy A2A Agent Module
+    TG->>SQL: 1. Provision private DB & IAM SQL user
+    TG->>Secret: 2. Store PostgreSQL admin password securely
+    TG->>Run: 3. Trigger VPC-internal Bootstrap Job to apply SQL grants
+    Run->>SQL: 4. Connect over private IP & GRANT ALL PRIVILEGES...
+    Note over Run: Bootstrap Job Exits
+    TG->>Vertex: 5. Deploy Reasoning Engine (ADK)<br/>Binds private DB Host IP to Agent variables
 ```
 
-### Código do Provisionamento e Bootstrap Integrado (`modules/4-workloads/agents/a2a-agent/main.tf`)
+### Integrated Provisioning & Bootstrap Script (`modules/4-workloads/agents/a2a-agent/main.tf`)
 
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O arquivo Terraform que implementa as conexões e o bootstraper SQL para o banco está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform configuration implementing private connections and the containerized SQL bootstrap job is available at:
 > 👉 [`main.tf`](./02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/main.tf)
 
 
 ---
 
-### 📊 Sequenciamento de Inicialização e Inicialização de Privilégios (Inglês)
+### 📊 Privilege Initialization and Lifecycle Sequencing
 
-Abaixo, apresentamos o fluxo detalhado de coordenação do ciclo de vida que garante que o banco de dados Cloud SQL privado PostgreSQL esteja 100% provisionado, inicializado com senhas administrativas seguras armazenadas no Secret Manager e estruturado com permissões estritas para a Service Account dedicada do Agente A2A antes que o motor de Vertex AI Reasoning Engine seja instanciado:
+By packaging Cloud SQL, bootstrapping, and the Vertex AI Reasoning engine inside the `modules/4-workloads/agents/a2a-agent` pure module, we obtain an atomic, self-contained workload where schema permissions and administrative credentials are fully set up before the Reasoning Engine instantiates:
 
 By packaging Cloud SQL, bootstrapping, and the Vertex AI Reasoning engine inside the `modules/4-workloads/agents/a2a-agent` pure module, we obtain an atomic, self-contained workload.
 
@@ -653,41 +609,39 @@ sequenceDiagram
 ---
 
 <a name="symmetric-tests"></a>
-## 🧪 4. Ecossistema de Testes Simétricos (Local vs. Remoto)
+## 🧪 4. DX Onboarding Ecosystem: Symmetric Testing (Local vs. Remote)
 
-## 🧪 4. Ecossistema Onboarding DX: Testes Simétricos (Local vs. Remoto)
-
-Inspirado no consagrado repositório de referência `ncf-conversacional-ecommerce`, o Esmeralda adota a filosofia de **Testes Simétricos**. Isso reduz o atrito e acelera as validações de código, garantindo que o engenheiro de software consiga testar o agente de forma offline (Inner Loop) e pós-deploy integrado (Outer Loop) sem alterar lógicas de negócio.
+Esmeralda adopts the **Symmetric Testing** philosophy. This minimizes developer friction and accelerates code validation by allowing software engineers to test AI reasoning engines offline (Inner Loop) and post-deployment in the cloud (Outer Loop) without modifying application logic.
 
 ```text
 app/agents/a2a-agent/scripts/
-├── test_local.py             # Execução de testes offline com Mocks no localhost
-└── test_remote.py            # Execução de testes integrados reais via SSE na nuvem GCP
+├── test_local.py             # Offline test execution with localhost mocks
+└── test_remote.py            # Real cloud integrated test execution via SSE
 ```
 
 ---
 
-### A. Inner Loop: Arquitetura de Testes Offline (`test_local.py`)
+### A. Inner Loop: Offline Testing Architecture (`test_local.py`)
 
-O teste local importa diretamente o objeto de aplicativo do agente (`adk_app`) do código Python, eliminando qualquer dependência de nuvem. Ele lê mocks das ferramentas rodando na rede de loopback local (`localhost`) através de portas designadas, simulando fluxos em tempo real com streams assíncronos:
+The local testing script imports the agent application object (`adk_app`) directly from the Python codebase, eliminating cloud network dependencies. It reads tool mocks running on the local loopback interface (`localhost`) across designated ports, simulating real-time asynchronous streaming:
 
 > [!TIP]
-> 📁 **Script de Onboarding Disponível:**
-> O script Python completo do desenvolvedor para execução de testes locais (Inner Loop) está disponível em:
+> 📁 **Onboarding Script Available:**
+> The complete Python developer script for local execution testing (Inner Loop) is available at:
 > 👉 [`test_local.py`](./02_workloads_and_delivery/app/agents/a2a-agent/scripts/test_local.py)
 
 
 ---
 
-### B. Outer Loop: Verificação Pós-Deploy Integrado (`test_remote.py`)
+### B. Outer Loop: Integrated Post-Deployment Verification (`test_remote.py`)
 
-Após o deploy automatizado via pipeline, o desenvolvedor precisa certificar-se de que os privilégios, conexões de rede privada e integrações de banco de dados no Google Cloud estão perfeitos.
+After automated pipeline deployment, developers verify that IAM privileges, private VPC connections, and cloud database integrations operate correctly.
 
-O script `test_remote.py` utiliza a biblioteca nativa `google.auth` para coletar as credenciais ativas do desenvolvedor (ou faz fallback para o CLI `gcloud`). Ele resolve o ID do Reasoning Engine de produção e dispara chamadas autenticadas de streaming `POST` por Server-Sent Events (SSE) diretamente contra o endpoint real do Vertex AI, exibindo a árvore de pensamentos do agente remoto no console local:
+The `test_remote.py` script uses the native `google.auth` library to retrieve active developer credentials (with fallback to `gcloud` CLI). It resolves the production Reasoning Engine ID and initiates authenticated streaming `POST` calls via Server-Sent Events (SSE) directly against the real Vertex AI endpoint, streaming the remote agent's thought trajectory to the console:
 
 > [!TIP]
-> 📁 **Script de Onboarding Disponível:**
-> O script Python do desenvolvedor para disparar fluxos e validar pensamentos em nuvem (Outer Loop) está disponível em:
+> 📁 **Onboarding Script Available:**
+> The Python developer script for triggering cloud flows and validating reasoning in GCP (Outer Loop) is available at:
 > 👉 [`test_remote.py`](./02_workloads_and_delivery/app/agents/a2a-agent/scripts/test_remote.py)
 
 
@@ -699,31 +653,20 @@ O script `test_remote.py` utiliza a biblioteca nativa `google.auth` para coletar
 ---
 
 <a name="dx-revolution"></a>
-## 💎 5. Revolução na Experiência do Desenvolvedor (DX): Fim do deploy.sh e do Caos dos Arquivos .env
+## 💎 5. DX Automation: Declarative Deployments without deploy.sh and .env Files
 
-Uma das maiores dores do Esmeralda legado residia na complexidade e instabilidade do processo de deploy e gerenciamento de variáveis de ambiente. Os desenvolvedores e operadores de plataforma perdiam horas depurando scripts de deploy manuais e sincronizando chaves e IPs locais.
+In legacy architectures, a major pain point is the complexity and brittleness of deployment workflows and environment variable management, where developers spend hours debugging imperative shell scripts and synchronizing local IP addresses.
 
-Nossa nova arquitetura baseada em **Terragrunt + GCP Secret Manager** realiza uma verdadeira revolução na Experiência do Desenvolvedor (DX), eliminando completamente dois grandes vilões históricos:
+Esmeralda's architecture, powered by **Terragrunt + GCP Secret Manager**, optimizes the Developer Experience (DX) by automating lifecycle management and eliminating fragile manual practices:
 
-### A. O Fim do `deploy.sh` (A Morte dos Scripts Bash Frágeis)
-No modelo antigo, o deploy dependia de um script `deploy.sh` centralizado, que tentava:
-*   Autenticar o `gcloud` sequencialmente de forma imperativa.
-*   Interpolar strings e gerar arquivos temporários em disco.
-*   Orquestrar a ordem exata de criação de recursos com blocos imperativos `sleep 30` (para aguardar APIs e redes).
-*   Tratar erros de forma extremamente rudimentar, deixando a infraestrutura em estados inconsistentes se um passo intermediário falhasse.
+### A. Declarative Automation without `deploy.sh`
+In contrast to imperative `deploy.sh` scripts that sequentially invoke CLI commands, interpolate strings, generate temporary disk files, and rely on arbitrary `sleep 30` blocks, Esmeralda operates declaratively:
+*   **Native Declarative Orchestration**: Terragrunt manages the complete resource lifecycle through clean commands like `terragrunt run-all apply`.
+*   **Parallel Dependency Graph**: Terragrunt scans the `live/` environment directory tree, constructs a Directed Acyclic Graph (DAG) in milliseconds, and executes non-dependent stage creations in parallel.
+*   **Intelligent Concurrency Control**: When Stage 4 workloads depend on outputs from Stage 2 (Networking) and Stage 3 (Security), Terragrunt automatically holds Stage 4 execution until upstream dependencies are fully provisioned and ready.
 
-**Como resolvemos na nova arquitetura:**
-*   **Orquestração Declarativa Nativa**: O `deploy.sh` foi totalmente aposentado. Agora, o **Terragrunt** gerencia todo o ciclo de vida usando comandos declarativos simples como `terragrunt run-all apply`.
-*   **Grafo de Dependências Paralelo**: O Terragrunt varre a árvore de diretórios em `live/`, monta um Grafo Direcionado Acíclico (DAG) de dependências em milissegundos e dispara os deploys em paralelo.
-*   **Controle Inteligente de Concorrência**: Se as cargas de trabalho do Estágio 4 dependem das saídas do Estágio 2 (Networking) e Estágio 3 (Security), o Terragrunt retém a execução do Estágio 4 até que as dependências estejam ativas e prontas. Não há mais sleeps manuais ou scripts imperativos.
-
-### B. O Fim dos Arquivos `.env` (Soberania de Configuração e Segredos Protegidos)
-No legado, o desenvolvimento local e remoto exigia manter múltiplos arquivos `.env` ou `.env.local` contendo:
-*   Endereços de IP privados temporários que mudavam a cada recriação de recurso.
-*   Segredos de bancos de dados e credenciais em texto claro no disco do desenvolvedor.
-*   Mapeamentos manuais de URLs de agentes e caminhos de buckets GCS que quebravam entre diferentes máquinas.
-
-**Como resolvemos na nova arquitetura:**
-*   **Fonte Única de Verdade (`env.yaml`)**: Variáveis globais não confidenciais (região GCP, ID da conta de faturamento, prefixo de recursos) são declaradas de forma limpa em um único arquivo `env.yaml` estruturado por ambiente.
-*   **Injeção Dinâmica via `dependency`**: O Terragrunt lê as saídas reais do estado do Terraform e injeta dinamicamente as URLs, conexões e caminhos de rede (ex: `network_id`, `subnet_id`, IPs do banco PostgreSQL, URLs do Cloud Run) diretamente nos inputs dos módulos. O desenvolvedor nunca mais precisa gerenciar manualmente IPs em arquivos locais.
-*   **Gestão de Segredos com Secret Manager (Stage 3)**: Segredos críticos (como a senha administrativa do PostgreSQL) são provisionados programaticamente no GCP Secret Manager durante a execução e consumidos de forma privada pelas cargas de trabalho sob demanda por conexões IAM estritas. Nenhum segredo ou credencial é exposto em disco local ou em commits do Git.
+### B. Configuration Sovereignty without Local `.env` Files
+Instead of requiring developers to maintain multiple unsynchronized `.env` or `.env.local` files containing temporary private IP addresses, database secrets, and bucket paths:
+*   **Single Source of Truth (`env.yaml`)**: Non-confidential global environment parameters (GCP region, billing account ID, resource prefix) are cleanly declared in a single structured `env.yaml` file per environment.
+*   **Dynamic Injection via `dependency` Blocks**: Terragrunt dynamically reads Terraform state outputs and injects network paths, VPC IDs, subnet self-links, database IPs, and Cloud Run URLs directly into downstream module inputs.
+*   **Secret Manager Governance (Stage 3)**: Critical secrets (such as administrative database passwords) are generated programmatically and stored in GCP Secret Manager, consumed on demand over secure IAM bindings without ever being written to local disks or git repositories.
