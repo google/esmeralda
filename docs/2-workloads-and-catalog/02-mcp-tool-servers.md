@@ -35,7 +35,35 @@ We define three self-contained sub-modules:
 2.  **Income Verification Tool Server** (`mcp-servers/income-verification/`)
 3.  **Legacy DMS Tool Server** (`mcp-servers/legacy-dms/`)
 
-To preserve the zero-trust security paradigm established in Stage 3, each MCP server is deployed to Cloud Run with `no-allow-unauthenticated` status, bound directly to the Shared VPC network via Direct VPC Egress, and protected by Cloud Run IAM invoker bindings. Furthermore, each module incorporates post-deployment registration blocks to dynamically catalog available tools in the GCP Agent Registry and API Hub.
+To preserve the zero-trust security paradigm established in Stage 3, each MCP server is deployed to Cloud Run with `no-allow-unauthenticated` status, bound directly to the Shared VPC network via Direct VPC Egress, and protected by Cloud Run IAM invoker bindings. Furthermore, each module incorporates post-deployment registration blocks to dynamically catalog available tools in the GCP Agent Registry and API Hub:
+
+```mermaid
+graph TD
+    subgraph ClientLayer["Authorized Invokers"]
+        Root["sa-base-adk-agent<br/>(Root Orchestrator SA)"]
+        TestVM["sa-test-vm<br/>(Jumpbox SA)"]
+    end
+
+    subgraph SharedVPC["Shared VPC (prj-net-host)"]
+        ILB["Internal Load Balancer / Gateway<br/>(*.internal.gateway)"]
+        Egress["Direct VPC Egress Tunnel"]
+    end
+
+    subgraph MCPSProject["prj-esmeralda-mcps (Cloud Run Tool Servers)"]
+        Email["mcp-servers/corporate-email<br/>(no-allow-unauthenticated)"]
+        Income["mcp-servers/income-verification<br/>(no-allow-unauthenticated)"]
+        DMS["mcp-servers/legacy-dms<br/>(no-allow-unauthenticated)"]
+    end
+
+    subgraph Cataloging["Governance Hub (prj-esmeralda-governance)"]
+        Registry["GCP Agent Registry / API Hub"]
+    end
+
+    Root & TestVM -->|1. OIDC Token with roles/run.invoker| ILB
+    ILB -->|2. Private Routing| Email & Income & DMS
+    Email & Income & DMS -. 3. Direct VPC Egress .-> Egress
+    Email & Income & DMS -. 4. Post-deploy Script Registration .-> Registry
+```
 
 ```text
 infrastructure/modules/4-workloads/mcp-servers/
