@@ -6,7 +6,7 @@ Stage 3 centralizes compliance barriers, data governance, and encryption control
 
 ### A. CMEK Encryption and Secret Manager
 We establish a centralized Cloud KMS Keyring to encrypt persistent data at rest:
-*   `key-postgresql`: Encrypts the Cloud SQL database disk in `prj-esmeralda-a2a-agents`.
+*   `key-postgresql`: Encrypts the Cloud SQL database disk in `prj-esmeralda-a2a`.
 *   `key-gcs-staging`: Encrypts telemetry audit log storage buckets.
 
 We use Secret Manager to store critical credentials without plaintext disk exposure:
@@ -14,7 +14,7 @@ We use Secret Manager to store critical credentials without plaintext disk expos
 
 ---
 
-### B. 🚨 Least Privilege Identity Compliance
+### B. Least Privilege Identity Compliance
 **IMPORTANT (Security Compliance Principle):** 
 To enforce least privilege, we do not provision permissions for an `agent_repo` in Artifact Registry for ADK Reasoning Engine agents, because Reasoning Engines do not use Docker containers—they are packaged as compressed `.zip` bundles in GCS buckets. We only grant image write permissions to `mcp_repo` (used by Cloud Run tool services).
 
@@ -31,30 +31,22 @@ graph TD
         SA_MCP["sa-mcp-runtimes@...gserviceaccount.com"] -->|Read Only| Registry["Artifact Registry: mcp-repo"]
     end
 
-    subgraph Agents["Project: prj-esmeralda-a2a-agents"]
+    subgraph Agents["Project: prj-esmeralda-a2a"]
         SA_A2A["sa-a2a-agent@...gserviceaccount.com"] -->|Exclusive Access| SQL["Cloud SQL (PostgreSQL)"]
         SA_A2A -->|Read Only| GCS_Agent["GCS: staging-agents-bucket"]
     end
 
-    SA_A2A -. Consumes Keys/Secrets .-> Governance
-    SA_MCP -. Consumes Secrets .-> Governance
+    SA_A2A -.->|Consumes Keys/Secrets| Governance
+    SA_MCP -.->|Consumes Secrets| Governance
 ```
 
 ---
 
----
-
-### B. Detailed Implementation Specifications & HCL Blueprints
-
-# Stage 3: Security Keys, Secret Management, and Log Sinks
-
-This module provisions KMS Keyrings and CryptoKeys, sets up Secret Manager secrets, and configures centralized Cloud Logging Sinks routed to BigQuery and Log Analytics buckets.
-
-### 7.3 Stage 3: `modules/3-security/` Specification
+## Detailed Implementation Specifications & HCL Blueprints
 
 This module establishes central customer-managed cryptographic keys (CMEK) via Cloud KMS, configures secure secret storage boundaries in Secret Manager, provisions isolated, least-privilege workload Service Accounts for each engineering domain (including a dedicated Test VM service account and full-parity roles from Esmeralda's monolithic `test-vm-sa`), and hooks up enterprise audit and telemetry log sinks.
 
-Under our centralized governance design, all KMS keyrings, keys, and secrets are created in the centralized **`prj-esmeralda-governance`** project during Stage 3. Workload runtimes (e.g. Cloud SQL in `prj-esmeralda-a2a-agents`) merely consume these resources over cross-project IAM bindings.
+Under our centralized governance design, all KMS keyrings, keys, and secrets are created in the centralized **`prj-esmeralda-governance`** project during Stage 3. Workload runtimes (e.g. Cloud SQL in `prj-esmeralda-a2a`) merely consume these resources over cross-project IAM bindings.
 
 #### A. Cryptographic, Secrets, and Identity Isolation Architecture
 Stage 3 establishes centralized encryption-at-rest keys, credentials, and cryptographic identities to satisfy strict corporate infosec rules:

@@ -8,7 +8,7 @@ This documentation organizes the platform's architecture into **self-contained m
 
 ---
 
-## 🗺️ Enterprise Multi-Project Topology & Architecture Philosophy
+## Enterprise Multi-Project Topology & Architecture Philosophy
 
 To enforce strict Separation of Concerns (SoC) and align infrastructure with Google Cloud enterprise Landing Zone best practices, Esmeralda's architecture is segregated into **seven independent GCP projects**, ensuring that each operational domain controls its own security and resource boundary.
 
@@ -90,19 +90,19 @@ graph TD
 
 ---
 
-## 🏗️ Modular & Composable Infrastructure Architecture
+## Modular & Composable Infrastructure Architecture
 
 Esmeralda builds enterprise AI infrastructure **from the ground up** using a modular, composable, four-layer approach. Rather than locking platforms into a monolithic stack, each stage operates as an independent building block. This allows organizations to either deploy a complete greenfield architecture from scratch or leverage the **BYOInfra (Bring Your Own Infrastructure)** pattern to selectively attach Esmeralda workloads to pre-existing corporate networks, security keys, and GCP projects.
 
 ```mermaid
 flowchart TB
-    L1["<b>Layer 1: Projects, FinOps & APIs (Stage 1)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/>👥 <b>Owned by:</b> Platform & FinOps Engineering Teams<br/>📦 <b>Deploys:</b> 7 Isolated GCP Projects, APIs, Billing Bindings & Identities<br/>🔌 <b>BYOInfra:</b> Attach existing net-host, gateway, governance, or CI/CD projects"]
+    L1["<b>Layer 1: Projects, FinOps & APIs (Stage 1)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/><b>Owned by:</b> Platform & FinOps Engineering Teams<br/><b>Deploys:</b> 7 Isolated GCP Projects, APIs, Billing Bindings & Identities<br/><b>BYOInfra:</b> Attach existing net-host, gateway, governance, or CI/CD projects"]
 
-    L2["<b>Layer 2: Private Networking, DNS & PSC (Stage 2)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/>👥 <b>Owned by:</b> Network Operations (NetOps Engineering)<br/>📦 <b>Deploys:</b> Shared VPC, 5 Subnets, Cloud NAT, DNS, SWP & PSC Attachments<br/>🔌 <b>BYOInfra:</b> Attach to pre-existing corporate Shared VPC and subnetworks"]
+    L2["<b>Layer 2: Private Networking, DNS & PSC (Stage 2)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/><b>Owned by:</b> Network Operations (NetOps Engineering)<br/><b>Deploys:</b> Shared VPC, 5 Subnets, Cloud NAT, DNS, SWP & PSC Attachments<br/><b>BYOInfra:</b> Attach to pre-existing corporate Shared VPC and subnetworks"]
 
-    L3["<b>Layer 3: Security, CMEK, Secrets & IAM (Stage 3)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/>👥 <b>Owned by:</b> Security Operations (SecOps & Governance)<br/>📦 <b>Deploys:</b> KMS Keys, Secret Store, Audit Sinks & Workload Least-Privilege IAM<br/>🔌 <b>BYOInfra:</b> Consume existing enterprise KMS keys and secret resources"]
+    L3["<b>Layer 3: Security, CMEK, Secrets & IAM (Stage 3)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/><b>Owned by:</b> Security Operations (SecOps & Governance)<br/><b>Deploys:</b> KMS Keys, Secret Store, Audit Sinks & Workload Least-Privilege IAM<br/><b>BYOInfra:</b> Consume existing enterprise KMS keys and secret resources"]
 
-    L4["<b>Layer 4: Composable AI Workloads Catalog (Stage 4)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/>👥 <b>Owned by:</b> AppDev, AI Platform & Business Unit Teams<br/>📦 <b>Deploys:</b> Swappable Gateways, MCP Tool Servers, A2A & Root Agent Engines<br/>🧩 <b>Catalog:</b> Selectively deploy or swap individual tools and agents"]
+    L4["<b>Layer 4: Composable AI Workloads Catalog (Stage 4)</b><br/>────────────────────────────────────────────────────────────────────────────────<br/><b>Owned by:</b> AppDev, AI Platform & Business Unit Teams<br/><b>Deploys:</b> Swappable Gateways, MCP Tool Servers, A2A & Root Agent Engines<br/><b>Catalog:</b> Selectively deploy or swap individual tools and agents"]
 
     L1 ==> L2 ==> L3 ==> L4
 ```
@@ -168,25 +168,25 @@ flowchart TB
 
 ---
 
-## 🧭 Reference Index (How to Navigate Esmeralda)
+## Reference Index: How to Navigate Esmeralda
 
 To make finding technical specifications instantaneous for both human teams and AI assistants, we organize reference links into two clear pathways:
 
-### A. By Engineering Role / Team 👥
+### A. By Engineering Role / Team
 *   **For Platform & FinOps Engineers**:
-    *   👉 [Stage 1: Projects & FinOps Guide](./1-platform-foundations/01-projects-and-finops.md) — Provisioning the 7 isolated GCP projects, API enablements, billing bindings, and cost labels.
+    *   [Stage 1: Projects & FinOps Guide](./1-platform-foundations/01-projects-and-finops.md) — Provisioning the 7 isolated GCP projects, API enablements, billing bindings, and cost labels.
 *   **For Network Engineers (NetOps)**:
-    *   👉 [Stage 2: Private Networking Guide](./1-platform-foundations/02-private-networking.md) — Shared VPC topology, private DNS zones, Cloud NAT, Secure Web Proxy (SWP), and PSC attachments.
+    *   [Stage 2: Private Networking Guide](./1-platform-foundations/02-private-networking.md) — Shared VPC topology, private DNS zones, Cloud NAT, Secure Web Proxy (SWP), and PSC attachments.
 *   **For Security & Governance Engineers (SecOps)**:
-    *   👉 [Stage 3: Security, CMEK & IAM Guide](./1-platform-foundations/03-security-iam-and-telemetry.md) — KMS encryption keyrings, Secret Manager automation, central BigQuery audit sinks, and workload Service Account IAM tables.
+    *   [Stage 3: Security, CMEK & IAM Guide](./1-platform-foundations/03-security-iam-and-telemetry.md) — KMS encryption keyrings, Secret Manager automation, central BigQuery audit sinks, and workload Service Account IAM tables.
 *   **For Application Developers & Tool Builders (AppDev Tools)**:
-    *   👉 [Stage 4: Composable MCP Tools Guide](./2-workloads-and-catalog/02-mcp-tool-servers.md) — Packaging utility tool APIs (Corporate Email, Income Verification, Legacy DMS) as containerized Cloud Run services.
+    *   [Stage 4: Composable MCP Tools Guide](./2-workloads-and-catalog/02-mcp-tool-servers.md) — Packaging utility tool APIs (Corporate Email, Income Verification, Legacy DMS) as containerized Cloud Run services.
 *   **For AI Engineers & Business Unit Teams**:
-    *   👉 [Stage 4: AI Agents & Database Bootstrapping Guide](./2-workloads-and-catalog/03-ai-agents-and-database.md) — A2A reasoning engines, Cloud SQL PostgreSQL task stores, automated schema privilege bootstrapping, and Root Orchestrators.
+    *   [Stage 4: AI Agents & Database Bootstrapping Guide](./2-workloads-and-catalog/03-ai-agents-and-database.md) — A2A reasoning engines, Cloud SQL PostgreSQL task stores, automated schema privilege bootstrapping, and Root Orchestrators.
 
-### B. By Technical Domain & Blueprint Reference (AI & Developer Index) 🤖
+### B. By Technical Domain & Blueprint Reference (AI & Developer Index)
 *   **Infrastructure-as-Code (IaC) & Assembly**:
-    *   👉 [Architectural Component Mapping Table](#component-mapping) — Master reference mapping Terragrunt stages to GCP projects and cross-dependency inputs.
+    *   [Architectural Component Mapping Table](#component-mapping) — Master reference mapping Terragrunt stages to GCP projects and cross-dependency inputs.
 *   **Runtime Orchestration & Security Patterns**:
-    *   👉 [Swappable Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md) — Apigee X, Kong DB-less, and L7 ILB with Routing Broker proxy.
-    *   👉 [Database Bootstrapping Sequence Diagram](./2-workloads-and-catalog/03-ai-agents-and-database.md) — Automated VPC-internal Cloud Run job for PostgreSQL schema privilege grants.
+    *   [Swappable Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md) — Apigee X, Kong DB-less, and L7 ILB with Routing Broker proxy.
+    *   [Database Bootstrapping Sequence Diagram](./2-workloads-and-catalog/03-ai-agents-and-database.md) — Automated VPC-internal Cloud Run job for PostgreSQL schema privilege grants.

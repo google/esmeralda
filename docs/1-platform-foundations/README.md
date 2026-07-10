@@ -35,7 +35,7 @@ flowchart TD
 
 ---
 
-## 🗺️ Foundations Deployment Index
+## Foundations Deployment Index
 
 1. **[Stage 1: Foundational Projects, Billing (FinOps), and APIs](./01-projects-and-finops.md)**
    - Architectural & FinOps Overview

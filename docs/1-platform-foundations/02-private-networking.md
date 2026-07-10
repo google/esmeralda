@@ -1,9 +1,5 @@
 # Stage 2: Private Networking, DNS & PSC
 
-### A. Network Architecture & Topology Guide
-
-Stage 2 implements Zero-Trust network infrastructure to ensure that no API or AI agent communicates over public internet channels.
-
 ### A. VPC Subnet Topology (`gateway-vpc`)
 In the `prj-net-host` project, we allocate the following CIDR ranges:
 *   **Core Workload Subnet (`gke-subnet`)**: `10.0.0.0/20` for internal compute runtimes and test VMs.
@@ -19,13 +15,7 @@ To decouple dynamic Vertex AI service URLs, we establish a private Cloud DNS zon
 
 ---
 
-### B. Detailed Implementation Specifications & HCL Blueprints
-
-# Stage 2: Shared VPC Host Networking & Secure Egress
-
-This module handles core network topologies including private IP address allocation, Shared VPC, Cloud NAT gateway egress, Secure Web Proxy (SWP) whitelist policies, and Private Service Connect (PSC).
-
-### 7.2 Stage 2: `modules/2-networking/` Specification
+## Detailed Implementation Specifications & HCL Blueprints
 
 This module establishes the Shared VPC network, configures the internal subnet routing topologies, sets up Private Service Connect (PSC) Network Attachments, deploys Google Cloud's Secure Web Proxy (SWP) for audited internet egress, and handles corporate DNS zones. It is designed to run on the Shared VPC Host Project (`prj-net-host`), but can be toggled to a pure-attachment mode for pre-existing (brownfield) customer networks.
 
@@ -50,7 +40,7 @@ graph TD
     Router --> NAT
     SubnetCore --> SWP
     SWP --> Router
-    PSA -. Internal Peering .-> DB["Private Cloud SQL<br/>(Database Project)"]
+    PSA -.->|Internal Peering| DB["Private Cloud SQL<br/>(Database Project)"]
 ```
 
 ##### 1. Subnet Classifications
@@ -100,9 +90,9 @@ graph LR
     Host["prj-net-host<br/>Shared VPC Host"]
     Subnet["sb-esmeralda-core Subnet"]
 
-    Host -. Service Project Attachment .-> P_MCP["prj-esmeralda-mcps"]
-    Host -. Service Project Attachment .-> P_A2A["prj-esmeralda-a2a-agents"]
-    Host -. Service Project Attachment .-> P_Root["prj-esmeralda-root-agent"]
+    Host -.->|Service Project Attachment| P_MCP["prj-esmeralda-mcps"]
+    Host -.->|Service Project Attachment| P_A2A["prj-esmeralda-a2a"]
+    Host -.->|Service Project Attachment| P_Root["prj-esmeralda-root-agent"]
 
     SA_MCP["Cloud Run Service Agent (mcps)"] -->|roles/compute.networkUser| Subnet
     SA_A2A["Cloud Run Service Agent (a2a)"] -->|roles/compute.networkUser| Subnet
