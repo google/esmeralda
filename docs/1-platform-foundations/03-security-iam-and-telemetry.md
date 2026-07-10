@@ -99,11 +99,42 @@ When `byo_security = true` is declared in `env.yaml`:
 
 ---
 
----
-
 ### C. Exhaustive Security, IAM & Telemetry Implementation Breakdown
 
 A thorough code review of `infrastructure/modules/3-security/` reveals the exact cryptographic, identity, and observability primitives deployed across Esmeralda's project boundaries:
+
+```mermaid
+flowchart TD
+    subgraph Gov["prj-esmeralda-governance (SecOps Hub)"]
+        KMS["Cloud KMS Keyring<br/>keyring-esmeralda-{env}"]
+        KeySQL["CMEK CryptoKey<br/>key-esmeralda-sql (90d rotation)"]
+        KeySec["CMEK CryptoKey<br/>key-esmeralda-secrets (90d rotation)"]
+        Secret["Secret Manager<br/>secret-pg-admin-password (32 chars)"]
+        BQ["BigQuery Dataset<br/>esmeralda_telemetry_logs (30d retention)"]
+    end
+
+    subgraph WorkloadSAs["4 Domain Workload Service Accounts"]
+        MCPS_SA["sa-esmeralda-mcps<br/>(prj-esmeralda-mcps)"]
+        Builder_SA["sa-esmeralda-builder<br/>(prj-esmeralda-cicd-artifacts)"]
+        A2A_SA["sa-esmeralda-a2a<br/>(prj-esmeralda-a2a)"]
+        Root_SA["sa-esmeralda-root<br/>(prj-esmeralda-root-agent)"]
+    end
+
+    subgraph Reasoning["Reasoning Engine & Test Identities"]
+        RE_Robots["Vertex AI Reasoning Engine P6SAs (-re)<br/>Granted AR Reader in CI/CD & Vertex User"]
+        TestVM["sa-esmeralda-test-vm<br/>Granted run.invoker in MCPS & A2A"]
+    end
+
+    subgraph Sinks["7 Project Log Sinks"]
+        LogSinks["google_logging_project_sink across all 7 projects<br/>Filter: aiplatform.googleapis.com/ReasoningEngine OR gen_ai..."]
+    end
+
+    KMS --> KeySQL & KeySec
+    KeySec -->|Encrypts Payload| Secret
+    A2A_SA -->|roles/secretmanager.secretAccessor| Secret
+    Root_SA -->|roles/iam.serviceAccountTokenCreator<br/>Direct Impersonation| A2A_SA
+    LogSinks -->|roles/bigquery.dataEditor| BQ
+```
 
 #### 1. Centralized Cloud KMS Keyrings & CMEK CryptoKeys
 When `var.byo_security = false`, KMS resources are generated inside the central **`prj-esmeralda-governance`** project:
