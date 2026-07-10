@@ -37,7 +37,7 @@ flowchart TB
 
 ---
 
-## 🗺️ Workloads Catalog Index
+## Workloads Catalog Index
 
 1. **[Swappable Ingress Gateways](./01-ingress-gateways.md)**
    - Apigee X Enterprise Gateway
