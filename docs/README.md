@@ -183,13 +183,10 @@ To make finding technical specifications instantaneous for both human teams and 
     *   👉 [Stage 4: Composable MCP Tools Guide](./2-workloads-and-catalog/02-mcp-tool-servers.md) — Packaging utility tool APIs (Corporate Email, Income Verification, Legacy DMS) as containerized Cloud Run services.
 *   **For AI Engineers & Business Unit Teams**:
     *   👉 [Stage 4: AI Agents & Database Bootstrapping Guide](./2-workloads-and-catalog/03-ai-agents-and-database.md) — A2A reasoning engines, Cloud SQL PostgreSQL task stores, automated schema privilege bootstrapping, and Root Orchestrators.
-    *   👉 [Symmetric Testing Ecosystem](./3-architecture-and-dx/03-symmetric-testing.md) — Executing offline local tests (`test_local.py`) and real cloud SSE streaming verification (`test_remote.py`).
 
 ### B. By Technical Domain & Blueprint Reference (AI & Developer Index) 🤖
 *   **Infrastructure-as-Code (IaC) & Assembly**:
     *   👉 [Architectural Component Mapping Table](#component-mapping) — Master reference mapping Terragrunt stages to GCP projects and cross-dependency inputs.
-    *   👉 [BYOInfra (Brownfield) Integration Guide](./3-architecture-and-dx/01-byoinfra-pattern.md) — How to configure dynamic bypass `skip` toggles in `env.yaml`.
-    *   👉 [Declarative Automation](./3-architecture-and-dx/02-declarative-automation.md) — The end of `deploy.sh` and local `.env` files.
 *   **Runtime Orchestration & Security Patterns**:
     *   👉 [Swappable Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md) — Apigee X, Kong DB-less, and L7 ILB with Routing Broker proxy.
     *   👉 [Database Bootstrapping Sequence Diagram](./2-workloads-and-catalog/03-ai-agents-and-database.md) — Automated VPC-internal Cloud Run job for PostgreSQL schema privilege grants.
