@@ -99,7 +99,58 @@ When `byo_security = true` is declared in `env.yaml`:
 
 ---
 
-#### C. File Inventory & Blueprints
+---
+
+### C. Exhaustive Security, IAM & Telemetry Implementation Breakdown
+
+A thorough code review of `infrastructure/modules/3-security/` reveals the exact cryptographic, identity, and observability primitives deployed across Esmeralda's project boundaries:
+
+#### 1. Centralized Cloud KMS Keyrings & CMEK CryptoKeys
+When `var.byo_security = false`, KMS resources are generated inside the central **`prj-esmeralda-governance`** project:
+*   **Keyring**: `keyring-esmeralda-{env}` created in `var.region`.
+*   **Database Key (`key-esmeralda-sql-{env}`)**: Configured with a 90-day rotation period (`7776000s`) and `prevent_destroy = false`. Binds `roles/cloudkms.cryptoKeyEncrypterDecrypter` to `var.a2a_sql_service_agent` so Cloud SQL can encrypt database disks at rest.
+*   **Secrets Key (`key-esmeralda-secrets-{env}`)**: Configured with a 90-day rotation period (`7776000s`). Binds `roles/cloudkms.cryptoKeyEncrypterDecrypter` to `var.governance_secrets_service_agent` to encrypt Secret Manager payloads.
+
+#### 2. Secret Manager Master Credentials Store
+*   **Random Password Generator**: `random_password.db_password` generates a 32-character high-entropy password with explicit special character overrides (`!#$%&*()-_=+[]{}<>:?`).
+*   **Secret Container**: Deploys `secret-pg-admin-password-{env}` into `prj-esmeralda-governance`, configured with user-managed replication in `var.region` encrypted with `local.resolved_secrets_key_id`.
+*   **Secret Data**: Populates `google_secret_manager_secret_version.db_password` with the generated master credential.
+
+#### 3. Four Least-Privilege Workload Service Accounts
+Esmeralda rejects generic service accounts, provisioning dedicated identities per project:
+1.  **`sa-esmeralda-mcps-{env}` (`mcps_sa`) in `prj-esmeralda-mcps`**: Granted `logging.logWriter`, `monitoring.metricWriter`, and `cloudtrace.agent`. Binds `roles/compute.networkUser` on `var.backend_subnet_id` in `prj-net-host` for Direct VPC Egress tunnel creation.
+2.  **`sa-esmeralda-builder-{env}` (`cicd_builder_sa`) in `prj-esmeralda-cicd-artifacts`**: Dedicated CI/CD container delivery identity granted `cloudbuild.builds.editor`, `storage.admin`, `artifactregistry.admin`, and `logging.logWriter`.
+3.  **`sa-esmeralda-a2a-{env}` (`a2a_sa`) in `prj-esmeralda-a2a`**: Granted 11 full-parity roles (`cloudsql.client`, `cloudsql.instanceUser`, `aiplatform.user`, `logging.logWriter`, `monitoring.metricWriter`, `cloudtrace.agent`, `telemetry.writer`, `storage.objectAdmin`, `serviceusage.serviceUsageConsumer`, `browser`, `cloudapiregistry.viewer`). Granted `roles/secretmanager.secretAccessor` on the database password secret, and `roles/compute.networkUser` on `var.backend_subnet_id`.
+4.  **`sa-esmeralda-root-{env}` (`root_sa`) in `prj-esmeralda-root-agent`**: Granted 9 full-parity roles (`aiplatform.user`, `storage.objectAdmin`, `logging.logWriter`, `monitoring.metricWriter`, `cloudtrace.agent`, `serviceusage.serviceUsageConsumer`, `telemetry.writer`, `browser`, `cloudapiregistry.viewer`). Binds `roles/compute.networkUser` on `var.backend_subnet_id`.
+
+#### 4. Reasoning Engine (`-re`) & Robot IAM Bindings
+To allow Google Antigravity (AGY) / ADK Reasoning Engines and serverless robots to deploy and execute seamlessly across projects, Stage 3 configures extensive cross-project grants:
+*   **Service Account User**: Grants `roles/iam.serviceAccountUser` on `a2a_sa` to the `a2a` `-re` SA, standard SA, and serverless robot; and on `root_sa` to the `root_agent` `-re` SA and standard SA.
+*   **Runtime Storage & Vertex Access**: Binds `storage.objectViewer`, `aiplatform.user`, `cloudsql.client`, and `cloudsql.instanceUser` to the `a2a` `-re` robot; and `storage.objectViewer` and `aiplatform.user` to the `root` `-re` robot.
+*   **Cross-Project Reasoning Invocation**: Grants the `root` `-re` robot `roles/aiplatform.user` and `roles/serviceusage.serviceUsageConsumer` on `prj-esmeralda-a2a` so the Root Orchestrator can trigger downstream A2A agents.
+*   **CI/CD Container Image Pulling**: Binds `roles/artifactregistry.reader` on `prj-esmeralda-cicd-artifacts` to all 7 reasoning engine and serverless Cloud Run robot accounts so workload runtimes can pull compiled Docker containers from the central repository.
+*   **PSC Network User**: Grants `roles/compute.networkUser` on `prj-net-host` to reasoning engine robots for PSC network attachment binding.
+
+#### 5. Strict Service-to-Service Impersonation
+*   **`google_service_account_iam_member.root_impersonates_a2a`**: Binds `roles/iam.serviceAccountTokenCreator` on `a2a_sa` directly to `root_sa`. This authorizes the Root Orchestrator to generate OAuth2 identity tokens under the A2A Agent's identity to securely invoke private upstream endpoints without static API keys.
+
+#### 6. Test VM Dedicated Jumpbox Identity
+*   **`sa-esmeralda-test-vm-{env}` (`test_vm_sa`)**: Deployed in `prj-esmeralda-root-agent` with standard logging, monitoring, tracing, and Vertex AI user roles.
+*   **Private Endpoint Testing**: Granted `roles/run.invoker` in both `prj-esmeralda-mcps` and `prj-esmeralda-a2a` so engineers SSH'd into private test VMs can curl internal Cloud Run MCP tool servers and database bootstrappers.
+*   **Token Creator**: Binds `roles/iam.serviceAccountTokenCreator` on itself to facilitate local token generation during debugging.
+
+#### 7. Enterprise Telemetry Sinks & BigQuery Audit Dataset
+*   **BigQuery Dataset**: Creates `esmeralda_telemetry_logs_{env}` in `prj-esmeralda-governance`, configured with a 30-day retention window (`2592000000ms`).
+*   **Seven Cross-Project Log Sinks**: Deploys `google_logging_project_sink.central_sinks` across **all 7 projects** (`net_host`, `gateway`, `cicd`, `mcps`, `a2a`, `root`, `governance`), routing directly into the central BigQuery dataset.
+*   **Precision Filtering**: Captures agentic reasoning steps and container telemetry with the filter: `resource.type="aiplatform.googleapis.com/ReasoningEngine" OR logName=~"gen_ai" OR logName=~"reasoning_engine_stdout" OR logName=~"reasoning_engine_stderr" OR resource.type="cloud_run_revision"`.
+*   **Writer Authorization**: Binds `roles/bigquery.dataEditor` to each sink's unique `writer_identity`.
+
+#### 8. Module Outputs (`outputs.tf`)
+Exports 10 security primitives: `database_key_id`, `secrets_key_id`, `db_password_secret_name`, `mcps_sa_email`, `cicd_builder_sa_email`, `mcps_builder_sa_email` *(alias for backwards compatibility)*, `a2a_agent_sa_email`, `root_agent_sa_email`, `test_vm_sa_email`, and `telemetry_dataset_id`.
+
+---
+
+#### D. File Inventory & Blueprints
 
 ```text
 infrastructure/modules/3-security/
@@ -107,4 +158,6 @@ infrastructure/modules/3-security/
 ├── variables.tf         # Multi-project inputs, BYO KMS/Secret overrides, and project numbers
 ├── main.tf              # Implements Cloud KMS, secrets, SAs, and log sinks
 └── outputs.tf           # Exports SAs, KMS Key IDs, and Secret Resource Names
+```
+
 *(With this Stage 3 Security implementation, our three workload service accounts contain complete, high-fidelity permissions strictly scoped to their respective domain boundaries. We also establish a dedicated Test VM service account with tight invocation and token-creation privileges, customized for secure private VPC endpoints.)*
