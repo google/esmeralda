@@ -41,53 +41,11 @@ infrastructure/modules/4-workloads/gateways/
 
 To maintain complete interchangeability, all three gateway sub-modules **must accept the exact same input variables** and **expose the exact same output variables**. This contract enforces the **Gateway Adapter Pattern**: downstream agents (the reasoning engine workloads) remain completely agnostic of *how* ingress is routed or which API gateway is active.
 
-> [!TIP]
-> 📁 **Unified Variable Contract:**
-> The common, standardized input variable interface contract that enforces gateway interchangeability is available at:
-> 👉 [`variables.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/variables.tf)
-
-
----
-
-##### A. Option A: Apigee X Enterprise Gateway (`gateways/apigee/`)
-
-The Apigee X adapter implements an enterprise-grade API management plane. It provisions an Apigee Organization, binds an Apigee Environment to the gateway project, creates an Environment Group to register hostnames (`*.esmeralda.internal`), and hooks up the Apigee runtime plane to the Shared VPC via Private Service Connect (PSC).
-
 To handle dynamic Vertex AI Reasoning Engine IDs (which change on every deployment), the Apigee adapter populates an **Apigee Key Value Map (KVM)** using Terraform's `null_resource` local-exec trigger. At runtime, an Apigee Proxy intercepts `*.esmeralda.internal`, extracts the logical agent name from the host header, looks up the target endpoint URL in the KVM, performs Google Service Account token exchange, and proxies the query to Vertex AI.
 
-###### 1. Variables Specification (`variables.tf`)
-Includes the standard Swappable Gateway variables contract defined above.
-
-###### 2. Implementation Blueprint (`main.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The main Terraform configuration for enterprise Apigee X Ingress Gateway is available at:
-> 👉 [`main.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/main.tf)
-
-
-###### 3. Dynamic Routing & Auth Policies (`policies/`)
-
 Inside the Apigee API Proxy (`/apiproxy/policies/`), we implement:
-*   **KVM-Lookup.xml** (extracts the sub-domain e.g. `a2a-agent` from `request.header.host`, looks up target in KVM):
-> [!TIP]
-> 📁 **Apigee XML Policies Available:**
-> The dynamic KVM Lookup routing policy for the Apigee Proxy is available at:
-> 👉 [`KVM-Lookup.xml`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/apiproxy/policies/KVM-Lookup.xml)
-
-
-*   **Generate-Bearer-Token.xml** (uses Google Application Default Credentials or the Apigee Service Account's Identity Token to authenticate with Vertex AI):
-> [!TIP]
-> 📁 **Apigee XML Policies Available:**
-> The policy for generating and injecting Bearer authentication tokens is available at:
-> 👉 [`Generate-Bearer-Token.xml`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/apiproxy/policies/Generate-Bearer-Token.xml)
-
-
-###### 4. Outputs Specification (`outputs.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The exported outputs from the Apigee X gateway adapter module are available at:
-> 👉 [`outputs.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/apigee/outputs.tf)
-
+*   **KVM-Lookup.xml** (extracts the sub-domain e.g. `a2a-agent` from `request.header.host`, looks up target in KVM)
+*   **Generate-Bearer-Token.xml** (uses Google Application Default Credentials or the Apigee Service Account's Identity Token to authenticate with Vertex AI)
 
 ---
 
@@ -97,35 +55,6 @@ The Kong adapter deploys the lightweight, open-source Kong Gateway container in 
 
 To support swappability, we compile the DB-less `kong.yml` dynamically inside Terraform using the `templatefile()` function, mapping each logical name from `var.agent_endpoints` to its dynamic Vertex AI Reasoning Engine URL. We also configure Kong's **GCP Service Account plugin** to transparently inject the Google OIDC tokens required to authorize calls to private Vertex AI reasoning engine endpoints.
 
-###### 1. Variables Specification (`variables.tf`)
-Includes the standard Swappable Gateway variables contract defined above, plus:
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The additional variables specific to Kong Gateway (such as container image overrides) are available at:
-> 👉 [`variables.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/variables.tf)
-
-
-###### 2. Implementation Blueprint (`main.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Cloud Run DB-less deployment configuration for Kong Gateway is available at:
-> 👉 [`main.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/main.tf)
-
-
-###### 3. Declarative Config Template (`templates/kong.yml.tpl`)
-> [!TIP]
-> 📁 **Configuration Template Available:**
-> The declarative template file `kong.yml.tpl` configuring Kong's dynamic routing rules is available at:
-> 👉 [`kong.yml.tpl`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/templates/kong.yml.tpl)
-
-
-###### 4. Outputs Specification (`outputs.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The exported outputs generated by the Kong Gateway ingress module are available at:
-> 👉 [`outputs.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/kong/outputs.tf)
-
-
 ---
 
 ##### C. Option C: Direct Regional L7 Internal HTTP(S) Load Balancer (`gateways/ilb/`)
@@ -133,24 +62,3 @@ Includes the standard Swappable Gateway variables contract defined above, plus:
 The direct L7 Internal Load Balancer (ILB) bypasses API gateway appliances entirely, routing traffic directly using Google Cloud's managed regional L7 load balancer. However, because an ILB lacks a programming engine and cannot natively rewrite paths or dynamically inject Google OIDC tokens to private Vertex AI Reasoning Engine API endpoints, a **Routing Broker proxy container** (Cloud Run + Serverless NEG) is packaged **inside** the ILB module itself.
 
 This preserves the unified interface contract! The ILB routes all `*.esmeralda.internal` traffic to the `routing_broker` Cloud Run service. The Routing Broker container reads the dynamic `agent_endpoints` map via an environment variable (`AGENT_ENDPOINTS_JSON`), intercepts incoming agent requests, matches the host header prefix to obtain the target engine URL, retrieves an IAM ID Token from the metadata server, and proxies the query payload directly to the Vertex AI Reasoning Engine.
-
-###### 1. Variables Specification (`variables.tf`)
-Includes the standard Swappable Gateway variables contract defined above, plus:
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The input variables specific to the internal load balancer adapter (ILB + Broker) are available at:
-> 👉 [`variables.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/ilb/variables.tf)
-
-
-###### 2. Implementation Blueprint (`main.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The provisioning of the regional Internal Load Balancer and its companion Routing Broker container is available at:
-> 👉 [`main.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/ilb/main.tf)
-
-
-###### 3. Outputs Specification (`outputs.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The exported outputs generated by the regional ILB ingress module are available at:
-> 👉 [`outputs.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/gateways/ilb/outputs.tf)
