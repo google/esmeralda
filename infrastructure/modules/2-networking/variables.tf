@@ -104,6 +104,11 @@ variable "mcps_run_service_agent" {
   type        = string
 }
 
+variable "gateway_run_service_agent" {
+  description = "The Cloud Run Service Agent email in Gateway project"
+  type        = string
+}
+
 variable "a2a_run_service_agent" {
   description = "The Cloud Run Service Agent email in A2A project"
   type        = string

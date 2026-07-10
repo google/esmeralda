@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Execute all commands using interactive bash with alias expansion enabled (critical for Cloudtop & IDEs)
+SHELL := /bin/bash
+.SHELLFLAGS := -O expand_aliases -lc
+
 .PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-projects deploy-networking deploy-security build-agents deploy-workloads clean preflight
 
 help: ## Show this help message
@@ -27,16 +31,16 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 		echo "❌ uv is not installed. Please install uv first (e.g., 'curl -LsSf https://astral.sh/uv/install.sh | sh')."; \
 		exit 1; \
 	fi
-	@uv sync
+	@uv sync --all-packages --all-extras
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
-	@uv run --package corporate-email --extra dev pytest app/mcp-servers/corporate-email/test_main.py
+	@uv run --package corporate-email --extra dev pytest app/services/corporate-email/test_main.py
 	@echo "🧪 Running unit tests for income-verification-api..."
-	@uv run --package income-verification-api --extra dev pytest app/mcp-servers/income-verification/test_main.py
+	@uv run --package income-verification-api --extra dev pytest app/services/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
-	@uv run --package legacy-dms --extra dev pytest app/mcp-servers/legacy-dms/test_server.py
+	@uv run --package legacy-dms --extra dev pytest app/services/legacy-dms/test_server.py
 	@echo "🧪 Running unit tests for mortgage-agent..."
 	@uv run --package mortgage-agent --extra dev pytest app/agents/base-adk-agent/tests/test_remote_agent.py
 	@echo "🧪 Running unit tests for a2a-mortgage-agent..."
@@ -46,11 +50,11 @@ test: ## Run unit tests across all workspace members
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@[ -n "$$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null)" ] && kill -9 $$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null) 2>/dev/null || true
 	@echo "🚀 Launching MCP Servers..."
-	@uv run --package corporate-email uvicorn main:app --app-dir app/mcp-servers/corporate-email --port 8001 & pid_email=$$! ; \
+	@uv run --package corporate-email uvicorn main:app --app-dir app/services/corporate-email --port 8001 & pid_email=$$! ; \
 	 echo "📧 corporate-email running on http://localhost:8001" ; \
-	 uv run --package income-verification-api uvicorn main:app --app-dir app/mcp-servers/income-verification --port 8002 & pid_income=$$! ; \
+	 uv run --package income-verification-api uvicorn main:app --app-dir app/services/income-verification --port 8002 & pid_income=$$! ; \
 	 echo "💰 income-verification-api running on http://localhost:8002" ; \
-	 uv run --package legacy-dms uvicorn server:app --app-dir app/mcp-servers/legacy-dms --port 8003 & pid_dms=$$! ; \
+	 uv run --package legacy-dms uvicorn server:app --app-dir app/services/legacy-dms --port 8003 & pid_dms=$$! ; \
 	 echo "🗄️ legacy-dms running on http://localhost:8003" ; \
 	 trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill $$pid_email $$pid_income $$pid_dms 2>/dev/null || true' INT TERM EXIT; \
 	 wait
@@ -80,7 +84,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
 	export DMS_MCP_URL="http://localhost:8003/mcp"; \
 	echo "🤖 Running A2A Agent test locally..."; \
-	uv run --package a2a-mortgage-agent python app/agents/a2a-agent/test_local.py "$(QUERY)"; \
+	uv run --package a2a-mortgage-agent python app/agents/a2a-agent/scripts/test_local.py "$(QUERY)"; \
 	status=$$?; \
 	if [ $$already_running -eq 0 ]; then \
 		echo "🧹 Tearing down background MCP servers..."; \
@@ -91,6 +95,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 			kill -TERM $$pids 2>/dev/null || true; \
 		fi; \
 	fi; \
+	disown -a 2>/dev/null || true; \
 	exit $$status
 
 test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins up & tears down MCP servers via run-mcp-local)
@@ -116,7 +121,7 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
 	export DMS_MCP_URL="http://localhost:8003/mcp"; \
 	echo "👑 Running Root Agent integration test locally (in-memory mock routing)..."; \
-	uv run --package mortgage-agent python app/agents/base-adk-agent/test_local.py "$(QUERY)"; \
+	uv run --package mortgage-agent python app/agents/base-adk-agent/scripts/test_local.py "$(QUERY)"; \
 	status=$$?; \
 	if [ $$already_running -eq 0 ]; then \
 		echo "🧹 Tearing down background MCP servers..."; \
@@ -127,33 +132,111 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 			kill -TERM $$pids 2>/dev/null || true; \
 		fi; \
 	fi; \
+	disown -a 2>/dev/null || true; \
 	exit $$status
 
 deploy-projects: ## Deploy Stage 1: Projects via Terragrunt
 	@echo "🏗️  Deploying Stage 1: Projects..."
-	@cd infrastructure/live/dev/stage-1-projects && terragrunt apply --terragrunt-non-interactive -auto-approve
+	@cd infrastructure/live/dev/stage-1-projects && terragrunt --non-interactive apply -auto-approve
 
 deploy-networking: ## Deploy Stage 2: Networking via Terragrunt
 	@echo "🏗️  Deploying Stage 2: Networking..."
-	@cd infrastructure/live/dev/stage-2-networking && terragrunt apply --terragrunt-non-interactive -auto-approve
+	@cd infrastructure/live/dev/stage-2-networking && terragrunt --non-interactive apply -auto-approve
 
 deploy-security: ## Deploy Stage 3: Security via Terragrunt
 	@echo "🏗️  Deploying Stage 3: Security..."
-	@cd infrastructure/live/dev/stage-3-security && terragrunt apply --terragrunt-non-interactive -auto-approve
+	@cd infrastructure/live/dev/stage-3-security && terragrunt --non-interactive apply -auto-approve
 
 deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy core foundations (Projects, Networking, Security) collectively via Terragrunt
 
-build-agents: ## Package active ADK agents into real Reasoning Engine serialized bundles
-	@echo "📦 Packaging A2A Agent..."
-	@uv run python app/agents/package_agent.py --agent-dir app/agents/a2a-agent --output-dir app/agents/a2a-agent/dist
-	@echo "📦 Packaging Base ADK Agent..."
-	@uv run python app/agents/package_agent.py --agent-dir app/agents/base-adk-agent --output-dir app/agents/base-adk-agent/dist
-	@echo "✅ Agents successfully packaged!"
+build-agent-a2a: deploy-repo ## Build and push BYOC A2A Agent container
+	@echo "🏗️  Building and pushing A2A Agent container via Cloud Build..."
+	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
+	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit app/agents/a2a-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/a2a-agent:latest
 
-deploy-workloads: build-agents ## Deploy application workloads (MCP Servers, Agents) via Terragrunt
-	@echo "🚀 Deploying Stage 4: Workloads..."
-	@cd infrastructure/live/dev/stage-4-workloads && terragrunt apply --terragrunt-non-interactive -auto-approve
-	@echo "✅ Workloads deployed successfully!"
+build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
+	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
+	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
+	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit app/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:latest
+
+build-agents: deploy-repo ## Build all BYOC agent containers concurrently via make -j2
+	@echo "🏗️  Building all BYOC agent containers concurrently..."
+	@$(MAKE) -j2 build-agent-a2a build-agent-root
+	@echo "✅ All agent containers successfully built and pushed!"
+
+deploy-repo: ## Step 4.1: Deploy Artifact Registry Docker repository in CI/CD project
+	@echo "📦 Provisioning Artifact Registry repository in Stage 4..."
+	@cd infrastructure/live/dev/stage-4-workloads/services/repository && terragrunt apply -- -auto-approve
+	@echo "✅ Artifact Registry repository provisioned successfully!"
+
+deploy-mcp-repo: deploy-repo ## Alias for backwards compatibility
+
+build-service-income-verification: deploy-repo ## Build and push Income Verification API service container
+	@echo "🏗️  Building and pushing Income Verification service container..."
+	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
+	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit app/services/income-verification --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/income-verification-api:latest
+
+build-service-corporate-email: deploy-repo ## Build and push Corporate Email service container
+	@echo "🏗️  Building and pushing Corporate Email service container..."
+	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
+	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit app/services/corporate-email --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/corporate-email:latest
+
+build-service-legacy-dms: deploy-repo ## Build and push Legacy DMS service container
+	@echo "🏗️  Building and pushing Legacy DMS service container..."
+	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
+	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit app/services/legacy-dms --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/legacy-dms:latest
+
+build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j3
+	@echo "🏗️  Building all Cloud Run service containers concurrently..."
+	@$(MAKE) -j3 build-service-income-verification build-service-corporate-email build-service-legacy-dms
+	@echo "✅ All service containers successfully built and pushed!"
+
+
+
+build-mcp-servers: build-services ## Alias for backwards compatibility
+
+
+deploy-repo: ## Step 4.1: Deploy Artifact Registry Docker repository
+	@echo "📦 Deploying Artifact Registry repository..."
+	@cd infrastructure/live/dev/stage-4-workloads/services/repository && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ Repository ready!"
+
+deploy-services: ## Step 4.2: Deploy Cloud Run services (corporate-email, income-verification, legacy-dms, kong)
+	@echo "🚀 Deploying Cloud Run Services..."
+	@cd infrastructure/live/dev/stage-4-workloads/services && terragrunt --non-interactive run --all apply
+	@echo "✅ Cloud Run Services deployed!"
+
+deploy-mcps: deploy-services ## Alias for backwards compatibility
+
+deploy-gateway: ## Step 4.3: Deploy Kong API Gateway individually
+	@echo "🚀 Deploying Kong API Gateway..."
+	@cd infrastructure/live/dev/stage-4-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ Gateway deployed!"
+
+deploy-agent-a2a: ## Step 4.4: Deploy A2A Mortgage Specialist Reasoning Engine
+	@echo "🚀 Deploying A2A Reasoning Engine Agent..."
+	@cd infrastructure/live/dev/stage-4-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ A2A Agent deployed!"
+
+deploy-agent-root: ## Step 4.5: Deploy LOB Root Coordinator Reasoning Engine
+	@echo "🚀 Deploying Root Coordinator Reasoning Engine Agent..."
+	@cd infrastructure/live/dev/stage-4-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ Root Coordinator deployed!"
+
+deploy-workloads-step-by-step: deploy-repo deploy-services deploy-agent-a2a deploy-agent-root ## Deploy all Stage 4 workloads sequentially step-by-step without re-running container builds
+	@echo "✨ All Stage 4 workloads deployed step-by-step successfully!"
+
+deploy-workloads: build-agents build-services deploy-workloads-step-by-step ## Full automated build and deploy of all Stage 4 workloads
 
 clean: ## Clean python virtual environments, caches, and terragrunt cache files recursively
 	@echo "🧹 Cleaning up local caches and environments..."

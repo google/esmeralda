@@ -71,9 +71,18 @@ def main():
 
     print(f"[*] Loading object '{object_name}' from module '{module_name}' in {agent_dir}...")
     
-    # Pre-set basic environment variables so modules don't crash on import
+    # Dynamically resolve active project so SDK initializers don't query non-existent projects during serialization
+    if "GOOGLE_CLOUD_PROJECT" not in os.environ and "PROJECT_ID" not in os.environ:
+        try:
+            import subprocess
+            default_proj = subprocess.check_output(["gcloud", "config", "get-value", "project"], text=True, stderr=subprocess.DEVNULL).strip()
+            if default_proj and default_proj != "(unset)":
+                os.environ["GOOGLE_CLOUD_PROJECT"] = default_proj
+        except Exception:
+            pass
+    if "GOOGLE_CLOUD_PROJECT" not in os.environ:
+        os.environ["GOOGLE_CLOUD_PROJECT"] = os.environ.get("PROJECT_ID", "local-dev-project")
     os.environ["GOOGLE_CLOUD_LOCATION"] = os.environ.get("REGION", "us-central1")
-    os.environ["GOOGLE_CLOUD_PROJECT"] = os.environ.get("PROJECT_ID", "dummy-project")
     os.environ["USE_CUSTOM_TELEMETRY"] = "False"
     
     try:

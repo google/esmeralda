@@ -42,6 +42,12 @@ variable "byo_governance_project" {
   default     = false
 }
 
+variable "byo_cicd_project" {
+  description = "Set to true if the customer is bringing a pre-existing CI/CD and Artifacts project"
+  type        = bool
+  default     = false
+}
+
 variable "existing_net_host_project" {
   description = "The project ID of the pre-existing Shared VPC Host Project. Required if byo_net_host_project is true."
   type        = string
@@ -60,9 +66,22 @@ variable "existing_governance_project" {
   default     = ""
 }
 
+variable "existing_cicd_project" {
+  description = "The project ID of the pre-existing CI/CD and Artifacts project. Required if byo_cicd_project is true."
+  type        = string
+  default     = ""
+}
+
+
 # Cost Allocation Labels
 variable "environment" {
   description = "The environment classification label (e.g., dev, qa, prod)"
   type        = string
   default     = "dev"
+}
+
+variable "region" {
+  description = "The GCP region for regional resources like Artifact Registry"
+  type        = string
+  default     = "us-central1"
 }

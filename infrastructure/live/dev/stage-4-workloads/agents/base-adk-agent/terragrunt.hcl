@@ -20,7 +20,7 @@ dependency "security" {
 }
 
 dependency "gateway" {
-  config_path = "../../gateway"
+  config_path = "../../services/kong"
 }
 
 dependency "a2a_agent" {
@@ -36,15 +36,21 @@ inputs = {
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.root_agent_sa_email
 
-  # Packaging paths for the ADK bundle (dynamically evaluated relative to root)
-  pickle_object_path    = "${get_parent_terragrunt_dir()}/../app/agents/base-adk-agent/dist/agent.pkl"
-  requirements_path     = "${get_parent_terragrunt_dir()}/../app/agents/base-adk-agent/dist/requirements.txt"
-  dependencies_path     = "${get_parent_terragrunt_dir()}/../app/agents/base-adk-agent/dist/dependencies.tar.gz"
+  # BYOC Container Image URI
+  agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:latest"
 
-  # Connect reasoning engine container inside private VPC via PSC Network Attachment
-  network_attachment    = dependency.networking.outputs.psc_network_attachment_id
+
+
+
+  # Connect reasoning engine container inside private VPC via PSC Network Attachment (omitted for standard managed BYOC routing)
+  # network_attachment    = dependency.networking.outputs.psc_network_attachment_id
 
   # Inject downstream endpoints
   gateway_mcp_url       = "http://${dependency.gateway.outputs.gateway_ingress_ip}/"
   a2a_agent_url         = dependency.a2a_agent.outputs.endpoint_url
+
+  # Path to application YAML configuration
+  agent_config_path     = "${get_repo_root()}/app/agents/base-adk-agent/agent.yaml"
 }
+
+

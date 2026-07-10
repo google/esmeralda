@@ -17,11 +17,15 @@ inputs = {
   folder_id              = lookup(local.env_vars.locals, "folder_id", "")
   project_prefix         = local.env_vars.locals.project_prefix
   environment            = local.env_vars.locals.environment
+  region                 = local.env_vars.locals.region
   byo_net_host_project   = local.env_vars.locals.byo_net_host_project
   byo_gateway_project    = local.env_vars.locals.byo_gateway_project
   byo_governance_project = local.env_vars.locals.byo_governance_project
+  byo_cicd_project       = lookup(local.env_vars.locals, "byo_cicd_project", false)
 
   existing_net_host_project   = lookup(local.env_vars.locals, "existing_net_host_project", "")
   existing_gateway_project    = lookup(local.env_vars.locals, "existing_gateway_project", "")
   existing_governance_project = lookup(local.env_vars.locals, "existing_governance_project", "")
+  existing_cicd_project       = lookup(local.env_vars.locals, "existing_cicd_project", "")
 }
+

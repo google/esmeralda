@@ -10,10 +10,16 @@ variable "gateway_project_id" {
   type        = string
 }
 
+variable "cicd_project_id" {
+  description = "The project ID allocated for central CI/CD pipelines and Artifact Registry repository"
+  type        = string
+}
+
 variable "mcps_project_id" {
   description = "The project ID allocated for corporate MCP servers"
   type        = string
 }
+
 
 variable "a2a_project_id" {
   description = "The project ID allocated for Core AI Platform and A2A agents"

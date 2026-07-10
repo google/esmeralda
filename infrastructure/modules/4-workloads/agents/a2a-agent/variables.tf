@@ -43,21 +43,12 @@ variable "database_name" {
   default     = "a2a_tasks"
 }
 
-# Packaging paths for the ADK bundle
-variable "pickle_object_path" {
-  description = "The local directory path containing the pre-packaged serialized agent.pkl file"
+# BYOC Container Image URI
+variable "agent_image_uri" {
+  description = "The Artifact Registry URI of the pre-built BYOC container image for the agent"
   type        = string
 }
 
-variable "requirements_path" {
-  description = "The local directory path containing the pre-packaged requirements.txt bundle"
-  type        = string
-}
-
-variable "dependencies_path" {
-  description = "The local directory path containing the pre-packaged dependencies.tar.gz bundle"
-  type        = string
-}
 
 variable "network_attachment" {
   description = "Optional Private Service Connect Network Attachment ID for Vertex AI Reasoning Engine VPC attachment"
@@ -70,3 +61,10 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "agent_config_path" {
+  description = "Absolute path to the agent.yaml file defining agent resources, metadata, and environment variables"
+  type        = string
+  default     = ""
+}
+
