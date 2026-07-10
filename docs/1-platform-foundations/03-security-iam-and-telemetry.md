@@ -115,28 +115,4 @@ infrastructure/modules/3-security/
 ├── variables.tf         # Multi-project inputs, BYO KMS/Secret overrides, and project numbers
 ├── main.tf              # Implements Cloud KMS, secrets, SAs, and log sinks
 └── outputs.tf           # Exports SAs, KMS Key IDs, and Secret Resource Names
-```
-
-##### 1. Versions Specification (`versions.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform code defining security provider dependencies and version constraints is available at:
-> 👉 [`versions.tf`](../migration/01_platform_foundations/infrastructure/modules/3-security/versions.tf)
-
-
-##### 2. Variables Specification (`variables.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform variables configuration for CMEK keys, identities, and secrets is available at:
-> 👉 [`variables.tf`](../migration/01_platform_foundations/infrastructure/modules/3-security/variables.tf)
-
-
-##### 3. Implementation Logic (`main.tf`)
-> [!TIP]
-> 📁 **Source Code Files Available:**
-> The Terraform configurations provisioning CMEK keys, Secret Manager, least-privilege SAs, and BigQuery telemetry sinks are available at:
-> - 👉 `main.tf` (Security and Log Sinks): [`main.tf`](../migration/01_platform_foundations/infrastructure/modules/3-security/main.tf)
-> - 👉 `outputs.tf` (Exported Secrets and SAs): [`outputs.tf`](../migration/01_platform_foundations/infrastructure/modules/3-security/outputs.tf)
-
-
 *(With this Stage 3 Security implementation, our three workload service accounts contain complete, high-fidelity permissions strictly scoped to their respective domain boundaries. We also establish a dedicated Test VM service account with tight invocation and token-creation privileges, customized for secure private VPC endpoints.)*

@@ -141,30 +141,3 @@ infrastructure/modules/2-networking/
 ├── main.tf              # Greenfield VPC, NAT, PSA + PSC Attachments, SWP, IAM network users, Cloud DNS
 └── outputs.tf           # Exports VPC network ID, Subnet self-links, and DNS private zone name
 ```
-
-##### 1. Versions Specification (`versions.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform code defining networking version constraints is available at:
-> 👉 [`versions.tf`](../migration/01_platform_foundations/infrastructure/modules/2-networking/versions.tf)
-
-
-##### 2. Variables Specification (`variables.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform code defining input variables for VPC subnets and routing is available at:
-> 👉 [`variables.tf`](../migration/01_platform_foundations/infrastructure/modules/2-networking/variables.tf)
-
-
-##### 3. Implementation Logic (`main.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The main Terraform configuration implementing VPC topologies, Cloud DNS, and PSC attachments is available at:
-> 👉 [`main.tf`](../migration/01_platform_foundations/infrastructure/modules/2-networking/main.tf)
-
-
-##### 4. Outputs Specification (`outputs.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The exported network IDs, subnet links, and DNS names are available at:
-> 👉 [`outputs.tf`](../migration/01_platform_foundations/infrastructure/modules/2-networking/outputs.tf)
