@@ -122,11 +122,46 @@ When `byo_networking = true` is supplied:
 
 ---
 
----
-
 ### E. Exhaustive Network & Routing Implementation Breakdown
 
 An inspection of `infrastructure/modules/2-networking/` reveals exactly how Esmeralda orchestrates private networking, egress security, and cross-project routing:
+
+```mermaid
+flowchart TD
+    subgraph Host["Shared VPC Host Project (prj-net-host)"]
+        VPC["vpc-esmeralda-shared-{env}"]
+        
+        subgraph Subnets["5 Specialized Regional Subnets"]
+            Core["sb-core (10.0.1.0/24)<br/>Private Google Access"]
+            Proxy["sb-proxy (10.9.0.0/24)<br/>REGIONAL_MANAGED_PROXY"]
+            PSC["sb-psc (10.10.0.0/24)"]
+            PSCI["sb-psc-interface (10.11.0.0/28)"]
+            PSA["sql-peering (10.130.0.0/16)"]
+        end
+        
+        SWP["Secure Web Proxy<br/>(10.0.1.100)"]
+        Router["Cloud Router & NAT"]
+        DNS["Private DNS Zones<br/>esmeralda.internal & internal.gateway"]
+    end
+
+    subgraph Attach["5 Service Project Attachments"]
+        S1["prj-esmeralda-mcps"]
+        S2["prj-esmeralda-a2a"]
+        S3["prj-esmeralda-root-agent"]
+        S4["prj-gateway (Conditional)"]
+        S5["prj-esmeralda-governance (Conditional)"]
+    end
+
+    subgraph IAM["Subnet IAM Network Users (roles/compute.networkUser)"]
+        Robots["7 Service Robots<br/>(mcps_run, a2a_run, a2a_vertex, root_vertex, gateway_run, plus -re P6SAs)"]
+    end
+
+    VPC --- Subnets
+    Core --- SWP
+    VPC --- Router & DNS
+    VPC =====|google_compute_shared_vpc_service_project| Attach
+    Robots -->|Granted Network User on Core & PSC-I Subnets| Core & PSCI
+```
 
 #### 1. Dynamic Project Lookups & Shared VPC Service Attachments
 *   **Data Sources**: Resolves target project numbers dynamically via `data "google_project"` for `mcps`, `a2a`, `root_agent`, and `gateway`, preventing automation deadlocks.

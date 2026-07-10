@@ -125,6 +125,35 @@ sequenceDiagram
 
 A comprehensive analysis of `infrastructure/modules/4-workloads/agents/a2a-agent/` and `base-adk-agent/` reveals how Esmeralda orchestrates atomic agent runtimes, serverless database bootstrappers, and dynamic container digest pinning:
 
+```mermaid
+flowchart TD
+    subgraph Spec["Declarative Agent Definition"]
+        YAML["agent.yaml<br/>(min/max instances, cpu, mem, framework)"]
+        AR["Artifact Registry<br/>Dynamic SHA256 Digest Pinning"]
+    end
+
+    subgraph Storage["Atomic Workload Storage (One Set per Agent)"]
+        Staging["Staging Bucket<br/>(...-staging-{env}-{hex})"]
+        Artifacts["Artifacts Bucket<br/>(...-artifacts-{env}-{hex})"]
+        Logs["Logs Offload Bucket<br/>(...-logs-{env}-{hex})"]
+    end
+
+    subgraph DB["Atomic Postgres Task Store (a2a-agent only)"]
+        SQL["Cloud SQL Postgres 15<br/>(Zonal, PSA Private IP, IAM Auth)"]
+        Boot["VPC-Bound Cloud Run Job<br/>schema_bootstrap (alpine psql)"]
+    end
+
+    subgraph Vertex["Vertex AI Reasoning Engine Runtime"]
+        Engine["google_vertex_ai_reasoning_engine<br/>(google-adk framework + psc_interface_config)"]
+    end
+
+    YAML & AR -->|1. Decode Spec & Pin Digest| Engine
+    Staging & Artifacts & Logs -->|2. Mount Operational Buckets| Engine
+    SQL -->|3. Wait RUNNABLE| Boot
+    Boot -->|4. GRANT ALL TO IAM USER| SQL
+    SQL -->|5. Inject DB_IAM_USER & CLOUD_SQL_INSTANCE| Engine
+```
+
 ### 1. Atomic Mortgage Assistant (`agents/a2a-agent/main.tf`)
 *   **Private Cloud SQL PostgreSQL (`google_sql_database_instance.task_store`)**: Deploys `POSTGRES_15` with `ZONAL` availability, a 15 GB disk, and `cloudsql.iam_authentication = on`. Enforces absolute network isolation by disabling IPv4 (`ipv4_enabled = false`) and binding exclusively to `var.vpc_id` via Private Services Access.
 *   **Database & IAM Authentication Users**: Provisions `google_sql_database.tasks_db`, generates a 24-character root superuser password (`random_password.postgres_pwd`), and creates `google_sql_user.agent_iam_user` of type `CLOUD_IAM_SERVICE_ACCOUNT` derived via `trimsuffix(var.agent_service_account, ".gserviceaccount.com")`.
