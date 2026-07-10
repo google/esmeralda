@@ -36,27 +36,6 @@ infrastructure/modules/4-workloads/agents/
 
 To guarantee absolute **self-contained portability**, the Cloud SQL PostgreSQL task store, its private subnet service IP allocation ranges, its IAM-authenticated DB user accounts, and database readiness bootstrappers are **fully packaged inside this single workload module**. This encapsulates all infrastructure and database requirements into an atomic, standalone unit. Calling `terragrunt apply` on this module will automatically spin up PostgreSQL, initialize the schema tables via a containerized bootstrap job, and deploy the Vertex AI Reasoning Engine with Direct VPC access peering.
 
-###### 1. Variables Specification (`variables.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The input variables for the atomic A2A Agent module are available at:
-> 👉 [`variables.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/variables.tf)
-
-
-###### 2. Implementation Blueprint (`main.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The complete A2A Agent provisioning script, including PostgreSQL instance creation, Vertex AI service account binding, and Reasoning Engine deployment, is available at:
-> 👉 [`main.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/main.tf)
-
-
-###### 3. Outputs Specification (`outputs.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The exported resource names and Reasoning Engine IDs are available at:
-> 👉 [`outputs.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/outputs.tf)
-
-
 ---
 
 ##### B. Sub-Module B: Root Orchestrator Agent (`agents/base-adk-agent/`)
@@ -84,27 +63,6 @@ graph TD
     
     A2A -->|Update State| PG[(Atomic Cloud SQL Postgres)]
 ```
-
-###### 1. Variables Specification (`variables.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The variables for the Root Orchestrator module are available at:
-> 👉 [`variables.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/base-adk-agent/variables.tf)
-
-
-###### 2. Implementation Blueprint (`main.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform configuration packaging the Root Orchestrator Reasoning Engine is available at:
-> 👉 [`main.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/base-adk-agent/main.tf)
-
-
-###### 3. Outputs Specification (`outputs.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The exported outputs from the Root Orchestrator Reasoning Engine are available at:
-> 👉 [`outputs.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/base-adk-agent/outputs.tf)
-
 
 ###### 4. Composed Inputs-Outputs Mapping Matrix
 
@@ -145,20 +103,7 @@ The runtime linkage in `terragrunt.hcl` is established as follows:
 
 ### E. Live Orchestrator Configurations (Terragrunt Live HCL)
 
-To understand how these independent microservices and agents are dynamically assembled and wired in live environments under `live/dev/stage-4-workloads/`, see the Terragrunt configurations below. They use `dependency` blocks to inject real resource outputs from preceding stages transparently, enabling 100% automation without manual IP or parameter entry:
-
-### A. The A2A Agent (`live/dev/stage-4-workloads/agents/a2a-agent/terragrunt.hcl`)
-> [!TIP]
-> 📁 **Live Terragrunt Configuration Available:**
-> The live Terragrunt deployment configuration for the A2A Agent is available at:
-> 👉 [`terragrunt.hcl`](../migration/02_workloads_and_delivery/infrastructure/live/dev/stage-4-workloads/agents/a2a-agent/terragrunt.hcl)
-
-
-### B. The Root Orchestrator (`live/dev/stage-4-workloads/agents/base-adk-agent/terragrunt.hcl`)
-> [!TIP]
-> 📁 **Live Terragrunt Configuration Available:**
-> The live Terragrunt deployment configuration for the Root Orchestrator is available at:
-> 👉 [`terragrunt.hcl`](../migration/02_workloads_and_delivery/infrastructure/live/dev/stage-4-workloads/agents/base-adk-agent/terragrunt.hcl)
+To understand how these independent microservices and agents are dynamically assembled and wired in live environments under `live/dev/stage-4-workloads/`, see the Terragrunt configurations below. They use `dependency` blocks to inject real resource outputs from preceding stages transparently, enabling 100% automation without manual IP or parameter entry.
 
 ---
 
@@ -167,40 +112,6 @@ To understand how these independent microservices and agents are dynamically ass
 A frequent challenge in corporate CI/CD pipelines is tightly coupled and insecure database privilege provisioning. To guarantee a 100% atomic and secure deployment, Esmeralda encapsulates the PostgreSQL database and its bootstrap initialization directly within the `a2a-agent` workload module:
 
 ### Database Orchestration Sequencing
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant TG as Terragrunt / TF Apply
-    participant SQL as Cloud SQL Instance
-    participant Secret as Secret Manager
-    participant Run as Cloud Run Bootstrap Job<br/>(Within VPC)
-    participant Vertex as Vertex AI Reasoning Engine
-
-    Note over TG: Deploy A2A Agent Module
-    TG->>SQL: 1. Provision private DB & IAM SQL user
-    TG->>Secret: 2. Store PostgreSQL admin password securely
-    TG->>Run: 3. Trigger VPC-internal Bootstrap Job to apply SQL grants
-    Run->>SQL: 4. Connect over private IP & GRANT ALL PRIVILEGES...
-    Note over Run: Bootstrap Job Exits
-    TG->>Vertex: 5. Deploy Reasoning Engine (ADK)<br/>Binds private DB Host IP to Agent variables
-```
-
-### Integrated Provisioning & Bootstrap Script (`modules/4-workloads/agents/a2a-agent/main.tf`)
-
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform configuration implementing private connections and the containerized SQL bootstrap job is available at:
-> 👉 [`main.tf`](../migration/02_workloads_and_delivery/infrastructure/modules/4-workloads/agents/a2a-agent/main.tf)
-
-
----
-
-### 📊 Privilege Initialization and Lifecycle Sequencing
-
-By packaging Cloud SQL, bootstrapping, and the Vertex AI Reasoning engine inside the `modules/4-workloads/agents/a2a-agent` pure module, we obtain an atomic, self-contained workload where schema permissions and administrative credentials are fully set up before the Reasoning Engine instantiates:
-
-By packaging Cloud SQL, bootstrapping, and the Vertex AI Reasoning engine inside the `modules/4-workloads/agents/a2a-agent` pure module, we obtain an atomic, self-contained workload.
 
 ```mermaid
 sequenceDiagram

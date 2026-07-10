@@ -150,27 +150,4 @@ infrastructure/modules/1-projects/
 ├── variables.tf         # Inputs for billing, organization folders, prefix, and BYO parameters
 ├── main.tf              # Implements projects, API enablement, billing bindings, and labels
 └── outputs.tf           # Exposes project IDs & numbers to downstream stages
-```
-
-##### 1. Versions Specification (`versions.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform code defining module provider dependencies and version constraints is available at:
-> 👉 [`versions.tf`](../migration/01_platform_foundations/infrastructure/modules/1-projects/versions.tf)
-
-
-##### 2. Variables Specification (`variables.tf`)
-> [!TIP]
-> 📁 **Source Code File Available:**
-> The Terraform code defining input variables for project provisioning is available at:
-> 👉 [`variables.tf`](../migration/01_platform_foundations/infrastructure/modules/1-projects/variables.tf)
-
-
-##### 3. Implementation Logic (`main.tf`)
-> [!TIP]
-> 📁 **Source Code Files Available:**
-> The Terraform implementation for project creation and API enablement is divided across:
-> - 👉 `main.tf` (Core implementation logic): [`main.tf`](../migration/01_platform_foundations/infrastructure/modules/1-projects/main.tf)
-> - 👉 `outputs.tf` (Exported project IDs and numbers): [`outputs.tf`](../migration/01_platform_foundations/infrastructure/modules/1-projects/outputs.tf)
-
 *(With this, any client's NetOps/PlatformOps teams can hand over pre-configured net_host and gateway projects, and Esmeralda will automatically provision and deploy the isolated workload projects and attach them securely to their Shared VPC.)*
