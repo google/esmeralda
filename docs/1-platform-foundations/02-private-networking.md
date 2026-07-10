@@ -122,7 +122,50 @@ When `byo_networking = true` is supplied:
 
 ---
 
-#### G. File Inventory & Blueprints
+---
+
+### E. Exhaustive Network & Routing Implementation Breakdown
+
+An inspection of `infrastructure/modules/2-networking/` reveals exactly how Esmeralda orchestrates private networking, egress security, and cross-project routing:
+
+#### 1. Dynamic Project Lookups & Shared VPC Service Attachments
+*   **Data Sources**: Resolves target project numbers dynamically via `data "google_project"` for `mcps`, `a2a`, `root_agent`, and `gateway`, preventing automation deadlocks.
+*   **Host Mode Enablement**: Activates Shared VPC host mode (`google_compute_shared_vpc_host_project`) on `var.net_host_project_id`.
+*   **Five Service Project Attachments**: Explicitly attaches workload projects (`google_compute_shared_vpc_service_project`) to the host VPC: `mcps`, `a2a`, and `root_agent` unconditionally, and `gateway` and `governance` conditionally (skipped if their BYO flags are true).
+
+#### 2. Greenfield VPC Network & Five Specialized Subnets
+When `var.byo_networking = false`, the module provisions a comprehensive VPC (`vpc-esmeralda-shared-{env}`):
+1.  **Core Subnet (`sb-esmeralda-core-{env}`)**: CIDR `10.0.1.0/24`, Private Google Access enabled.
+2.  **Proxy Subnet (`sb-esmeralda-proxy-{env}`)**: CIDR `10.9.0.0/24`, purpose set to `REGIONAL_MANAGED_PROXY` with role `ACTIVE`.
+3.  **PSC Subnet (`sb-esmeralda-psc-{env}`)**: CIDR `10.10.0.0/24` for internal PSC endpoints.
+4.  **PSC Interface Subnet (`sb-esmeralda-psc-interface-{env}`)**: CIDR `10.11.0.0/28` for serverless VPC interface tunnels.
+5.  **Private Services Access Peering (`sql-peering-range-{env}`)**: Internal global address `/16` block `10.130.0.0/16` paired with `google_service_networking_connection.sql_connection` for managed Cloud SQL private connectivity.
+
+#### 3. Cloud Router, Cloud NAT & Egress Firewalls
+*   **Cloud Router & NAT**: Provisions `cr-esmeralda-nat-{env}` and `nat-esmeralda-outbound-{env}` configured with `AUTO_ONLY` IP allocation across `ALL_SUBNETWORKS_ALL_IP_RANGES`.
+*   **PSC Interface Firewall (`allow-psc-interface-ingress-{env}`)**: Restricts ingress from `10.11.0.0/28` exclusively to TCP ports `22`, `443`, and `ICMP` protocol packets.
+*   **IAP SSH Firewall (`allow-iap-ssh-{env}`)**: Permits Identity-Aware Proxy ingress from Google's standard IAP range (`35.235.240.0/20`) on port `22`.
+
+#### 4. Serverless PSC Attachment & Secure Web Proxy (SWP)
+*   **PSC Network Attachment (`gateway-psc-interface-attachment-{env}`)**: Configured with `ACCEPT_AUTOMATIC` preference bound to the PSC-I subnet, allowing serverless reasoning engines to establish private VPC tunnels.
+*   **Secure Web Proxy (`gateway-swp-{env}`)**: Deployed via Google's `net-swp` Fabric module at static IP `10.0.1.100` on the core subnet, enforcing explicit HTTP/HTTPS session matching rules (`allow-all`).
+
+#### 5. Subnet IAM Network User Bindings & Reasoning Engine Extensions
+To allow service robots to launch containers and connectors inside host subnets, Esmeralda aggregates 7 service identities in `local.subnet_network_users`:
+*   `mcps_run`, `a2a_run`, `a2a_vertex`, `root_vertex`, and `gateway_run`.
+*   **Reasoning Engine Identity Extension**: Automatically derives the specialized Vertex AI Reasoning Engine service account by performing string replacement on the Vertex agent email: `@gcp-sa-aiplatform.iam.gserviceaccount.com` $\rightarrow$ `@gcp-sa-aiplatform-re.iam.gserviceaccount.com`.
+*   **Role Assignments**: After a 30-second IAM propagation sleep (`time_sleep.iam_propagation`), binds `roles/compute.networkUser` for all 7 identities onto both the Core Workload subnet and the PSC Interface subnet.
+
+#### 6. Private DNS Managed Zones
+*   **`esmeralda.internal.` Zone**: Managed private DNS zone (`esmeralda-private-dns-{env}`) with private visibility locked to the Shared VPC network.
+*   **`internal.gateway.` Zone**: Fabric `dns` module deploying private DNS records for internal infrastructure: `A *` mapped to LB VIP placeholder `10.0.1.200`, and `A swp` mapped to `10.0.1.100`.
+
+#### 7. Module Outputs (`outputs.tf`)
+Exports 7 networking primitives: `network_id`, `subnet_id`, `subnet_name`, `dns_zone_name`, `dns_zone_dns_name`, `psc_network_attachment_id`, and `secure_web_proxy_ip`.
+
+---
+
+#### F. File Inventory & Blueprints
 
 ```text
 infrastructure/modules/2-networking/

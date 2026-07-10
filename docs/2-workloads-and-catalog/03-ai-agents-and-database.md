@@ -118,3 +118,38 @@ sequenceDiagram
     Note over Run: Bootstrap Job Exits
     TG->>Vertex: 5. Deploy Reasoning Engine (ADK)<br/>Binds private DB Host IP to Agent variables
 ```
+
+---
+
+## Exhaustive Reasoning Engine & Database Implementation Breakdown
+
+A comprehensive analysis of `infrastructure/modules/4-workloads/agents/a2a-agent/` and `base-adk-agent/` reveals how Esmeralda orchestrates atomic agent runtimes, serverless database bootstrappers, and dynamic container digest pinning:
+
+### 1. Atomic Mortgage Assistant (`agents/a2a-agent/main.tf`)
+*   **Private Cloud SQL PostgreSQL (`google_sql_database_instance.task_store`)**: Deploys `POSTGRES_15` with `ZONAL` availability, a 15 GB disk, and `cloudsql.iam_authentication = on`. Enforces absolute network isolation by disabling IPv4 (`ipv4_enabled = false`) and binding exclusively to `var.vpc_id` via Private Services Access.
+*   **Database & IAM Authentication Users**: Provisions `google_sql_database.tasks_db`, generates a 24-character root superuser password (`random_password.postgres_pwd`), and creates `google_sql_user.agent_iam_user` of type `CLOUD_IAM_SERVICE_ACCOUNT` derived via `trimsuffix(var.agent_service_account, ".gserviceaccount.com")`.
+*   **Readiness Polling Buffer (`null_resource.db_ready`)**: Executes a local-exec loop polling `gcloud sql instances describe` for up to 30 attempts (10-second intervals) until the database reports `RUNNABLE` status, plus an extra 10-second stabilization buffer.
+*   **IAM Client & User Role Grants**: Binds `roles/cloudsql.client` and `roles/cloudsql.instanceUser` to `var.agent_service_account` on `var.project_id`.
+*   **VPC-Bound Cloud Run Bootstrap Job (`google_cloud_run_v2_job.schema_bootstrap`)**: Eliminates insecure local-exec postgresql clients or Terraform database providers by deploying an administrative container job inside the Shared VPC (`egress = "ALL_TRAFFIC"` on `var.vpc_id` and `var.subnet_id`). The job executes an `alpine:latest` container running `psql` over the private IP to grant all schema and database privileges to the IAM user.
+*   **Job Execution Trigger (`null_resource.trigger_bootstrap`)**: Automatically triggers `gcloud run jobs execute {bootstrap_job} --wait` during Terraform apply.
+*   **Three Atomic GCS Buckets**: Provisions `staging`, `artifacts`, and `logs` buckets named with a 4-byte random hex suffix (`...-{env}-{hex}`) and uniform bucket-level access.
+*   **Declarative YAML & Runtime Overrides**: Reads `var.agent_config_path` (`agent.yaml`), decodes YAML specifications (mapping framework `a2a` to `google-adk`), extracts compute limits (`min_instances`, `max_instances`, `concurrency`, `cpu`, `memory`), and merges runtime environment variable overrides: `GCS_BUCKET`, `CLOUD_SQL_INSTANCE` (`{project}:{region}:{instance_name}`), `DB_IAM_USER`, and `DB_NAME`.
+*   **Container Digest Pinning**: Queries `data.google_artifact_registry_docker_image.agent_image` to resolve the exact SHA256 digest of `var.agent_image_uri`, guaranteeing immutable deployments.
+*   **Vertex AI Reasoning Engine (`google_vertex_ai_reasoning_engine.agent`)**: Deploys the reasoning engine container runtime, injecting dynamic environment variables and attaching `psc_interface_config` (if `var.network_attachment` is provided) for private VPC ingress.
+
+### 2. Root Orchestrator Agent (`agents/base-adk-agent/main.tf`)
+*   **Three Atomic GCS Buckets**: Provisions dedicated `staging`, `artifacts`, and `logs` buckets with unique random hex suffixes.
+*   **YAML Config Resolution & Runtime Overrides**: Decodes `agent.yaml` specifications and injects runtime environment variables: `GCS_BUCKET`, `GATEWAY_MCP_URL`, and `A2A_AGENT_URL`.
+*   **Container Digest Pinning**: Resolves and pins the exact SHA256 container digest from Artifact Registry.
+*   **Vertex AI Reasoning Engine (`google_vertex_ai_reasoning_engine.agent`)**: Deploys the master orchestrator reasoning engine with `psc_interface_config`.
+*   **Runtime Dependency Sync (`null_resource.runtime_config_sync`)**: Synchronizes runtime gateway and upstream agent dependency variables into local runtime configuration (`.env.runtime`) upon deployment updates.
+
+---
+
+### File Inventory & Blueprints
+
+```text
+infrastructure/modules/4-workloads/agents/
+├── a2a-agent/              # Cloud SQL Postgres, VPC bootstrap job, GCS buckets, Reasoning Engine
+└── base-adk-agent/         # Root orchestrator Reasoning Engine, GCS buckets, runtime config sync
+```
