@@ -1,57 +1,55 @@
-# Guia Mestre: Fundações da Plataforma (Estágios 1, 2 e 3)
+# Master Guide: Platform Foundations (Stages 1, 2, and 3)
 
-Este documento unifica todos os detalhes conceituais, decisões arquiteturais de infraestrutura, FinOps e os códigos Terraform/HCL prontos para implantação das fundações do Esmeralda. Ele consolida os Estágios 1, 2 e 3 em um único guia linear, permitindo a leitura de alto nível em português e a cópia direta dos códigos em inglês (Ctrl+C / Ctrl+V) sem a necessidade de alternar entre arquivos dispersos.
+This document unifies all conceptual details, architectural infrastructure decisions, FinOps principles, and production-ready Terraform/HCL blueprints for Esmeralda's foundational platform. It consolidates Stages 1, 2, and 3 into a single comprehensive guide, allowing seamless high-level architectural review and direct code implementation without needing to switch between dispersed files.
 
 ---
 
-## 🗺️ Índice de Implantação das Fundações
-1. [Estágio 1: Provisionamento de Projetos, Faturamento (FinOps) e APIs](#stage-1)
-   - [Explicação Arquitetural e FinOps (Português)](#s1-concepts)
-   - [Especificações Técnicas e Códigos HCL Completos (Inglês)](#s1-codes)
-2. [Estágio 2: Redes Privadas, DNS e Private Service Connect (PSC)](#stage-2)
-   - [Explicação da Topologia de Rede e Egress Seguro (Português)](#s2-concepts)
-   - [Especificações Técnicas e Códigos HCL Completos (Inglês)](#s2-codes)
-3. [Estágio 3: Segurança, Chaves CMEK, Secrets e Identidades (Least Privilege)](#stage-3)
-   - [Explicação de Criptografia, SAs e Políticas de Acesso (Português)](#s3-concepts)
-   - [Especificações Técnicas e Códigos HCL Completos (Inglês)](#s3-codes)
+## 🗺️ Foundations Deployment Index
+1. [Stage 1: Foundational Projects, Billing (FinOps), and APIs](#stage-1)
+   - [Architectural & FinOps Overview](#s1-concepts)
+   - [Technical Specifications & HCL Blueprints](#s1-codes)
+2. [Stage 2: Private Networking, DNS, and Private Service Connect (PSC)](#stage-2)
+   - [Network Topology & Secure Egress Overview](#s2-concepts)
+   - [Technical Specifications & HCL Blueprints](#s2-codes)
+3. [Stage 3: Security, CMEK Keys, Secrets, and Identities (Least Privilege)](#stage-3)
+   - [Encryption, Service Accounts, and Access Policies Overview](#s3-concepts)
+   - [Technical Specifications & HCL Blueprints](#s3-codes)
 
 ---
 
 <a name="stage-1"></a>
-## 🏢 1. Estágio 1: Projetos, FinOps e APIs
+## 🏢 1. Stage 1: Foundational Projects, Billing & APIs
 
 <a name="s1-concepts"></a>
-### A. Guia de Arquitetura e Decisões de Negócio (Português)
+### A. Architecture & Business Decisions Guide
 
-## 🗺️ 1. Stage 1: Projetos, Faturamento (FinOps) & APIs
+Stage 1 manages the isolated creation of multiple GCP projects and the activation of foundational service APIs under a governance structure fully compliant with Google Cloud enterprise Landing Zone standards.
 
-O Stage 1 gerencia a criação isolada de múltiplos projetos e ativação das APIs fundamentais sob uma estrutura de governança compatível com as regras de Landing Zone empresariais do Google Cloud.
+### A. Enterprise Landing Zone Simulation (SoC)
+To mirror a real-world enterprise production environment, workloads are divided across **six distinct projects**:
 
-### A. Simulação de Projetos da Landing Zone (SoC)
-Para simular um ambiente de produção real, as cargas de trabalho são divididas em **seis projetos distintos**:
-
-| Projeto | Nome Simulado | Papel e Responsabilidade | Recursos Principais Hospedados |
+| Project Domain | Simulated Project ID | Role and Responsibility | Primary Hosted Resources |
 | :--- | :--- | :--- | :--- |
-| **Hospedeiro de Rede** | `prj-net-host` | Gerenciado por NetOps. Controla o tráfego de rede e segurança. | VPC Compartilhada, Subnets, Cloud DNS, Cloud NAT, Firewalls. |
-| **Ingresso de Tráfego** | `prj-gateway` | Gerenciado por PlatformOps. Controla ingressos de APIs corporativos. | Apigee X, Kong no Cloud Run, Internal Load Balancer. |
-| **Ferramentas MCP** | `prj-esmeralda-mcps` | Gerenciado pelo time AppDev. APIs de utilidades comuns da empresa. | Cloud Run (Corporate Email, Income Verifier, DMS), Artifact Registry. |
-| **Plataforma Core AI** | `prj-esmeralda-a2a-agents` | Gerenciado pelo time Core AI. Hospeda agentes globais reutilizáveis. | Vertex AI Reasoning Engine (A2A), Cloud SQL PostgreSQL. |
-| **Unidade de Negócios** | `prj-esmeralda-root-agent` | Gerenciado pela área de Linha de Negócio. Agentes de interface ao usuário. | Vertex AI Reasoning Engine (Root), Buckets GCS de Staging. |
-| **Hub de Governança** | `prj-esmeralda-governance` | Gerenciado por SecOps. Centraliza conformidade e dados consolidados. | KMS Keyrings, Secrets, Certificados TLS, BigQuery Analytics, Log Sinks. |
+| **Network Host** | `prj-net-host` | Managed by NetOps. Controls network traffic routing and security. | Shared VPC, Subnets, Cloud DNS, Cloud NAT, Firewalls. |
+| **Traffic Ingress** | `prj-gateway` | Managed by PlatformOps. Controls enterprise API ingress. | Apigee X, Kong on Cloud Run, Internal Load Balancers. |
+| **MCP Tools** | `prj-esmeralda-mcps` | Managed by AppDev team. Shared enterprise utility APIs. | Cloud Run (Corporate Email, Income Verifier, DMS), Artifact Registry. |
+| **Core AI Platform** | `prj-esmeralda-a2a-agents` | Managed by Core AI team. Hosts reusable cross-domain agents. | Vertex AI Reasoning Engine (A2A), Cloud SQL PostgreSQL. |
+| **Business Unit Application** | `prj-esmeralda-root-agent` | Managed by Business Unit team. Client-facing user reasoning engines. | Vertex AI Reasoning Engine (Root), GCS Staging Buckets. |
+| **Governance Hub** | `prj-esmeralda-governance` | Managed by SecOps. Centralizes compliance and audit logs. | KMS Keyrings, Secrets, TLS Certificates, BigQuery Analytics, Log Sinks. |
 
 ---
 
-### B. Desafios de FinOps Resolvidos
-1.  **Atribuição Limpa de IA Generativa**: Chamadas do agente de mortgage faturam diretamente em `prj-esmeralda-root-agent`. Chamadas secundárias de subprocessos faturam em `prj-esmeralda-a2a-agents`.
-2.  **Separação de Custos Ephemeral vs. Persistentes**: O banco de dados PostgreSQL (faturamento 24/7) fica isolado no projeto da plataforma de IA. Os servidores MCP (Cloud Run) escalam para zero, reduzindo custos a zero quando ociosos.
-3.  **Tráfego de Rede Sem Custos Ocultos**: Todo o tráfego flui internamente pela rede privada da VPC Compartilhada na mesma região (`us-central1`), evitando taxas de trânsito de NAT público.
+### B. FinOps Challenges Solved
+1.  **Clean Generative AI Attribution**: Gemini API calls made by the mortgage assistant bill directly to `prj-esmeralda-root-agent`. Sub-process calls bill directly to `prj-esmeralda-a2a-agents`.
+2.  **Ephemeral vs. Persistent Cost Separation**: The PostgreSQL database (continuous 24/7 billing) is isolated inside the AI platform project. Serverless MCP tool servers (Cloud Run) scale to zero when idle, eliminating ongoing compute costs.
+3.  **Zero Hidden Network Egress Costs**: All inter-service traffic flows internally over private Shared VPC IPs within the same region (`us-central1`), avoiding public NAT transit fees.
 
 ---
 
 ---
 
 <a name="s1-codes"></a>
-### B. Documento de Implementação Detalhado e Códigos Prontos (Inglês)
+### B. Detailed Implementation Specifications & HCL Blueprints
 
 # Stage 1: Foundational Projects, Billing & APIs
 
@@ -74,7 +72,7 @@ To simulate a real-world enterprise multi-tenant landing zone, we split our arch
 | **Platform Ops (PlatformOps)** | `prj-gateway` | Manages the public-facing application ingress, corporate domain name registration, and corporate API Gateways. | Apigee X, Kong Gateway on Cloud Run, external HTTPS Load Balancers. |
 | **AppDev Tools Team** | `prj-esmeralda-mcps` | Creates, maintains, and packages reusable Model Context Protocol (MCP) tool servers for the whole company. | Cloud Run (DMS Server, Calculator Server), Artifact Registry. |
 | **Core AI Platform Team** | `prj-esmeralda-a2a-agents` | Develops reusable, cross-company Assistant-to-Assistant (A2A) agents, handling centralized business domain reasoning. | Cloud SQL PostgreSQL, Cloud Run Database Bootstrapping Job, Vertex AI Reasoning Engine (A2A). |
-| **Line-of-Business Team (LOB)** | `prj-esmeralda-root-agent` | Develops the final client-facing user reasoning engine, which acts as the frontend orchestrator and orchestrates upstream agents. | Vertex AI Reasoning Engine (Root), client-facing IAM roles, GCS Buckets. |
+| **Business Unit Team** | `prj-esmeralda-root-agent` | Develops the final client-facing user reasoning engine, which acts as the frontend orchestrator and orchestrates upstream agents. | Vertex AI Reasoning Engine (Root), client-facing IAM roles, GCS Buckets. |
 | **Security & Governance Hub** | `prj-esmeralda-governance` | Consolidates central security/governance (KMS keys, secrets, certs) and central telemetry/observability (BigQuery dataset, trace views, log sinks), establishing strict Separation of Concerns (SoC) between Platform Governance and Workload Runtimes. | KMS Keyrings, secrets, Certificate Manager certificates, BigQuery Audit Sinks, and log buckets. |
 
 ---
@@ -100,26 +98,24 @@ graph TD
         L2["Label: cost-center=core-ai-platform"]
     end
 
-    subgraph "prj-esmeralda-root-agent (LOB Revenue Center)"
+    subgraph "prj-esmeralda-root-agent (Business Unit Revenue Center)"
         C4["Vertex AI Orchestrator API Calls"]
-        L3["Label: cost-center=lob-mortgage"]
+        L3["Label: cost-center=bu-mortgage"]
     end
 
     C1 & L1 -. Billing Record .-> Export
     C2 & C3 & L2 -. Billing Record .-> Export
     C4 & L3 -. Billing Record .-> Export
-
-    style Billing fill:#f5f5f5,stroke:#333,stroke-width:2px
 ```
 
 ##### 1. Vertex AI Model API Billing Attribution
 When multiple teams call Gemini via Vertex AI, a monolithic project makes it impossible to distinguish which team consumed how many input/output tokens. By splitting workloads:
-*   Calls to Gemini made by the Root Orchestrator are charged directly to `prj-esmeralda-root-agent` (LOB Budget).
+*   Calls to Gemini made by the Root Orchestrator are charged directly to `prj-esmeralda-root-agent` (Business Unit Budget).
 *   Calls to Gemini made by the A2A Agent during sub-task execution are charged to `prj-esmeralda-a2a-agents` (Core AI Budget).
 *   *Implementation*: Resource labels (`env=dev`, `cost-center=...`, `team=...`) are systematically applied at the project level and resource level, flowing directly into the **GCP Billing Export to BigQuery** for clean dashboards.
 
 ##### 2. Persistent vs. Ephemeral Resource Cost Allocation
-*   **Cloud SQL Instance**: Run as a shared state machine for the A2A agent, running 24/7. This represents a fixed cost that is isolated inside the Core AI Platform budget (`prj-esmeralda-a2a-agents`) and is not subsidized by the LOB team.
+*   **Cloud SQL Instance**: Run as a shared state machine for the A2A agent, running 24/7. This represents a fixed cost that is isolated inside the Core AI Platform budget (`prj-esmeralda-a2a-agents`) and is not subsidized by the Business Unit team.
 *   **Cloud Run (MCP Tool Servers)**: Run serverless, scaling to zero when there are no requests. This ensures that the AppDev team only incurs compute costs when tools are actively invoked, preventing resource wasting.
 
 ##### 3. Cross-Project Network Transit Cost Optimization
@@ -180,48 +176,46 @@ infrastructure/modules/1-projects/
 
 ##### 1. Versions Specification (`versions.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código Terraform correspondente às versões e provedores deste módulo está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform code defining module provider dependencies and version constraints is available at:
 > 👉 [`versions.tf`](./01_platform_foundations/infrastructure/modules/1-projects/versions.tf)
 
 
 ##### 2. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código Terraform correspondente às variáveis de entrada deste módulo está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform code defining input variables for project provisioning is available at:
 > 👉 [`variables.tf`](./01_platform_foundations/infrastructure/modules/1-projects/variables.tf)
 
 
 ##### 3. Implementation Logic (`main.tf`)
 > [!TIP]
-> 📁 **Arquivos de Código-Fonte Disponíveis:**
-> Os códigos correspondentes à criação de projetos e barramento de APIs estão disponíveis e divididos em:
-> - 👉 `main.tf` (Lógica principal): [`main.tf`](./01_platform_foundations/infrastructure/modules/1-projects/main.tf)
-> - 👉 `outputs.tf` (Saídas mapeadas): [`outputs.tf`](./01_platform_foundations/infrastructure/modules/1-projects/outputs.tf)
+> 📁 **Source Code Files Available:**
+> The Terraform implementation for project creation and API enablement is divided across:
+> - 👉 `main.tf` (Core implementation logic): [`main.tf`](./01_platform_foundations/infrastructure/modules/1-projects/main.tf)
+> - 👉 `outputs.tf` (Exported project IDs and numbers): [`outputs.tf`](./01_platform_foundations/infrastructure/modules/1-projects/outputs.tf)
 
 *(With this, any client's NetOps/PlatformOps teams can hand over pre-configured net_host and gateway projects, and Esmeralda will automatically provision and deploy the isolated workload projects and attach them securely to their Shared VPC.)*
 
 ---
 
 <a name="stage-2"></a>
-## 🌐 2. Estágio 2: Redes Privadas, DNS e PSC
+## 🌐 2. Stage 2: Private Networking, DNS & PSC
 
 <a name="s2-concepts"></a>
-### A. Guia de Arquitetura e Decisões de Rede (Português)
+### A. Network Architecture & Topology Guide
 
-## 🌐 2. Stage 2: Redes Privadas, DNS & PSC
+Stage 2 implements Zero-Trust network infrastructure to ensure that no API or AI agent communicates over public internet channels.
 
-O Stage 2 implementa a infraestrutura de rede Zero-Trust para garantir que nenhuma API ou agente de IA se comunique por canais públicos da internet.
+### A. VPC Subnet Topology (`gateway-vpc`)
+In the `prj-net-host` project, we allocate the following CIDR ranges:
+*   **Core Workload Subnet (`gke-subnet`)**: `10.0.0.0/20` for internal compute runtimes and test VMs.
+*   **Regional Envoy Proxy Subnet (`gateway-proxy-subnet`)**: `10.9.0.0/24` dedicated exclusively to Envoy-based internal Application Load Balancers (ILB).
+*   **PSC NAT Subnet (`gateway-psc-subnet`)**: `10.10.0.0/24` for outbound Private Service Connect connections.
+*   **PSC Interface Subnet (`psc-interface-subnet`)**: `10.11.0.0/28` providing local private endpoints for Vertex AI Reasoning Engines operating within Google-managed VPCs.
 
-### A. Topologia de Subredes da VPC (`gateway-vpc`)
-No projeto `prj-net-host`, criamos os seguintes intervalos de IP:
-*   **Subnet de Aplicações (`gke-subnet`)**: `10.0.0.0/20` para os computes locais e VMs de teste.
-*   **Proxy Subnet Regional (`gateway-proxy-subnet`)**: `10.9.0.0/24` de uso exclusivo para balanceadores de carga internos baseados em Envoy (ILB).
-*   **PSC NAT Subnet (`gateway-psc-subnet`)**: `10.10.0.0/24` para as conexões de saída do Private Service Connect.
-*   **PSC Interface Subnet (`psc-interface-subnet`)**: `10.11.0.0/28` que fornece conexões locais para os agentes do Vertex AI (Reasoning Engine) operando sob a rede gerenciada do Google.
-
-### B. DNS Privado e Roteamento Estático do Gateway
-Para desacoplar as URLs dinâmicas do Vertex AI, criamos uma zona DNS privada no Cloud DNS chamada `internal.gateway.` apontando todas as rotas de ferramentas e agentes para o IP interno (`10.0.0.5`) do Internal Load Balancer (ILB):
+### B. Private DNS and Gateway Static Routing
+To decouple dynamic Vertex AI service URLs, we establish a private Cloud DNS zone named `internal.gateway.` pointing all tool and agent routes to the internal IP (`10.0.0.5`) of the Internal Load Balancer (ILB):
 *   `email.internal.gateway` -> `10.0.0.5`
 *   `income-verification.internal.gateway` -> `10.0.0.5`
 *   `dms.internal.gateway` -> `10.0.0.5`
@@ -229,7 +223,7 @@ Para desacoplar as URLs dinâmicas do Vertex AI, criamos uma zona DNS privada no
 ---
 
 <a name="s2-codes"></a>
-### B. Documento de Implementação Detalhado e Códigos Prontos (Inglês)
+### B. Detailed Implementation Specifications & HCL Blueprints
 
 # Stage 2: Shared VPC Host Networking & Secure Egress
 
@@ -354,78 +348,76 @@ infrastructure/modules/2-networking/
 
 ##### 1. Versions Specification (`versions.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código Terraform correspondente às versões e provedores de rede está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform code defining networking version constraints is available at:
 > 👉 [`versions.tf`](./01_platform_foundations/infrastructure/modules/2-networking/versions.tf)
 
 
 ##### 2. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código Terraform correspondente às variáveis de rede privada e subredes está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform code defining input variables for VPC subnets and routing is available at:
 > 👉 [`variables.tf`](./01_platform_foundations/infrastructure/modules/2-networking/variables.tf)
 
 
 ##### 3. Implementation Logic (`main.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código Terraform principal com a topologia de redes, DNS e PSC está disponível em:
+> 📁 **Source Code File Available:**
+> The main Terraform configuration implementing VPC topologies, Cloud DNS, and PSC attachments is available at:
 > 👉 [`main.tf`](./01_platform_foundations/infrastructure/modules/2-networking/main.tf)
 
 
 ##### 4. Outputs Specification (`outputs.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> As saídas geradas por este módulo de rede estão disponíveis em:
+> 📁 **Source Code File Available:**
+> The exported network IDs, subnet links, and DNS names are available at:
 > 👉 [`outputs.tf`](./01_platform_foundations/infrastructure/modules/2-networking/outputs.tf)
 
 
 ---
 
 <a name="stage-3"></a>
-## 🔐 3. Estágio 3: Segurança, Chaves CMEK, Secrets e Identidades
+## 🔐 3. Stage 3: Security, CMEK Keys, Secrets, and Identities
 
 <a name="s3-concepts"></a>
-### A. Guia de Arquitetura e Decisões de Segurança (Português)
+### A. Security Architecture & Identity Guide
 
-## 🔐 3. Stage 3: Segurança, Chaves CMEK, Secrets & Identidades
+Stage 3 centralizes compliance barriers, data governance, and encryption controls within the isolated `prj-esmeralda-governance` project.
 
-O Stage 3 centraliza as barreiras de conformidade de segurança e controle de dados, gerenciado no projeto isolado `prj-esmeralda-governance`.
+### A. CMEK Encryption and Secret Manager
+We establish a centralized Cloud KMS Keyring to encrypt persistent data at rest:
+*   `key-postgresql`: Encrypts the Cloud SQL database disk in `prj-esmeralda-a2a-agents`.
+*   `key-gcs-staging`: Encrypts telemetry audit log storage buckets.
 
-### A. Criptografia CMEK e Secret Manager
-Criamos um Keyring do Cloud KMS centralizado para criptografar dados persistentes:
-*   `key-postgresql`: Criptografa o disco do Cloud SQL no projeto `prj-esmeralda-a2a-agents`.
-*   `key-gcs-staging`: Criptografa os buckets de gravação de logs de telemetria.
-
-E usamos o Secret Manager para persistir credenciais sem riscos de exposição em disco:
-*   `postgresql-admin-password`: Senha master administrativa para bootstrap de privilégios.
+We use Secret Manager to store critical credentials without plaintext disk exposure:
+*   `postgresql-admin-password`: Administrative master password for database privilege bootstrapping.
 
 ---
 
-### B. 🚨 Auditoria de Conformidade de Identidades (Least Privilege)
-**IMPORTANTE (Correção de Auditoria de Segurança):** 
-Durante nossa auditoria do Esmeralda legado, removemos completamente as permissões relacionadas a um `agent_repo` no Artifact Registry (repositório de containers de agentes). Os agentes ADK Reasoning Engine não utilizam Docker e são empacotados como pacotes compactados `.zip` em buckets do GCS. Mantivemos apenas as permissões de gravação de imagens para o `mcp_repo` (usado pelos Cloud Runs das ferramentas).
+### B. 🚨 Least Privilege Identity Compliance
+**IMPORTANT (Security Compliance Principle):** 
+To enforce least privilege, we do not provision permissions for an `agent_repo` in Artifact Registry for ADK Reasoning Engine agents, because Reasoning Engines do not use Docker containers—they are packaged as compressed `.zip` bundles in GCS buckets. We only grant image write permissions to `mcp_repo` (used by Cloud Run tool services).
 
-Além disso, eliminamos a Service Account centralizadora genérica `test-vm-sa`. No novo modelo, cada carga de trabalho opera sob uma **identidade de serviço isolada e específica por projeto**:
+Furthermore, we avoid any generic centralized service accounts. Each workload operates under an **isolated, project-specific service identity**:
 
 ```mermaid
 graph TD
-    subgraph Governance["Projeto: prj-esmeralda-governance"]
-        KMS["Chaves KMS (CMEK)"]
+    subgraph Governance["Project: prj-esmeralda-governance"]
+        KMS["KMS Keys (CMEK)"]
         Secret["Secret Manager"]
     end
 
-    subgraph MCPs["Projeto: prj-esmeralda-mcps"]
-        SA_MCP["sa-mcp-runtimes@...gserviceaccount.com"] -->|Apenas Leitura| Registry["Artifact Registry: mcp-repo"]
+    subgraph MCPs["Project: prj-esmeralda-mcps"]
+        SA_MCP["sa-mcp-runtimes@...gserviceaccount.com"] -->|Read Only| Registry["Artifact Registry: mcp-repo"]
     end
 
-    subgraph Agents["Projeto: prj-esmeralda-a2a-agents"]
-        SA_A2A["sa-a2a-agent@...gserviceaccount.com"] -->|Acesso Exclusivo| SQL["Cloud SQL (PostgreSQL)"]
-        SA_A2A -->|Apenas Leitura| GCS_Agent["GCS: staging-agents-bucket"]
+    subgraph Agents["Project: prj-esmeralda-a2a-agents"]
+        SA_A2A["sa-a2a-agent@...gserviceaccount.com"] -->|Exclusive Access| SQL["Cloud SQL (PostgreSQL)"]
+        SA_A2A -->|Read Only| GCS_Agent["GCS: staging-agents-bucket"]
     end
 
-    SA_A2A -. Consome Chaves/Secrets .-> Governance
-    SA_MCP -. Consome Secrets .-> Governance
+    SA_A2A -. Consumes Keys/Secrets .-> Governance
+    SA_MCP -. Consumes Secrets .-> Governance
 ```
 
 ---
@@ -433,7 +425,7 @@ graph TD
 ---
 
 <a name="s3-codes"></a>
-### B. Documento de Implementação Detalhado e Códigos Prontos (Inglês)
+### B. Detailed Implementation Specifications & HCL Blueprints
 
 # Stage 3: Security Keys, Secret Management, and Log Sinks
 
@@ -477,9 +469,9 @@ graph TD
     In the monolithic setup, the single `test-vm-sa` account accumulated over 11 roles (including `roles/aiplatform.user`, `roles/storage.objectAdmin`, `roles/telemetry.writer`, and `roles/bigquery.jobUser`) because the VM also acted as the execution identity for the Reasoning Engine. In our enterprise multi-project landing zone, we **split and assign these roles to distinct service accounts** according to the principle of least privilege, guaranteeing full feature-parity:
     *   **`sa-esmeralda-mcps`** (Central Tools Project): Authorized with `roles/logging.logWriter`, `roles/monitoring.metricWriter`, and `roles/cloudtrace.agent` to write application telemetry.
     *   **`sa-esmeralda-a2a`** (AI Platform Project): Fully loaded with the transactional database and AI roles: `roles/cloudsql.client`, `roles/cloudsql.instanceUser`, `roles/aiplatform.user`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/storage.objectAdmin` (for reasoning templates GCS buckets), `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
-    *   **`sa-esmeralda-root`** (LOB App Project): Fully loaded with the customer reasoning and orchestration roles: `roles/aiplatform.user`, `roles/storage.objectAdmin`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
+    *   **`sa-esmeralda-root`** (Business Unit App Project): Fully loaded with the customer reasoning and orchestration roles: `roles/aiplatform.user`, `roles/storage.objectAdmin`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
 *   **Dedicated Test VM Identity (`sa-esmeralda-test-vm`)**:
-    To support connectivity testing, local debugging, and tool testing (DMS, Calculator) from a secure jumpbox without over-privileging operators, we introduce a dedicated Test VM Service Account. It resides in the Line of Business project (`prj-esmeralda-root-agent`) or `prj-net-host` and is assigned:
+    To support connectivity testing, local debugging, and tool testing (DMS, Calculator) from a secure jumpbox without over-privileging operators, we introduce a dedicated Test VM Service Account. It resides in the Business Unit project (`prj-esmeralda-root-agent`) or `prj-net-host` and is assigned:
     *   `roles/logging.logWriter` and `roles/monitoring.metricWriter` for VM health logging.
     *   `roles/run.invoker` inside `prj-esmeralda-mcps` (to invoke private Cloud Run MCP server tools).
     *   `roles/run.invoker` inside `prj-esmeralda-a2a-agents` (to invoke private A2A endpoints or bootstrapping runs).
@@ -508,26 +500,26 @@ infrastructure/modules/3-security/
 
 ##### 1. Versions Specification (`versions.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código correspondente às dependências de provedores e restrições de versão de segurança está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform code defining security provider dependencies and version constraints is available at:
 > 👉 [`versions.tf`](./01_platform_foundations/infrastructure/modules/3-security/versions.tf)
 
 
 ##### 2. Variables Specification (`variables.tf`)
 > [!TIP]
-> 📁 **Arquivo de Código-Fonte Disponível:**
-> O código Terraform com as variáveis e chaves CMEK de criptografia e identidades está disponível em:
+> 📁 **Source Code File Available:**
+> The Terraform variables configuration for CMEK keys, identities, and secrets is available at:
 > 👉 [`variables.tf`](./01_platform_foundations/infrastructure/modules/3-security/variables.tf)
 
 
 ##### 3. Implementation Logic (`main.tf`)
 > [!TIP]
-> 📁 **Arquivos de Código-Fonte Disponíveis:**
-> Os arquivos que criam as chaves CMEK, Secrets, SAs de menor privilégio e o BigQuery de telemetria estão disponíveis em:
-> - 👉 `main.tf` (Segurança e Logs): [`main.tf`](./01_platform_foundations/infrastructure/modules/3-security/main.tf)
-> - 👉 `outputs.tf` (Segredos e SAs): [`outputs.tf`](./01_platform_foundations/infrastructure/modules/3-security/outputs.tf)
+> 📁 **Source Code Files Available:**
+> The Terraform configurations provisioning CMEK keys, Secret Manager, least-privilege SAs, and BigQuery telemetry sinks are available at:
+> - 👉 `main.tf` (Security and Log Sinks): [`main.tf`](./01_platform_foundations/infrastructure/modules/3-security/main.tf)
+> - 👉 `outputs.tf` (Exported Secrets and SAs): [`outputs.tf`](./01_platform_foundations/infrastructure/modules/3-security/outputs.tf)
 
 
-*(With this updated Stage 3 Security implementation, our three workload service accounts contain the complete, high-fidelity permissions derived from the monolithic test VM service account. We have established a dedicated Test VM service account with tight invocations and token-creator privileges, fully customized for secure private VPC endpoints.)*
+*(With this Stage 3 Security implementation, our three workload service accounts contain complete, high-fidelity permissions strictly scoped to their respective domain boundaries. We also establish a dedicated Test VM service account with tight invocation and token-creation privileges, customized for secure private VPC endpoints.)*
 
 ---
