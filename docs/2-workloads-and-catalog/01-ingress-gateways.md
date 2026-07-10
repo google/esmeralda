@@ -106,8 +106,8 @@ The direct L7 Internal Load Balancer (ILB) bypasses API gateway appliances entir
 
 ```mermaid
 graph LR
-    Client([Client / Root Agent]) -->|*.esmeralda.internal| ILB[Regional L7 Internal Load Balancer]
-    ILB -->|Serverless NEG| Broker[Routing Broker Container<br/>(Cloud Run Proxy)]
+    Client(["Client / Root Agent"]) -->|*.esmeralda.internal| ILB["Regional L7 Internal Load Balancer"]
+    ILB -->|Serverless NEG| Broker["Routing Broker Container<br/>(Cloud Run Proxy)"]
     
     subgraph BrokerLogic["Routing Broker Runtime"]
         Env["AGENT_ENDPOINTS_JSON<br/>(Dynamic Route Map)"]
@@ -116,7 +116,7 @@ graph LR
 
     Broker -. Reads .-> Env
     Broker -. Fetches Token .-> Meta
-    Broker -->|Authenticated Proxy| Vertex[Vertex AI Reasoning Engine API]
+    Broker -->|Authenticated Proxy| Vertex["Vertex AI Reasoning Engine API"]
 ```
 
 This preserves the unified interface contract! The ILB routes all `*.esmeralda.internal` traffic to the `routing_broker` Cloud Run service. The Routing Broker container reads the dynamic `agent_endpoints` map via an environment variable (`AGENT_ENDPOINTS_JSON`), intercepts incoming agent requests, matches the host header prefix to obtain the target engine URL, retrieves an IAM ID Token from the metadata server, and proxies the query payload directly to the Vertex AI Reasoning Engine.
