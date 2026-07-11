@@ -138,7 +138,7 @@ async def health(request):
     return JSONResponse({"status": "ok"})
 
 
-_mcp_app = mcp.http_app(path="/mcp", stateless_http=True, json_response=True)
+_mcp_app = mcp.http_app(path="/mcp", stateless_http=True, json_response=True, host_origin_protection=False)
 
 app = Starlette(
     routes=[

@@ -192,19 +192,39 @@ gcloud compute ssh test-vm-dev \
 ```
 
 ### 2. Verifying Internal MCP Tool Server Connectivity
-Once SSH'd inside the Test VM, obtain an OIDC token and curl the private corporate email tool server through the Regional Load Balancer:
+Since the MCP servers run as private, authenticated Cloud Run services inside the Shared VPC, you can verify their health and connectivity directly using their private Cloud Run URLs (available as outputs from Terragrunt Stage 4).
 
-```bash
-# Fetch OAuth2 Identity Token representing the Test VM's Service Account
-TOKEN=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=http://email.internal.gateway")
+1.  **Retrieve the Service URLs locally** (from the workspace root):
+    ```bash
+    cd infrastructure/live/dev/stage-4-workloads/services/
+    terragrunt output
+    # Look for: service_uri outputs (e.g., https://corporate-email-dev-3xpp4jmpmq-uc.a.run.app)
+    ```
 
-# Query the corporate email tool list endpoint
-curl -X POST -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"method": "tools/list", "params": {}}' \
-  http://email.internal.gateway/mcp
-```
-If the routing and IAM invoker bindings are correct, you will receive a JSON response listing the `read_email` and `send_email` tools.
+2.  **SSH into the Test VM and perform the verification**:
+    ```bash
+    # 1. Fetch the OIDC identity token representing the Test VM's Service Account.
+    # The audience MUST exactly match the target Cloud Run Service URL.
+    SERVICE_URL="https://corporate-email-dev-3xpp4jmpmq-uc.a.run.app"
+    TOKEN=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${SERVICE_URL}")
+
+    # 2. Query the /health endpoint (Starlette route, unauthenticated/authenticated depending on GFE IAM settings):
+    curl -i -H "Authorization: Bearer ${TOKEN}" ${SERVICE_URL}/health
+    # Expected Output: HTTP 200 OK, {"status":"ok"}
+
+    # 3. Query the /mcp tool list endpoint:
+    # Crucial requirements:
+    # - Accept header must be set to "application/json" (or "text/event-stream" if stateful/SSE)
+    # - Body payload must conform to standard JSON-RPC 2.0 format (including "jsonrpc": "2.0" and "id" fields)
+    curl -i -X POST \
+      -H "Authorization: Bearer ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      -H "Accept: application/json" \
+      -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1, "params": {}}' \
+      ${SERVICE_URL}/mcp
+    ```
+
+If the Shared VPC routing and GFE IAM invoker policies (`roles/run.invoker` bindings) are correctly applied, the server will return `HTTP/2 200` along with the JSON-RPC response containing the schema metadata for the tools (e.g. `read_email` and `send_email`).
 
 ### 3. Verifying Vertex AI Reasoning Engine Invocations
 To verify agent-to-agent routing, invoke the Root Orchestrator Reasoning Engine. From your local command line (or from the Test VM if authorized), call the Vertex AI API:
