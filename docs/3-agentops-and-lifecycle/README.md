@@ -65,6 +65,59 @@ flowchart TD
 
 ---
 
+### Repository Comparison Matrix
+
+The following matrix contrasts the operational boundaries, permissions, and build outputs of the three repository classes:
+
+| Repository Class | Primary Contributors | IAM Writing Bounds | CI Validation & Triggers | Release Artifact & Versioning Pattern |
+| :--- | :--- | :--- | :--- | :--- |
+| **`platform-infra-iac.git`** | Platform Engineers, NetOps, SecOps | Cloud Build Service Account (restricted to project provisioning roles) | Terragrunt dry-runs on pull requests; automated `apply` on main branch merge | Infrastructure state; versioned via Git release tags (e.g. `v1.2.0`) |
+| **`mcp-{tool-name}.git`** | AppDev Tools Team, Backend Integrators | Container Builder Service Account (restricted to `prj-esmeralda-cicd-artifacts`) | Docker build and vulnerability scan on push; integration test against mock DBs | Docker Container Image; tagged with git commit SHA and registered in AR |
+| **`agent-{agent-name}.git`** | AI Engineers, Prompt Engineers, BU Devs | Vertex AI Stager Service Account (restricted to agent GCS and Vertex APIs) | Run LLM-as-a-judge quality evaluations; syntax checking on `agent.yaml` | Vertex AI Reasoning Engine ID; pinned via immutable Artifact Registry SHA256 digest |
+
+---
+
+### Directory-to-Repository Migration Map
+
+When migrating from this monorepo developer blueprint to a production-ready decoupled multi-repository architecture, map files and folders as follows:
+
+| Blueprint Folder (Monorepo) | Target Production Git Repository | Deployment Endpoint |
+| :--- | :--- | :--- |
+| `infrastructure/modules/1-projects/`<br/>`infrastructure/modules/2-networking/`<br/>`infrastructure/modules/3-security/`<br/>`infrastructure/live/` | **`platform-infra-iac.git`** | GCP Projects, VPCs, KMS Keys, IAM Policies, and Terragrunt orchestrations |
+| `tools_mcp/servers/corporate-email/` | **`mcp-corporate-email.git`** | Cloud Run Service: `corporate-email-{env}` in `prj-esmeralda-mcps` |
+| `tools_mcp/servers/income-verification/` | **`mcp-income-verification.git`** | Cloud Run Service: `income-verification-{env}` in `prj-esmeralda-mcps` |
+| `tools_mcp/servers/legacy-dms/` | **`mcp-legacy-dms.git`** | Cloud Run Service: `legacy-dms-{env}` in `prj-esmeralda-mcps` |
+| `app/a2a-agent/` | **`agent-mortgage-assistant.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-a2a` |
+| `app/base-adk-agent/` | **`agent-root-orchestrator.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-root-agent` |
+
+---
+
+### The Parameter Linkage Pattern
+
+Decoupling repositories requires a clear mechanism to link them. Rather than allowing application repos to directly execute Terraform, the platform infrastructure repository (`platform-infra-iac.git`) acts as the central binder. It consumes application build outputs using **Dynamic Parameter Injection** within Terragrunt configurations:
+
+#### 1. Tool Container Tag Injection (`live/dev/stage-4-workloads/services/terragrunt.hcl`)
+When the AppDev team pushes a new tool container to Artifact Registry, they update the image tag reference in the platform repository. The platform reads the tag dynamically:
+```hcl
+inputs = {
+  container_image = "us-central1-docker.pkg.dev/prj-esmeralda-cicd-artifacts/esmeralda-containers/corporate-email:sha-abc123xyz"
+  invoker_service_accounts = [
+    dependency.security.outputs.root_agent_sa_email
+  ]
+}
+```
+
+#### 2. Agent Container Digest Pinning (`live/dev/stage-4-workloads/agents/terragrunt.hcl`)
+To prevent container drift and guarantee that Vertex AI Reasoning Engine runs exactly the code validated by the AI team, the platform resolves the image URI utilizing its immutable digest:
+```hcl
+inputs = {
+  agent_image_uri = "us-central1-docker.pkg.dev/prj-esmeralda-cicd-artifacts/esmeralda-containers/mortgage-assistant@sha256:d83d12f38c823..."
+  agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+}
+```
+
+---
+
 ## Cross-Team Governance & Coordination Model
 
 Decoupling source repositories requires a clear cross-team governance model to coordinate changes. Without explicit boundaries, platform updates can break downstream agents, and agent developers might request changes that violate corporate security policy.
