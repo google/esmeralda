@@ -1,10 +1,24 @@
 # Stage 3: Security, CMEK Keys, Secrets, and Identities
 
-### A. Security Architecture & Identity Guide
+## Architectural Decisions & Design Rationale
 
 Stage 3 centralizes compliance barriers, data governance, and encryption controls within the isolated `prj-esmeralda-governance` project.
 
-### A. CMEK Encryption and Secret Manager
+### Why Centralize Security Assets inside the Governance Project?
+
+*   **Separation of Duty (SecOps Governance)**: If database administrators or application developers also manage KMS key policies or secrets, they can modify access logs or decrypt backups without audit oversight. Centralizing keys and secrets inside `prj-esmeralda-governance` ensures that only Security Operations (SecOps) can write policies, rotate keys (every 90 days), or revoke access. Workloads in other projects consume these keys cross-project via specific IAM bindings.
+*   **Emergency Cryptographic Lockdown**: In the event of a security breach, SecOps can immediately disable the central KMS key. This instantly stops Cloud SQL databases and staging GCS buckets across all workload projects from reading or writing encrypted blocks, isolating the compromise at the storage layer without needing to change application configurations.
+
+### Why Separate Workload Service Accounts?
+
+*   **Preventing Identity Escalation**: Using a generic service account would allow a compromised MCP server to gain administrative privileges on Cloud SQL databases or overwrite logging sinks. Esmeralda provisions four highly isolated service accounts:
+    1.  `mcps-sa`: Limited to reading secrets and running serverless tools.
+    2.  `a2a-sa`: Authorized to connect to the task store database and Vertex AI Reasoning Engine APIs.
+    3.  `root-sa`: Allowed to call specialized assistant endpoints and read staging files.
+    4.  `cicd-builder-sa`: Restricted to building container images and writing to Artifact Registry.
+
+### A. Centralized CMEK Encryption and Secret Manager
+
 We establish a centralized Cloud KMS Keyring to encrypt persistent data at rest:
 *   `key-postgresql`: Encrypts the Cloud SQL database disk in `prj-esmeralda-a2a`.
 *   `key-gcs-staging`: Encrypts telemetry audit log storage buckets.
@@ -15,6 +29,7 @@ We use Secret Manager to store critical credentials without plaintext disk expos
 ---
 
 ### B. Least Privilege Identity Compliance
+
 **IMPORTANT (Security Compliance Principle):** 
 To enforce least privilege, we do not provision permissions for an `agent_repo` in Artifact Registry for ADK Reasoning Engine agents, because Reasoning Engines do not use Docker containers—they are packaged as compressed `.zip` bundles in GCS buckets. We only grant image write permissions to `mcp_repo` (used by Cloud Run tool services).
 

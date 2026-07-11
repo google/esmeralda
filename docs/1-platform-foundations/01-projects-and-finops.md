@@ -1,10 +1,19 @@
 # Stage 1: Foundational Projects, Billing & APIs
 
-### A. Architecture & Business Decisions Guide
+## Architectural Decisions & Design Rationale
 
 Stage 1 manages the isolated creation of multiple GCP projects and the activation of foundational service APIs under a governance structure fully compliant with Google Cloud enterprise Landing Zone standards.
 
-### A. Enterprise Landing Zone Simulation (SoC)
+### Why Seven GCP Projects Instead of a Monolith?
+
+Running all resources in a single, shared GCP project is a common pattern for prototypes, but it introduces three major governance failures in production enterprise platforms:
+
+1.  **The FinOps Attribution Blackout**: When multiple business units query Vertex AI Reasoning Engines, a single GCP project aggregates all API and computing costs onto one billing invoice. It is impossible to identify which team consumed how many input/output tokens. Esmeralda solves this by splitting workloads: client-facing orchestrators run in `prj-esmeralda-root-agent` (Business Unit Budget) while core reasoning models run in `prj-esmeralda-a2a` (Core AI Platform Budget). Labels (`env`, `cost-center`, `team`) applied at the project level flow natively into GCP Billing exports in BigQuery, enabling precise cost attribution.
+2.  **IAM Boundary Bleeding**: Developers building lightweight MCP tool connectors should not have access to platform security keys (KMS Keyrings) or central logging tables. A project boundary creates a rigid, cryptographically audited IAM wall. A developer in `prj-esmeralda-mcps` has zero visibility into the database assets inside `prj-esmeralda-a2a`.
+3.  **Quota Allocation Starvation**: Google Cloud enforces API rate limits (e.g., Vertex AI requests per minute) and resource limits (e.g., Cloud SQL CPU quotas) at the project level. A monolithic project means a runaway tool invocation loop in one application can consume the entire quota pool, starving and killing all other business unit agents. Project isolation ensures each workload operates within its own quota boundaries.
+
+### Enterprise Landing Zone Simulation (SoC)
+
 To mirror a real-world enterprise production environment, workloads are divided across **seven distinct projects**:
 
 | Project Domain | Simulated Project ID | Role and Responsibility | Primary Hosted Resources |
