@@ -183,6 +183,8 @@ To make finding technical specifications instantaneous for both human teams and 
     *   [Stage 4: Composable MCP Tools Guide](./2-workloads-and-catalog/02-mcp-tool-servers.md) — Packaging utility tool APIs (Corporate Email, Income Verification, Legacy DMS) as containerized Cloud Run services.
 *   **For AI Engineers & Business Unit Teams**:
     *   [Stage 4: AI Agents & Database Bootstrapping Guide](./2-workloads-and-catalog/03-ai-agents-and-database.md) — A2A reasoning engines, Cloud SQL PostgreSQL task stores, automated schema privilege bootstrapping, and Root Orchestrators.
+*   **For Release Managers, Dev Leads & Platform Administrators**:
+    *   [AgentOps, Lifecycle & Platform Governance Guide](./3-agentops-and-lifecycle/README.md) — Multi-repository source control structures, cross-team coordination matrices, CI/CD promotion pipelines, and telemetry sinks.
 
 ### B. By Technical Domain & Blueprint Reference (AI & Developer Index)
 *   **Infrastructure-as-Code (IaC) & Assembly**:
@@ -190,3 +192,5 @@ To make finding technical specifications instantaneous for both human teams and 
 *   **Runtime Orchestration & Security Patterns**:
     *   [Swappable Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md) — Apigee X, Kong DB-less, and L7 ILB with Routing Broker proxy.
     *   [Database Bootstrapping Sequence Diagram](./2-workloads-and-catalog/03-ai-agents-and-database.md) — Automated VPC-internal Cloud Run job for PostgreSQL schema privilege grants.
+*   **AgentOps, SDLC & Platform Governance**:
+    *   [AgentOps, Lifecycle & Platform Governance Guide](./3-agentops-and-lifecycle/README.md) — Automated container compilation and release coordination model across independent engineering groups.
