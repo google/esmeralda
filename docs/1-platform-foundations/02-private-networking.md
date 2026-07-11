@@ -1,6 +1,21 @@
 # Stage 2: Private Networking, DNS & PSC
 
+## Architectural Decisions & Design Rationale
+
+Stage 2 provisions a zero-trust Shared VPC network inside `prj-net-host` to connect isolated service projects privately.
+
+### Why Shared VPC Instead of VPC Peering?
+
+*   **Centralized Network Policy Governance**: In enterprise environments, security policies require central network teams to review and audit firewall rules, NAT configurations, and DNS visibility. VPC Peering across seven projects would create a complex mesh of peering connections, bypassing centralized security controls. Shared VPC allows NetOps to control the Host Project (`prj-net-host`), while platform services deployed in other projects consume subnets automatically under the `roles/compute.networkUser` role.
+*   **IP Address Conservation**: Standard VPC Peering does not support overlapping subnets and can waste IP space. Centralizing subnets in a Shared VPC ensures efficient Regional IP allocation and simplifies routing tables.
+
+### Why Private Service Connect (PSC) Network Attachments?
+
+*   **Serverless Tenant Network Tunnels**: Vertex AI Reasoning Engines run inside Google-managed tenant networks outside our GCP workspace. By default, these serverless containers query endpoints via the public internet.
+*   **Preventing Exfiltration**: To ensure zero data exfiltration, Esmeralda provisions **Private Service Connect (PSC) Network Attachments** in `sb-esmeralda-psc-interface`. When an ADK Reasoning Engine is deployed, Google's serverless runtime establishes a private PSC interface tunnel into the subnetwork, forcing all outbound data traffic (such as database queries and MCP tool calls) to flow privately inside the Shared VPC.
+
 ### A. VPC Subnet Topology (`gateway-vpc`)
+
 In the `prj-net-host` project, we allocate the following CIDR ranges:
 *   **Core Workload Subnet (`gke-subnet`)**: `10.0.0.0/20` for internal compute runtimes and test VMs.
 *   **Regional Envoy Proxy Subnet (`gateway-proxy-subnet`)**: `10.9.0.0/24` dedicated exclusively to Envoy-based internal Application Load Balancers (ILB).
@@ -8,6 +23,7 @@ In the `prj-net-host` project, we allocate the following CIDR ranges:
 *   **PSC Interface Subnet (`psc-interface-subnet`)**: `10.11.0.0/28` providing local private endpoints for Vertex AI Reasoning Engines operating within Google-managed VPCs.
 
 ### B. Private DNS and Gateway Static Routing
+
 To decouple dynamic Vertex AI service URLs, we establish a private Cloud DNS zone named `internal.gateway.` pointing all tool and agent routes to the internal IP (`10.0.0.5`) of the Internal Load Balancer (ILB):
 *   `email.internal.gateway` -> `10.0.0.5`
 *   `income-verification.internal.gateway` -> `10.0.0.5`
