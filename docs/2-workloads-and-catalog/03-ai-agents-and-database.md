@@ -1,5 +1,19 @@
 # Atomic AI Agents & Database Bootstrapping
 
+## Architectural Decisions & Design Rationale
+
+Stage 4 workloads isolate databases and reasoning engines atomically.
+
+### Why Package the Database Inside the Agent Workload?
+
+*   **Decoupled Workload Lifecycle**: In standard IT pipelines, provisioning databases requires coordination with database administrators, leading to delays. In Esmeralda, each assistant (e.g., the Mortgage Assistant `a2a-agent`) owns its data store. Packaging the Cloud SQL Postgres instance inside the agent module ensures that infrastructure and application database schemas are provisioned and destroyed as a single unit. This allows team-specific databases to scale, upgrade, or migrate without affecting other workloads.
+*   **Strict Security Isolation**: A central database sharing tables across multiple agents violates zero-trust principles. By grouping a dedicated Cloud SQL instance with each specialized agent, we enforce a strict cryptographic boundary. The database is isolated to private IPs inside the Shared VPC and binds only to the agent's specific IAM-authenticated Service Account.
+
+### Why Use a VPC-Bound Cloud Run Bootstrap Job?
+
+*   **The Private Network CI/CD Bottleneck**: Production databases do not have public IPs, meaning local CI/CD runners (like Cloud Build) cannot connect to initialize schemas or run DDL statements. Setting up public bastion hosts or exposing database ports introduces vulnerabilities.
+*   **The Serverless Bootstrap Solution**: Esmeralda solves this by deploying a serverless, VPC-bound Cloud Run Job (`schema_bootstrap`) running alpine `psql`. The job is launched directly inside the Shared VPC subnetwork, granting it private network access to the database. It executes the necessary `GRANT` statements and table schema initializations, and exits immediately. This eliminates bastion hosts and ensures secure, zero-trust schema management.
+
 ## Atomic Agent Reasoning Engines (`modules/4-workloads/agents/`)
 
 In Esmeralda, ADK agents operate in completely isolated environments with declarative dynamic dependency injection orchestrated by Terragrunt. Esmeralda's downstream execution flow relies on Vertex AI Reasoning Engines deployed declaratively via the Google Antigravity (AGY) / ADK framework. We organize these agents into two separate, self-contained sub-modules:

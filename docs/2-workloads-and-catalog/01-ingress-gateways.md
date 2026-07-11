@@ -2,9 +2,15 @@
 
 Stage 4 transitions Esmeralda from foundational infrastructure into **Composable AI Applications**. The architecture adopts an independent catalog pattern: every gateway, MCP tool, or AI agent is structured as a reusable module, enabling granular deployments onto the foundational projects provisioned in Stage 1.
 
-## Gateway Adapter Pattern: Swappable Ingress Gateways
+## Gateway Adapter Pattern: Why Swappable Gateways?
 
-To ensure the platform can be deployed into any enterprise environment (from agile developer sandboxes to highly governed corporate networks), Esmeralda enforces the **Gateway Adapter Pattern**. Downstream Vertex AI Reasoning Engine agents remain completely agnostic of which ingress gateway technology is active on the network. They simply interact with a standard set of interface variables, allowing seamless toggling between different gateway products.
+To ensure the platform can be deployed into any enterprise corporate environment, Esmeralda enforces the **Gateway Adapter Pattern**. Downstream agents (the reasoning engines) remain completely agnostic of *how* traffic is routed or which specific gateway is active.
+
+### The Rationale Behind Abstracted Ingress Gateways
+
+*   **Preventing Gateway Lock-In**: Enterprise API routing requirements differ greatly. A large corporation may require Apigee X for compliance and monitoring, a smaller business unit might select Kong on Cloud Run, while a developer sandbox might bypass gateways entirely and use an Internal Load Balancer (ILB) to reduce costs.
+*   **DNS & Routing Decoupling**: Downstream agents do not query gateways directly using hardcoded API URLs. Instead, they query standard DNS visibility paths (e.g., `http://email.internal.gateway/mcp`).
+*   **OIDC Token Injection**: Private tools and reasoning engines require Google OIDC tokens to authorize invocations. Rather than forcing agent developers to write OAuth2/IAM token-exchange logic inside Python agent code, the active gateway adapter intercepts requests, queries the GCP metadata server (or exchanges service account credentials), and injects the authorization bearer header dynamically.
 
 We define three distinct gateway options under `/modules/4-workloads/services/`. Platform engineers can select their desired adapter by changing the `source` path of their live gateway Terragrunt configuration:
 
