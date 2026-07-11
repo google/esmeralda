@@ -60,7 +60,7 @@ Inside the Apigee API Proxy (`/apiproxy/policies/`), we implement:
 The Kong adapter deploys the lightweight, open-source Kong Gateway container in a DB-less serverless mode on Cloud Run inside the gateway project (`prj-gateway`). It uses Secret Manager to load Kong's declarative configuration routing rules and binds to the central Shared VPC via Direct VPC Egress for low-latency, private routing to downstream agents.
 
 ```mermaid
-graph TD
+graph LR
     subgraph GatewayProject["prj-gateway"]
         Secret["Secret Manager<br/>(Declarative kong.yml)"]
         Kong["Kong Gateway on Cloud Run<br/>(DB-less Serverless Container)"]
