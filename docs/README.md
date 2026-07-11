@@ -173,6 +173,8 @@ flowchart TB
 To make finding technical specifications instantaneous for both human teams and AI assistants, we organize reference links into two clear pathways:
 
 ### A. By Engineering Role / Team
+*   **For Newcomers & Quick Evaluation**:
+    *   [Developer Quickstart & Runbook](./developer-quickstart.md) — Local Python setup, stage-by-stage Terragrunt deployment, container pushing, and IAP jumpbox verification commands.
 *   **For Platform & FinOps Engineers**:
     *   [Stage 1: Projects & FinOps Guide](./1-platform-foundations/01-projects-and-finops.md) — Provisioning the 7 isolated GCP projects, API enablements, billing bindings, and cost labels.
 *   **For Network Engineers (NetOps)**:
@@ -187,6 +189,8 @@ To make finding technical specifications instantaneous for both human teams and 
     *   [AgentOps, Lifecycle & Platform Governance Guide](./3-agentops-and-lifecycle/README.md) — Multi-repository source control structures, cross-team coordination matrices, CI/CD promotion pipelines, and telemetry sinks.
 
 ### B. By Technical Domain & Blueprint Reference (AI & Developer Index)
+*   **Newcomer Quickstarts & Runbooks**:
+    *   [Developer Quickstart & Runbook](./developer-quickstart.md) — Complete execution workflow from scratch.
 *   **Infrastructure-as-Code (IaC) & Assembly**:
     *   [Architectural Component Mapping Table](#component-mapping) — Master reference mapping Terragrunt stages to GCP projects and cross-dependency inputs.
 *   **Runtime Orchestration & Security Patterns**:
