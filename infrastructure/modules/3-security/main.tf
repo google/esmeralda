@@ -17,6 +17,10 @@ data "google_project" "root_agent" {
   project_id = var.root_project_id
 }
 
+data "google_project" "gateway" {
+  project_id = var.gateway_project_id
+}
+
 # ====================================================================
 # 1. CUSTOMER-MANAGED ENCRYPTION KEYS (CMEK) via CLOUD KMS
 # ====================================================================
@@ -301,7 +305,8 @@ resource "google_project_iam_member" "re_cicd_ar_reader" {
     "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
     "serviceAccount:service-${data.google_project.a2a.number}@serverless-robot-prod.iam.gserviceaccount.com",
     "serviceAccount:service-${data.google_project.root_agent.number}@serverless-robot-prod.iam.gserviceaccount.com",
-    "serviceAccount:service-${data.google_project.mcps.number}@serverless-robot-prod.iam.gserviceaccount.com"
+    "serviceAccount:service-${data.google_project.mcps.number}@serverless-robot-prod.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.gateway.number}@serverless-robot-prod.iam.gserviceaccount.com"
   ])
   project = var.cicd_project_id
   role    = "roles/artifactregistry.reader"
