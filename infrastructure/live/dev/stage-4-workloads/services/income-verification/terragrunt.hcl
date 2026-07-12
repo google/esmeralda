@@ -30,10 +30,9 @@ inputs = {
   subnet_id                = dependency.networking.outputs.subnet_id
   container_image          = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/income-verification-api:latest"
   invoker_service_accounts = [
-
-
     dependency.security.outputs.root_agent_sa_email,
-    dependency.security.outputs.test_vm_sa_email
+    dependency.security.outputs.test_vm_sa_email,
+    "kong-gateway-sa-${local.env_vars.locals.environment}@${dependency.projects.outputs.gateway_project_id}.iam.gserviceaccount.com"
   ]
 }
 

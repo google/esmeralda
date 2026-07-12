@@ -3,6 +3,10 @@ FROM kong:3.7-ubuntu
 
 USER root
 RUN mkdir -p /etc/kong && chown -R kong:kong /etc/kong
+
+# Copy custom gcp-service-account plugin files
+COPY plugins/gcp-service-account /usr/local/share/lua/5.1/kong/plugins/gcp-service-account
+
 USER kong
 
 COPY kong.conf.default /etc/kong/kong.conf
