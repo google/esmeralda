@@ -51,7 +51,7 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
   name                = "kong-gateway-${var.environment}"
   location            = var.region
   project             = var.project_id
-  ingress             = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   deletion_protection = false
 
   depends_on = [
@@ -120,4 +120,81 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
   members  = [
     for sa in var.invoker_service_accounts : "serviceAccount:${sa}"
   ]
+}
+
+# ====================================================================
+# Internal HTTP Load Balancer & Cloud DNS Integration for esmeralda.internal
+# ====================================================================
+
+# 1. Serverless NEG fronting the Kong Gateway Cloud Run service
+resource "google_compute_region_network_endpoint_group" "kong_neg" {
+  name                  = "neg-kong-${var.environment}"
+  project               = var.project_id
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+  cloud_run {
+    service = google_cloud_run_v2_service.kong_gateway.name
+  }
+}
+
+# 2. Regional Internal Backend Service
+resource "google_compute_region_backend_service" "kong_backend" {
+  name                  = "backend-kong-${var.environment}"
+  project               = var.project_id
+  region                = var.region
+  protocol              = "HTTP"
+  load_balancing_scheme = "INTERNAL_MANAGED"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.kong_neg.id
+  }
+}
+
+# 3. Regional Internal URL Map
+resource "google_compute_region_url_map" "kong_url_map" {
+  name            = "ilb-kong-url-map-${var.environment}"
+  project         = var.project_id
+  region          = var.region
+  default_service = google_compute_region_backend_service.kong_backend.id
+}
+
+# 4. Target HTTP Proxy and Internal Forwarding Rule
+resource "google_compute_region_target_http_proxy" "kong_proxy" {
+  name    = "ilb-kong-proxy-${var.environment}"
+  project = var.project_id
+  region  = var.region
+  url_map = google_compute_region_url_map.kong_url_map.id
+}
+
+resource "google_compute_forwarding_rule" "kong_forwarding_rule" {
+  name                  = "ilb-kong-rule-${var.environment}"
+  project               = var.project_id
+  region                = var.region
+  ip_protocol           = "TCP"
+  port_range            = "80"
+  load_balancing_scheme = "INTERNAL_MANAGED"
+  network               = var.vpc_id
+  subnetwork            = var.subnet_id
+  target                = google_compute_region_target_http_proxy.kong_proxy.id
+}
+
+# 5. Cloud DNS A Records in Shared VPC Private Zone mapping esmeralda.internal to ILB VIP
+resource "google_dns_record_set" "esmeralda_internal_apex" {
+  count        = var.net_host_project_id != "" && var.dns_zone_name != "" ? 1 : 0
+  project      = var.net_host_project_id
+  managed_zone = var.dns_zone_name
+  name         = "esmeralda.internal."
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_forwarding_rule.kong_forwarding_rule.ip_address]
+}
+
+resource "google_dns_record_set" "esmeralda_internal_wildcard" {
+  count        = var.net_host_project_id != "" && var.dns_zone_name != "" ? 1 : 0
+  project      = var.net_host_project_id
+  managed_zone = var.dns_zone_name
+  name         = "*.esmeralda.internal."
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_forwarding_rule.kong_forwarding_rule.ip_address]
 }
