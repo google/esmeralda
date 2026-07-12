@@ -33,9 +33,10 @@ if os.environ.get("DISABLE_SSL_VERIFICATION") == "true":
     ssl._create_default_https_context = ssl._create_unverified_context
     logger.warning("SSL certificate verification has been disabled via environment variable.")
 
-DEFAULT_DMS_MCP_URL = "https://dms.internal.ai-demo.gcp.sc-ccn.xyz/mcp"
-DEFAULT_INCOME_VERIFICATION_URL = "https://income-verification.internal.ai-demo.gcp.sc-ccn.xyz/mcp"
-DEFAULT_EMAIL_MCP_URL = "https://email.internal.ai-demo.gcp.sc-ccn.xyz/mcp"
+DEFAULT_DMS_MCP_URL = "http://esmeralda.internal/legacy-dms/mcp"
+DEFAULT_INCOME_VERIFICATION_URL = "http://esmeralda.internal/income-verification/mcp"
+DEFAULT_EMAIL_MCP_URL = "http://esmeralda.internal/corporate-email/mcp"
+DEFAULT_GATEWAY_AUDIENCE = "http://esmeralda.internal"
 
 
 def _get_oidc_token(audience: str) -> str:
@@ -68,7 +69,7 @@ def _get_oidc_token(audience: str) -> str:
 
 def _make_header_provider(mcp_url: str):
     """Factory that returns a header_provider for a given MCP server URL."""
-    audience = mcp_url.replace("/mcp", "")
+    audience = DEFAULT_GATEWAY_AUDIENCE if "esmeralda.internal" in mcp_url else mcp_url.replace("/mcp", "")
 
     def header_provider(context):
         """Provides service-to-service ID token and forwards user auth token."""
