@@ -54,6 +54,11 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
   ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   deletion_protection = false
 
+  custom_audiences = [
+    "http://esmeralda.internal",
+    "https://esmeralda.internal"
+  ]
+
   depends_on = [
     google_secret_manager_secret_iam_member.kong_sa_secret_access,
     google_secret_manager_secret_version.kong_config
