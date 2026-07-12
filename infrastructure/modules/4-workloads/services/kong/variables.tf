@@ -47,3 +47,15 @@ variable "invoker_service_accounts" {
   type        = list(string)
   default     = []
 }
+
+variable "net_host_project_id" {
+  description = "The project ID of the Shared VPC Host for DNS record management"
+  type        = string
+  default     = ""
+}
+
+variable "dns_zone_name" {
+  description = "The name of the Cloud DNS private zone"
+  type        = string
+  default     = ""
+}
