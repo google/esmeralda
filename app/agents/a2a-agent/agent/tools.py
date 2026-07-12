@@ -33,9 +33,6 @@ if os.environ.get("DISABLE_SSL_VERIFICATION") == "true":
     ssl._create_default_https_context = ssl._create_unverified_context
     logger.warning("SSL certificate verification has been disabled via environment variable.")
 
-DEFAULT_DMS_MCP_URL = "http://esmeralda.internal/legacy-dms/mcp"
-DEFAULT_INCOME_VERIFICATION_URL = "http://esmeralda.internal/income-verification/mcp"
-DEFAULT_EMAIL_MCP_URL = "http://esmeralda.internal/corporate-email/mcp"
 DEFAULT_GATEWAY_AUDIENCE = "http://esmeralda.internal"
 
 
@@ -96,10 +93,10 @@ def _make_header_provider(mcp_url: str):
 
 
 def create_mcp_toolsets():
-    """Create all three MCP toolset instances with auth and user token forwarding."""
-    dms_url = os.environ.get("DMS_MCP_URL", DEFAULT_DMS_MCP_URL)
-    income_url = os.environ.get("INCOME_VERIFICATION_URL", DEFAULT_INCOME_VERIFICATION_URL)
-    email_url = os.environ.get("EMAIL_MCP_URL", DEFAULT_EMAIL_MCP_URL)
+    """Create all three MCP toolset instances using environment variables from agent.yaml."""
+    dms_url = os.environ["DMS_MCP_URL"]
+    income_url = os.environ["INCOME_VERIFICATION_URL"]
+    email_url = os.environ["EMAIL_MCP_URL"]
 
     dms_toolset = McpToolset(
         connection_params=StreamableHTTPConnectionParams(
