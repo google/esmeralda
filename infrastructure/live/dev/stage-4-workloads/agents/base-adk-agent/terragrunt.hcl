@@ -19,10 +19,6 @@ dependency "security" {
   config_path = "../../../stage-3-security"
 }
 
-dependency "gateway" {
-  config_path = "../../services/kong"
-}
-
 dependency "a2a_agent" {
   config_path = "../a2a-agent"
 }
@@ -46,7 +42,6 @@ inputs = {
   # network_attachment    = dependency.networking.outputs.psc_network_attachment_id
 
   # Inject downstream endpoints
-  gateway_mcp_url       = "http://${dependency.gateway.outputs.gateway_ingress_ip}/"
   a2a_agent_url         = dependency.a2a_agent.outputs.endpoint_url
 
   # Path to application YAML configuration

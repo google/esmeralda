@@ -20,11 +20,12 @@ variable "subnet_id" {
 }
 
 variable "agent_endpoints" {
-  description = "A map of logical agent names to their dynamic Vertex AI Reasoning Engine configuration"
+  description = "A map of logical agent names to their dynamic endpoints and routing configuration"
   type = map(object({
     logical_name = string
     engine_id    = string
     endpoint_url = string
+    audience     = string
   }))
   default     = {}
 }
@@ -39,4 +40,10 @@ variable "kong_image" {
   description = "The Container Image URL of Kong Gateway"
   type        = string
   default     = "kong:latest"
+}
+
+variable "invoker_service_accounts" {
+  description = "A list of service accounts allowed to invoke the Kong gateway"
+  type        = list(string)
+  default     = []
 }

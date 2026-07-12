@@ -20,9 +20,73 @@ dependency "networking" {
   config_path = "../../../stage-2-networking"
 }
 
+dependency "a2a_agent" {
+  config_path = "../../agents/a2a-agent"
+}
+
+dependency "root_agent" {
+  config_path = "../../agents/base-adk-agent"
+}
+
+dependency "security" {
+  config_path = "../../../stage-3-security"
+}
+
+dependency "corporate_email" {
+  config_path = "../corporate-email"
+}
+
+dependency "income_verification" {
+  config_path = "../income-verification"
+}
+
+dependency "legacy_dms" {
+  config_path = "../legacy-dms"
+}
+
 inputs = {
   project_id = dependency.projects.outputs.gateway_project_id
   region     = local.env_vars.locals.region
   vpc_id     = dependency.networking.outputs.network_id
   subnet_id  = dependency.networking.outputs.subnet_id
+  kong_image = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/kong-gateway:latest"
+
+  invoker_service_accounts = [
+    dependency.security.outputs.test_vm_sa_email
+  ]
+
+  agent_endpoints = {
+    # Agents
+    a2a-agent = {
+      logical_name = "a2a-agent"
+      engine_id    = dependency.a2a_agent.outputs.engine_id
+      endpoint_url = dependency.a2a_agent.outputs.endpoint_url
+      audience     = "https://us-central1-aiplatform.googleapis.com"
+    }
+    root-agent = {
+      logical_name = "root-agent"
+      engine_id    = dependency.root_agent.outputs.engine_id
+      endpoint_url = "${dependency.root_agent.outputs.endpoint_url}%3Apredict"
+      audience     = "https://us-central1-aiplatform.googleapis.com"
+    }
+    # MCP Servers
+    corporate-email = {
+      logical_name = "corporate-email"
+      engine_id    = dependency.corporate_email.outputs.service_name
+      endpoint_url = dependency.corporate_email.outputs.service_uri
+      audience     = dependency.corporate_email.outputs.service_uri
+    }
+    income-verification = {
+      logical_name = "income-verification"
+      engine_id    = dependency.income_verification.outputs.service_name
+      endpoint_url = dependency.income_verification.outputs.service_uri
+      audience     = dependency.income_verification.outputs.service_uri
+    }
+    legacy-dms = {
+      logical_name = "legacy-dms"
+      engine_id    = dependency.legacy_dms.outputs.service_name
+      endpoint_url = dependency.legacy_dms.outputs.service_uri
+      audience     = dependency.legacy_dms.outputs.service_uri
+    }
+  }
 }

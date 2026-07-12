@@ -75,6 +75,14 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
         name  = "KONG_DECLARATIVE_CONFIG"
         value = "/etc/kong/kong.yml"
       }
+      env {
+        name  = "KONG_PLUGINS"
+        value = "bundled,gcp-service-account"
+      }
+      env {
+        name  = "FORCE_REDEPLOY"
+        value = "1"
+      }
       volume_mounts {
         name       = "kong-config"
         mount_path = "/etc/kong"
@@ -101,4 +109,15 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
       egress = "ALL_TRAFFIC"
     }
   }
+}
+
+# IAM Invoker Binding restricting access to authorized callers only
+resource "google_cloud_run_v2_service_iam_binding" "invokers" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.kong_gateway.name
+  role     = "roles/run.invoker"
+  members  = [
+    for sa in var.invoker_service_accounts : "serviceAccount:${sa}"
+  ]
 }

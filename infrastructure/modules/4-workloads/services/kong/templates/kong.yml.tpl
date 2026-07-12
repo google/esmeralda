@@ -7,12 +7,13 @@ services:
     url: ${endpoint.endpoint_url}
     routes:
       - name: ${endpoint.logical_name}-route
-        hosts:
-          - ${endpoint.logical_name}.esmeralda.internal
+        paths:
+          - /${endpoint.logical_name}
         strip_path: true
+        preserve_host: false
     plugins:
       # Inject the GCP OIDC Identity Token dynamically on upstream calls
       - name: gcp-service-account
         config:
-          audience: "https://us-central1-aiplatform.googleapis.com"
+          audience: "${endpoint.audience}"
 %{ endfor ~}
