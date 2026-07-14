@@ -19,7 +19,7 @@ description = "A2A mortgage assistant agent with MCP tool connections"
 requires-python = ">=3.12"
 dependencies = [
     "google-cloud-aiplatform[adk,agent_engines]>=1.74.0",
-    "google-adk[a2a]>=1.34.0",
+    "google-adk[a2a,mcp]>=1.34.0",
     "google-auth",
     "google-cloud-logging",
     "pyyaml",
@@ -29,6 +29,11 @@ dependencies = [
     "cloud-sql-python-connector[asyncpg]",
     "asyncpg",
     "a2a-sdk",
+    "mcp>=1.0.0",
+    "google-cloud-bigquery-storage",
+    "google-genai",
+    "sqlalchemy",
+    "pyarrow",
 ]
 
 [project.optional-dependencies]

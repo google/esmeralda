@@ -36,13 +36,14 @@ inputs = {
 
 
 
-  # Optional PSC attachment (omitted for standard managed BYOC network routing)
-  # network_attachment    = dependency.networking.outputs.psc_network_attachment_id
+  # PSC attachment (set to empty string for standard managed BYOC network routing)
+  network_attachment    = ""
 
   database_name         = "a2a_tasks"
 
   # Path to application YAML configuration
   agent_config_path     = "${get_repo_root()}/app/agents/a2a-agent/agent.yaml"
+  agent_card_json       = file("${get_repo_root()}/app/agents/a2a-agent/a2a/agent.json")
 }
 
 

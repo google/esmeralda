@@ -28,6 +28,7 @@ resources:
   concurrency: 9
 
 env:
+  AGENT_NAME: "a2a_mortgage_agent"
   # --- Resource Identity & Dashboard Triggers ---
   OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai,gcp.resource_type=reasoning_engine"
   OTEL_SERVICE_NAME: "a2a-mortgage-agent"

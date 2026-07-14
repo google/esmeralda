@@ -28,42 +28,16 @@ load_dotenv()
 os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
+import google.auth
+import google.auth.transport.requests
 import json
 import vertexai
-import vertexai._genai._agent_engines_utils as utils
-
-# Monkeypatch the reasoning engine client utilities to avoid the SDK schema error when agent_card is empty/None
-orig_wrap_v03 = utils._wrap_a2a_operation_v03
-
-def patched_wrap_v03(method_name: str, agent_card: str):
-    if not agent_card:
-        card_dict = {
-            'name': 'a2a-mortgage-agent',
-            'description': 'Mortgage underwriting assistant with document management, income verification, and corporate email capabilities.',
-            'version': '1.0.0',
-            'protocolVersion': '0.3.0',
-            'preferredTransport': 'HTTP+JSON',
-            'defaultInputModes': ['text/plain'],
-            'defaultOutputModes': ['application/json'],
-            'url': 'https://us-central1-aiplatform.googleapis.com/v1beta1/projects/agent-ops-foundation-435f/locations/us-central1/reasoningEngines/5403187605623799808/a2a',
-            'capabilities': {
-                'streaming': False
-            },
-            'skills': []
-        }
-        agent_card = json.dumps(card_dict)
-    return orig_wrap_v03(method_name, agent_card)
-
-utils._wrap_a2a_operation_v03 = patched_wrap_v03
-if hasattr(utils, "_wrap_a2a_operation"):
-    utils._wrap_a2a_operation = patched_wrap_v03
-
 from google.genai import types
 
 async def main(user_input: str):
-    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "agent-ops-foundation-435f")
+    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "esmeralda-a2a-918f")
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    RESOURCE_ID = "5403187605623799808"
+    RESOURCE_ID = os.getenv("REASONING_ENGINE_ID", "8693282637696991232")
     RESOURCE_NAME = f"projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
 
     print("🚀 Initializing vertexai.Client...")
@@ -79,74 +53,67 @@ async def main(user_input: str):
     print(f"\n📡 Getting remote agent engine resource: {RESOURCE_NAME}")
     remote_agent = client.agent_engines.get(name=RESOURCE_NAME)
     print("✅ Remote agent retrieved.")
-    print(remote_agent)
 
-    # 1. Retrieve the Agent Card
+    override_url = os.getenv("AGENT_URL")
+    if override_url and hasattr(remote_agent, "agent_card"):
+        print(f"🔗 Overriding Agent Card URL for external test runner: {override_url}")
+        remote_agent.agent_card.url = override_url
+
+    # 1. Retrieve the Agent Card via SDK
     print("\n📇 --- 1. RETRIEVING AUTHENTICATED AGENT CARD ---")
     try:
         card = await remote_agent.handle_authenticated_agent_card()
-        print("\n💼 Deployed A2A Agent Card:")
+        print("\n💼 Deployed A2A Agent Card (via SDK):")
         print(card)
-        sys.stdout.flush()
     except Exception as e:
-        print(f"\n❌ Failed to retrieve agent card: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Card fetch exception: {e}")
     print("-------------------------------------------------------------------------\n")
 
-    # 2. Send Message (on_message_send)
-    print("💬 --- 2. SENDING MESSAGE (on_message_send) ---")
-    message_data = {
-        "messageId": f"remote-test-{uuid.uuid4()}",
-        "role": "user",
-        "parts": [{"kind": "text", "text": user_input}],
-    }
-    print(f"Sending message payload:\n{message_data}\n")
+    # 2. Send Message via A2A ClientFactory (Direct to Public Endpoint)
+    print("💬 --- 2. SENDING MESSAGE VIA A2A CLIENTFACTORY ---")
+    import httpx
+    from a2a.client import ClientFactory, ClientConfig
+    from a2a.types import TransportProtocol, Message, TextPart
+
+    # Get GCP Auth Bearer Token for Vertex AI Reasoning Engine REST API
+    credentials, _ = google.auth.default()
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    token = credentials.token
+
+    public_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{RESOURCE_NAME}/a2a"
+    print(f"📡 Connecting to Public REST Endpoint: {public_url}")
     
+    config = ClientConfig(
+        httpx_client=httpx.AsyncClient(timeout=60.0, headers={"Authorization": f"Bearer {token}"}),
+        supported_transports=[TransportProtocol.http_json],
+    )
+    factory = ClientFactory(config)
+    
+    from a2a.types import AgentCard
+    local_card_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "a2a", "agent.json")
+    with open(local_card_path, "r") as f:
+        card_data = f.read()
+    
+    card_for_test = AgentCard.model_validate_json(card_data)
+    card_for_test.url = public_url
+    card_for_test.additional_interfaces = None
+    client = factory.create(card_for_test)
+
+    message = Message(
+        message_id=f"remote-test-{uuid.uuid4()}",
+        role="user",
+        parts=[TextPart(text=user_input)],
+    )
+
     try:
-        response = await remote_agent.on_message_send(**message_data)
-        print("\n🤖 Agent Response (on_message_send):")
-        print(response)
-        sys.stdout.flush()
-
-        # Helper function to recursively find a task ID inside any returned structure
-        def extract_task_id(obj):
-            if not obj:
-                return None
-            if isinstance(obj, dict):
-                return obj.get("taskId") or obj.get("id")
-            if isinstance(obj, str):
-                return None
-            if hasattr(obj, "taskId") and getattr(obj, "taskId"):
-                val = getattr(obj, "taskId")
-                if isinstance(val, str):
-                    return val
-            if hasattr(obj, "id") and getattr(obj, "id"):
-                val = getattr(obj, "id")
-                if isinstance(val, str):
-                    return val
-            if isinstance(obj, (list, tuple)):
-                for item in obj:
-                    tid = extract_task_id(item)
-                    if tid:
-                        return tid
-            return None
-
-        task_id = extract_task_id(response)
-
-        if task_id:
-            print(f"\n📋 --- 3. CHECKING TASK STATUS FOR TASK ID: {task_id} (on_get_task) ---")
-            task_data = {
-                "id": task_id,
-            }
-            task_response = await remote_agent.on_get_task(**task_data)
-            print("\n📋 Task status response:")
-            print(task_response)
-        else:
-            print("\n📋 No taskId returned in on_message_send response; skipping on_get_task check.")
-
+        response_stream = client.send_message(message)
+        print("\n🤖 Agent Response (Stream):")
+        async for chunk in response_stream:
+            print(chunk)
+        print("\n✅ Message exchange SUCCESSFUL!")
     except Exception as e:
-        print(f"\n❌ An error occurred during A2A message exchange: {e}")
+        print(f"\n❌ Message exchange error: {e}")
         import traceback
         traceback.print_exc()
     print("-------------------------------------------------------------------------\n")
