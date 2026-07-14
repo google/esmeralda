@@ -14,7 +14,11 @@ resource "google_cloud_run_v2_service" "income_verification" {
   custom_audiences = [
     "http://income-verification.internal.gateway",
     "https://income-verification.internal.gateway",
-    "https://income-verification.internal.gateway/mcp"
+    "https://income-verification.internal.gateway/mcp",
+    "http://income-verification.esmeralda.internal",
+    "http://income-verification.esmeralda.internal/mcp",
+    "https://income-verification.esmeralda.internal",
+    "https://income-verification.esmeralda.internal/mcp"
   ]
 
   template {

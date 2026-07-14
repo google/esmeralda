@@ -19,6 +19,18 @@ variable "subnet_id" {
   type        = string
 }
 
+variable "net_host_project_id" {
+  description = "The host project ID hosting the central Shared VPC and Cloud DNS"
+  type        = string
+  default     = ""
+}
+
+variable "vpc_name" {
+  description = "The name of the Shared VPC network"
+  type        = string
+  default     = ""
+}
+
 variable "agent_name" {
   description = "The registered display name of the A2A Mortgage Assistant reasoning engine"
   type        = string
@@ -54,6 +66,18 @@ variable "network_attachment" {
   description = "Optional Private Service Connect Network Attachment ID for Vertex AI Reasoning Engine VPC attachment"
   type        = string
   default     = ""
+}
+
+variable "psc_subnet_id" {
+  description = "The self-link of the PSC interface subnetwork inside the Shared VPC"
+  type        = string
+  default     = ""
+}
+
+variable "enable_psc_network" {
+  description = "Whether to create a per-agent PSC Network Attachment and enable PSC-Interface"
+  type        = bool
+  default     = true
 }
 
 variable "environment" {

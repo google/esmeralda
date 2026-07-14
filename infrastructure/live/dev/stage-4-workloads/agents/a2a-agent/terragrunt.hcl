@@ -28,6 +28,8 @@ inputs = {
   region                = local.env_vars.locals.region
   vpc_id                = dependency.networking.outputs.network_id
   subnet_id             = dependency.networking.outputs.subnet_id
+  net_host_project_id   = dependency.projects.outputs.net_host_project_id
+  vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
 
   # BYOC Container Image URI
@@ -36,8 +38,8 @@ inputs = {
 
 
 
-  # PSC attachment (set to empty string for standard managed BYOC network routing)
-  network_attachment    = ""
+  psc_subnet_id         = dependency.networking.outputs.psc_subnet_id
+  enable_psc_network    = true
 
   database_name         = "a2a_tasks"
 

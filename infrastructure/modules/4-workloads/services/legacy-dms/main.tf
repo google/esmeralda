@@ -14,7 +14,11 @@ resource "google_cloud_run_v2_service" "legacy_dms" {
   custom_audiences = [
     "http://dms.internal.gateway",
     "https://dms.internal.gateway",
-    "https://dms.internal.gateway/mcp"
+    "https://dms.internal.gateway/mcp",
+    "http://legacy-dms.esmeralda.internal",
+    "http://legacy-dms.esmeralda.internal/mcp",
+    "https://legacy-dms.esmeralda.internal",
+    "https://legacy-dms.esmeralda.internal/mcp"
   ]
 
   template {

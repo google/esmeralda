@@ -37,7 +37,7 @@ from google.genai import types
 async def main(user_input: str):
     PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "esmeralda-a2a-918f")
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    RESOURCE_ID = os.getenv("REASONING_ENGINE_ID", "8693282637696991232")
+    RESOURCE_ID = os.getenv("REASONING_ENGINE_ID", "5748772906326818816")
     RESOURCE_NAME = f"projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
 
     print("🚀 Initializing vertexai.Client...")

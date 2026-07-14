@@ -319,6 +319,26 @@ resource "google_project_iam_member" "host_network_users" {
   depends_on = [time_sleep.iam_propagation]
 }
 
+# Grant compute.networkAdmin on the Host Project to all service project robots for PSC Network Attachment patching
+resource "google_project_iam_member" "host_network_admins" {
+  for_each = var.enable_psc_interface ? toset(local.subnet_network_users) : toset([])
+  project  = var.net_host_project_id
+  role     = "roles/compute.networkAdmin"
+  member   = each.value
+
+  depends_on = [time_sleep.iam_propagation]
+}
+
+# Grant dns.peer on the Host Project to all service project robots for Cloud DNS Peering
+resource "google_project_iam_member" "host_dns_peers" {
+  for_each = var.enable_psc_interface ? toset(local.subnet_network_users) : toset([])
+  project  = var.net_host_project_id
+  role     = "roles/dns.peer"
+  member   = each.value
+
+  depends_on = [time_sleep.iam_propagation]
+}
+
 # ====================================================================
 # 6. PRIVATE DNS SERVICE DISCOVERY ZONES
 # ====================================================================
