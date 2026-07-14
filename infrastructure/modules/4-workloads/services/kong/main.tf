@@ -86,7 +86,7 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
       }
       env {
         name  = "FORCE_REDEPLOY"
-        value = "1"
+        value = google_secret_manager_secret_version.kong_config.version
       }
       volume_mounts {
         name       = "kong-config"
