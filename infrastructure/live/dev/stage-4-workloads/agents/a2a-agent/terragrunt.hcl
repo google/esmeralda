@@ -32,6 +32,12 @@ inputs = {
   vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
 
+  invoker_service_accounts = [
+    dependency.security.outputs.root_agent_sa_email,
+    dependency.security.outputs.test_vm_sa_email,
+    "kong-gateway-sa-${local.env_vars.locals.environment}@esmeralda-gateway-918f.iam.gserviceaccount.com"
+  ]
+
   # BYOC Container Image URI
   agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/a2a-agent:latest"
 

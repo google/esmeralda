@@ -43,10 +43,88 @@ resource "google_storage_bucket" "artifacts" {
 resource "google_storage_bucket" "logs" {
   project                     = var.project_id
   name                        = "${var.project_id}-logs-${var.environment}-${random_id.bucket_suffix.hex}"
-
   location                    = var.region
   force_destroy               = true
   uniform_bucket_level_access = true
+}
+
+# 4. Atomic Telemetry BigQuery Dataset for Agent Event Logs
+resource "google_bigquery_dataset" "analytics" {
+  dataset_id  = "root_agent_logs_${var.environment}"
+  project     = var.project_id
+  location    = var.region
+  description = "Atomic event logging dataset for root agent telemetry"
+
+  delete_contents_on_destroy = true
+}
+
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+resource "google_bigquery_dataset_iam_member" "agent_bq_writer" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${var.agent_service_account}"
+}
+
+resource "google_bigquery_dataset_iam_member" "vertex_re_bq_writer" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_bigquery_dataset_iam_member" "vertex_ai_bq_writer" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "agent_bq_admin" {
+  project = var.project_id
+  role    = "roles/bigquery.admin"
+  member  = "serviceAccount:${var.agent_service_account}"
+}
+
+resource "google_project_iam_member" "vertex_re_dns_peer" {
+  count   = var.net_host_project_id != "" ? 1 : 0
+  project = var.net_host_project_id
+  role    = "roles/dns.peer"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "vertex_ai_dns_peer" {
+  count   = var.net_host_project_id != "" ? 1 : 0
+  project = var.net_host_project_id
+  role    = "roles/dns.peer"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "vertex_re_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "vertex_ai_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+resource "google_compute_network_attachment" "psc_attachment" {
+  count                 = var.enable_psc_network ? 1 : 0
+  name                  = "${local.yaml_name}-psc-attachment-${var.environment}"
+  project               = var.project_id
+  region                = var.region
+  connection_preference = "ACCEPT_AUTOMATIC"
+
+  subnetworks = [
+    var.psc_subnet_id != "" ? var.psc_subnet_id : var.subnet_id
+  ]
 }
 
 # Declaratively define the Vertex AI Reasoning Engine master orchestrator
@@ -140,9 +218,18 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
       }
 
       dynamic "psc_interface_config" {
-        for_each = var.network_attachment != "" ? [1] : []
+        for_each = var.enable_psc_network ? [1] : []
         content {
-          network_attachment = var.network_attachment
+          network_attachment = google_compute_network_attachment.psc_attachment[0].id
+
+          dynamic "dns_peering_configs" {
+            for_each = var.net_host_project_id != "" && var.vpc_name != "" ? [1] : []
+            content {
+              domain         = "esmeralda.internal."
+              target_project = var.net_host_project_id
+              target_network = var.vpc_name
+            }
+          }
         }
       }
     }
