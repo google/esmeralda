@@ -115,12 +115,13 @@ resource "google_compute_subnetwork" "psc" {
 
 # PSC Interface Subnet for Serverless Agent Incoming Tunnels
 resource "google_compute_subnetwork" "psc_interface" {
-  count         = !var.byo_networking && var.enable_psc_interface ? 1 : 0
-  name          = "sb-esmeralda-psc-interface-${var.environment}"
-  project       = var.net_host_project_id
-  region        = var.region
-  network       = google_compute_network.shared_vpc[0].id
-  ip_cidr_range = "10.11.0.0/28"
+  count                    = !var.byo_networking && var.enable_psc_interface ? 1 : 0
+  name                     = "sb-esmeralda-psc-interface-${var.environment}"
+  project                  = var.net_host_project_id
+  region                   = var.region
+  network                  = google_compute_network.shared_vpc[0].id
+  ip_cidr_range            = "10.11.0.0/24"
+  private_ip_google_access = true
 }
 
 # Private Service Connection (PSA) range for Cloud SQL Peering
@@ -182,11 +183,11 @@ resource "google_compute_firewall" "psc_interface_allow" {
   network       = google_compute_network.shared_vpc[0].id
   direction     = "INGRESS"
   priority      = 1000
-  source_ranges = ["10.11.0.0/28"]
+  source_ranges = ["10.11.0.0/24"]
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "443"]
+    ports    = ["22", "80", "443"]
   }
   allow {
     protocol = "icmp"
@@ -304,6 +305,16 @@ resource "google_compute_subnetwork_iam_member" "psc_interface_users" {
   subnetwork = google_compute_subnetwork.psc_interface[0].name
   role       = "roles/compute.networkUser"
   member     = each.value
+
+  depends_on = [time_sleep.iam_propagation]
+}
+
+# Grant compute.networkUser on the Host Project to all service project robots for PSC Network Attachment access
+resource "google_project_iam_member" "host_network_users" {
+  for_each = var.enable_psc_interface ? toset(local.subnet_network_users) : toset([])
+  project  = var.net_host_project_id
+  role     = "roles/compute.networkUser"
+  member   = each.value
 
   depends_on = [time_sleep.iam_propagation]
 }

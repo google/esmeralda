@@ -75,7 +75,7 @@ class AdkAgentExecutorBuilder:
         return _A2aAgentExecutor(
             runner=Runner(
                 agent=self.agent,
-                app_name="a2a_agent_app",
+                app_name="agent",
                 session_service=_create_session_service(),
                 plugins=self.plugins
             )
@@ -84,7 +84,7 @@ class AdkAgentExecutorBuilder:
 
 def create_a2a_app():
     card = create_agent_card(
-        agent_name="a2a-mortgage-agent",
+        agent_name=os.environ.get("AGENT_NAME", "a2a-mortgage-agent"),
         description="Mortgage underwriting assistant with document management, "
                     "income verification, and corporate email capabilities.",
         skills=[
@@ -111,13 +111,16 @@ def create_a2a_app():
             ),
         ]
     )
+    card.preferred_transport = "HTTP+JSON"
     plugins = [bq_logging_plugin] if bq_logging_plugin else []
 
     task_store_builder = None
-    if os.environ.get("CLOUD_SQL_INSTANCE"):
+    if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):
         from plugins.task_store import build_cloud_sql_taskstore
         task_store_builder = build_cloud_sql_taskstore
         logger.info("Using Cloud SQL DatabaseTaskStore for A2A task persistence.")
+    else:
+        logger.info("Using InMemoryTaskStore for A2A task persistence.")
 
     return A2aAgent(
         agent_card=card,

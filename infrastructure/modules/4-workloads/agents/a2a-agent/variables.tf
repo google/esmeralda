@@ -68,3 +68,9 @@ variable "agent_config_path" {
   default     = ""
 }
 
+variable "agent_card_json" {
+  description = "The JSON string of the exported A2A agent card"
+  type        = string
+  default     = ""
+}
+

@@ -429,6 +429,21 @@ resource "google_bigquery_dataset_iam_member" "dataset_writers" {
   member     = each.value.writer_identity
 }
 
+# Grant BigQuery Data Editor permissions to agent service accounts for BigQueryAgentAnalyticsPlugin
+resource "google_bigquery_dataset_iam_member" "a2a_agent_bq_writer" {
+  dataset_id = google_bigquery_dataset.telemetry_logs.dataset_id
+  project    = var.governance_project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:sa-esmeralda-a2a-${var.environment}@${var.a2a_project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_bigquery_dataset_iam_member" "root_agent_bq_writer" {
+  dataset_id = google_bigquery_dataset.telemetry_logs.dataset_id
+  project    = var.governance_project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:sa-esmeralda-root-${var.environment}@${var.root_project_id}.iam.gserviceaccount.com"
+}
+
 # --------------------------------------------------------------------
 # Direct VPC Egress Subnet User Permissions (AUDIT-01 Fix)
 # --------------------------------------------------------------------

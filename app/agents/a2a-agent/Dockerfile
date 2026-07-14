@@ -21,6 +21,6 @@ COPY . .
 ENV PORT=8080
 EXPOSE 8080
 
-# Run the ADK production API server with A2A and telemetry enabled
-CMD ["sh", "-c", "exec adk api_server . --host 0.0.0.0 --port ${PORT:-8080} --a2a --no-reload --otel_to_cloud"]
+# Run the A2A production server
+CMD ["python3", "server.py"]
 
