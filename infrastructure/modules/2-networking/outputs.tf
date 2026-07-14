@@ -30,6 +30,11 @@ output "psc_network_attachment_id" {
   value       = try(google_compute_network_attachment.psc_interface[0].id, "")
 }
 
+output "psc_subnet_id" {
+  description = "The resolved PSC interface subnet resource ID"
+  value       = try(google_compute_subnetwork.psc_interface[0].id, "")
+}
+
 output "secure_web_proxy_ip" {
   description = "The private IP address of the Secure Web Proxy"
   value       = var.enable_secure_web_proxy && !var.byo_networking ? "10.0.1.100" : ""

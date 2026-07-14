@@ -56,7 +56,12 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
 
   custom_audiences = [
     "http://esmeralda.internal",
-    "https://esmeralda.internal"
+    "https://esmeralda.internal",
+    "http://a2a-mortgage-agent.esmeralda.internal",
+    "http://root-agent.esmeralda.internal",
+    "http://legacy-dms.esmeralda.internal",
+    "http://income-verification.esmeralda.internal",
+    "http://corporate-email.esmeralda.internal"
   ]
 
   depends_on = [

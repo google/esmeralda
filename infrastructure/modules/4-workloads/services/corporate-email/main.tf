@@ -14,7 +14,11 @@ resource "google_cloud_run_v2_service" "corporate_email" {
   custom_audiences = [
     "http://email.internal.gateway",
     "https://email.internal.gateway",
-    "https://email.internal.gateway/mcp"
+    "https://email.internal.gateway/mcp",
+    "http://corporate-email.esmeralda.internal",
+    "http://corporate-email.esmeralda.internal/mcp",
+    "https://corporate-email.esmeralda.internal",
+    "https://corporate-email.esmeralda.internal/mcp"
   ]
 
   template {
