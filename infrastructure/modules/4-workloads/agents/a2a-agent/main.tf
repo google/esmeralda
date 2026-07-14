@@ -207,6 +207,45 @@ resource "google_storage_bucket" "logs" {
   uniform_bucket_level_access = true
 }
 
+# 4. Atomic BigQuery Analytics Dataset & IAM Permissions
+resource "google_bigquery_dataset" "analytics" {
+  dataset_id  = "${replace(var.agent_name, "-", "_")}_logs_${var.environment}"
+  project     = var.project_id
+  location    = var.region
+  description = "Analytics and telemetry dataset for ${var.agent_name}"
+}
+
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+resource "google_bigquery_dataset_iam_member" "agent_bq_writer" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${var.agent_service_account}"
+}
+
+resource "google_bigquery_dataset_iam_member" "vertex_re_bq_writer" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_bigquery_dataset_iam_member" "vertex_ai_bq_writer" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "agent_bq_admin" {
+  project = var.project_id
+  role    = "roles/bigquery.admin"
+  member  = "serviceAccount:${var.agent_service_account}"
+}
+
 # Declaratively define the Vertex AI Reasoning Engine agent
 locals {
   # Read and decode agent.yaml if path is provided
@@ -224,8 +263,8 @@ locals {
   yaml_cpu         = try(tostring(local.agent_config.resources.cpu), null)
   yaml_memory      = try(local.agent_config.resources.memory, null)
 
-  # 3. Framework (Mapping custom aliases like "a2a" to Vertex AI's "google-adk")
-  yaml_framework   = try(local.agent_config.framework == "a2a" ? "google-adk" : local.agent_config.framework, "google-adk")
+  # 3. Framework
+  yaml_framework   = try(local.agent_config.framework, "a2a")
 
   # 4. Environment Variables & Runtime Infrastructure Overrides
   yaml_env_vars = try(local.agent_config.env, {})
@@ -235,6 +274,9 @@ locals {
     CLOUD_SQL_INSTANCE = try("${var.project_id}:${var.region}:${google_sql_database_instance.task_store.name}", null)
     DB_IAM_USER        = try(google_sql_user.agent_iam_user.name, null)
     DB_NAME            = try(var.database_name, null)
+    USE_CLOUD_SQL      = "0"
+    EVENTS_DATASET_ID  = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_TABLE_ID    = "agent_events"
   }
 
   final_env_vars = merge(
@@ -253,6 +295,8 @@ locals {
   image_tag          = length(local.image_name_and_tag) > 1 ? local.image_name_and_tag[1] : "latest"
   
   registry_region = replace(split(".", local.registry_host)[0], "-docker", "")
+
+  agent_card_json = var.agent_card_json
 }
 
 data "google_artifact_registry_docker_image" "agent_image" {
@@ -272,6 +316,33 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
   spec {
     agent_framework = local.yaml_framework
+
+    class_methods = jsonencode([
+      {
+        name           = "on_message_send"
+        description    = "Send a message to the A2A agent"
+        api_mode       = "a2a_extension"
+        a2a_agent_card = local.agent_card_json
+      },
+      {
+        name           = "handle_authenticated_agent_card"
+        description    = "Retrieve the authenticated agent card"
+        api_mode       = "a2a_extension"
+        a2a_agent_card = local.agent_card_json
+      },
+      {
+        name           = "on_get_task"
+        description    = "Get a task by ID"
+        api_mode       = "a2a_extension"
+        a2a_agent_card = local.agent_card_json
+      },
+      {
+        name           = "on_cancel_task"
+        description    = "Cancel a task by ID"
+        api_mode       = "a2a_extension"
+        a2a_agent_card = local.agent_card_json
+      }
+    ])
 
     container_spec {
       image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"
@@ -305,6 +376,12 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
         }
       }
     }
+  }
+
+  lifecycle {
+    replace_triggered_by = [
+      null_resource.trigger_bootstrap
+    ]
   }
 }
 

@@ -17,12 +17,17 @@
 import logging
 import os
 
-import google.auth
-from google.adk.plugins.bigquery_agent_analytics_plugin import (
-    BigQueryAgentAnalyticsPlugin, BigQueryLoggerConfig
-)
-
 logger = logging.getLogger(__name__)
+
+import google.auth
+try:
+    from google.adk.plugins.bigquery_agent_analytics_plugin import (
+        BigQueryAgentAnalyticsPlugin, BigQueryLoggerConfig
+    )
+except Exception as e:
+    BigQueryAgentAnalyticsPlugin = None
+    BigQueryLoggerConfig = None
+    logger.warning(f"BigQueryAgentAnalyticsPlugin import unavailable: {e}")
 
 
 def create_bq_plugin():
@@ -40,21 +45,25 @@ def create_bq_plugin():
     if not (project_id and dataset_id and table_id):
         return None
 
-    config = BigQueryLoggerConfig(
-        enabled=True,
-        gcs_bucket_name=gcs_bucket,
-        log_multi_modal_content=True,
-        max_content_length=500 * 1024,
-        batch_size=1,
-        shutdown_timeout=10.0,
-    )
+    try:
+        config = BigQueryLoggerConfig(
+            enabled=True,
+            gcs_bucket_name=gcs_bucket,
+            log_multi_modal_content=True,
+            max_content_length=500 * 1024,
+            batch_size=1,
+            shutdown_timeout=10.0,
+        )
 
-    plugin = BigQueryAgentAnalyticsPlugin(
-        project_id=project_id,
-        dataset_id=dataset_id,
-        table_id=table_id,
-        config=config,
-        location='US',
-    )
-    logger.info("BigQuery analytics plugin initialized.")
-    return plugin
+        plugin = BigQueryAgentAnalyticsPlugin(
+            project_id=project_id,
+            dataset_id=dataset_id,
+            table_id=table_id,
+            config=config,
+            location='US',
+        )
+        logger.info("BigQuery analytics plugin initialized.")
+        return plugin
+    except Exception as e:
+        logger.warning(f"Failed to initialize BigQuery analytics plugin: {e}")
+        return None

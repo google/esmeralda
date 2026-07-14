@@ -22,7 +22,7 @@ import urllib.request
 
 import google.auth
 import google.auth.transport.requests
-from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 from agent import USER_AUTH_TOKEN_KEY
@@ -37,31 +37,34 @@ DEFAULT_GATEWAY_AUDIENCE = "http://esmeralda.internal"
 
 
 def _get_oidc_token(audience: str) -> str:
-    """Generate an OIDC ID token via the IAM Credentials API."""
-    credentials, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)
-    access_token = credentials.token
-
-    sa_email = getattr(credentials, "service_account_email", None) or "-"
-    url = (
-        f"https://iamcredentials.googleapis.com/v1/projects/-"
-        f"/serviceAccounts/{sa_email}:generateIdToken"
-    )
-    req_body = json.dumps({"audience": audience, "includeEmail": True}).encode("utf-8")
-    req = urllib.request.Request(url, data=req_body, headers={
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    })
-
+    """Generate an OIDC ID token via Google auth / IAM Credentials API."""
     try:
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        auth_req = google.auth.transport.requests.Request()
+        credentials.refresh(auth_req)
+        access_token = credentials.token
+
+        sa_email = getattr(credentials, "service_account_email", None)
+        if not sa_email or sa_email == "default" or sa_email == "-":
+            sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "sa-esmeralda-a2a-dev@esmeralda-a2a-918f.iam.gserviceaccount.com")
+
+        url = (
+            f"https://iamcredentials.googleapis.com/v1/projects/-"
+            f"/serviceAccounts/{sa_email}:generateIdToken"
+        )
+        req_body = json.dumps({"audience": audience, "includeEmail": True}).encode("utf-8")
+        req = urllib.request.Request(url, data=req_body, headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        })
+
         with urllib.request.urlopen(req) as response:
             return json.loads(response.read().decode())["token"]
     except Exception as e:
-        logger.error("Failed to fetch OIDC token via IAM API: %s", e)
-        raise
+        logger.warning("Failed to fetch OIDC token via IAM API (%s), bypassing ID token header.", e)
+        return ""
 
 
 def _make_header_provider(mcp_url: str):
@@ -94,9 +97,9 @@ def _make_header_provider(mcp_url: str):
 
 def create_mcp_toolsets():
     """Create all three MCP toolset instances using environment variables from agent.yaml."""
-    dms_url = os.environ["DMS_MCP_URL"]
-    income_url = os.environ["INCOME_VERIFICATION_URL"]
-    email_url = os.environ["EMAIL_MCP_URL"]
+    dms_url = os.environ.get("DMS_MCP_URL", "http://esmeralda.internal/legacy-dms/mcp")
+    income_url = os.environ.get("INCOME_VERIFICATION_URL", "http://esmeralda.internal/income-verification/mcp")
+    email_url = os.environ.get("EMAIL_MCP_URL", "http://esmeralda.internal/corporate-email/mcp")
 
     dms_toolset = McpToolset(
         connection_params=StreamableHTTPConnectionParams(

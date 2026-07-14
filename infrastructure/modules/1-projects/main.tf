@@ -70,16 +70,23 @@ locals {
     "run.googleapis.com", # Required to trigger the private VPC bootstrapping Cloud Run Job!
     "artifactregistry.googleapis.com",
     "logging.googleapis.com",
-    "servicenetworking.googleapis.com"
+    "servicenetworking.googleapis.com",
+    "bigquerystorage.googleapis.com",
+    "cloudresourcemanager.googleapis.com"
   ]
 
   root_agent_apis = [
     "compute.googleapis.com",
     "aiplatform.googleapis.com",
+    "sqladmin.googleapis.com",
     "storage.googleapis.com",
+    "secretmanager.googleapis.com",
     "run.googleapis.com",
     "artifactregistry.googleapis.com",
-    "logging.googleapis.com"
+    "logging.googleapis.com",
+    "servicenetworking.googleapis.com",
+    "bigquerystorage.googleapis.com",
+    "cloudresourcemanager.googleapis.com"
   ]
 
 

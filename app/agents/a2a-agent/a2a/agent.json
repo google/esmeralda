@@ -1,8 +1,8 @@
 {
   "additionalInterfaces": [
     {
-      "transport": "jsonrpc",
-      "url": "/a2a/agent"
+      "transport": "HTTP+JSON",
+      "url": "https://a2a-mortgage-agent.esmeralda.internal/api/a2a"
     }
   ],
   "capabilities": {
@@ -16,7 +16,7 @@
   ],
   "description": "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities.",
   "name": "a2a-mortgage-agent",
-  "preferredTransport": "jsonrpc",
+  "preferredTransport": "HTTP+JSON",
   "protocolVersion": "0.3.0",
   "skills": [
     {
@@ -47,6 +47,6 @@
     }
   ],
   "supportsAuthenticatedExtendedCard": true,
-  "url": "/a2a/agent",
+  "url": "https://a2a-mortgage-agent.esmeralda.internal/api/a2a",
   "version": "1.0.0"
 }

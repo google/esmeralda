@@ -38,10 +38,11 @@ inputs = {
 
 
 
-  # Connect reasoning engine container inside private VPC via PSC Network Attachment (omitted for standard managed BYOC routing)
-  # network_attachment    = dependency.networking.outputs.psc_network_attachment_id
+  # Connect reasoning engine container inside private VPC via PSC Network Attachment
+  network_attachment    = dependency.networking.outputs.psc_network_attachment_id
 
   # Inject downstream endpoints
+  gateway_mcp_url       = ""
   a2a_agent_url         = dependency.a2a_agent.outputs.endpoint_url
 
   # Path to application YAML configuration
