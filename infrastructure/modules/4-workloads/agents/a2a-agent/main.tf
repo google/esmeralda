@@ -246,6 +246,44 @@ resource "google_project_iam_member" "agent_bq_admin" {
   member  = "serviceAccount:${var.agent_service_account}"
 }
 
+resource "google_project_iam_member" "vertex_re_dns_peer" {
+  count   = var.net_host_project_id != "" ? 1 : 0
+  project = var.net_host_project_id
+  role    = "roles/dns.peer"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "vertex_ai_dns_peer" {
+  count   = var.net_host_project_id != "" ? 1 : 0
+  project = var.net_host_project_id
+  role    = "roles/dns.peer"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "vertex_re_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "vertex_ai_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+resource "google_compute_network_attachment" "psc_attachment" {
+  count                 = var.enable_psc_network ? 1 : 0
+  name                  = "${local.yaml_name}-psc-attachment-${var.environment}"
+  project               = var.project_id
+  region                = var.region
+  connection_preference = "ACCEPT_AUTOMATIC"
+
+  subnetworks = [
+    var.psc_subnet_id != "" ? var.psc_subnet_id : var.subnet_id
+  ]
+}
+
 # Declaratively define the Vertex AI Reasoning Engine agent
 locals {
   # Read and decode agent.yaml if path is provided
@@ -369,10 +407,21 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
         }
       }
 
+
+
       dynamic "psc_interface_config" {
-        for_each = var.network_attachment != "" ? [1] : []
+        for_each = var.enable_psc_network ? [1] : []
         content {
-          network_attachment = var.network_attachment
+          network_attachment = google_compute_network_attachment.psc_attachment[0].id
+
+          dynamic "dns_peering_configs" {
+            for_each = var.net_host_project_id != "" && var.vpc_name != "" ? [1] : []
+            content {
+              domain         = "esmeralda.internal."
+              target_project = var.net_host_project_id
+              target_network = var.vpc_name
+            }
+          }
         }
       }
     }
