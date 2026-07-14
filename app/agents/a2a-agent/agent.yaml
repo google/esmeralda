@@ -40,9 +40,9 @@ env:
 
   PROJECT_NAME: "a2a-mortgage-agent"
   GCS_BUCKET: ${GCS_OFFLOAD_BUCKET_NAME}
-  DMS_MCP_URL: "http://esmeralda.internal/legacy-dms/mcp"
-  INCOME_VERIFICATION_URL: "http://esmeralda.internal/income-verification/mcp"
-  EMAIL_MCP_URL: "http://esmeralda.internal/corporate-email/mcp"
+  DMS_MCP_URL: "http://legacy-dms.esmeralda.internal/mcp"
+  INCOME_VERIFICATION_URL: "http://income-verification.esmeralda.internal/mcp"
+  EMAIL_MCP_URL: "http://corporate-email.esmeralda.internal/mcp"
   MODEL_NAME: "gemini-2.5-flash"
   EVENTS_DATASET_ID: "agent_logs"
   EVENTS_TABLE_ID: "agent_events"
