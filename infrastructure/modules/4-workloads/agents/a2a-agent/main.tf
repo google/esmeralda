@@ -246,6 +246,13 @@ resource "google_project_iam_member" "agent_bq_admin" {
   member  = "serviceAccount:${var.agent_service_account}"
 }
 
+resource "google_project_iam_member" "invokers_aiplatform_user" {
+  for_each = toset(var.invoker_service_accounts)
+  project  = var.project_id
+  role     = "roles/aiplatform.user"
+  member   = "serviceAccount:${each.value}"
+}
+
 resource "google_project_iam_member" "vertex_re_dns_peer" {
   count   = var.net_host_project_id != "" ? 1 : 0
   project = var.net_host_project_id

@@ -42,6 +42,12 @@ variable "agent_service_account" {
   type        = string
 }
 
+variable "invoker_service_accounts" {
+  description = "List of service account emails authorized to invoke this agent"
+  type        = list(string)
+  default     = []
+}
+
 # Cloud SQL Sizing Variables
 variable "sql_tier" {
   description = "The machine instance type allocated for the Cloud SQL PostgreSQL task store"

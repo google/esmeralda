@@ -16,9 +16,11 @@ services:
           - /${endpoint.logical_name}
         strip_path: true
         preserve_host: false
+%{ if endpoint.audience != "" && !strcontains(endpoint.audience, "aiplatform.googleapis.com") ~}
     plugins:
       # Inject the GCP OIDC Identity Token dynamically on upstream calls
       - name: gcp-service-account
         config:
           audience: "${endpoint.audience}"
+%{ endif ~}
 %{ endfor ~}

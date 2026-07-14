@@ -57,7 +57,7 @@ env:
   PROJECT_NAME: "base-adk-agent"
   GCS_BUCKET: ${GCS_OFFLOAD_BUCKET_NAME}
   A2A_AGENT_URL: ${A2A_AGENT_URL}
-  EVENTS_DATASET_ID: "agent_logs"
+  EVENTS_DATASET_ID: "root_agent_logs_dev"
   EVENTS_TABLE_ID: "agent_events"
   MODEL_NAME: "gemini-2.5-flash"
 
