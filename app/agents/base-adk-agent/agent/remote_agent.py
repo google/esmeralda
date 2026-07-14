@@ -29,9 +29,27 @@ A2A_AGENT_URL = os.getenv("A2A_AGENT_URL")
 USER_AUTH_TOKEN_KEY = "user_auth_token"
 
 
+def _get_id_token(audience: str) -> str:
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        auth_req = GoogleAuthRequest()
+        return google_id_token.fetch_id_token(auth_req, audience)
+    except Exception as e:
+        logger.warning("Failed to fetch ID token via google.oauth2: %s", e)
+        return ""
+
+
 async def _add_auth_header(request):
-    """Inject access token for Vertex AI Agent Engine A2A endpoint."""
+    """Inject OIDC ID token for Cloud Run Kong Gateway or access token."""
     loop = asyncio.get_running_loop()
+    url = str(request.url)
+    if "esmeralda.internal" in url:
+        audience = "http://a2a-mortgage-agent.esmeralda.internal"
+        id_token = await loop.run_in_executor(None, _get_id_token, audience)
+        if id_token:
+            request.headers["Authorization"] = f"Bearer {id_token}"
+            return
     credentials, _ = google.auth.default()
     auth_req = google.auth.transport.requests.Request()
     await loop.run_in_executor(None, credentials.refresh, auth_req)

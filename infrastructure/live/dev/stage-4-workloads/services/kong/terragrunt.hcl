@@ -60,7 +60,7 @@ inputs = {
   agent_endpoints = {
     # Agents
     a2a-agent = {
-      logical_name = "a2a-agent"
+      logical_name = "a2a-mortgage-agent"
       engine_id    = dependency.a2a_agent.outputs.engine_id
       endpoint_url = dependency.a2a_agent.outputs.endpoint_url
       audience     = "https://us-central1-aiplatform.googleapis.com"

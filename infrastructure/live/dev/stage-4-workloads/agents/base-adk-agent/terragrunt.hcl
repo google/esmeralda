@@ -38,12 +38,16 @@ inputs = {
 
 
 
-  # Connect reasoning engine container inside private VPC via PSC Network Attachment
-  network_attachment    = dependency.networking.outputs.psc_network_attachment_id
+  vpc_id                = dependency.networking.outputs.network_id
+  subnet_id             = dependency.networking.outputs.subnet_id
+  net_host_project_id   = dependency.projects.outputs.net_host_project_id
+  vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
+  psc_subnet_id         = dependency.networking.outputs.psc_subnet_id
+  enable_psc_network    = true
 
   # Inject downstream endpoints
   gateway_mcp_url       = ""
-  a2a_agent_url         = dependency.a2a_agent.outputs.endpoint_url
+  a2a_agent_url         = "http://a2a-mortgage-agent.esmeralda.internal"
 
   # Path to application YAML configuration
   agent_config_path     = "${get_repo_root()}/app/agents/base-adk-agent/agent.yaml"
