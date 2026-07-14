@@ -6,7 +6,12 @@ services:
   - name: ${endpoint.logical_name}
     url: ${endpoint.endpoint_url}
     routes:
-      - name: ${endpoint.logical_name}-route
+      - name: ${endpoint.logical_name}-host-route
+        hosts:
+          - ${endpoint.logical_name}.esmeralda.internal
+        strip_path: false
+        preserve_host: false
+      - name: ${endpoint.logical_name}-path-route
         paths:
           - /${endpoint.logical_name}
         strip_path: true
