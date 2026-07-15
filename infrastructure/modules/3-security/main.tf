@@ -210,7 +210,7 @@ resource "google_secret_manager_secret_iam_member" "a2a_secret_accessor" {
   member    = "serviceAccount:${google_service_account.a2a_sa.email}"
 }
 
-# Allow Vertex AI Reasoning Engine robots to act as A2A Service Account
+# Allow Vertex AI Reasoning Engine robots to act as A2A Service Account and create tokens
 resource "google_project_iam_member" "a2a_vertex_sa_user" {
   for_each = toset([
     "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
@@ -219,6 +219,16 @@ resource "google_project_iam_member" "a2a_vertex_sa_user" {
   ])
   project = var.a2a_project_id
   role    = "roles/iam.serviceAccountUser"
+  member  = each.value
+}
+
+resource "google_project_iam_member" "a2a_vertex_token_creator" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  ])
+  project = var.a2a_project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
   member  = each.value
 }
 
