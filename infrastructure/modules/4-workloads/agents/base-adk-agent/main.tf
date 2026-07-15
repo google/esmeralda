@@ -191,6 +191,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
   spec {
     agent_framework = local.yaml_framework
+    service_account = var.agent_service_account
 
     container_spec {
       image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"

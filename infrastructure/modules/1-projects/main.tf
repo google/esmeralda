@@ -74,7 +74,8 @@ locals {
     "bigquerystorage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "cloudtrace.googleapis.com",
-    "telemetry.googleapis.com"
+    "telemetry.googleapis.com",
+    "iamcredentials.googleapis.com"
   ]
 
   root_agent_apis = [
@@ -90,7 +91,8 @@ locals {
     "bigquerystorage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "cloudtrace.googleapis.com",
-    "telemetry.googleapis.com"
+    "telemetry.googleapis.com",
+    "iamcredentials.googleapis.com"
   ]
 
 
