@@ -54,7 +54,9 @@ inputs = {
   kong_image          = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/kong-gateway:latest"
 
   invoker_service_accounts = [
-    dependency.security.outputs.test_vm_sa_email
+    dependency.security.outputs.test_vm_sa_email,
+    dependency.security.outputs.a2a_agent_sa_email,
+    dependency.security.outputs.root_agent_sa_email
   ]
 
   agent_endpoints = {
