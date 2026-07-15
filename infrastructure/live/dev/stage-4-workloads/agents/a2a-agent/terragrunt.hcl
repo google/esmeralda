@@ -34,6 +34,7 @@ inputs = {
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
+    dependency.security.outputs.root_agent_sa_email,
     "kong-gateway-sa-${local.env_vars.locals.environment}@esmeralda-gateway-918f.iam.gserviceaccount.com"
   ]
 

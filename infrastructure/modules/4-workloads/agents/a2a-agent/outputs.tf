@@ -5,7 +5,7 @@ output "engine_id" {
 
 output "endpoint_url" {
   description = "The internal GCP API Endpoint address allocated for executing predictions against A2A"
-  value       = "https://${var.region}-aiplatform.googleapis.com/v1beta1/${google_vertex_ai_reasoning_engine.agent.id}/a2a"
+  value       = "https://${var.region}-aiplatform.googleapis.com/v1beta1/${google_vertex_ai_reasoning_engine.agent.id}"
 }
 
 output "db_connection_name" {
