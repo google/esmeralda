@@ -64,13 +64,13 @@ inputs = {
     a2a-agent = {
       logical_name = "a2a-mortgage-agent"
       engine_id    = dependency.a2a_agent.outputs.engine_id
-      endpoint_url = dependency.a2a_agent.outputs.endpoint_url
+      endpoint_url = "${dependency.a2a_agent.outputs.endpoint_url}/a2a"
       audience     = "https://us-central1-aiplatform.googleapis.com"
     }
     root-agent = {
       logical_name = "root-agent"
       engine_id    = dependency.root_agent.outputs.engine_id
-      endpoint_url = "${dependency.root_agent.outputs.endpoint_url}%3Apredict"
+      endpoint_url = "${dependency.root_agent.outputs.endpoint_url}:streamQuery?alt=sse"
       audience     = "https://us-central1-aiplatform.googleapis.com"
     }
     # MCP Servers

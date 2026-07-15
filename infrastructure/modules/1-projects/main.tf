@@ -67,7 +67,7 @@ locals {
     "sqladmin.googleapis.com",
     "storage.googleapis.com",
     "secretmanager.googleapis.com",
-    "run.googleapis.com", # Required to trigger the private VPC bootstrapping Cloud Run Job!
+    "run.googleapis.com",
     "artifactregistry.googleapis.com",
     "logging.googleapis.com",
     "servicenetworking.googleapis.com",
@@ -75,7 +75,25 @@ locals {
     "cloudresourcemanager.googleapis.com",
     "cloudtrace.googleapis.com",
     "telemetry.googleapis.com",
-    "iamcredentials.googleapis.com"
+    "iamcredentials.googleapis.com",
+    "agentregistry.googleapis.com",
+    "apphub.googleapis.com",
+    "apptopology.googleapis.com",
+    "dataform.googleapis.com",
+    "iam.googleapis.com",
+    "iap.googleapis.com",
+    "modelarmor.googleapis.com",
+    "monitoring.googleapis.com",
+    "networksecurity.googleapis.com",
+    "networkservices.googleapis.com",
+    "notebooks.googleapis.com",
+    "observability.googleapis.com",
+    "appengine.googleapis.com",
+    "securitycenter.googleapis.com",
+    "texttospeech.googleapis.com",
+    "saasservicemgmt.googleapis.com",
+    "cloudapiregistry.googleapis.com",
+    "iamconnectors.googleapis.com"
   ]
 
   root_agent_apis = [
@@ -92,7 +110,25 @@ locals {
     "cloudresourcemanager.googleapis.com",
     "cloudtrace.googleapis.com",
     "telemetry.googleapis.com",
-    "iamcredentials.googleapis.com"
+    "iamcredentials.googleapis.com",
+    "agentregistry.googleapis.com",
+    "apphub.googleapis.com",
+    "apptopology.googleapis.com",
+    "dataform.googleapis.com",
+    "iam.googleapis.com",
+    "iap.googleapis.com",
+    "modelarmor.googleapis.com",
+    "monitoring.googleapis.com",
+    "networksecurity.googleapis.com",
+    "networkservices.googleapis.com",
+    "notebooks.googleapis.com",
+    "observability.googleapis.com",
+    "appengine.googleapis.com",
+    "securitycenter.googleapis.com",
+    "texttospeech.googleapis.com",
+    "saasservicemgmt.googleapis.com",
+    "cloudapiregistry.googleapis.com",
+    "iamconnectors.googleapis.com"
   ]
 
 

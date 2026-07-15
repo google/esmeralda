@@ -36,23 +36,42 @@ def _get_id_token(audience: str) -> str:
         auth_req = GoogleAuthRequest()
         return google_id_token.fetch_id_token(auth_req, audience)
     except Exception as e:
-        logger.warning("Failed to fetch ID token via google.oauth2: %s", e)
-        return ""
+        logger.warning("Failed to fetch ID token via google.oauth2 (%s), trying IAM API...", e)
+        try:
+            import json, urllib.request
+            credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            auth_req = google.auth.transport.requests.Request()
+            credentials.refresh(auth_req)
+            sa_email = getattr(credentials, "service_account_email", None)
+            if not sa_email or sa_email == "default" or sa_email == "-":
+                sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "sa-esmeralda-root-dev@esmeralda-root-agent-918f.iam.gserviceaccount.com")
+            url = f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{sa_email}:generateIdToken"
+            req_body = json.dumps({"audience": audience, "includeEmail": True}).encode("utf-8")
+            req = urllib.request.Request(url, data=req_body, headers={
+                "Authorization": f"Bearer {credentials.token}",
+                "Content-Type": "application/json",
+            })
+            with urllib.request.urlopen(req) as response:
+                return json.loads(response.read().decode())["token"]
+        except Exception as ex:
+            logger.warning("Failed to fetch ID token via IAM API: %s", ex)
+            return ""
 
 
 async def _add_auth_header(request):
     """Inject OIDC ID token for Cloud Run Kong Gateway or access token."""
-    loop = asyncio.get_running_loop()
     url = str(request.url)
     if "esmeralda.internal" in url:
         audience = "http://a2a-mortgage-agent.esmeralda.internal"
-        id_token = await loop.run_in_executor(None, _get_id_token, audience)
+        id_token = _get_id_token(audience)
         if id_token:
             request.headers["Authorization"] = f"Bearer {id_token}"
             return
-    credentials, _ = google.auth.default()
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
     auth_req = google.auth.transport.requests.Request()
-    await loop.run_in_executor(None, credentials.refresh, auth_req)
+    credentials.refresh(auth_req)
     request.headers["Authorization"] = f"Bearer {credentials.token}"
 
 
@@ -127,21 +146,6 @@ class CustomRemoteA2aAgent(RemoteA2aAgent):
                 event_hooks={"request": [_add_auth_header]},
                 timeout=httpx.Timeout(60.0),
             )
-
-    async def _ensure_resolved(self) -> None:
-        await super()._ensure_resolved()
-        if self._agent_card and A2A_AGENT_URL:
-            # Rewrite URL to JSON-RPC endpoint on Vertex AI Reasoning Engine gateway
-            logger.info("Rewriting remote A2A agent card URL to use Vertex AI gateway: %s/a2a/agent", A2A_AGENT_URL)
-            self._agent_card.url = f"{A2A_AGENT_URL}/a2a/agent"
-            if self._agent_card.additional_interfaces:
-                for interface in self._agent_card.additional_interfaces:
-                    if interface.transport == "jsonrpc":
-                        interface.url = f"{A2A_AGENT_URL}/a2a/agent"
-            # Re-create the client with the updated agent card URL
-            if self._a2a_client_factory:
-                self._a2a_client = self._a2a_client_factory.create(self._agent_card)
-
 
 
 if not LOCAL_MODE:

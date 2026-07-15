@@ -272,7 +272,7 @@ resource "google_project_iam_member" "root_roles" {
   member   = "serviceAccount:${google_service_account.root_sa.email}"
 }
 
-# Allow Vertex AI Reasoning Engine robots to act as Root Service Account
+# Allow Vertex AI Reasoning Engine robots to act as Root Service Account and create tokens
 resource "google_project_iam_member" "root_vertex_sa_user" {
   for_each = toset([
     "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
@@ -281,6 +281,28 @@ resource "google_project_iam_member" "root_vertex_sa_user" {
   project = var.root_project_id
   role    = "roles/iam.serviceAccountUser"
   member  = each.value
+}
+
+resource "google_project_iam_member" "root_vertex_token_creator" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  ])
+  project = var.root_project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = each.value
+}
+
+# Grant Token Creator on the SA so it and Vertex AI agents can generate OIDC tokens via IAM API
+resource "google_service_account_iam_member" "root_token_creator" {
+  for_each = toset([
+    "serviceAccount:${google_service_account.root_sa.email}",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  ])
+  service_account_id = google_service_account.root_sa.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = each.value
 }
 
 # Grant required runtime roles to A2A Reasoning Engine P6SA (-re) robot
