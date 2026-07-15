@@ -96,18 +96,26 @@ async def main(user_input: str):
                 
                 async for line in response.aiter_lines():
                     if line:
-                        # Parse SSE format
-                        if line.startswith("data:"):
-                            data_str = line[5:].strip()
-                            try:
-                                data_json = json.loads(data_str)
-                                # Extract content from response structure if present
-                                if isinstance(data_json, dict) and "output" in data_json:
+                        data_str = line[5:].strip() if line.startswith("data:") else line.strip()
+                        try:
+                            data_json = json.loads(data_str)
+                            # Extract text content if present in ADK Event format
+                            if isinstance(data_json, dict):
+                                content = data_json.get("content", {})
+                                if isinstance(content, dict) and "parts" in content:
+                                    for part in content["parts"]:
+                                        if isinstance(part, dict) and "text" in part and part["text"]:
+                                            print(part["text"], end="", flush=True)
+                                        elif isinstance(part, dict) and "function_call" in part:
+                                            print(f"\n[Tool Call: {part['function_call'].get('name')}]", flush=True)
+                                elif "output" in data_json:
                                     print(data_json["output"], end="", flush=True)
                                 else:
-                                    print(data_json, end="", flush=True)
-                            except json.JSONDecodeError:
-                                print(data_str, end="", flush=True)
+                                    print(json.dumps(data_json), flush=True)
+                            else:
+                                print(data_json, end="", flush=True)
+                        except json.JSONDecodeError:
+                            print(data_str, end="", flush=True)
         print()
     except Exception as e:
         print(f"\n❌ Error during execution: {e}")
