@@ -58,10 +58,17 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
     "http://esmeralda.internal",
     "https://esmeralda.internal",
     "http://a2a-mortgage-agent.esmeralda.internal",
+    "https://a2a-mortgage-agent.esmeralda.internal",
+    "a2a-mortgage-agent.esmeralda.internal",
     "http://root-agent.esmeralda.internal",
+    "https://root-agent.esmeralda.internal",
+    "root-agent.esmeralda.internal",
     "http://legacy-dms.esmeralda.internal",
+    "https://legacy-dms.esmeralda.internal",
     "http://income-verification.esmeralda.internal",
-    "http://corporate-email.esmeralda.internal"
+    "https://income-verification.esmeralda.internal",
+    "http://corporate-email.esmeralda.internal",
+    "https://corporate-email.esmeralda.internal"
   ]
 
   depends_on = [
