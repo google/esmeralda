@@ -361,6 +361,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
   spec {
     agent_framework = local.yaml_framework
+    service_account = var.agent_service_account
 
     class_methods = jsonencode([
       {
