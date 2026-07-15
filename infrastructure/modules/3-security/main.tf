@@ -195,7 +195,8 @@ resource "google_project_iam_member" "a2a_roles" {
     "roles/storage.objectAdmin",
     "roles/serviceusage.serviceUsageConsumer",
     "roles/browser",
-    "roles/cloudapiregistry.viewer"
+    "roles/cloudapiregistry.viewer",
+    "roles/iam.serviceAccountTokenCreator"
   ])
   project  = var.a2a_project_id
   role     = each.key
@@ -221,6 +222,18 @@ resource "google_project_iam_member" "a2a_vertex_sa_user" {
   member  = each.value
 }
 
+# Grant Token Creator on the SA so it and Vertex AI agents can generate OIDC tokens via IAM API
+resource "google_service_account_iam_member" "a2a_token_creator" {
+  for_each = toset([
+    "serviceAccount:${google_service_account.a2a_sa.email}",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+  ])
+  service_account_id = google_service_account.a2a_sa.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = each.value
+}
+
 # --------------------------------------------------------------------
 # C. Line-of-Business Root Orchestrator Identity (Root Agent)
 # --------------------------------------------------------------------
@@ -241,7 +254,8 @@ resource "google_project_iam_member" "root_roles" {
     "roles/serviceusage.serviceUsageConsumer",
     "roles/telemetry.writer",
     "roles/browser",
-    "roles/cloudapiregistry.viewer"
+    "roles/cloudapiregistry.viewer",
+    "roles/iam.serviceAccountTokenCreator"
   ])
   project  = var.root_project_id
   role     = each.key
