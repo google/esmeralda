@@ -82,6 +82,26 @@ class AdkAgentExecutorBuilder:
         )
 
 
+class TelemetryA2aAgent(A2aAgent):
+    """A2aAgent template subclass with OpenTelemetry GCP Trace exporter enabled."""
+    def set_up(self):
+        super().set_up()
+        try:
+            from opentelemetry.sdk.resources import OTELResourceDetector
+            from google.adk.telemetry.google_cloud import get_gcp_exporters, get_gcp_resource
+            from google.adk.telemetry.setup import maybe_set_otel_providers
+
+            base_resource = get_gcp_resource(GOOGLE_CLOUD_PROJECT)
+            env_resource = OTELResourceDetector().detect()
+            otel_resource = base_resource.merge(env_resource)
+
+            hooks = get_gcp_exporters(enable_cloud_tracing=True, enable_cloud_logging=True)
+            maybe_set_otel_providers(otel_hooks_to_setup=[hooks], otel_resource=otel_resource)
+            logger.info("✅ OpenTelemetry GCP Trace & Logging Exporters initialized with agent.yaml tags for a2a-agent.")
+        except Exception as e:
+            logger.error("Failed to initialize OpenTelemetry GCP Trace Exporter: %s", e)
+
+
 def create_a2a_app():
     card = create_agent_card(
         agent_name=os.environ.get("AGENT_NAME", "a2a-mortgage-agent"),
@@ -122,7 +142,7 @@ def create_a2a_app():
     else:
         logger.info("Using InMemoryTaskStore for A2A task persistence.")
 
-    return A2aAgent(
+    return TelemetryA2aAgent(
         agent_card=card,
         agent_executor_builder=AdkAgentExecutorBuilder(mortgage_assistant_agent, plugins=plugins),
         task_store_builder=task_store_builder,
