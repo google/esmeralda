@@ -23,9 +23,9 @@
 ESMERALDA is an opinionated, commercial-grade blueprint designed to accelerate the path to production for AI Agents. The acronym represents the framework's four core pillars:
 
 *   **ES – Enterprise Standard:** A zero-trust, secure-by-default foundational architecture built for enterprise compliance and scale.
-*   **ME – Multi-agent Engine:** The core orchestration layer utilizing Apigee to govern inter-agent communication and secure egress via Private Service Connect (PSC).
+*   **ME – Multi-agent Engine:** The core orchestration layer utilizing Kong API Gateway or Apigee to govern inter-agent communication and secure egress via Private Service Connect (PSC).
 *   **RAL – Reasoning & Action Layer:** Powered by Gemini 2.5 Flash and Model Context Protocol (MCP) standards for complex reasoning and structured JSON execution.
-*   **DA – Deployment Accelerator:** A "business-in-a-box" toolkit featuring pre-packaged SOWs, cost simulators, and a Terraform-driven CI/CD pipeline.
+*   **DA – Deployment Accelerator:** A "business-in-a-box" toolkit featuring pre-packaged SOWs, cost simulators, and a Terraform/Terragrunt-driven CI/CD pipeline.
 
 ---
 
@@ -35,35 +35,49 @@ Esmeralda is a state-of-the-art, "application-first" monorepo designed to build,
 
 ## 🗺️ Monorepo Repository Structure
 
-Esmeralda is organized into three strictly-decoupled, clear boundaries:
+Esmeralda is organized into decoupled, clear boundaries separating pure application logic, platform infrastructure, tests, and documentation:
 
 ```text
 esmeralda/
-├── app/                                     # 🟢 PURE APPLICATION CODE (No IaC)
-│   ├── agents/                              # AI reasoning engine ADK codes
-│   │   ├── base-adk-agent/                  # Root Orchestrator Python package
-│   │   └── a2a-agent/                       # downstream agent
-│   └── mcp-servers/                         # Reusable corporate tool API servers
+├── apps/                                    # 🟢 PURE APPLICATION CODE (No IaC)
+│   ├── agents/                              # AI reasoning engine ADK packages
+│   │   ├── base-adk-agent/                  # Root Orchestrator Python package (mortgage-agent)
+│   │   └── a2a-agent/                       # Downstream A2A Specialist Python package (a2a-mortgage-agent)
+│   └── services/                            # Reusable tool API servers & gateway services
 │       ├── corporate-email/                 # Email integration MCP server
 │       ├── income-verification/             # Income verifier MCP server
-│       └── legacy-dms/                      # File archive integration MCP server
+│       ├── legacy-dms/                      # File archive integration MCP server
+│       ├── kong/                            # Kong API Gateway container & configuration
+│       ├── mcp_registry.json                # Service registry tracking deployed MCP endpoints
+│       └── register_mcp.py                  # Utility script to register MCP endpoints
 │
-├── infrastructure/                          # 🔵 DECOUPLED PLATFORM IAC STACK
+├── docs/                                    # 📖 ARCHITECTURE & DEVELOPER DOCUMENTATION
+│   ├── 1-platform-foundations/              # Landing zone, Shared VPC & security docs
+│   ├── 2-workloads-and-catalog/             # Workloads & MCP server catalog docs
+│   ├── 3-agentops-and-lifecycle/            # AgentOps, evaluation & lifecycle docs
+│   ├── developer-quickstart.md              # Step-by-step developer onboarding guide
+│   ├── contributing.md                      # Contribution rules & instructions
+│   └── code-of-conduct.md                   # Community code of conduct
+│
+├── infrastructure/                          # 🔵 DECOUPLED PLATFORM IAC STACK (Terragrunt & Terraform)
 │   ├── modules/                             # Reusable Terraform modules (The Shelf)
 │   │   ├── 1-projects/                      # Stage 1: Seeds projects & enables APIs
 │   │   ├── 2-networking/                    # Stage 2: Shared VPC, subnets, private DNS, NAT
 │   │   ├── 3-security/                      # Stage 3: KMS keys, secrets, audit log sinks
-│   │   └── 4-workloads/                     # Stage 4: Workload runtime specs
+│   │   └── 4-workloads/                     # Stage 4: Workload runtime specs (agents, services, apihub)
 │   └── live/                                # Live Environment Wiring (The Cart)
 │       ├── terragrunt.hcl                   # Global state bucket & providers definition
-│       └── dev/                             # Environment boundaries (dev, prd)
-│           ├── env.yaml                     # Environment config file
-│           ├── stage-1-projects/
-│           ├── stage-2-networking/
-│           ├── stage-3-security/
-│           └── stage-4-workloads/
+│       ├── dev/                             # Dev environment (stages 1 through 4)
+│       └── prd/                             # Production environment
 │
-├── Makefile                                 # Unified task runner (local commands)
+├── tests/                                   # 🧪 TEST SUITES
+│   ├── unit/                                # Unit test implementations
+│   ├── integration/                         # Cross-service integration tests
+│   └── load_test/                           # Locust performance & stress tests
+│
+├── .cloudbuild/                             # ⚙️ CI/CD BUILD PIPELINES
+├── assets/                                  # 🖼️ MONOREPO ASSETS & LOGOS
+├── Makefile                                 # Unified task runner (local commands & GCP deployments)
 ├── README.md                                # Root developer guide and setup manual
 ├── preflight.sh                             # GCP authentication & credentials check
 └── pyproject.toml                           # Central monorepo workspace dependencies via uv
@@ -129,9 +143,9 @@ Deployments are driven stage-by-stage to preserve clean architectural boundaries
    ```yaml
    # infrastructure/live/dev/env.yaml
    locals {
-     environment    = "dev"
-     project_prefix = "esmeralda"
-     region         = "us-central1"
+     environment     = "dev"
+     project_prefix  = "esmeralda"
+     region          = "us-central1"
      gateway_product = "kong"
    }
    ```
@@ -155,18 +169,47 @@ Deployments are driven stage-by-stage to preserve clean architectural boundaries
    ```
    *Note: If 'state_project' and 'state_bucket' are left blank in `env.yaml`, Terragrunt automatically provisions and manages all resource state locally in `.local_states/` (which is git-ignored), allowing fast, zero-dependency local sandboxing! If you provide a pre-existing GCP Project and GCS Bucket in `env.yaml`, Terragrunt dynamically switches to GCS remote state management.*
 
-3. **Provision Runtimes & Workloads**:
-   Deploy Stage 4 (Dockerized Cloud Run MCP services, Vertex AI Reasoning Engine zips, and Routing Gateways):
+3. **Build Workload Container Images**:
+   Build and push container images to Artifact Registry via Cloud Build before deploying workloads:
    ```bash
+   # Build all agent containers (A2A & Root Agent) concurrently
+   make build-agents
+
+   # Build all service containers (income-verification, corporate-email, legacy-dms, kong) concurrently
+   make build-services
+   ```
+
+4. **Provision Runtimes & Workloads**:
+   Deploy Stage 4 workloads (Cloud Run MCP services, Kong Gateway, and Reasoning Engine agents):
+   ```bash
+   # Full automated build and deployment of all Stage 4 workloads
    make deploy-workloads
+   ```
+
+   Alternatively, deploy Stage 4 components individually:
+   ```bash
+   # Step 4.1: Deploy Artifact Registry Docker repository
+   make deploy-repo
+
+   # Step 4.2: Deploy Cloud Run services
+   make deploy-services
+
+   # Step 4.3: Deploy Kong API Gateway
+   make deploy-gateway
+
+   # Step 4.4: Deploy A2A Reasoning Engine Agent
+   make deploy-agent-a2a
+
+   # Step 4.5: Deploy Root Coordinator Reasoning Engine Agent
+   make deploy-agent-root
    ```
 
 ---
 
 ## 💡 Developer Guidelines
 
-### 🟢 Application Developers (Writing Code in `app/`)
-- Avoid mixing infrastructure shell scripts or Terraform definitions inside `app/`.
+### 🟢 Application Developers (Writing Code in `apps/`)
+- Avoid mixing infrastructure shell scripts or Terraform definitions inside `apps/`.
 - All Python requirements must be added to individual `pyproject.toml` files inside subdirectories, or at the root if shared.
 - Run `make test` before pushing to verify you haven't introduced regressions.
 
@@ -185,5 +228,6 @@ Deployments are driven stage-by-stage to preserve clean architectural boundaries
 
 > [!TIP]
 > **Locust Load Testing**
-> If you have locust installed in your local environment, you can trigger stress tests after deploying your live workloads by calling:
-> `make stress-test`
+> Performance and stress test scripts are available in `tests/load_test/`. If you have locust installed in your local environment, you can run performance tests against deployed endpoints:
+> `locust -f tests/load_test/locustfile.py`
+
