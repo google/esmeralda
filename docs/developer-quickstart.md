@@ -118,7 +118,7 @@ flowchart TD
     billing_account: "012345-6789AB-CDEF01"
     org_id: "9876543210" # Optional if folder_id is provided
     folder_id: ""        # Optional if org_id is provided
-    project_prefix: "esmeralda-dev"
+    project_prefix: "esmeralda"
     environment: "dev"
     region: "us-central1"
     ```
@@ -152,7 +152,7 @@ Before deploying Stage 4, you must compile and push the application container im
 2.  **Build and Push the Corporate Email Tool Server**:
     ```bash
     # Resolve the destination repository URL from Stage 1 outputs
-    REPO_URL="us-central1-docker.pkg.dev/esmeralda-dev-cicd-artifacts-xxxx/esmeralda-containers"
+    REPO_URL="us-central1-docker.pkg.dev/esmeralda-cicd-artifacts-xxxx/esmeralda-containers"
     
     cd app/services/corporate-email
     docker build -t ${REPO_URL}/corporate-email:latest .
@@ -186,7 +186,7 @@ Since the Test VM does not have a public IP, connect securely using Google Ident
 ```bash
 # SSH into the Test VM using IAP tunnel
 gcloud compute ssh test-vm-dev \
-  --project="esmeralda-dev-root-agent-xxxx" \
+  --project="esmeralda-root-agent-xxxx" \
   --zone="us-central1-a" \
   --tunnel-through-iap
 ```
@@ -232,7 +232,7 @@ To verify agent-to-agent routing, invoke the Root Orchestrator Reasoning Engine.
 ```bash
 # Invoke the Root Orchestrator Reasoning Engine directly
 gcloud ai reasoning-engines predict \
-  --project="esmeralda-dev-root-agent-xxxx" \
+  --project="esmeralda-root-agent-xxxx" \
   --location="us-central1" \
   --reasoning-engine="your-reasoning-engine-id" \
   --input='{"message": {"role": "user", "parts": [{"kind": "text", "text": "Check email for Sarah Johnson and verify her income."}]}}'
