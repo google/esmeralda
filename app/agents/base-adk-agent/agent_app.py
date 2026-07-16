@@ -24,6 +24,7 @@ from agent import root_agent
 
 from interceptors import (
     BaseInterceptor,
+    ClientPatchInterceptor,
     CloudLoggingInterceptor,
     BaggageTelemetryInterceptor,
     TelemetryFlushInterceptor,
@@ -116,6 +117,7 @@ try:
     agent_runtime_app = AgentRuntimeApp(
         agent=root_agent,
         interceptors=[
+            ClientPatchInterceptor(),
             CloudLoggingInterceptor(),
             BaggageTelemetryInterceptor(),
             TelemetryFlushInterceptor(),
