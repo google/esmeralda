@@ -30,7 +30,7 @@ if not os.getenv("GOOGLE_CLOUD_PROJECT"):
 if not os.getenv("EVENTS_DATASET_ID"):
     os.environ["EVENTS_DATASET_ID"] = "agent_logs"
 if not os.getenv("EVENTS_TABLE_ID"):
-    os.environ["EVENTS_TABLE_ID"] = "agent_events"
+    os.environ["EVENTS_TABLE_ID"] = "a2a_mortgage_agent_events"
 if not os.getenv("GCS_BUCKET"):
      os.environ["GCS_BUCKET"] = os.getenv("GCS_OFFLOAD_BUCKET_NAME", "agent-ops-foundation-agent-logs-offload-435f")
 

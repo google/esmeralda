@@ -321,7 +321,7 @@ locals {
     DB_NAME            = try(var.database_name, null)
     USE_CLOUD_SQL      = "0"
     EVENTS_DATASET_ID  = try(google_bigquery_dataset.analytics.dataset_id, null)
-    EVENTS_TABLE_ID    = "agent_events"
+    EVENTS_TABLE_ID    = "${replace(local.yaml_name, "-", "_")}_events"
   }
 
   final_env_vars = merge(

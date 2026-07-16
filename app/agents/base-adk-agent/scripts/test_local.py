@@ -35,7 +35,7 @@ if not os.getenv("GOOGLE_CLOUD_PROJECT"):
 if not os.getenv("EVENTS_DATASET_ID"):
     os.environ["EVENTS_DATASET_ID"] = "agent_logs"
 if not os.getenv("EVENTS_TABLE_ID"):
-    os.environ["EVENTS_TABLE_ID"] = "agent_events"
+    os.environ["EVENTS_TABLE_ID"] = "base_adk_agent_events"
 if not os.getenv("A2A_AGENT_URL"):
     os.environ["A2A_AGENT_URL"] = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/agent-ops-foundation-435f/locations/us-central1/reasoningEngines/5403187605623799808/a2a"
 if not os.getenv("GCS_BUCKET"):
