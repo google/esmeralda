@@ -95,29 +95,33 @@ def _make_header_provider(mcp_url: str):
     return header_provider
 
 
+dms_url = os.getenv("DMS_MCP_URL", "")
+income_url = os.getenv("INCOME_VERIFICATION_URL", "")
+email_url = os.getenv("EMAIL_MCP_URL", "")
+
 dms_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
-        url=os.getenv("DMS_MCP_URL", ""),
+        url=dms_url,
         timeout=30.0,
         sse_read_timeout=300.0,
     ),
-    header_provider=_make_header_provider(os.getenv("DMS_MCP_URL", "")),
+    header_provider=_make_header_provider(dms_url),
 )
 
 income_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
-        url=os.getenv("INCOME_VERIFICATION_URL", ""),
+        url=income_url,
         timeout=30.0,
         sse_read_timeout=300.0,
     ),
-    header_provider=_make_header_provider(os.getenv("INCOME_VERIFICATION_URL", "")),
+    header_provider=_make_header_provider(income_url),
 )
 
 email_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
-        url=os.getenv("EMAIL_MCP_URL", ""),
+        url=email_url,
         timeout=30.0,
         sse_read_timeout=300.0,
     ),
-    header_provider=_make_header_provider(os.getenv("EMAIL_MCP_URL", "")),
+    header_provider=_make_header_provider(email_url),
 )
