@@ -41,7 +41,7 @@ env:
   DMS_MCP_URL: "http://legacy-dms.esmeralda.internal/mcp"
   INCOME_VERIFICATION_URL: "http://income-verification.esmeralda.internal/mcp"
   EMAIL_MCP_URL: "http://corporate-email.esmeralda.internal/mcp"
-  MODEL_NAME: "gemini-3.5-flash"
+  MODEL_NAME: "gemini-2.5-flash"
 
 labels:
   author: "your-name"
