@@ -38,7 +38,6 @@ env:
   GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
   OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
 
-  PROJECT_NAME: "a2a-mortgage-agent"
   GCS_BUCKET: ${GCS_OFFLOAD_BUCKET_NAME}
   DMS_MCP_URL: "http://legacy-dms.esmeralda.internal/mcp"
   INCOME_VERIFICATION_URL: "http://income-verification.esmeralda.internal/mcp"
