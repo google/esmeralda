@@ -24,7 +24,7 @@ dependencies = [
     "google-cloud-logging",
     "pyyaml",
     "opentelemetry-api>=1.36.0,<1.43.0",
-    "opentelemetry-sdk>=1.36.0,<1.43.0",
+    "opentelemetry-sdk>=1.36.0,<1.45.0",
     "httpx",
     "cloud-sql-python-connector[asyncpg]",
     "asyncpg",
