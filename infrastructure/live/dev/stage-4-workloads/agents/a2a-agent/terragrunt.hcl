@@ -35,7 +35,7 @@ inputs = {
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
     dependency.security.outputs.root_agent_sa_email,
-    "kong-gateway-sa-${local.env_vars.locals.environment}@${dependency.projects.outputs.gateway_project_id}.iam.gserviceaccount.com"
+    dependency.security.outputs.kong_sa_email
   ]
 
   # BYOC Container Image URI
