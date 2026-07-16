@@ -87,28 +87,17 @@ async def _extract_user_token(callback_context: CallbackContext) -> Optional[typ
     return None
 
 
-def _build_agent() -> Agent:
-    """Build the agent with all tools including MCP connections."""
-    dms_toolset, income_toolset, email_toolset = create_mcp_toolsets()
+dms_toolset, income_toolset, email_toolset = create_mcp_toolsets()
 
-    _tools = [
-        dms_toolset,
-        income_toolset,
-        email_toolset,
-    ]
-
-    return Agent(
-        model=os.environ.get("MODEL_NAME", "gemini-3.5-flash"),
-        name=os.environ.get("AGENT_NAME", "a2a_mortgage_agent").replace("-", "_"),
-        description=(
-            "A mortgage underwriting assistant that connects to legacy document management, "
-            "income verification, and corporate email systems through an Agent Gateway."
-        ),
-        instruction=MORTGAGE_ASSISTANT_INSTRUCTION,
-        tools=_tools,
-        before_agent_callback=_extract_user_token,
-        on_tool_error_callback=_handle_tool_error,
-    )
-
-
-mortgage_assistant_agent = _build_agent()
+mortgage_assistant_agent = Agent(
+    model=os.environ.get("MODEL_NAME", "gemini-3.5-flash"),
+    name=os.environ.get("AGENT_NAME", "a2a_mortgage_agent").replace("-", "_"),
+    description=(
+        "A mortgage underwriting assistant that connects to legacy document management, "
+        "income verification, and corporate email systems through an Agent Gateway."
+    ),
+    instruction=MORTGAGE_ASSISTANT_INSTRUCTION,
+    tools=[dms_toolset, income_toolset, email_toolset],
+    before_agent_callback=_extract_user_token,
+    on_tool_error_callback=_handle_tool_error,
+)
