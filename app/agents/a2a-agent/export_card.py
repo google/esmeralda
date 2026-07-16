@@ -24,9 +24,8 @@ card.additional_interfaces = [
 
 card_data = card.model_dump(mode="json", exclude_none=True)
 
-target_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "a2a")
-os.makedirs(target_dir, exist_ok=True)
-target_path = os.path.join(target_dir, "agent.json")
+target_dir = os.path.dirname(os.path.abspath(__file__))
+target_path = os.path.join(target_dir, "agent-card.json")
 with open(target_path, "w") as f:
     json.dump(card_data, f, indent=2)
 
