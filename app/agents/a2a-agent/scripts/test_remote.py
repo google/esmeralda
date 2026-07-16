@@ -91,7 +91,7 @@ async def main(user_input: str):
     factory = ClientFactory(config)
     
     from a2a.types import AgentCard
-    local_card_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "a2a", "agent.json")
+    local_card_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agent-card.json")
     with open(local_card_path, "r") as f:
         card_data = f.read()
     
