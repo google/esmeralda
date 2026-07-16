@@ -17,10 +17,10 @@ Stage 2 provisions a zero-trust Shared VPC network inside `prj-esmeralda-net-hos
 ### A. VPC Subnet Topology (`gateway-vpc`)
 
 In the `prj-esmeralda-net-host` project, we allocate the following CIDR ranges:
-*   **Core Workload Subnet (`gke-subnet`)**: `10.0.0.0/20` for internal compute runtimes and test VMs.
-*   **Regional Envoy Proxy Subnet (`gateway-proxy-subnet`)**: `10.9.0.0/24` dedicated exclusively to Envoy-based internal Application Load Balancers (ILB).
-*   **PSC NAT Subnet (`gateway-psc-subnet`)**: `10.10.0.0/24` for outbound Private Service Connect connections.
-*   **PSC Interface Subnet (`psc-interface-subnet`)**: `10.11.0.0/28` providing local private endpoints for Vertex AI Reasoning Engines operating within Google-managed VPCs.
+*   **Core Workload Subnet (`sb-esmeralda-core`)**: `10.0.1.0/24` for internal compute runtimes and test VMs.
+*   **Regional Envoy Proxy Subnet (`sb-esmeralda-proxy`)**: `10.9.0.0/24` dedicated exclusively to Envoy-based internal Application Load Balancers (ILB).
+*   **PSC NAT Subnet (`sb-esmeralda-psc`)**: `10.10.0.0/24` for outbound Private Service Connect connections.
+*   **PSC Interface Subnet (`sb-esmeralda-psc-interface`)**: `10.11.0.0/24` providing local private endpoints for Vertex AI Reasoning Engines operating within Google-managed VPCs.
 
 ### B. Private DNS and Gateway Static Routing
 
@@ -45,7 +45,7 @@ graph TD
             SubnetCore["Core Backend Subnet<br/>(sb-esmeralda-core)<br/>10.0.1.0/24"]
             SubnetProxy["Regional Proxy Subnet<br/>(sb-esmeralda-proxy)<br/>10.9.0.0/24 (Active)"]
             SubnetPSC["PSC Subnet<br/>(sb-esmeralda-psc)<br/>10.10.0.0/24"]
-            SubnetPSC_I["PSC Interface Subnet<br/>(sb-esmeralda-psc-interface)<br/>10.11.0.0/28"]
+            SubnetPSC_I["PSC Interface Subnet<br/>(sb-esmeralda-psc-interface)<br/>10.11.0.0/24"]
             PSA["Private Services Access Range<br/>(sql-peering-range)<br/>10.130.0.0/16"]
         end
         Router["Cloud Router"]
@@ -86,7 +86,7 @@ sequenceDiagram
 
 1.  **Subnet Isolation**: A dedicated regular subnetwork (`sb-esmeralda-psc-interface`) is configured.
 2.  **Compute Network Attachment**: The resource `google_compute_network_attachment` references the PSC-I subnet and is set to `ACCEPT_AUTOMATIC`. This creates a PSC interface point. Serverless agents use this resource link to establish incoming tunnels directly into the VPC.
-3.  **Firewall Protection**: Ingress firewalls are restricted to only allow ports `22` (SSH for debugging), `443` (HTTPS for APIs), and `ICMP` originating from the PSC Interface subnet (`10.11.0.0/28`).
+3.  **Firewall Protection**: Ingress firewalls are restricted to only allow ports `22` (SSH for debugging), `443` (HTTPS for APIs), and `ICMP` originating from the PSC Interface subnet (`10.11.0.0/24`).
 
 ---
 
@@ -151,7 +151,7 @@ flowchart TD
             Core["sb-core (10.0.1.0/24)<br/>Private Google Access"]
             Proxy["sb-proxy (10.9.0.0/24)<br/>REGIONAL_MANAGED_PROXY"]
             PSC["sb-psc (10.10.0.0/24)"]
-            PSCI["sb-psc-interface (10.11.0.0/28)"]
+            PSCI["sb-psc-interface (10.11.0.0/24)"]
             PSA["sql-peering (10.130.0.0/16)"]
         end
         
@@ -189,12 +189,12 @@ When `var.byo_networking = false`, the module provisions a comprehensive VPC (`v
 1.  **Core Subnet (`sb-esmeralda-core-{env}`)**: CIDR `10.0.1.0/24`, Private Google Access enabled.
 2.  **Proxy Subnet (`sb-esmeralda-proxy-{env}`)**: CIDR `10.9.0.0/24`, purpose set to `REGIONAL_MANAGED_PROXY` with role `ACTIVE`.
 3.  **PSC Subnet (`sb-esmeralda-psc-{env}`)**: CIDR `10.10.0.0/24` for internal PSC endpoints.
-4.  **PSC Interface Subnet (`sb-esmeralda-psc-interface-{env}`)**: CIDR `10.11.0.0/28` for serverless VPC interface tunnels.
+4.  **PSC Interface Subnet (`sb-esmeralda-psc-interface-{env}`)**: CIDR `10.11.0.0/24` for serverless VPC interface tunnels.
 5.  **Private Services Access Peering (`sql-peering-range-{env}`)**: Internal global address `/16` block `10.130.0.0/16` paired with `google_service_networking_connection.sql_connection` for managed Cloud SQL private connectivity.
 
 #### 3. Cloud Router, Cloud NAT & Egress Firewalls
 *   **Cloud Router & NAT**: Provisions `cr-esmeralda-nat-{env}` and `nat-esmeralda-outbound-{env}` configured with `AUTO_ONLY` IP allocation across `ALL_SUBNETWORKS_ALL_IP_RANGES`.
-*   **PSC Interface Firewall (`allow-psc-interface-ingress-{env}`)**: Restricts ingress from `10.11.0.0/28` exclusively to TCP ports `22`, `443`, and `ICMP` protocol packets.
+*   **PSC Interface Firewall (`allow-psc-interface-ingress-{env}`)**: Restricts ingress from `10.11.0.0/24` exclusively to TCP ports `22`, `443`, and `ICMP` protocol packets.
 *   **IAP SSH Firewall (`allow-iap-ssh-{env}`)**: Permits Identity-Aware Proxy ingress from Google's standard IAP range (`35.235.240.0/20`) on port `22`.
 
 #### 4. Serverless PSC Attachment & Secure Web Proxy (SWP)
