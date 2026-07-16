@@ -18,12 +18,10 @@ from interceptors.base import BaseInterceptor
 from interceptors.cloud_logging import CloudLoggingInterceptor
 from interceptors.baggage_telemetry import BaggageTelemetryInterceptor
 from interceptors.telemetry_flush import TelemetryFlushInterceptor
-from interceptors.dynatrace_telemetry import DynatraceTelemetryInterceptor
 
 __all__ = [
     "BaseInterceptor",
     "CloudLoggingInterceptor",
     "BaggageTelemetryInterceptor",
     "TelemetryFlushInterceptor",
-    "DynatraceTelemetryInterceptor",
 ]
