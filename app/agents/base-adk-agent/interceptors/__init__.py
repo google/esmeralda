@@ -15,12 +15,14 @@
 """Export all concrete BaseInterceptor implementations for base-adk-agent."""
 
 from interceptors.base import BaseInterceptor
+from interceptors.client_patch import ClientPatchInterceptor
 from interceptors.cloud_logging import CloudLoggingInterceptor
 from interceptors.baggage_telemetry import BaggageTelemetryInterceptor
 from interceptors.telemetry_flush import TelemetryFlushInterceptor
 
 __all__ = [
     "BaseInterceptor",
+    "ClientPatchInterceptor",
     "CloudLoggingInterceptor",
     "BaggageTelemetryInterceptor",
     "TelemetryFlushInterceptor",
