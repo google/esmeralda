@@ -95,37 +95,29 @@ def _make_header_provider(mcp_url: str):
     return header_provider
 
 
-def create_mcp_toolsets():
-    """Create all three MCP toolset instances using environment variables from agent.yaml."""
-    dms_url = os.environ.get("DMS_MCP_URL", "http://esmeralda.internal/legacy-dms/mcp")
-    income_url = os.environ.get("INCOME_VERIFICATION_URL", "http://esmeralda.internal/income-verification/mcp")
-    email_url = os.environ.get("EMAIL_MCP_URL", "http://esmeralda.internal/corporate-email/mcp")
+dms_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=os.getenv("DMS_MCP_URL", ""),
+        timeout=30.0,
+        sse_read_timeout=300.0,
+    ),
+    header_provider=_make_header_provider(os.getenv("DMS_MCP_URL", "")),
+)
 
-    dms_toolset = McpToolset(
-        connection_params=StreamableHTTPConnectionParams(
-            url=dms_url,
-            timeout=30.0,
-            sse_read_timeout=300.0,
-        ),
-        header_provider=_make_header_provider(dms_url),
-    )
+income_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=os.getenv("INCOME_VERIFICATION_URL", ""),
+        timeout=30.0,
+        sse_read_timeout=300.0,
+    ),
+    header_provider=_make_header_provider(os.getenv("INCOME_VERIFICATION_URL", "")),
+)
 
-    income_toolset = McpToolset(
-        connection_params=StreamableHTTPConnectionParams(
-            url=income_url,
-            timeout=30.0,
-            sse_read_timeout=300.0,
-        ),
-        header_provider=_make_header_provider(income_url),
-    )
-
-    email_toolset = McpToolset(
-        connection_params=StreamableHTTPConnectionParams(
-            url=email_url,
-            timeout=30.0,
-            sse_read_timeout=300.0,
-        ),
-        header_provider=_make_header_provider(email_url),
-    )
-
-    return dms_toolset, income_toolset, email_toolset
+email_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=os.getenv("EMAIL_MCP_URL", ""),
+        timeout=30.0,
+        sse_read_timeout=300.0,
+    ),
+    header_provider=_make_header_provider(os.getenv("EMAIL_MCP_URL", "")),
+)
