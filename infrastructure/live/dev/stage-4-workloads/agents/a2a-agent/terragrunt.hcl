@@ -50,8 +50,8 @@ inputs = {
   database_name         = "a2a_tasks"
 
   # Path to application YAML configuration
-  agent_config_path     = "${get_repo_root()}/app/agents/a2a-agent/agent.yaml"
-  agent_card_json       = file("${get_repo_root()}/app/agents/a2a-agent/agent-card.json")
+  agent_config_path     = "${get_repo_root()}/apps/agents/a2a-agent/agent.yaml"
+  agent_card_json       = file("${get_repo_root()}/apps/agents/a2a-agent/agent-card.json")
 }
 
 

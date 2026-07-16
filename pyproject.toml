@@ -11,9 +11,9 @@ dependencies = [
 
 [tool.uv.workspace]
 members = [
-  "app/agents/base-adk-agent",
-  "app/agents/a2a-agent",
-  "app/mcp-servers/corporate-email",
-  "app/mcp-servers/income-verification",
-  "app/mcp-servers/legacy-dms",
+  "apps/agents/base-adk-agent",
+  "apps/agents/a2a-agent",
+  "apps/services/corporate-email",
+  "apps/services/income-verification",
+  "apps/services/legacy-dms",
 ]
