@@ -23,15 +23,6 @@ from google.adk.sessions.vertex_ai_session_service import VertexAiSessionService
 from google.adk.runners import Runner
 from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent, create_agent_card
 from google.adk.a2a.executor.a2a_agent_executor_impl import _A2aAgentExecutor
-from a2a.types import AgentSkill
-
-if os.getenv("USE_CUSTOM_TELEMETRY", "False").lower() == "true":
-    try:
-        from utils.telemetry import setup_telemetry
-        setup_telemetry(custom_telemetry=True)
-    except Exception as e:
-        print(f"Telemetry setup failed: {e}", flush=True)
-
 from agent.agent import mortgage_assistant_agent
 from plugins.bq_analytics import create_bq_plugin
 
