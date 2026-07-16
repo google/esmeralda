@@ -1,6 +1,6 @@
 # --- INPUT VARIABLES CONTRACT ---
 variable "project_id" {
-  description = "The GCP project ID allocated for gateway ingress (prj-gateway)"
+  description = "The GCP project ID allocated for gateway ingress (prj-esmeralda-gateway)"
   type        = string
 }
 

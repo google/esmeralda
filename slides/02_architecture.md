@@ -39,8 +39,8 @@ flowchart TB
         P_Gov["prj-esmeralda-governance<br/>(KMS, Secrets & Audit Log Sinks)"]
     end
 
-    subgraph SharedVPC["Shared VPC Network Scope (prj-net-host)"]
-        P_Gat["prj-gateway<br/>(API Gateway Ingress)"]
+    subgraph SharedVPC["Shared VPC Network Scope (prj-esmeralda-net-host)"]
+        P_Gat["prj-esmeralda-gateway<br/>(API Gateway Ingress)"]
         P_Root["prj-esmeralda-root-agent<br/>(Business Orchestrator)"]
         P_MCP["prj-esmeralda-mcps<br/>(Central Tool Servers)"]
         P_A2A["prj-esmeralda-a2a<br/>(AI Platform & Postgres)"]

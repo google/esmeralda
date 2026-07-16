@@ -57,17 +57,17 @@ Inside the Apigee API Proxy (`/apiproxy/policies/`), we implement:
 
 ### Option B: Lightweight Kong Gateway on Cloud Run (`services/kong/`)
 
-The Kong adapter deploys the lightweight, open-source Kong Gateway container in a DB-less serverless mode on Cloud Run inside the gateway project (`prj-gateway`). It uses Secret Manager to load Kong's declarative configuration routing rules and binds to the central Shared VPC via Direct VPC Egress for low-latency, private routing to downstream agents.
+The Kong adapter deploys the lightweight, open-source Kong Gateway container in a DB-less serverless mode on Cloud Run inside the gateway project (`prj-esmeralda-gateway`). It uses Secret Manager to load Kong's declarative configuration routing rules and binds to the central Shared VPC via Direct VPC Egress for low-latency, private routing to downstream agents.
 
 ```mermaid
 graph LR
-    subgraph GatewayProject["prj-gateway"]
+    subgraph GatewayProject["prj-esmeralda-gateway"]
         Secret["Secret Manager<br/>(Declarative kong.yml)"]
         Kong["Kong Gateway on Cloud Run<br/>(DB-less Serverless Container)"]
         Plugin["GCP Service Account Plugin<br/>(OIDC Token Injector)"]
     end
 
-    subgraph SharedVPC["Shared VPC (prj-net-host)"]
+    subgraph SharedVPC["Shared VPC (prj-esmeralda-net-host)"]
         Egress["Direct VPC Egress Tunnel"]
     end
 

@@ -15,7 +15,7 @@ flowchart TD
     end
 
     subgraph Stage2["Stage 2: Private Networking (modules/2-networking)"]
-        N1["Deploy Shared VPC Network in prj-net-host"]
+        N1["Deploy Shared VPC Network in prj-esmeralda-net-host"]
         N2["Provision Subnets: core, proxy, psc, psc-interface"]
         N3["Configure Cloud NAT, SWP & Private DNS Zones"]
         N1 --> N2 --> N3

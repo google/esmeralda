@@ -68,7 +68,7 @@ Stage 3 establishes centralized encryption-at-rest keys, credentials, and crypto
 
 ```mermaid
 graph TD
-    subgraph "prj-net-host (Shared VPC Host)"
+    subgraph "prj-esmeralda-net-host (Shared VPC Host)"
         DNS["Managed DNS Zone<br/>(dns-esmeralda-internal)"]
     end
 
@@ -97,7 +97,7 @@ graph TD
     *   **`sa-esmeralda-a2a`** (AI Platform Project): Fully loaded with the transactional database and AI roles: `roles/cloudsql.client`, `roles/cloudsql.instanceUser`, `roles/aiplatform.user`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/storage.objectAdmin` (for reasoning templates GCS buckets), `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
     *   **`sa-esmeralda-root`** (Business Unit App Project): Fully loaded with the customer reasoning and orchestration roles: `roles/aiplatform.user`, `roles/storage.objectAdmin`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
 *   **Dedicated Test VM Identity (`sa-esmeralda-test-vm`)**:
-    To support connectivity testing, local debugging, and tool testing (DMS, Calculator) from a secure jumpbox without over-privileging operators, we introduce a dedicated Test VM Service Account. It resides in the Business Unit project (`prj-esmeralda-root-agent`) or `prj-net-host` and is assigned:
+    To support connectivity testing, local debugging, and tool testing (DMS, Calculator) from a secure jumpbox without over-privileging operators, we introduce a dedicated Test VM Service Account. It resides in the Business Unit project (`prj-esmeralda-root-agent`) or `prj-esmeralda-net-host` and is assigned:
     *   `roles/logging.logWriter` and `roles/monitoring.metricWriter` for VM health logging.
     *   `roles/run.invoker` inside `prj-esmeralda-mcps` (to invoke private Cloud Run MCP server tools).
     *   `roles/run.invoker` inside `prj-esmeralda-a2a-agents` (to invoke private A2A endpoints or bootstrapping runs).
@@ -164,7 +164,7 @@ When `var.byo_security = false`, KMS resources are generated inside the central 
 
 #### 3. Four Least-Privilege Workload Service Accounts
 Esmeralda rejects generic service accounts, provisioning dedicated identities per project:
-1.  **`sa-esmeralda-mcps-{env}` (`mcps_sa`) in `prj-esmeralda-mcps`**: Granted `logging.logWriter`, `monitoring.metricWriter`, and `cloudtrace.agent`. Binds `roles/compute.networkUser` on `var.backend_subnet_id` in `prj-net-host` for Direct VPC Egress tunnel creation.
+1.  **`sa-esmeralda-mcps-{env}` (`mcps_sa`) in `prj-esmeralda-mcps`**: Granted `logging.logWriter`, `monitoring.metricWriter`, and `cloudtrace.agent`. Binds `roles/compute.networkUser` on `var.backend_subnet_id` in `prj-esmeralda-net-host` for Direct VPC Egress tunnel creation.
 2.  **`sa-esmeralda-builder-{env}` (`cicd_builder_sa`) in `prj-esmeralda-cicd-artifacts`**: Dedicated CI/CD container delivery identity granted `cloudbuild.builds.editor`, `storage.admin`, `artifactregistry.admin`, and `logging.logWriter`.
 3.  **`sa-esmeralda-a2a-{env}` (`a2a_sa`) in `prj-esmeralda-a2a`**: Granted 11 full-parity roles (`cloudsql.client`, `cloudsql.instanceUser`, `aiplatform.user`, `logging.logWriter`, `monitoring.metricWriter`, `cloudtrace.agent`, `telemetry.writer`, `storage.objectAdmin`, `serviceusage.serviceUsageConsumer`, `browser`, `cloudapiregistry.viewer`). Granted `roles/secretmanager.secretAccessor` on the database password secret, and `roles/compute.networkUser` on `var.backend_subnet_id`.
 4.  **`sa-esmeralda-root-{env}` (`root_sa`) in `prj-esmeralda-root-agent`**: Granted 9 full-parity roles (`aiplatform.user`, `storage.objectAdmin`, `logging.logWriter`, `monitoring.metricWriter`, `cloudtrace.agent`, `serviceusage.serviceUsageConsumer`, `telemetry.writer`, `browser`, `cloudapiregistry.viewer`). Binds `roles/compute.networkUser` on `var.backend_subnet_id`.
@@ -175,7 +175,7 @@ To allow Google Antigravity (AGY) / ADK Reasoning Engines and serverless robots 
 *   **Runtime Storage & Vertex Access**: Binds `storage.objectViewer`, `aiplatform.user`, `cloudsql.client`, and `cloudsql.instanceUser` to the `a2a` `-re` robot; and `storage.objectViewer` and `aiplatform.user` to the `root` `-re` robot.
 *   **Cross-Project Reasoning Invocation**: Grants the `root` `-re` robot `roles/aiplatform.user` and `roles/serviceusage.serviceUsageConsumer` on `prj-esmeralda-a2a` so the Root Orchestrator can trigger downstream A2A agents.
 *   **CI/CD Container Image Pulling**: Binds `roles/artifactregistry.reader` on `prj-esmeralda-cicd-artifacts` to all 7 reasoning engine and serverless Cloud Run robot accounts so workload runtimes can pull compiled Docker containers from the central repository.
-*   **PSC Network User**: Grants `roles/compute.networkUser` on `prj-net-host` to reasoning engine robots for PSC network attachment binding.
+*   **PSC Network User**: Grants `roles/compute.networkUser` on `prj-esmeralda-net-host` to reasoning engine robots for PSC network attachment binding.
 
 #### 5. Strict Service-to-Service Impersonation
 *   **`google_service_account_iam_member.root_impersonates_a2a`**: Binds `roles/iam.serviceAccountTokenCreator` on `a2a_sa` directly to `root_sa`. This authorizes the Root Orchestrator to generate OAuth2 identity tokens under the A2A Agent's identity to securely invoke private upstream endpoints without static API keys.
