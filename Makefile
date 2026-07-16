@@ -240,8 +240,10 @@ deploy-agent-root: ## Step 4.5: Deploy LOB Root Coordinator Reasoning Engine
 	@cd infrastructure/live/dev/stage-4-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
 	@echo "✅ Root Coordinator deployed!"
 
-deploy-workloads-step-by-step: deploy-repo deploy-services deploy-agent-a2a deploy-agent-root ## Deploy all Stage 4 workloads sequentially step-by-step without re-running container builds
-	@echo "✨ All Stage 4 workloads deployed step-by-step successfully!"
+deploy-workloads-step-by-step: ## Deploy all Stage 4 workloads using native Terragrunt dependency DAG graph
+	@echo "🚀 Deploying Stage 4 workloads with native Terragrunt DAG..."
+	@cd infrastructure/live/dev/stage-4-workloads && terragrunt --non-interactive run --all apply
+	@echo "✨ All Stage 4 workloads deployed successfully!"
 
 deploy-workloads: build-agents build-services deploy-workloads-step-by-step ## Full automated build and deploy of all Stage 4 workloads
 

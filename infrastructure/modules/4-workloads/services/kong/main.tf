@@ -21,18 +21,10 @@ resource "google_secret_manager_secret_version" "kong_config" {
 
 
 
-# Create a dedicated Cloud Run Service Account for Kong
-resource "google_service_account" "kong_sa" {
-  account_id   = "kong-gateway-sa-${var.environment}"
-  display_name = "Kong Gateway Service Account"
-  project      = var.project_id
-}
-
-# Grant the Service Account permissions to fetch tokens and call Vertex AI Reasoning Engines
-resource "google_project_iam_member" "kong_vertex_access" {
-  project = var.project_id
-  role    = "roles/aiplatform.user"
-  member  = "serviceAccount:${google_service_account.kong_sa.email}"
+# Resolve pre-created Service Account for Kong from Stage 3 Security
+data "google_service_account" "kong_sa" {
+  account_id = "kong-gateway-sa-${var.environment}"
+  project    = var.project_id
 }
 
 # Allow Kong Service Account to read declarative configuration from Secret Manager
@@ -40,7 +32,7 @@ resource "google_secret_manager_secret_iam_member" "kong_sa_secret_access" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.kong_config.secret_id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.kong_sa.email}"
+  member    = "serviceAccount:${data.google_service_account.kong_sa.email}"
 }
 
 # Deploy Kong Gateway on Cloud Run with internal-only ingress
@@ -74,7 +66,7 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
   ]
 
   template {
-    service_account = google_service_account.kong_sa.email
+    service_account = data.google_service_account.kong_sa.email
 
     containers {
       image = var.kong_image
