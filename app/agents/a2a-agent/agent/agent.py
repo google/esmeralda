@@ -27,7 +27,7 @@ from google.genai import types
 
 from agent import USER_AUTH_TOKEN_KEY
 from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
-from agent.tools import create_mcp_toolsets
+from agent.tools import dms_toolset, email_toolset, income_toolset
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +86,6 @@ async def _extract_user_token(callback_context: CallbackContext) -> Optional[typ
 
     return None
 
-
-dms_toolset, income_toolset, email_toolset = create_mcp_toolsets()
 
 mortgage_assistant_agent = Agent(
     model=os.environ.get("MODEL_NAME", "gemini-3.5-flash"),
