@@ -25,8 +25,8 @@ We organize Esmeralda's lifecycle stages to map directly to Google Cloud's enter
 ```mermaid
 graph TD
     %% Base Projects
-    S1_NetHost[prj-net-host <br/>Shared VPC Host Network] -. Binds Subnets .-> S2_SharedVPC[Stage 2: Shared VPC Networking]
-    S1_Gateway[prj-gateway <br/>API Gateway Ingress] --> S3_Ingress[Stage 4: Gateway Choice <br/>Apigee, Kong, or ILB]
+    S1_NetHost[prj-esmeralda-net-host <br/>Shared VPC Host Network] -. Binds Subnets .-> S2_SharedVPC[Stage 2: Shared VPC Networking]
+    S1_Gateway[prj-esmeralda-gateway <br/>API Gateway Ingress] --> S3_Ingress[Stage 4: Gateway Choice <br/>Apigee, Kong, or ILB]
     S1_CICD[prj-esmeralda-cicd-artifacts <br/>CI/CD & Artifact Registry Hub]
     S1_Gov[prj-esmeralda-governance <br/>Governance & Telemetry Hub]
 
@@ -80,8 +80,8 @@ graph TD
 ```
 
 ### Team Responsibilities & Project Mapping
-*   **The Shared VPC Project (`prj-net-host`)**: Managed by NetOps. Owns the core routing, private DNS zones, and Private Service Connect (PSC).
-*   **The Ingress Project (`prj-gateway`)**: Managed by PlatformOps. Hosts the public gateway endpoint.
+*   **The Shared VPC Project (`prj-esmeralda-net-host`)**: Managed by NetOps. Owns the core routing, private DNS zones, and Private Service Connect (PSC).
+*   **The Ingress Project (`prj-esmeralda-gateway`)**: Managed by PlatformOps. Hosts the public gateway endpoint.
 *   **The CI/CD & Artifacts Project (`prj-esmeralda-cicd-artifacts`)**: Managed by Platform Engineering. Hosts central CI/CD pipelines (Cloud Build), container images, and Artifact Registry repositories shared across workloads.
 *   **The Central Tools Project (`prj-esmeralda-mcps`)**: Managed by the AppDev Team. Deploys the reusable corporate tool API servers.
 *   **The AI Platform Project (`prj-esmeralda-a2a`)**: Managed by the Core AI Team. Hosts cross-company reusable assistant agents (`a2a-agent`) and their Cloud SQL task stores.
@@ -113,8 +113,8 @@ flowchart TB
 #### 1. Layer 1: Projects, FinOps & APIs (Stage 1)
 * **Target Teams**: Platform Engineering & FinOps (`netops`, `platformops`, `platform-engineering`, `appdev-tools`, `core-ai-agents`, `business-unit-teams`, `secops`).
 * **What it Deploys**: Provisions and manages up to **seven isolated GCP projects**, activates foundational Google Cloud service APIs, links corporate billing accounts, and force-creates GCP service agents. The seven projects are:
-  1. `prj-net-host` (Shared VPC host network)
-  2. `prj-gateway` (API ingress gateway)
+  1. `prj-esmeralda-net-host` (Shared VPC host network)
+  2. `prj-esmeralda-gateway` (API ingress gateway)
   3. `prj-esmeralda-cicd-artifacts` (CI/CD pipelines & container image registry)
   4. `prj-esmeralda-mcps` (Composable utility tool API servers)
   5. `prj-esmeralda-a2a` (Cross-domain assistant agents & database task stores)
@@ -130,12 +130,12 @@ flowchart TB
 
 #### 2. Layer 2: Private Networking, DNS & PSC (Stage 2)
 * **Target Team**: Network Operations (`NetOps`).
-* **What it Deploys**: Provisions a zero-trust Shared VPC network inside **`prj-net-host`**, internal subnetworks (`core`, `proxy`, `psc`, `psc-interface`), Cloud NAT gateway, private Cloud DNS zones (`*.esmeralda.internal` and `*.internal.gateway`), Private Service Connect (PSC) Network Attachments for serverless VPC access, and a Secure Web Proxy (SWP) for audited internet egress.
+* **What it Deploys**: Provisions a zero-trust Shared VPC network inside **`prj-esmeralda-net-host`**, internal subnetworks (`core`, `proxy`, `psc`, `psc-interface`), Cloud NAT gateway, private Cloud DNS zones (`*.esmeralda.internal` and `*.internal.gateway`), Private Service Connect (PSC) Network Attachments for serverless VPC access, and a Secure Web Proxy (SWP) for audited internet egress.
 * **BYOInfra Integration**: When `byo_networking = true` is supplied, Esmeralda bypasses VPC and subnet creation and attaches workload projects directly to the customer's pre-configured Shared VPC subnets.
 
 | Component | Target Terragrunt Stage | Target GCP Project | Cross-Dependency Inputs (`terragrunt.hcl`) |
 | :--- | :--- | :--- | :--- |
-| **Shared VPC & Egress Controls** | `stage-2-networking` | `prj-net-host` | `net_host_project_id` (from stage-1), `governance_project_id` (from stage-1) |
+| **Shared VPC & Egress Controls** | `stage-2-networking` | `prj-esmeralda-net-host` | `net_host_project_id` (from stage-1), `governance_project_id` (from stage-1) |
 
 ---
 
@@ -153,13 +153,13 @@ flowchart TB
 #### 4. Layer 4: Composable AI Workloads Catalog (Stage 4)
 * **Target Teams**: Application Developers, Core AI Platform Engineers, and Business Unit Teams.
 * **What it Deploys**: A composable catalog of AI application runtime modules deployed onto the dedicated workload projects:
-  * **Swappable Gateways (`services/apigee`, `services/kong`, `services/ilb`)**: Deployed into **`prj-gateway`** as interchangeable ingress endpoints.
+  * **Swappable Gateways (`services/apigee`, `services/kong`, `services/ilb`)**: Deployed into **`prj-esmeralda-gateway`** as interchangeable ingress endpoints.
   * **Composable MCP Tool Servers (`services/corporate-email`, `services/income-verification`, `services/legacy-dms`)**: Deployed into **`prj-esmeralda-mcps`** as private serverless Cloud Run APIs (pulling container images built in **`prj-esmeralda-cicd-artifacts`**).
   * **Atomic AI Agents (`agents/a2a-agent`, `agents/base-adk-agent`)**: The atomic `a2a-agent` is deployed into **`prj-esmeralda-a2a`** (provisioning its Cloud SQL PostgreSQL database, VPC-internal bootstrap job, and Vertex AI Reasoning Engine). The Root Orchestrator (`base-adk-agent`) is deployed into **`prj-esmeralda-root-agent`** as the master client reasoning endpoint.
 
 | Component | Target Terragrunt Stage | Target GCP Project | Cross-Dependency Inputs (`terragrunt.hcl`) |
 | :--- | :--- | :--- | :--- |
-| **Swappable Ingress Gateway** | `stage-4-workloads/services/kong` *(or `apigee`/`ilb`)* | `prj-gateway` | `gateway_project_id` (stage-1), `network_id` (stage-2) |
+| **Swappable Ingress Gateway** | `stage-4-workloads/services/kong` *(or `apigee`/`ilb`)* | `prj-esmeralda-gateway` | `gateway_project_id` (stage-1), `network_id` (stage-2) |
 | **DMS MCP Service** | `stage-4-workloads/services/legacy-dms` | `prj-esmeralda-mcps` | `mcps_project_id` (stage-1), `subnet_id` (stage-2) |
 | **Email MCP Service** | `stage-4-workloads/services/corporate-email` | `prj-esmeralda-mcps` | `mcps_project_id` (stage-1), `subnet_id` (stage-2) |
 | **Income Verification Service** | `stage-4-workloads/services/income-verification` | `prj-esmeralda-mcps` | `mcps_project_id` (stage-1), `subnet_id` (stage-2) |

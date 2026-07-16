@@ -150,7 +150,7 @@ locals {
 # Provisioned conditionally: Only created if the customer does not BYO
 resource "google_project" "net_host" {
   count           = var.byo_net_host_project ? 0 : 1
-  name            = "Esmeralda Shared VPC Host"
+  name            = local.net_host_id
   project_id      = local.net_host_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
@@ -166,7 +166,7 @@ resource "google_project" "net_host" {
 # Provisioned conditionally: Only created if the customer does not BYO
 resource "google_project" "gateway" {
   count           = var.byo_gateway_project ? 0 : 1
-  name            = "Esmeralda Ingress Gateway"
+  name            = local.gateway_id
   project_id      = local.gateway_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
@@ -182,7 +182,7 @@ resource "google_project" "gateway" {
 # Central CI/CD & Artifacts Project: Conditional creation
 resource "google_project" "cicd" {
   count           = var.byo_cicd_project ? 0 : 1
-  name            = "Esmeralda CI-CD Artifacts"
+  name            = local.cicd_id
   project_id      = local.cicd_id
 
   folder_id       = var.folder_id != "" ? var.folder_id : null
@@ -198,7 +198,7 @@ resource "google_project" "cicd" {
 
 # Central Tools Project: ALWAYS created by Esmeralda from scratch
 resource "google_project" "mcps" {
-  name            = "Esmeralda MCP Server Tools"
+  name            = local.mcps_id
   project_id      = local.mcps_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
@@ -213,7 +213,7 @@ resource "google_project" "mcps" {
 
 # Core AI Platform Project: ALWAYS created by Esmeralda from scratch
 resource "google_project" "a2a" {
-  name            = "Esmeralda A2A Core Agents"
+  name            = local.a2a_id
   project_id      = local.a2a_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
@@ -228,7 +228,7 @@ resource "google_project" "a2a" {
 
 # Line-of-Business User Facing Root Agent Project: ALWAYS created from scratch
 resource "google_project" "root_agent" {
-  name            = "Esmeralda LOB Root Agent"
+  name            = local.root_agent_id
   project_id      = local.root_agent_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
@@ -244,7 +244,7 @@ resource "google_project" "root_agent" {
 # Governance and Telemetry Hub Project: Conditional creation
 resource "google_project" "governance" {
   count           = var.byo_governance_project ? 0 : 1
-  name            = "Esmeralda Governance Hub"
+  name            = local.governance_id
   project_id      = local.governance_id
   folder_id       = var.folder_id != "" ? var.folder_id : null
   org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null

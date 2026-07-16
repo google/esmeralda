@@ -2,7 +2,7 @@
 
 ## Standalone API Hub (`modules/4-workloads/apihub/`)
 
-The API Hub governance catalog runs as an isolated adjacent workload within `prj-gateway`. It automatically catalogs enterprise APIs without interfering with active live traffic routing.
+The API Hub governance catalog runs as an isolated adjacent workload within `prj-esmeralda-gateway`. It automatically catalogs enterprise APIs without interfering with active live traffic routing.
 
 ---
 
@@ -30,7 +30,7 @@ graph TD
         TestVM["sa-test-vm<br/>(Jumpbox SA)"]
     end
 
-    subgraph SharedVPC["Shared VPC (prj-net-host)"]
+    subgraph SharedVPC["Shared VPC (prj-esmeralda-net-host)"]
         ILB["Internal Load Balancer / Gateway<br/>(*.internal.gateway)"]
         Egress["Direct VPC Egress Tunnel"]
     end
@@ -98,7 +98,7 @@ A code analysis of `infrastructure/modules/4-workloads/apihub/` and `infrastruct
 
 ```mermaid
 flowchart TD
-    subgraph Gov["prj-gateway & prj-esmeralda-governance"]
+    subgraph Gov["prj-esmeralda-gateway & prj-esmeralda-governance"]
         Hub["API Hub Instance (apihub/main.tf)<br/>Catalog Governance & Search"]
         Reg["GCP Agent Registry<br/>Dynamic Python Script Registration"]
     end
