@@ -70,17 +70,42 @@ async def main(user_input: str):
         "Content-Type": "application/json"
     }
 
-    query_payload = {
-        "class_method": "async_stream_query",
+    print("📝 Creating persistent session on Vertex AI Agent Engine...")
+    query_url = f"{base_url}:query"
+    create_session_payload = {
+        "class_method": "async_create_session",
         "input": {
-            "message": user_input,
             "user_id": "test-user-123"
         }
     }
 
+    session_id = None
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.post(query_url, json=create_session_payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                output = data.get("output", {})
+                if isinstance(output, dict):
+                    session_id = output.get("id") or output.get("name", "").split("/")[-1]
+                print(f"✅ Session Created: {session_id}")
+            else:
+                print(f"⚠️ Create Session returned status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            print(f"⚠️ Create Session call failed: {e}")
+
+    query_payload = {
+        "class_method": "async_stream_query",
+        "input": {
+            "message": user_input,
+            "user_id": "test-user-123",
+        }
+    }
+    if session_id:
+        query_payload["input"]["session_id"] = session_id
 
     print(f"\n📡 Stream Query URL: {stream_url}")
-    print(f"💬 Sending query: '{user_input}'")
+    print(f"💬 Sending query: '{user_input}' (session_id={session_id})")
     print("\n🤖 --- AGENT RESPONSE STREAM ---")
     
     try:
@@ -121,6 +146,27 @@ async def main(user_input: str):
         print(f"\n❌ Error during execution: {e}")
         import traceback
         traceback.print_exc()
+
+    if session_id:
+        print("\n🔍 Fetching persisted session from Vertex AI Agent Engine...")
+        get_session_payload = {
+            "class_method": "async_get_session",
+            "input": {
+                "user_id": "test-user-123",
+                "session_id": session_id
+            }
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                resp = await client.post(query_url, json=get_session_payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    print(f"✅ Session Retrieved Successfully!")
+                    print(json.dumps(data.get("output", {}), indent=2))
+                else:
+                    print(f"⚠️ Get Session returned status {resp.status_code}: {resp.text}")
+            except Exception as e:
+                print(f"⚠️ Get Session call failed: {e}")
 
     print("--------------------------------\n")
 
