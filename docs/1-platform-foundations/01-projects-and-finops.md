@@ -190,6 +190,7 @@ flowchart TD
 #### 1. Dynamic Project ID & Label Resolution
 *   **Hex Suffix**: A 2-byte random hex string (`random_id.project_suffix`) ensures global project ID uniqueness across Google Cloud.
 *   **ID Resolution**: For conditional projects (`net_host`, `gateway`, `governance`, `cicd`), ternary lookups (`var.byo_* ? var.existing_* : "..."`) dynamically select either the existing customer ID or generate a new one using `var.project_prefix`.
+*   **Project Resource Names**: Each `google_project` resource sets `name = local.<project>_id` to ensure display names match project IDs cleanly without spaces or arbitrary strings.
 *   **Cost & FinOps Labels**: Every project receives systematic attribution metadata: `"env" = var.environment` and `"managed-by" = "terragrunt-esmeralda"`, merged with project-specific `cost-center` and `team` tags.
 
 #### 2. Four Conditional Infrastructure & Governance Projects
