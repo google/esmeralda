@@ -48,6 +48,11 @@ output "test_vm_sa_email" {
   value       = google_service_account.test_vm_sa.email
 }
 
+output "kong_sa_email" {
+  description = "The email address of the Kong Gateway service account"
+  value       = google_service_account.kong_sa.email
+}
+
 output "telemetry_dataset_id" {
   description = "The BigQuery dataset ID capturing agentic telemetry and audit logs"
   value       = google_bigquery_dataset.telemetry_logs.dataset_id

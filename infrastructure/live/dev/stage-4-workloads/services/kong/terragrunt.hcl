@@ -22,10 +22,18 @@ dependency "networking" {
 
 dependency "a2a_agent" {
   config_path = "../../agents/a2a-agent"
+  mock_outputs = {
+    engine_id    = "mock-engine-id"
+    endpoint_url = "https://us-central1-aiplatform.googleapis.com/v1/projects/mock/locations/us-central1/reasoningEngines/12345"
+  }
 }
 
 dependency "root_agent" {
   config_path = "../../agents/base-adk-agent"
+  mock_outputs = {
+    engine_id    = "mock-engine-id"
+    endpoint_url = "https://us-central1-aiplatform.googleapis.com/v1/projects/mock/locations/us-central1/reasoningEngines/12345"
+  }
 }
 
 dependency "security" {

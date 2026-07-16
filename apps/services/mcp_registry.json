@@ -1,1 +1,23 @@
-{}
+{
+  "income-verification-api": {
+    "project_id": "esmeralda-mcps-dev",
+    "region": "us-central1",
+    "server_url": "https://income-verification-dev-3rwm2ox73q-uc.a.run.app",
+    "registered_at": "2026-07-16T05:16:39.366312+00:00",
+    "status": "ONLINE"
+  },
+  "corporate-email": {
+    "project_id": "esmeralda-mcps-dev",
+    "region": "us-central1",
+    "server_url": "https://corporate-email-dev-3rwm2ox73q-uc.a.run.app",
+    "registered_at": "2026-07-16T05:16:50.669474+00:00",
+    "status": "ONLINE"
+  },
+  "legacy-dms": {
+    "project_id": "esmeralda-mcps-dev",
+    "region": "us-central1",
+    "server_url": "https://legacy-dms-dev-3rwm2ox73q-uc.a.run.app",
+    "registered_at": "2026-07-16T05:16:51.971482+00:00",
+    "status": "ONLINE"
+  }
+}
