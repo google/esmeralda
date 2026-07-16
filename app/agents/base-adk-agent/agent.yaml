@@ -35,26 +35,10 @@ env:
   
   # --- If Agent Engine Trace Provider ---
   # Master switch for OpenTelemetry on Vertex AI Agent Engine
-  USE_CUSTOM_TELEMETRY: false
   GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
   OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
+  ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS: false
 
-  # --- If ADK Trace Provider (Custom) ---
-  # USE_CUSTOM_TELEMETRY: true
-  # OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: true
-  # OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
-  # ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS: false
-
-  # --- IF Multimodal Prompts and Responses offloaded to GCS ---
-  # Activates the modern (v1.37+) experimental semantic conventions
-  # OTEL_SEMCONV_STABILITY_OPT_IN: "gen_ai_latest_experimental"
-  # OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "SPAN_AND_EVENT"
-  # OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK: "upload"
-  # OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT: "jsonl"
-  # OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH: "gs://agent-ops-foundation-agent-logs-offload-ebdd/completions"
-  # GENAI_TELEMETRY_PATH: "completions"
-
-  PROJECT_NAME: "base-adk-agent"
   GCS_BUCKET: ${GCS_OFFLOAD_BUCKET_NAME}
   A2A_AGENT_URL: ${A2A_AGENT_URL}
   EVENTS_DATASET_ID: "root_agent_logs_dev"
