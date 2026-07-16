@@ -145,7 +145,7 @@ def _build_agent():
     ]
 
     return _PickleSafeAgent(
-        model=os.environ.get("MODEL_NAME", "gemini-2.5-flash"),
+        model=os.environ.get("MODEL_NAME", "gemini-3.5-flash"),
         name=os.environ.get("AGENT_NAME", "a2a_mortgage_agent").replace("-", "_"),
         description=(
             "A mortgage underwriting assistant that connects to legacy document management, "
