@@ -19,10 +19,7 @@ resource "google_secret_manager_secret_version" "kong_config" {
   secret_data = local.kong_config
 }
 
-import {
-  id = "projects/esmeralda-gateway-918f/serviceAccounts/kong-gateway-sa-dev@esmeralda-gateway-918f.iam.gserviceaccount.com"
-  to = google_service_account.kong_sa
-}
+
 
 # Create a dedicated Cloud Run Service Account for Kong
 resource "google_service_account" "kong_sa" {

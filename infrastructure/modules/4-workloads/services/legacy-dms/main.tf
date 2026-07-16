@@ -1,7 +1,4 @@
-import {
-  id = "projects/esmeralda-mcps-918f/locations/us-central1/services/legacy-dms-dev"
-  to = google_cloud_run_v2_service.legacy_dms
-}
+
 
 # Deploy Legacy DMS on Cloud Run with internal-and-load-balancing ingress
 resource "google_cloud_run_v2_service" "legacy_dms" {
