@@ -32,7 +32,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 if "GOOGLE_CLOUD_PROJECT" not in os.environ:
-    os.environ["GOOGLE_CLOUD_PROJECT"] = "esmeralda-a2a-918f"
+    if "GOOGLE_CLOUD_PROJECT" not in os.environ and "PROJECT_ID" in os.environ:
+        os.environ["GOOGLE_CLOUD_PROJECT"] = os.environ["PROJECT_ID"]
 
 a2a_agent_obj = create_a2a_app()
 a2a_agent_obj.set_up()

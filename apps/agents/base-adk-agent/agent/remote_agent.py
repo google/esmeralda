@@ -40,11 +40,10 @@ def _get_id_token(audience: str) -> str:
         try:
             import json, urllib.request
             credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-            auth_req = google.auth.transport.requests.Request()
             credentials.refresh(auth_req)
             sa_email = getattr(credentials, "service_account_email", None)
             if not sa_email or sa_email == "default" or sa_email == "-":
-                sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "sa-esmeralda-root-dev@esmeralda-root-agent-918f.iam.gserviceaccount.com")
+                sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
             url = f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{sa_email}:generateIdToken"
             req_body = json.dumps({"audience": audience, "includeEmail": True}).encode("utf-8")
             req = urllib.request.Request(url, data=req_body, headers={

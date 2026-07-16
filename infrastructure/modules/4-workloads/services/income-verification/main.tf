@@ -1,7 +1,4 @@
-import {
-  id = "projects/esmeralda-mcps-918f/locations/us-central1/services/income-verification-dev"
-  to = google_cloud_run_v2_service.income_verification
-}
+
 
 # Deploy Income Verification on Cloud Run with internal-and-load-balancing ingress
 resource "google_cloud_run_v2_service" "income_verification" {
