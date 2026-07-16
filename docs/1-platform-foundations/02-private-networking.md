@@ -2,11 +2,11 @@
 
 ## Architectural Decisions & Design Rationale
 
-Stage 2 provisions a zero-trust Shared VPC network inside `prj-net-host` to connect isolated service projects privately.
+Stage 2 provisions a zero-trust Shared VPC network inside `prj-esmeralda-net-host` to connect isolated service projects privately.
 
 ### Why Shared VPC Instead of VPC Peering?
 
-*   **Centralized Network Policy Governance**: In enterprise environments, security policies require central network teams to review and audit firewall rules, NAT configurations, and DNS visibility. VPC Peering across seven projects would create a complex mesh of peering connections, bypassing centralized security controls. Shared VPC allows NetOps to control the Host Project (`prj-net-host`), while platform services deployed in other projects consume subnets automatically under the `roles/compute.networkUser` role.
+*   **Centralized Network Policy Governance**: In enterprise environments, security policies require central network teams to review and audit firewall rules, NAT configurations, and DNS visibility. VPC Peering across seven projects would create a complex mesh of peering connections, bypassing centralized security controls. Shared VPC allows NetOps to control the Host Project (`prj-esmeralda-net-host`), while platform services deployed in other projects consume subnets automatically under the `roles/compute.networkUser` role.
 *   **IP Address Conservation**: Standard VPC Peering does not support overlapping subnets and can waste IP space. Centralizing subnets in a Shared VPC ensures efficient Regional IP allocation and simplifies routing tables.
 
 ### Why Private Service Connect (PSC) Network Attachments?
@@ -16,7 +16,7 @@ Stage 2 provisions a zero-trust Shared VPC network inside `prj-net-host` to conn
 
 ### A. VPC Subnet Topology (`gateway-vpc`)
 
-In the `prj-net-host` project, we allocate the following CIDR ranges:
+In the `prj-esmeralda-net-host` project, we allocate the following CIDR ranges:
 *   **Core Workload Subnet (`gke-subnet`)**: `10.0.0.0/20` for internal compute runtimes and test VMs.
 *   **Regional Envoy Proxy Subnet (`gateway-proxy-subnet`)**: `10.9.0.0/24` dedicated exclusively to Envoy-based internal Application Load Balancers (ILB).
 *   **PSC NAT Subnet (`gateway-psc-subnet`)**: `10.10.0.0/24` for outbound Private Service Connect connections.
@@ -33,14 +33,14 @@ To decouple dynamic Vertex AI service URLs, we establish a private Cloud DNS zon
 
 ## Detailed Implementation Specifications & HCL Blueprints
 
-This module establishes the Shared VPC network, configures the internal subnet routing topologies, sets up Private Service Connect (PSC) Network Attachments, deploys Google Cloud's Secure Web Proxy (SWP) for audited internet egress, and handles corporate DNS zones. It is designed to run on the Shared VPC Host Project (`prj-net-host`), but can be toggled to a pure-attachment mode for pre-existing (brownfield) customer networks.
+This module establishes the Shared VPC network, configures the internal subnet routing topologies, sets up Private Service Connect (PSC) Network Attachments, deploys Google Cloud's Secure Web Proxy (SWP) for audited internet egress, and handles corporate DNS zones. It is designed to run on the Shared VPC Host Project (`prj-esmeralda-net-host`), but can be toggled to a pure-attachment mode for pre-existing (brownfield) customer networks.
 
 #### A. Network Subnet and Routing Architecture
 In Greenfield mode, the module provisions a comprehensive hub network with dedicated subnets for core workloads, proxy-only routing, PSC endpoints, serverless integration, and database peering:
 
 ```mermaid
 graph TD
-    subgraph HostProject["prj-net-host (Shared VPC Host)"]
+    subgraph HostProject["prj-esmeralda-net-host (Shared VPC Host)"]
         subgraph VPC["Shared VPC Network (vpc-esmeralda-shared)"]
             SubnetCore["Core Backend Subnet<br/>(sb-esmeralda-core)<br/>10.0.1.0/24"]
             SubnetProxy["Regional Proxy Subnet<br/>(sb-esmeralda-proxy)<br/>10.9.0.0/24 (Active)"]
@@ -103,7 +103,7 @@ To allow the separate workload projects to send private traffic across the Share
 
 ```mermaid
 graph LR
-    Host["prj-net-host<br/>Shared VPC Host"]
+    Host["prj-esmeralda-net-host<br/>Shared VPC Host"]
     Subnet["sb-esmeralda-core Subnet"]
 
     Host -.->|Service Project Attachment| P_MCP["prj-esmeralda-mcps"]
@@ -144,7 +144,7 @@ An inspection of `infrastructure/modules/2-networking/` reveals exactly how Esme
 
 ```mermaid
 flowchart TD
-    subgraph Host["Shared VPC Host Project (prj-net-host)"]
+    subgraph Host["Shared VPC Host Project (prj-esmeralda-net-host)"]
         VPC["vpc-esmeralda-shared-{env}"]
         
         subgraph Subnets["5 Specialized Regional Subnets"]
@@ -164,7 +164,7 @@ flowchart TD
         S1["prj-esmeralda-mcps"]
         S2["prj-esmeralda-a2a"]
         S3["prj-esmeralda-root-agent"]
-        S4["prj-gateway (Conditional)"]
+        S4["prj-esmeralda-gateway (Conditional)"]
         S5["prj-esmeralda-governance (Conditional)"]
     end
 

@@ -128,8 +128,8 @@ To maintain separation of concerns, Esmeralda maps roles to specific projects an
 
 | Engineering Team | Primary Role / Responsibility | Owned GCP Project | Target Infrastructure Resources |
 | :--- | :--- | :--- | :--- |
-| **NetOps** | Network architecture, routing, egress security. | `prj-net-host` | Shared VPC, Subnets, Cloud NAT, Secure Web Proxy, Private DNS. |
-| **PlatformOps** | Ingress, routing, general automation. | `prj-gateway` | API Gateways (Apigee, Kong, ILB target forwarding rules). |
+| **NetOps** | Network architecture, routing, egress security. | `prj-esmeralda-net-host` | Shared VPC, Subnets, Cloud NAT, Secure Web Proxy, Private DNS. |
+| **PlatformOps** | Ingress, routing, general automation. | `prj-esmeralda-gateway` | API Gateways (Apigee, Kong, ILB target forwarding rules). |
 | **SecOps & Governance** | Cryptographic key lifecycle, secrets, telemetry auditing. | `prj-esmeralda-governance` | Cloud KMS, Secret Manager database keys, BigQuery log datasets. |
 | **Platform Engineering** | CI/CD systems, container registries. | `prj-esmeralda-cicd-artifacts` | Artifact Registry, Cloud Build triggers, shared build SAs. |
 | **AppDev Tools Team** | Enterprise data connectors, backend integrations. | `prj-esmeralda-mcps` | Cloud Run MCP server tools, tool registries. |

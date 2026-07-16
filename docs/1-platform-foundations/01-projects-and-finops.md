@@ -18,8 +18,8 @@ To mirror a real-world enterprise production environment, workloads are divided 
 
 | Project Domain | Simulated Project ID | Role and Responsibility | Primary Hosted Resources |
 | :--- | :--- | :--- | :--- |
-| **Network Host** | `prj-net-host` | Managed by NetOps. Controls network traffic routing and security. | Shared VPC, Subnets, Cloud DNS, Cloud NAT, Firewalls. |
-| **Traffic Ingress** | `prj-gateway` | Managed by PlatformOps. Controls enterprise API ingress. | Apigee X, Kong on Cloud Run, Internal Load Balancers. |
+| **Network Host** | `prj-esmeralda-net-host` | Managed by NetOps. Controls network traffic routing and security. | Shared VPC, Subnets, Cloud DNS, Cloud NAT, Firewalls. |
+| **Traffic Ingress** | `prj-esmeralda-gateway` | Managed by PlatformOps. Controls enterprise API ingress. | Apigee X, Kong on Cloud Run, Internal Load Balancers. |
 | **CI/CD & Artifacts** | `prj-esmeralda-cicd-artifacts` | Managed by Platform Engineering. CI/CD pipelines and container image storage. | Cloud Build, Artifact Registry Docker repositories. |
 | **MCP Tools** | `prj-esmeralda-mcps` | Managed by AppDev team. Shared enterprise utility APIs. | Cloud Run (Corporate Email, Income Verifier, DMS). |
 | **Core AI Platform** | `prj-esmeralda-a2a` | Managed by Core AI team. Hosts reusable cross-domain agents. | Vertex AI Reasoning Engine (A2A), Cloud SQL PostgreSQL. |
@@ -49,12 +49,12 @@ graph TD
         Export["Cloud Billing BigQuery Export"]
     end
 
-    subgraph "prj-net-host (NetOps Budget)"
+    subgraph "prj-esmeralda-net-host (NetOps Budget)"
         C0["Shared VPC & Network Egress Costs"]
         L0["Label: cost-center=netops-core"]
     end
 
-    subgraph "prj-gateway (PlatformOps Budget)"
+    subgraph "prj-esmeralda-gateway (PlatformOps Budget)"
         C_GW["API Gateway Appliance / ILB Costs"]
         L_GW["Label: cost-center=platformops-ingress"]
     end
@@ -130,10 +130,10 @@ flowchart TD
         Check_Gwy{byo_gateway_project?}
         
         Check_Net -- "True (BYO)" --> Skip_Net["Bypass Creation <br/> Return existing_net_host_project"]
-        Check_Net -- "False" --> Create_Net["Create prj-net-host from scratch"]
+        Check_Net -- "False" --> Create_Net["Create prj-esmeralda-net-host from scratch"]
         
         Check_Gwy -- "True (BYO)" --> Skip_Gwy["Bypass Creation <br/> Return existing_gateway_project"]
-        Check_Gwy -- "False" --> Create_Gwy["Create prj-gateway from scratch"]
+        Check_Gwy -- "False" --> Create_Gwy["Create prj-esmeralda-gateway from scratch"]
         
         Create_MCPS["Create prj-esmeralda-mcps <br/> (Always)"]
         Create_A2A["Create prj-esmeralda-a2a-agents <br/> (Always)"]
