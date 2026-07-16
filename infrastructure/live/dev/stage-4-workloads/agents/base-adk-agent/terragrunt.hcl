@@ -50,7 +50,7 @@ inputs = {
   a2a_agent_url         = "http://a2a-mortgage-agent.esmeralda.internal"
 
   # Path to application YAML configuration
-  agent_config_path     = "${get_repo_root()}/app/agents/base-adk-agent/agent.yaml"
+  agent_config_path     = "${get_repo_root()}/apps/agents/base-adk-agent/agent.yaml"
 }
 
 
