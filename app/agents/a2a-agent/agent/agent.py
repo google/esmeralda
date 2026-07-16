@@ -87,21 +87,8 @@ async def _extract_user_token(callback_context: CallbackContext) -> Optional[typ
     return None
 
 
-class _PickleSafeAgent(Agent):
-    """Agent that rebuilds with MCP tools when unpickled or deep-copied."""
-
-    def __reduce__(self):
-        return (_build_agent, ())
-
-    def __deepcopy__(self, memo):
-        return _build_agent()
-
-
-def _build_agent():
-    """Build the agent with all tools including MCP connections.
-
-    Called at import time for local dev, and at unpickle time on Agent Engine.
-    """
+def _build_agent() -> Agent:
+    """Build the agent with all tools including MCP connections."""
     dms_toolset, income_toolset, email_toolset = create_mcp_toolsets()
 
     _tools = [
@@ -110,7 +97,7 @@ def _build_agent():
         email_toolset,
     ]
 
-    return _PickleSafeAgent(
+    return Agent(
         model=os.environ.get("MODEL_NAME", "gemini-3.5-flash"),
         name=os.environ.get("AGENT_NAME", "a2a_mortgage_agent").replace("-", "_"),
         description=(
