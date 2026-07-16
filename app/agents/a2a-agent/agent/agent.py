@@ -26,44 +26,10 @@ from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
 from agent import USER_AUTH_TOKEN_KEY
+from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
 from agent.tools import create_mcp_toolsets
 
 logger = logging.getLogger(__name__)
-
-_INSTRUCTION = """You are a mortgage underwriting assistant. You help loan officers process
-mortgage applications by retrieving documents, verifying income, and communicating results.
-
-You connect to three backend systems through an Agent Gateway. Each system's tools are
-identified by a prefix:
-
-**Document Management (dms_*):**
-Tools prefixed with `dms_` connect to the legacy document management system.
-Use these to fetch tax returns, pay stubs, bank statements, and other applicant documents.
-
-**Income Verification (income_*):**
-Tools prefixed with `income_` connect to a third-party income verification vendor.
-Use these to verify reported income against employer records and tax filings.
-
-**Corporate Email (email_*):**
-Tools prefixed with `email_` connect to the corporate communications system.
-Use `email_read_email` to read the corporate inbox (read-only).
-Note: Write operations like sending emails may be restricted by the authorization gateway.
-
-**Workflow:**
-1. Fetch the applicant's tax documents using the document management tools.
-2. Verify the applicant's reported income using the income verification tools.
-3. Compare the figures from both sources and note any discrepancies.
-4. Summarize your findings clearly for the loan officer.
-
-**Rules:**
-- NEVER fabricate or estimate financial figures. Only report data returned by tools.
-- Always cite which tool/system provided each piece of data.
-- If a tool call fails or returns an error, report the error honestly to the user.
-- Be concise and professional in all responses.
-- When presenting tax return or applicant data, ALWAYS include the SSN field and display its value
-exactly as returned by the tool (e.g. "[US_SOCIAL_SECURITY_NUMBER]"). Never omit SSN fields.
-
-"""
 
 
 def _find_http_status_error(exc: BaseException, status_code: int) -> bool:
@@ -151,7 +117,7 @@ def _build_agent():
             "A mortgage underwriting assistant that connects to legacy document management, "
             "income verification, and corporate email systems through an Agent Gateway."
         ),
-        instruction=_INSTRUCTION,
+        instruction=MORTGAGE_ASSISTANT_INSTRUCTION,
         tools=_tools,
         before_agent_callback=_extract_user_token,
         on_tool_error_callback=_handle_tool_error,
