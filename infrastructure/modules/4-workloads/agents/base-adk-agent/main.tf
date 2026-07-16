@@ -151,9 +151,11 @@ locals {
   yaml_env_vars = try(local.agent_config.env, {})
 
   runtime_overrides = {
-    GCS_BUCKET      = try(google_storage_bucket.logs.name, null)
-    GATEWAY_MCP_URL = try(var.gateway_mcp_url, null)
-    A2A_AGENT_URL   = try(var.a2a_agent_url, null)
+    GCS_BUCKET        = try(google_storage_bucket.logs.name, null)
+    GATEWAY_MCP_URL   = try(var.gateway_mcp_url, null)
+    A2A_AGENT_URL     = try(var.a2a_agent_url, null)
+    EVENTS_DATASET_ID = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_TABLE_ID   = "agent_events"
   }
 
   final_env_vars = merge(
