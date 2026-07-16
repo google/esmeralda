@@ -38,7 +38,7 @@ env:
   OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
   ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS: false
 
-  MODEL_NAME: "gemini-3.5-flash"
+  MODEL_NAME: "gemini-2.5-flash"
 
 labels:
   author: "your-name"

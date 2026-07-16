@@ -189,7 +189,12 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
   description  = local.yaml_desc
   region       = var.region
   project      = var.project_id
-  depends_on   = [google_storage_bucket.staging]
+  depends_on   = [
+    google_storage_bucket.staging,
+    google_project_iam_member.vertex_ai_network_admin,
+    google_project_iam_member.vertex_re_network_admin,
+    google_compute_network_attachment.psc_attachment
+  ]
 
   spec {
     agent_framework = local.yaml_framework
