@@ -68,7 +68,7 @@ resource "null_resource" "mcp_registration" {
   provisioner "local-exec" {
     command = <<EOT
       echo "📡 Registering Income Verification MCP Server with Google Cloud Agent Registry..."
-      GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/codigos/esmeralda"); python3 "$GIT_ROOT/tools_mcp/register_mcp.py" \
+      GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/codigos/esmeralda"); python3 "$GIT_ROOT/app/services/register_mcp.py" \
         --project_id="${var.project_id}" \
         --region="${var.region}" \
         --server_name="income-verification-api" \
