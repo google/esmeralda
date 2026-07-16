@@ -24,6 +24,7 @@ from agent import root_agent
 
 from interceptors import (
     BaseInterceptor,
+    CloudLoggingInterceptor,
     BaggageTelemetryInterceptor,
     TelemetryFlushInterceptor,
     DynatraceTelemetryInterceptor,
@@ -48,39 +49,7 @@ try:
             self.interceptors = interceptors or []
 
         def set_up(self) -> None:
-            import vertexai
-            import google.auth
-
-            # Fetch the desired location from the environment, defaulting to global
-            location = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
-
-            try:
-                credentials, project_id = google.auth.default()
-                project = os.environ.get("GOOGLE_CLOUD_PROJECT", project_id)
-                logger.info(f"Re-initializing vertexai for project={project}, location={location}")
-                vertexai.init(project=project, location=location)
-
-                # Set up direct Cloud Logging client for detailed debug output
-                import google.cloud.logging
-                self.logging_client = google.cloud.logging.Client(project=project)
-                self.logger = self.logging_client.logger(
-                    name="python",  # name (str): the name of the custom log in Cloud Logging.
-                    labels={"type": "python-logging"},  # Default labels to attach to logs.
-                    resource=google.cloud.logging.Resource(
-                        type="aiplatform.googleapis.com/ReasoningEngine",
-                        labels={
-                            "resource_container": project,
-                            "location": location,
-                            "reasoning_engine_id": os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID", os.environ.get("K_SERVICE", "").split("-")[-1]),
-                        },
-                    ),
-                )
-            except Exception as e:
-                logger.error(f"Failed to re-initialize vertexai or Cloud Logging: {e}")
-
             super().set_up()
-
-            # Execute startup hooks for registered interceptors
             for interceptor in self.interceptors:
                 interceptor.on_startup(self)
 
@@ -148,6 +117,7 @@ try:
     agent_runtime_app = AgentRuntimeApp(
         agent=root_agent,
         interceptors=[
+            CloudLoggingInterceptor(),
             BaggageTelemetryInterceptor(),
             DynatraceTelemetryInterceptor(),
             TelemetryFlushInterceptor(),
