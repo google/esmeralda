@@ -18,7 +18,7 @@ from agent.remote_agent import mortgage_tools_agent
 
 root_agent = Agent(
     name="root_agent",
-    model=os.getenv("MODEL_NAME", "gemini-2.5-flash"),
+    model=os.getenv("MODEL_NAME", "gemini-3.5-flash"),
     instruction="You are a mortgage underwriting assistant coordinator. "
                 "Delegate all document search, income verification, and email "
                 "operations to the mortgage_tools_agent.",
