@@ -1,7 +1,4 @@
-import {
-  id = "projects/esmeralda-mcps-918f/locations/us-central1/services/corporate-email-dev"
-  to = google_cloud_run_v2_service.corporate_email
-}
+
 
 # Deploy Corporate Email on Cloud Run with internal-and-load-balancing ingress
 resource "google_cloud_run_v2_service" "corporate_email" {

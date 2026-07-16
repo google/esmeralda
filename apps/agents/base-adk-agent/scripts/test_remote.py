@@ -50,7 +50,7 @@ def get_gcp_access_token() -> str:
         raise RuntimeError("No valid GCP credentials found.")
 
 async def main(user_input: str):
-    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "esmeralda-root-agent-918f")
+    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", os.getenv("PROJECT_ID", ""))
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     RESOURCE_ID = "35393829053923328"
     

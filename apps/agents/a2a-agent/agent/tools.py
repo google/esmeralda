@@ -48,7 +48,7 @@ def _get_oidc_token(audience: str) -> str:
 
         sa_email = getattr(credentials, "service_account_email", None)
         if not sa_email or sa_email == "default" or sa_email == "-":
-            sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "sa-esmeralda-a2a-dev@esmeralda-a2a-918f.iam.gserviceaccount.com")
+            sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
 
         url = (
             f"https://iamcredentials.googleapis.com/v1/projects/-"
