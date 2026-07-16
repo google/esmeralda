@@ -27,7 +27,6 @@ from interceptors import (
     CloudLoggingInterceptor,
     BaggageTelemetryInterceptor,
     TelemetryFlushInterceptor,
-    DynatraceTelemetryInterceptor,
 )
 
 # Configure Logging to stdout
@@ -119,7 +118,6 @@ try:
         interceptors=[
             CloudLoggingInterceptor(),
             BaggageTelemetryInterceptor(),
-            DynatraceTelemetryInterceptor(),
             TelemetryFlushInterceptor(),
         ]
     )
