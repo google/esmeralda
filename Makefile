@@ -36,25 +36,25 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
-	@uv run --package corporate-email --extra dev pytest app/services/corporate-email/test_main.py
+	@uv run --package corporate-email --extra dev pytest apps/services/corporate-email/test_main.py
 	@echo "🧪 Running unit tests for income-verification-api..."
-	@uv run --package income-verification-api --extra dev pytest app/services/income-verification/test_main.py
+	@uv run --package income-verification-api --extra dev pytest apps/services/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
-	@uv run --package legacy-dms --extra dev pytest app/services/legacy-dms/test_server.py
+	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
 	@echo "🧪 Running unit tests for mortgage-agent..."
-	@uv run --package mortgage-agent --extra dev pytest app/agents/base-adk-agent/tests/test_remote_agent.py
+	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/test_remote_agent.py
 	@echo "🧪 Running unit tests for a2a-mortgage-agent..."
-	@uv run --package a2a-mortgage-agent --extra dev pytest app/agents/a2a-agent/tests/test_agent.py
+	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/test_agent.py
 	@echo "✅ All unit tests passed!"
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@[ -n "$$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null)" ] && kill -9 $$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null) 2>/dev/null || true
 	@echo "🚀 Launching MCP Servers..."
-	@uv run --package corporate-email uvicorn main:app --app-dir app/services/corporate-email --port 8001 & pid_email=$$! ; \
+	@uv run --package corporate-email uvicorn main:app --app-dir apps/services/corporate-email --port 8001 & pid_email=$$! ; \
 	 echo "📧 corporate-email running on http://localhost:8001" ; \
-	 uv run --package income-verification-api uvicorn main:app --app-dir app/services/income-verification --port 8002 & pid_income=$$! ; \
+	 uv run --package income-verification-api uvicorn main:app --app-dir apps/services/income-verification --port 8002 & pid_income=$$! ; \
 	 echo "💰 income-verification-api running on http://localhost:8002" ; \
-	 uv run --package legacy-dms uvicorn server:app --app-dir app/services/legacy-dms --port 8003 & pid_dms=$$! ; \
+	 uv run --package legacy-dms uvicorn server:app --app-dir apps/services/legacy-dms --port 8003 & pid_dms=$$! ; \
 	 echo "🗄️ legacy-dms running on http://localhost:8003" ; \
 	 trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill $$pid_email $$pid_income $$pid_dms 2>/dev/null || true' INT TERM EXIT; \
 	 wait
@@ -84,7 +84,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
 	export DMS_MCP_URL="http://localhost:8003/mcp"; \
 	echo "🤖 Running A2A Agent test locally..."; \
-	uv run --package a2a-mortgage-agent python app/agents/a2a-agent/scripts/test_local.py "$(QUERY)"; \
+	uv run --package a2a-mortgage-agent python apps/agents/a2a-agent/scripts/test_local.py "$(QUERY)"; \
 	status=$$?; \
 	if [ $$already_running -eq 0 ]; then \
 		echo "🧹 Tearing down background MCP servers..."; \
@@ -121,7 +121,7 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
 	export DMS_MCP_URL="http://localhost:8003/mcp"; \
 	echo "👑 Running Root Agent integration test locally (in-memory mock routing)..."; \
-	uv run --package mortgage-agent python app/agents/base-adk-agent/scripts/test_local.py "$(QUERY)"; \
+	uv run --package mortgage-agent python apps/agents/base-adk-agent/scripts/test_local.py "$(QUERY)"; \
 	status=$$?; \
 	if [ $$already_running -eq 0 ]; then \
 		echo "🧹 Tearing down background MCP servers..."; \
@@ -154,14 +154,14 @@ build-agent-a2a: deploy-repo ## Build and push BYOC A2A Agent container
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit app/agents/a2a-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/a2a-agent:latest
+	gcloud builds submit apps/agents/a2a-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/a2a-agent:latest
 
 build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit app/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:latest
+	gcloud builds submit apps/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:latest
 
 build-agents: deploy-repo ## Build all BYOC agent containers concurrently via make -j2
 	@echo "🏗️  Building all BYOC agent containers concurrently..."
@@ -180,28 +180,28 @@ build-service-income-verification: deploy-repo ## Build and push Income Verifica
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit app/services/income-verification --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/income-verification-api:latest
+	gcloud builds submit apps/services/income-verification --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/income-verification-api:latest
 
 build-service-corporate-email: deploy-repo ## Build and push Corporate Email service container
 	@echo "🏗️  Building and pushing Corporate Email service container..."
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit app/services/corporate-email --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/corporate-email:latest
+	gcloud builds submit apps/services/corporate-email --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/corporate-email:latest
 
 build-service-legacy-dms: deploy-repo ## Build and push Legacy DMS service container
 	@echo "🏗️  Building and pushing Legacy DMS service container..."
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit app/services/legacy-dms --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/legacy-dms:latest
+	gcloud builds submit apps/services/legacy-dms --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/legacy-dms:latest
 
 build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 	@echo "🏗️  Building and pushing Kong Gateway service container..."
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit app/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:latest
+	gcloud builds submit apps/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:latest
 
 build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j4
 	@echo "🏗️  Building all Cloud Run service containers concurrently..."
