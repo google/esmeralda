@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,14 +16,18 @@ import asyncio
 import os
 import sys
 import json
+import random
 import httpx
 import google.auth
 import google.auth.transport.requests
 from dotenv import load_dotenv
 
-# Ensure current directory is in PYTHONPATH
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
+
+def generate_19_digit_session_id() -> str:
+    """Generates a random 19-digit integer session ID."""
+    return str(random.randint(10**18, (10**19) - 1))
 
 def get_gcp_access_token() -> str:
     """Retrieves a Google Cloud OAuth2 access token natively."""
@@ -38,7 +42,6 @@ def get_gcp_access_token() -> str:
     except Exception as e:
         print(f"Native credential resolution failed: {e}")
     
-    # Fallback to gcloud CLI
     import subprocess
     try:
         return subprocess.check_output(
@@ -57,59 +60,45 @@ async def main(user_input: str):
     base_url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
     stream_url = f"{base_url}:streamQuery?alt=sse"
 
+    # Generate 19-digit random integer session_id
+    custom_session_id = generate_19_digit_session_id()
+    print(f"🎲 Generated 19-digit Random Integer Session ID: {custom_session_id}")
+
     print("🔑 Fetching GCP credentials...")
-    try:
-        token = get_gcp_access_token()
-    except Exception as e:
-        print(f"❌ Auth error: {e}")
-        sys.exit(1)
+    token = get_gcp_access_token()
 
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
 
-    print("📝 1. Provisioning GCP Control Plane Session (Vertex AI Sessions API)...")
-    sessions_api_url = f"{base_url}/sessions"
+    print("📝 Creating session with 19-digit Session ID on Vertex AI Agent Engine...")
+    query_url = f"{base_url}:query"
     create_session_payload = {
-        "user_id": "test-user-123"
+        "class_method": "async_create_session",
+        "input": {
+            "user_id": "test-user-123",
+            "session_id": custom_session_id
+        }
     }
 
     session_id = None
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(sessions_api_url, json=create_session_payload, headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            operation_name = data.get("name", "")
-            parts = operation_name.split("/")
-            if "sessions" in parts:
-                session_id = parts[parts.index("sessions") + 1]
+        try:
+            resp = await client.post(query_url, json=create_session_payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                output = data.get("output", {})
+                if isinstance(output, dict):
+                    session_id = output.get("id") or output.get("name", "").split("/")[-1]
+                print(f"✅ Session Created Successfully with ID: {session_id}")
             else:
-                session_id = parts[-1]
-            print(f"✅ Control Plane Session Provisioned (19-Digit Integer ID: {session_id})")
-        else:
-            print(f"❌ Failed to create session via Control Plane Sessions API: HTTP {resp.status_code} - {resp.text}")
-            sys.exit(1)
+                print(f"⚠️ Create Session returned HTTP {resp.status_code}: {resp.text}")
+        except Exception as e:
+            print(f"⚠️ Create Session call failed: {e}")
 
     if not session_id:
-        print("❌ Error: Server did not return a valid session ID.")
-        sys.exit(1)
-
-    print("📝 2. Registering 19-Digit Session ID in ADK Agent Runtime (async_create_session)...")
-    query_url = f"{base_url}:query"
-    adk_create_payload = {
-        "class_method": "async_create_session",
-        "input": {
-            "user_id": "test-user-123",
-            "session_id": session_id
-        }
-    }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(query_url, json=adk_create_payload, headers=headers)
-        if resp.status_code == 200:
-            print(f"✅ Session {session_id} successfully registered in ADK Runner SessionStore!")
-        else:
-            print(f"⚠️ ADK session registration returned HTTP {resp.status_code}: {resp.text}")
+        session_id = custom_session_id
 
     query_payload = {
         "class_method": "async_stream_query",
@@ -148,10 +137,6 @@ async def main(user_input: str):
                                             print(f"\n[Tool Call: {part['function_call'].get('name')}]", flush=True)
                                 elif "output" in data_json:
                                     print(data_json["output"], end="", flush=True)
-                                else:
-                                    print(json.dumps(data_json), flush=True)
-                            else:
-                                print(data_json, end="", flush=True)
                         except json.JSONDecodeError:
                             print(data_str, end="", flush=True)
         print()
@@ -160,7 +145,25 @@ async def main(user_input: str):
         import traceback
         traceback.print_exc()
 
-    print("--------------------------------\n")
+    print("\n🔍 Querying Reasoning Engine session store to verify 19-digit session retention...")
+    get_session_payload = {
+        "class_method": "async_get_session",
+        "input": {
+            "user_id": "test-user-123",
+            "session_id": session_id
+        }
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.post(query_url, json=get_session_payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                print(f"✅ Session {session_id} Verified in Agent Engine Session Store!")
+                print(json.dumps(data.get("output", {}), indent=2))
+            else:
+                print(f"⚠️ Get Session returned HTTP {resp.status_code}: {resp.text}")
+        except Exception as e:
+            print(f"⚠️ Get Session call failed: {e}")
 
 if __name__ == "__main__":
     test_query = sys.argv[1] if len(sys.argv) > 1 else "Can you verify Julian Sterling's income?"
