@@ -88,6 +88,8 @@ async def _extract_user_token(callback_context: CallbackContext) -> Optional[typ
     return None
 
 
+a2a_telemetry_plugin = EsmeraldaTelemetryPlugin(agent_name="a2a_mortgage_agent")
+
 mortgage_assistant_agent = Agent(
     model=os.environ.get("MODEL_NAME", "gemini-2.5-flash"),
     name=os.environ.get("AGENT_NAME", "a2a_mortgage_agent").replace("-", "_"),
@@ -97,7 +99,8 @@ mortgage_assistant_agent = Agent(
     ),
     instruction=MORTGAGE_ASSISTANT_INSTRUCTION,
     tools=[dms_toolset, income_toolset, email_toolset],
-    plugins=[EsmeraldaTelemetryPlugin(agent_name="a2a_mortgage_agent")],
     before_agent_callback=_extract_user_token,
+    after_model_callback=a2a_telemetry_plugin.after_model_callback,
+    after_tool_callback=a2a_telemetry_plugin.after_tool_callback,
     on_tool_error_callback=_handle_tool_error,
 )
