@@ -29,3 +29,31 @@ resource "google_bigquery_dataset_iam_member" "dataset_writers" {
   role       = "roles/bigquery.dataEditor"
   member     = each.value.writer_identity
 }
+
+# ------------------------------------------------------------------------------
+# GCS LONG-TERM TELEMETRY ARCHIVAL BUCKET (Coldline 365-Day Retention)
+# ------------------------------------------------------------------------------
+resource "google_storage_bucket" "telemetry_archive" {
+  name                        = "esmeralda-telemetry-archive-${var.governance_project_id}"
+  project                     = var.governance_project_id
+  location                    = "us-central1"
+  storage_class               = "COLDLINE"
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 365
+    }
+  }
+}
+
+# GCS Storage Object Creator IAM binding for sink writer identities
+resource "google_storage_bucket_iam_member" "gcs_sink_writers" {
+  for_each = google_logging_project_sink.central_sinks
+  bucket   = google_storage_bucket.telemetry_archive.name
+  role     = "roles/storage.objectCreator"
+  member   = each.value.writer_identity
+}
