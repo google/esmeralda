@@ -19,14 +19,23 @@ WITH combined_requests AS (
 
   UNION ALL
 
-  -- 2. Real-Time Raw Log Stream Extraction (handles formatted textPayload log prefixes)
+  -- 2. Real-Time Raw Log Stream Extraction (handles formatted textPayload log prefixes and API requests)
   SELECT
     timestamp,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.session_id') AS STRING) AS session_id,
+    COALESCE(
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.session_id') AS STRING),
+      'sess_live_' || SUBSTR(CAST(timestamp AS STRING), 12, 8)
+    ) AS session_id,
     SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.user_id') AS STRING) AS user_id,
-    COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
+    COALESCE(
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.agent_id') AS STRING),
+      'root_agent'
+    ) AS agent_id,
     SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.execution_path') AS STRING) AS execution_path,
-    COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.model') AS STRING), 'gemini-2.5-flash') AS model,
+    COALESCE(
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.model') AS STRING),
+      'gemini-2.5-flash'
+    ) AS model,
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.prompt_tokens') AS INT64), 150) AS prompt_tokens,
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.completion_tokens') AS INT64), 85) AS completion_tokens,
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.thoughts_tokens') AS INT64), 20) AS thoughts_tokens,
@@ -35,7 +44,7 @@ WITH combined_requests AS (
   FROM
     `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
   WHERE
-    textPayload LIKE '%genai_token_consumption%'
+    textPayload LIKE '%genai_token_consumption%' OR textPayload LIKE '%POST /api%'
 )
 SELECT
   timestamp,
