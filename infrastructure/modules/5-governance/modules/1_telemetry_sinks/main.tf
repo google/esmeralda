@@ -18,6 +18,12 @@ resource "google_logging_project_sink" "central_sinks" {
   # Filter stdout/stderr logs from Reasoning Engines and Cloud Run microservices
   filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\""
 
+  exclusions {
+    name        = "exclude-debug-logs"
+    description = "Exclude verbose debug log entries to minimize BigQuery ingestion costs"
+    filter      = "severity < INFO AND NOT jsonPayload.event=\"genai_token_consumption\""
+  }
+
   unique_writer_identity = true
 }
 
@@ -31,7 +37,7 @@ resource "google_bigquery_dataset_iam_member" "dataset_writers" {
 }
 
 # ------------------------------------------------------------------------------
-# GCS LONG-TERM TELEMETRY ARCHIVAL BUCKET (Coldline 365-Day Retention)
+# GCS LONG-TERM TELEMETRY ARCHIVAL BUCKET (Coldline 7-Year Regulatory Audit Retention)
 # ------------------------------------------------------------------------------
 resource "google_storage_bucket" "telemetry_archive" {
   name                        = "esmeralda-telemetry-archive-${var.governance_project_id}"
@@ -40,12 +46,17 @@ resource "google_storage_bucket" "telemetry_archive" {
   storage_class               = "COLDLINE"
   uniform_bucket_level_access = true
 
+  retention_policy {
+    is_locked      = false
+    retention_period = 220898400 # 7 Years (in seconds)
+  }
+
   lifecycle_rule {
     action {
       type = "Delete"
     }
     condition {
-      age = 365
+      age = 2555 # 7 Years (365 * 7)
     }
   }
 }

@@ -1,0 +1,43 @@
+# ==============================================================================
+# Cloud Build Pipeline: Stage 5 Governance & Observability Infrastructure
+# Triggers on changes to infrastructure/modules/5-governance/** or infrastructure/live/dev/stage-5-governance/**
+# ==============================================================================
+
+steps:
+  # ----------------------------------------------------------------------------
+  # Step 1: Run Governance & Telemetry Pipeline Chaos Tests
+  # ----------------------------------------------------------------------------
+  - name: 'python:3.11-slim'
+    id: 'test-governance-chaos'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        python3 apps/agents/base-adk-agent/scripts/chaos_telemetry_test.py
+
+  # ----------------------------------------------------------------------------
+  # Step 2: Validate Stage 5 Governance HCL
+  # ----------------------------------------------------------------------------
+  - name: 'alpine/terragrunt:latest'
+    id: 'validate-stage-5-governance'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        cd infrastructure/live/dev/stage-5-governance
+        terragrunt validate
+
+  # ----------------------------------------------------------------------------
+  # Step 3: Deploy Stage 5 Governance Stack (Terragrunt Apply)
+  # ----------------------------------------------------------------------------
+  - name: 'alpine/terragrunt:latest'
+    id: 'deploy-stage-5-governance'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        cd infrastructure/live/dev/stage-5-governance
+        terragrunt apply -auto-approve
+
+options:
+  logging: CLOUD_LOGGING_ONLY
