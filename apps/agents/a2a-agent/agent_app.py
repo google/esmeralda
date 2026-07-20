@@ -124,7 +124,9 @@ def create_a2a_app():
         ]
     )
     card.preferred_transport = "HTTP+JSON"
-    plugins = [bq_logging_plugin] if bq_logging_plugin else []
+    from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
+    telemetry_plugin = EsmeraldaTelemetryPlugin(agent_name="a2a_mortgage_agent")
+    plugins = [bq_logging_plugin, telemetry_plugin] if bq_logging_plugin else [telemetry_plugin]
 
     task_store_builder = None
     if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):
