@@ -139,7 +139,10 @@ locals {
     "cloudtrace.googleapis.com",
     "monitoring.googleapis.com",
     "cloudkms.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "dlp.googleapis.com",
+    "pubsub.googleapis.com",
+    "cloudresourcemanager.googleapis.com"
   ]
 }
 
