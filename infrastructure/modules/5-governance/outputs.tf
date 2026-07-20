@@ -23,3 +23,13 @@ output "chargeback_view_id" {
   value       = module.finops_analytics.chargeback_view_id
   description = "BigQuery FinOps monthly chargeback view ID"
 }
+
+output "golden_signals_dashboard_id" {
+  value       = module.alert_policies.golden_signals_dashboard_id
+  description = "Cloud Monitoring Agent Golden Signals Dashboard ID"
+}
+
+output "finops_dashboard_id" {
+  value       = module.alert_policies.finops_dashboard_id
+  description = "Cloud Monitoring FinOps Token Analytics Dashboard ID"
+}
