@@ -138,6 +138,44 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             }
           ]
         }
+      },
+      {
+        "title": "Gemini Context Caching Hits (Cached Tokens Rate)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ]
+        }
+      },
+      {
+        "title": "Gemini 2.5 Reasoning / Thoughts Token Consumption Rate",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ]
+        }
       }
     ]
   }
