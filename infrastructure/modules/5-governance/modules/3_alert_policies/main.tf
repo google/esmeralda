@@ -60,6 +60,130 @@ resource "google_logging_metric" "realtime_token_consumption" {
   }
 }
 
+# 3b. Log-Based Metric: Cached Tokens Counter
+resource "google_logging_metric" "cached_tokens_counter" {
+  name        = "genai/cached_tokens"
+  project     = var.governance_project_id
+  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.cached_tokens > 0"
+  description = "Real-time metric for Gemini Context Caching token hits"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+    labels {
+      key         = "agent_id"
+      value_type  = "STRING"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.tokens.cached_tokens)"
+  label_extractors = {
+    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 64
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+# 3c. Log-Based Metric: Prompt Tokens Counter
+resource "google_logging_metric" "prompt_tokens_counter" {
+  name        = "genai/prompt_tokens"
+  project     = var.governance_project_id
+  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.prompt_tokens > 0"
+  description = "Real-time metric for prompt tokens"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+    labels {
+      key         = "agent_id"
+      value_type  = "STRING"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.tokens.prompt_tokens)"
+  label_extractors = {
+    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 64
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+# 3d. Log-Based Metric: Completion Tokens Counter
+resource "google_logging_metric" "completion_tokens_counter" {
+  name        = "genai/completion_tokens"
+  project     = var.governance_project_id
+  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.completion_tokens > 0"
+  description = "Real-time metric for response completion tokens"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+    labels {
+      key         = "agent_id"
+      value_type  = "STRING"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.tokens.completion_tokens)"
+  label_extractors = {
+    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 64
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+# 3e. Log-Based Metric: Thoughts / Reasoning Tokens Counter
+resource "google_logging_metric" "thoughts_tokens_counter" {
+  name        = "genai/thoughts_tokens"
+  project     = var.governance_project_id
+  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.thoughts_tokens > 0"
+  description = "Real-time metric for Gemini 2.5 internal reasoning/thoughts tokens"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+    labels {
+      key         = "agent_id"
+      value_type  = "STRING"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.tokens.thoughts_tokens)"
+  label_extractors = {
+    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 64
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
 # 4. Alert Policy: Runaway Loop Single-Request Token Cap
 resource "google_monitoring_alert_policy" "runaway_loop_token_cap" {
   project      = var.governance_project_id
