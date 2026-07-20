@@ -27,7 +27,8 @@ for mod in [
     "google.adk.tools.base_tool",
     "google.adk.tools.tool_context",
     "google.adk.tools.mcp_tool",
-    "google.adk.tools.mcp_tool.mcp_session_manager",
+    "google.adk.plugins",
+    "google.adk.plugins.base_plugin",
     "google.genai",
     "google.genai.types",
 ]:

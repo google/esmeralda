@@ -2,15 +2,7 @@ import json
 import logging
 import sys
 from typing import Any
-try:
-    from google.adk.plugins.base_plugin import BasePlugin
-except Exception:
-    try:
-        from google.adk.plugins import BasePlugin
-    except Exception:
-        class BasePlugin:
-            def __init__(self, *args, **kwargs):
-                pass
+from google.adk.plugins import BasePlugin
 from opentelemetry import trace
 
 # Setup JSON telemetry logger writing to stdout via standard Python logging
@@ -24,16 +16,19 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
     """
 
     def __init__(self, agent_name: str = "root_orchestrator"):
-        super().__init__()
+        super().__init__(name="esmeralda_telemetry")
         self.agent_name = agent_name
 
-    def on_model_finish(
+    def after_model_callback(
         self,
-        model_context: Any,
-        model_response: Any,
-        **kwargs: Any
-    ) -> None:
-        """Hook triggered after Gemini model generation completes."""
+        *,
+        callback_context: Any = None,
+        llm_response: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Official ADK hook triggered after Gemini model generation completes."""
+        model_context = callback_context
+        model_response = llm_response
         # Extract Token & Caching Metrics (handles dict, object, and A2A wrappers)
         usage = getattr(model_response, "usage_metadata", None) or getattr(model_response, "usage", None)
         if isinstance(model_response, dict):
@@ -106,28 +101,37 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
             # 4. Safety & Finish Reason
             "finish_reason": getattr(model_response, "finish_reason", "STOP"),
         }
-        # Emit single-line JSON payload to stdout (parsed by Cloud Logging in 1-5s)
-        logger.info(json.dumps(payload))
+        # Write pure unformatted JSON to stdout for GCP Cloud Logging jsonPayload parsing
+        sys.stdout.write(json.dumps(payload) + "\n")
+        sys.stdout.flush()
 
-    def on_tool_finish(
+    def after_tool_callback(
         self,
-        tool_context: Any,
-        tool_response: Any,
-        tool_name: str,
-        duration_ms: float,
-        status: str = "SUCCESS",
+        *,
+        tool: Any = None,
+        tool_args: Any = None,
+        tool_context: Any = None,
+        result: Any = None,
         **kwargs: Any
-    ) -> None:
-        """Hook triggered after an MCP or local tool execution completes."""
+    ) -> Any:
+        """Official ADK hook triggered after an MCP or local tool execution completes."""
+        tool_name = getattr(tool, "name", "unknown_tool") if tool else "unknown_tool"
         payload = {
             "event": "mcp_tool_execution",
-            "session_id": getattr(tool_context, "session_id", "unknown_session"),
+            "session_id": str(getattr(getattr(tool_context, "session", None), "id", getattr(tool_context, "session_id", "unknown_session"))),
             "user_id": getattr(tool_context, "user_id", "anonymous"),
             "agent_id": self.agent_name,
             "tool_name": tool_name,
-            "mcp_service": getattr(tool_context, "mcp_service", "unknown_service"),
-            "tool_type": getattr(tool_context, "tool_type", "MCP"),
-            "duration_ms": round(duration_ms, 2),
-            "status": status,
+            "status": "SUCCESS",
         }
-        logger.info(json.dumps(payload))
+        sys.stdout.write(json.dumps(payload) + "\n")
+        sys.stdout.flush()
+        return result
+
+    def on_model_finish(self, *args: Any, **kwargs: Any) -> None:
+        """Compatibility alias for legacy callers."""
+        self.after_model_callback(*args, **kwargs)
+
+    def on_tool_finish(self, *args: Any, **kwargs: Any) -> None:
+        """Compatibility alias for legacy callers."""
+        self.after_tool_callback(*args, **kwargs)
