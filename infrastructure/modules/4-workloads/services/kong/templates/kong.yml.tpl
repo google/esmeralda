@@ -1,6 +1,15 @@
 _format_version: "3.0"
 _transform: true
 
+plugins:
+  - name: rate-limiting
+    config:
+      minute: 120
+      limit_by: header
+      header_name: X-API-Key
+      policy: local
+      fault_tolerant: true
+
 services:
 %{ for key, endpoint in agent_endpoints ~}
   - name: ${endpoint.logical_name}
