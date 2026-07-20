@@ -22,8 +22,7 @@ import urllib.request
 
 import google.auth
 import google.auth.transport.requests
-from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
-from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 
 from agent import USER_AUTH_TOKEN_KEY
 

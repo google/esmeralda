@@ -1,0 +1,1116 @@
+[
+  {
+    "event_type": "create_session_response",
+    "payload": {
+      "output": {
+        "events": [],
+        "id": "439f2e67-c088-4847-a69f-cff5b50ce79e",
+        "state": {},
+        "app_name": "agent",
+        "user_id": "test-user-123",
+        "last_update_time": 1784512558.041997
+      }
+    }
+  },
+  {
+    "event_index": 1,
+    "raw_line": "{\"model_version\": \"gemini-2.5-flash\", \"content\": {\"parts\": [{\"function_call\": {\"id\": \"adk-38a945d4-cde0-4e59-8404-e54bb95bcc6c\", \"args\": {\"agent_name\": \"mortgage_tools_agent\"}, \"name\": \"transfer_to_agent\"}, \"thought_signature\": \"CsICAY89a1_SIeYR4BVGHTpeqJAS-6bl6h6uQMCz1ShDm09KMysaKDNjDZdrr5dRBT_ihHe2UKi1SaaOAQn0lEpWCn6Z7ZUIfn4plck0CWqmwGDdCI0i7_aLwyaMcJK2VbGrItvwYEZbop8LPXH-XJRQHe-gD5B7OtcPZnVOkLP1XDJad5sHqjNiFR6l-W5JSJmbuURqMdByaFySyLZognGXf525QrvDSqMbAqKKxxnFsIhvfYR2sc614xeajVXS7WZ-uQPSrUTvN_rwT4BWXZb96-Qlwi_ZhHdV1we9OmK-p0SUrUo2i3_yNW5uGRCtASRiczpAFZYA3Y_-cu-rpJRqkbVxseby_teIcD9hK5iYFc_V3OuX1o04P9Gql49Dj-zxuMM24wykT8HQBwALb2EIJ9Pml2WcE8u9f68zoQZQvqSiEg==\"}], \"role\": \"model\"}, \"finish_reason\": \"STOP\", \"usage_metadata\": {\"candidates_token_count\": 14, \"candidates_tokens_details\": [{\"modality\": \"TEXT\", \"token_count\": 14}], \"prompt_token_count\": 258, \"prompt_tokens_details\": [{\"modality\": \"TEXT\", \"token_count\": 258}], \"thoughts_token_count\": 65, \"total_token_count\": 337, \"traffic_type\": \"ON_DEMAND\"}, \"avg_logprobs\": -0.3862370422908238, \"invocation_id\": \"e-7d91e28a-b704-4ce9-b225-8480809ebc77\", \"author\": \"root_agent\", \"actions\": {\"state_delta\": {}, \"artifact_delta\": {}, \"requested_auth_configs\": {}, \"requested_tool_confirmations\": {}}, \"node_info\": {\"path\": \"root_agent@1\"}, \"long_running_tool_ids\": [], \"id\": \"7af0dd06-34f4-4984-8ab3-6f85e4210138\", \"timestamp\": 1784512559.1387317}",
+    "parsed_json": {
+      "model_version": "gemini-2.5-flash",
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "id": "adk-38a945d4-cde0-4e59-8404-e54bb95bcc6c",
+              "args": {
+                "agent_name": "mortgage_tools_agent"
+              },
+              "name": "transfer_to_agent"
+            },
+            "thought_signature": "CsICAY89a1_SIeYR4BVGHTpeqJAS-6bl6h6uQMCz1ShDm09KMysaKDNjDZdrr5dRBT_ihHe2UKi1SaaOAQn0lEpWCn6Z7ZUIfn4plck0CWqmwGDdCI0i7_aLwyaMcJK2VbGrItvwYEZbop8LPXH-XJRQHe-gD5B7OtcPZnVOkLP1XDJad5sHqjNiFR6l-W5JSJmbuURqMdByaFySyLZognGXf525QrvDSqMbAqKKxxnFsIhvfYR2sc614xeajVXS7WZ-uQPSrUTvN_rwT4BWXZb96-Qlwi_ZhHdV1we9OmK-p0SUrUo2i3_yNW5uGRCtASRiczpAFZYA3Y_-cu-rpJRqkbVxseby_teIcD9hK5iYFc_V3OuX1o04P9Gql49Dj-zxuMM24wykT8HQBwALb2EIJ9Pml2WcE8u9f68zoQZQvqSiEg=="
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "usage_metadata": {
+        "candidates_token_count": 14,
+        "candidates_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 14
+          }
+        ],
+        "prompt_token_count": 258,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 258
+          }
+        ],
+        "thoughts_token_count": 65,
+        "total_token_count": 337,
+        "traffic_type": "ON_DEMAND"
+      },
+      "avg_logprobs": -0.3862370422908238,
+      "invocation_id": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+      "author": "root_agent",
+      "actions": {
+        "state_delta": {},
+        "artifact_delta": {},
+        "requested_auth_configs": {},
+        "requested_tool_confirmations": {}
+      },
+      "node_info": {
+        "path": "root_agent@1"
+      },
+      "long_running_tool_ids": [],
+      "id": "7af0dd06-34f4-4984-8ab3-6f85e4210138",
+      "timestamp": 1784512559.1387317
+    }
+  },
+  {
+    "event_index": 2,
+    "raw_line": "{\"content\": {\"parts\": [{\"function_response\": {\"id\": \"adk-38a945d4-cde0-4e59-8404-e54bb95bcc6c\", \"name\": \"transfer_to_agent\", \"response\": {\"result\": null}}}], \"role\": \"user\"}, \"invocation_id\": \"e-7d91e28a-b704-4ce9-b225-8480809ebc77\", \"author\": \"root_agent\", \"actions\": {\"state_delta\": {}, \"artifact_delta\": {}, \"transfer_to_agent\": \"mortgage_tools_agent\", \"requested_auth_configs\": {}, \"requested_tool_confirmations\": {}}, \"node_info\": {\"path\": \"root_agent@1\"}, \"id\": \"493f2639-0969-4c4a-8d8a-bb2f0fcddc47\", \"timestamp\": 1784512559.9338412}",
+    "parsed_json": {
+      "content": {
+        "parts": [
+          {
+            "function_response": {
+              "id": "adk-38a945d4-cde0-4e59-8404-e54bb95bcc6c",
+              "name": "transfer_to_agent",
+              "response": {
+                "result": null
+              }
+            }
+          }
+        ],
+        "role": "user"
+      },
+      "invocation_id": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+      "author": "root_agent",
+      "actions": {
+        "state_delta": {},
+        "artifact_delta": {},
+        "transfer_to_agent": "mortgage_tools_agent",
+        "requested_auth_configs": {},
+        "requested_tool_confirmations": {}
+      },
+      "node_info": {
+        "path": "root_agent@1"
+      },
+      "id": "493f2639-0969-4c4a-8d8a-bb2f0fcddc47",
+      "timestamp": 1784512559.9338412
+    }
+  },
+  {
+    "event_index": 3,
+    "raw_line": "{\"content\": {\"parts\": [{\"function_call\": {\"id\": \"adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8\", \"args\": {\"first_name\": \"Julian\", \"last_name\": \"Sterling\"}, \"name\": \"verify_applicant\"}, \"thought_signature\": \"CqUDAY89a19t1N4tM0c2-rSntE8S5fchjFwYQwhAlncl2ae_Hr3RCc3gL6kwGhlDjgMQL5BIjjfXQYWKyHPpeE8ogxZahbfGGmBlreJnHTx6RivBEfxmIXsta7wxaoAK7IVWQZu2dpkJ4Y4RHcty-RJYF8_bXyOryY1hSMztUkpJw03Vx1ncz9hJU9l77x203l2D_kAm0pWuspm8IJOBku1-UsNS14CMoZc8cIJXQOZ1OikgJ_C9F1lgk014JLMyUATUQIpMmg_94CJ-MltuSfpUL-IlsYZfVFXibPhU0mWMi3lSbZxEQRsoQ92LMgBdL-Fhp-MWbv-N0zU6MJRmZO1wKeI703rPRGMccMR514XYAhZqI64i8Mkv3iHCd1iGSEdmNIOA_yiXKFuUj3kRnD4tTwl8_ZpzsBcO6c5Lq6DBLBp1AJZAGkrYJ5yppZer0QE5XruJhdz9i9vA310p4LFBpyZOkXbs_RQgvq7yVziOuOFUEmDR8plpBbJ0evnW9Iqi33uSXef98qdnGmMqfXo15ld40WwH8PClxB6YNg5gxVN0xjuKaw==\"}, {\"function_response\": {\"id\": \"adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8\", \"name\": \"verify_applicant\", \"response\": {\"structuredContent\": {\"verification\": {\"applicant\": {\"title\": \"Registered Nurse - ICU\", \"current_annual_salary\": 92000.0, \"employer\": \"City General Hospital\", \"year_to_date_earnings\": 19200.0, \"employment_status\": \"Active - Full Time\", \"name\": \"Julian A. Sterling\", \"ssn\": \"323-45-6789\", \"start_date\": \"2018-01-10\", \"verification_date\": \"2026-03-13\"}, \"income_summary\": {\"combined_current_salary\": 190000.0, \"confidence\": \"HIGH\", \"income_trend\": \"INCREASING\", \"two_year_average_agi\": 174300.0}, \"source\": \"National Income Verification Database\"}, \"status\": \"success\"}, \"isError\": false, \"content\": [{\"type\": \"text\", \"text\": \"{\\\"status\\\":\\\"success\\\",\\\"verification\\\":{\\\"applicant\\\":{\\\"name\\\":\\\"Julian A. Sterling\\\",\\\"ssn\\\":\\\"323-45-6789\\\",\\\"employer\\\":\\\"City General Hospital\\\",\\\"title\\\":\\\"Registered Nurse - ICU\\\",\\\"employment_status\\\":\\\"Active - Full Time\\\",\\\"start_date\\\":\\\"2018-01-10\\\",\\\"current_annual_salary\\\":92000,\\\"year_to_date_earnings\\\":19200,\\\"verification_date\\\":\\\"2026-03-13\\\"},\\\"income_summary\\\":{\\\"combined_current_salary\\\":190000,\\\"two_year_average_agi\\\":174300,\\\"income_trend\\\":\\\"INCREASING\\\",\\\"confidence\\\":\\\"HIGH\\\"},\\\"source\\\":\\\"National Income Verification Database\\\"}}\"}]}}}, {\"text\": \"Julian Sterling's income has been verified using the `income_verify_applicant` tool.\\n\\n**Applicant Details:**\\n*   **Name:** Julian A. Sterling\\n*   **SSN:** 323-45-6789\\n*   **Employer:** City General Hospital\\n*   **Title:** Registered Nurse - ICU\\n*   **Employment Status:** Active - Full Time\\n*   **Start Date:** 2018-01-10\\n*   **Verification Date:** 2026-03-13\\n\\n**Income Details:**\\n*   **Current Annual Salary:** $92,000 (Source: `income_verify_applicant`)\\n*   **Year-to-Date Earnings:** $19,200 (Source: `income_verify_applicant`)\\n\\n**Income Summary (from National Income Verification Database):**\\n*   **Combined Current Salary:** $190,000\\n*   **Two-Year Average AGI:** $174,300\\n*   **Income Trend:** INCREASING\\n*   **Confidence:** HIGH\"}], \"role\": \"model\"}, \"partial\": false, \"custom_metadata\": {\"a2a:task_id\": \"0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9\", \"a2a:context_id\": \"2c846d17-dbef-42fa-857e-4639f05f8765\", \"a2a:request\": {\"kind\": \"message\", \"messageId\": \"f7203857-bf3e-4895-a14c-325c7b4bc204\", \"parts\": [{\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"Can you verify Julian Sterling's income?\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"For context:\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"[root_agent] called tool `transfer_to_agent` with parameters: {'agent_name': 'mortgage_tools_agent'}\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"For context:\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"[root_agent] `transfer_to_agent` tool returned result: {'result': None}\"}], \"role\": \"user\"}, \"a2a:response\": {\"artifacts\": [{\"artifactId\": \"473be4c1-61dd-4b54-89ea-cbdd4f641f6d\", \"description\": \"\", \"metadata\": {\"adk_usage_metadata\": {\"candidatesTokenCount\": 11.0, \"candidatesTokensDetails\": [{\"modality\": \"TEXT\", \"tokenCount\": 11.0}], \"promptTokensDetails\": [{\"modality\": \"TEXT\", \"tokenCount\": 558.0}], \"promptTokenCount\": 558.0, \"totalTokenCount\": 669.0, \"thoughtsTokenCount\": 100.0, \"trafficType\": \"ON_DEMAND\"}, \"adk_author\": \"a2a_mortgage_agent\", \"adk_event_id\": \"3339a477-c4f6-48e0-a70d-0bd17a189927\", \"adk_invocation_id\": \"e-c1fa8c44-dccb-4154-bd60-75e55383c159\"}, \"name\": \"\", \"parts\": [{\"data\": {\"args\": {\"first_name\": \"Julian\", \"last_name\": \"Sterling\"}, \"name\": \"verify_applicant\", \"id\": \"adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8\"}, \"kind\": \"data\", \"metadata\": {\"adk_thought_signature\": \"CqUDAY89a19t1N4tM0c2+rSntE8S5fchjFwYQwhAlncl2ae/Hr3RCc3gL6kwGhlDjgMQL5BIjjfXQYWKyHPpeE8ogxZahbfGGmBlreJnHTx6RivBEfxmIXsta7wxaoAK7IVWQZu2dpkJ4Y4RHcty+RJYF8/bXyOryY1hSMztUkpJw03Vx1ncz9hJU9l77x203l2D/kAm0pWuspm8IJOBku1+UsNS14CMoZc8cIJXQOZ1OikgJ/C9F1lgk014JLMyUATUQIpMmg/94CJ+MltuSfpUL+IlsYZfVFXibPhU0mWMi3lSbZxEQRsoQ92LMgBdL+Fhp+MWbv+N0zU6MJRmZO1wKeI703rPRGMccMR514XYAhZqI64i8Mkv3iHCd1iGSEdmNIOA/yiXKFuUj3kRnD4tTwl8/ZpzsBcO6c5Lq6DBLBp1AJZAGkrYJ5yppZer0QE5XruJhdz9i9vA310p4LFBpyZOkXbs/RQgvq7yVziOuOFUEmDR8plpBbJ0evnW9Iqi33uSXef98qdnGmMqfXo15ld40WwH8PClxB6YNg5gxVN0xjuKaw==\", \"adk_type\": \"function_call\"}}]}, {\"artifactId\": \"6399ad73-4164-4b7e-a498-217ed0bcd606\", \"description\": \"\", \"metadata\": {\"adk_author\": \"a2a_mortgage_agent\", \"adk_event_id\": \"3d2d30a5-71f7-4262-b10d-2818562bb189\", \"adk_invocation_id\": \"e-c1fa8c44-dccb-4154-bd60-75e55383c159\"}, \"name\": \"\", \"parts\": [{\"data\": {\"id\": \"adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8\", \"name\": \"verify_applicant\", \"response\": {\"structuredContent\": {\"verification\": {\"applicant\": {\"title\": \"Registered Nurse - ICU\", \"current_annual_salary\": 92000.0, \"employer\": \"City General Hospital\", \"year_to_date_earnings\": 19200.0, \"employment_status\": \"Active - Full Time\", \"name\": \"Julian A. Sterling\", \"ssn\": \"323-45-6789\", \"start_date\": \"2018-01-10\", \"verification_date\": \"2026-03-13\"}, \"income_summary\": {\"combined_current_salary\": 190000.0, \"confidence\": \"HIGH\", \"income_trend\": \"INCREASING\", \"two_year_average_agi\": 174300.0}, \"source\": \"National Income Verification Database\"}, \"status\": \"success\"}, \"isError\": false, \"content\": [{\"type\": \"text\", \"text\": \"{\\\"status\\\":\\\"success\\\",\\\"verification\\\":{\\\"applicant\\\":{\\\"name\\\":\\\"Julian A. Sterling\\\",\\\"ssn\\\":\\\"323-45-6789\\\",\\\"employer\\\":\\\"City General Hospital\\\",\\\"title\\\":\\\"Registered Nurse - ICU\\\",\\\"employment_status\\\":\\\"Active - Full Time\\\",\\\"start_date\\\":\\\"2018-01-10\\\",\\\"current_annual_salary\\\":92000,\\\"year_to_date_earnings\\\":19200,\\\"verification_date\\\":\\\"2026-03-13\\\"},\\\"income_summary\\\":{\\\"combined_current_salary\\\":190000,\\\"two_year_average_agi\\\":174300,\\\"income_trend\\\":\\\"INCREASING\\\",\\\"confidence\\\":\\\"HIGH\\\"},\\\"source\\\":\\\"National Income Verification Database\\\"}}\"}]}}, \"kind\": \"data\", \"metadata\": {\"adk_type\": \"function_response\"}}]}, {\"artifactId\": \"d2cf9743-4b80-44ad-b913-463fbc9c5c5b\", \"description\": \"\", \"metadata\": {\"adk_usage_metadata\": {\"candidatesTokenCount\": 241.0, \"candidatesTokensDetails\": [{\"modality\": \"TEXT\", \"tokenCount\": 241.0}], \"totalTokenCount\": 1538.0, \"promptTokenCount\": 951.0, \"promptTokensDetails\": [{\"modality\": \"TEXT\", \"tokenCount\": 951.0}], \"thoughtsTokenCount\": 346.0, \"trafficType\": \"ON_DEMAND\"}, \"adk_author\": \"a2a_mortgage_agent\", \"adk_event_id\": \"d532b8de-d15d-4d63-a0d5-62cd62eb3b39\", \"adk_invocation_id\": \"e-c1fa8c44-dccb-4154-bd60-75e55383c159\"}, \"name\": \"\", \"parts\": [{\"kind\": \"text\", \"text\": \"Julian Sterling's income has been verified using the `income_verify_applicant` tool.\\n\\n**Applicant Details:**\\n*   **Name:** Julian A. Sterling\\n*   **SSN:** 323-45-6789\\n*   **Employer:** City General Hospital\\n*   **Title:** Registered Nurse - ICU\\n*   **Employment Status:** Active - Full Time\\n*   **Start Date:** 2018-01-10\\n*   **Verification Date:** 2026-03-13\\n\\n**Income Details:**\\n*   **Current Annual Salary:** $92,000 (Source: `income_verify_applicant`)\\n*   **Year-to-Date Earnings:** $19,200 (Source: `income_verify_applicant`)\\n\\n**Income Summary (from National Income Verification Database):**\\n*   **Combined Current Salary:** $190,000\\n*   **Two-Year Average AGI:** $174,300\\n*   **Income Trend:** INCREASING\\n*   **Confidence:** HIGH\"}]}], \"contextId\": \"2c846d17-dbef-42fa-857e-4639f05f8765\", \"history\": [{\"contextId\": \"2c846d17-dbef-42fa-857e-4639f05f8765\", \"kind\": \"message\", \"messageId\": \"f7203857-bf3e-4895-a14c-325c7b4bc204\", \"metadata\": {}, \"parts\": [{\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"Can you verify Julian Sterling's income?\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"For context:\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"[root_agent] called tool `transfer_to_agent` with parameters: {'agent_name': 'mortgage_tools_agent'}\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"For context:\"}, {\"kind\": \"text\", \"metadata\": {\"is_user_input\": true}, \"text\": \"[root_agent] `transfer_to_agent` tool returned result: {'result': None}\"}], \"role\": \"user\", \"taskId\": \"0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9\"}], \"id\": \"0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9\", \"kind\": \"task\", \"metadata\": {\"adk_session_id\": \"2c846d17-dbef-42fa-857e-4639f05f8765\", \"https://google.github.io/adk-docs/a2a/a2a-extension/\": {\"adk_agent_executor_v2\": true}, \"adk_user_id\": \"A2A_USER_2c846d17-dbef-42fa-857e-4639f05f8765\", \"adk_app_name\": \"agent\"}, \"status\": {\"message\": {\"kind\": \"message\", \"messageId\": \"\", \"metadata\": {}, \"parts\": [], \"role\": \"agent\"}, \"state\": \"completed\"}}}, \"invocation_id\": \"e-7d91e28a-b704-4ce9-b225-8480809ebc77\", \"author\": \"mortgage_tools_agent\", \"actions\": {\"state_delta\": {}, \"artifact_delta\": {}, \"requested_auth_configs\": {}, \"requested_tool_confirmations\": {}}, \"node_info\": {\"path\": \"root_agent@1/mortgage_tools_agent@1\"}, \"id\": \"b54f9fbf-da00-4ef9-8e72-046ad10e7b3c\", \"timestamp\": 1784512566.5449677}",
+    "parsed_json": {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+              "args": {
+                "first_name": "Julian",
+                "last_name": "Sterling"
+              },
+              "name": "verify_applicant"
+            },
+            "thought_signature": "CqUDAY89a19t1N4tM0c2-rSntE8S5fchjFwYQwhAlncl2ae_Hr3RCc3gL6kwGhlDjgMQL5BIjjfXQYWKyHPpeE8ogxZahbfGGmBlreJnHTx6RivBEfxmIXsta7wxaoAK7IVWQZu2dpkJ4Y4RHcty-RJYF8_bXyOryY1hSMztUkpJw03Vx1ncz9hJU9l77x203l2D_kAm0pWuspm8IJOBku1-UsNS14CMoZc8cIJXQOZ1OikgJ_C9F1lgk014JLMyUATUQIpMmg_94CJ-MltuSfpUL-IlsYZfVFXibPhU0mWMi3lSbZxEQRsoQ92LMgBdL-Fhp-MWbv-N0zU6MJRmZO1wKeI703rPRGMccMR514XYAhZqI64i8Mkv3iHCd1iGSEdmNIOA_yiXKFuUj3kRnD4tTwl8_ZpzsBcO6c5Lq6DBLBp1AJZAGkrYJ5yppZer0QE5XruJhdz9i9vA310p4LFBpyZOkXbs_RQgvq7yVziOuOFUEmDR8plpBbJ0evnW9Iqi33uSXef98qdnGmMqfXo15ld40WwH8PClxB6YNg5gxVN0xjuKaw=="
+          },
+          {
+            "function_response": {
+              "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+              "name": "verify_applicant",
+              "response": {
+                "structuredContent": {
+                  "verification": {
+                    "applicant": {
+                      "title": "Registered Nurse - ICU",
+                      "current_annual_salary": 92000.0,
+                      "employer": "City General Hospital",
+                      "year_to_date_earnings": 19200.0,
+                      "employment_status": "Active - Full Time",
+                      "name": "Julian A. Sterling",
+                      "ssn": "323-45-6789",
+                      "start_date": "2018-01-10",
+                      "verification_date": "2026-03-13"
+                    },
+                    "income_summary": {
+                      "combined_current_salary": 190000.0,
+                      "confidence": "HIGH",
+                      "income_trend": "INCREASING",
+                      "two_year_average_agi": 174300.0
+                    },
+                    "source": "National Income Verification Database"
+                  },
+                  "status": "success"
+                },
+                "isError": false,
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\"status\":\"success\",\"verification\":{\"applicant\":{\"name\":\"Julian A. Sterling\",\"ssn\":\"323-45-6789\",\"employer\":\"City General Hospital\",\"title\":\"Registered Nurse - ICU\",\"employment_status\":\"Active - Full Time\",\"start_date\":\"2018-01-10\",\"current_annual_salary\":92000,\"year_to_date_earnings\":19200,\"verification_date\":\"2026-03-13\"},\"income_summary\":{\"combined_current_salary\":190000,\"two_year_average_agi\":174300,\"income_trend\":\"INCREASING\",\"confidence\":\"HIGH\"},\"source\":\"National Income Verification Database\"}}"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "text": "Julian Sterling's income has been verified using the `income_verify_applicant` tool.\n\n**Applicant Details:**\n*   **Name:** Julian A. Sterling\n*   **SSN:** 323-45-6789\n*   **Employer:** City General Hospital\n*   **Title:** Registered Nurse - ICU\n*   **Employment Status:** Active - Full Time\n*   **Start Date:** 2018-01-10\n*   **Verification Date:** 2026-03-13\n\n**Income Details:**\n*   **Current Annual Salary:** $92,000 (Source: `income_verify_applicant`)\n*   **Year-to-Date Earnings:** $19,200 (Source: `income_verify_applicant`)\n\n**Income Summary (from National Income Verification Database):**\n*   **Combined Current Salary:** $190,000\n*   **Two-Year Average AGI:** $174,300\n*   **Income Trend:** INCREASING\n*   **Confidence:** HIGH"
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "custom_metadata": {
+        "a2a:task_id": "0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9",
+        "a2a:context_id": "2c846d17-dbef-42fa-857e-4639f05f8765",
+        "a2a:request": {
+          "kind": "message",
+          "messageId": "f7203857-bf3e-4895-a14c-325c7b4bc204",
+          "parts": [
+            {
+              "kind": "text",
+              "metadata": {
+                "is_user_input": true
+              },
+              "text": "Can you verify Julian Sterling's income?"
+            },
+            {
+              "kind": "text",
+              "metadata": {
+                "is_user_input": true
+              },
+              "text": "For context:"
+            },
+            {
+              "kind": "text",
+              "metadata": {
+                "is_user_input": true
+              },
+              "text": "[root_agent] called tool `transfer_to_agent` with parameters: {'agent_name': 'mortgage_tools_agent'}"
+            },
+            {
+              "kind": "text",
+              "metadata": {
+                "is_user_input": true
+              },
+              "text": "For context:"
+            },
+            {
+              "kind": "text",
+              "metadata": {
+                "is_user_input": true
+              },
+              "text": "[root_agent] `transfer_to_agent` tool returned result: {'result': None}"
+            }
+          ],
+          "role": "user"
+        },
+        "a2a:response": {
+          "artifacts": [
+            {
+              "artifactId": "473be4c1-61dd-4b54-89ea-cbdd4f641f6d",
+              "description": "",
+              "metadata": {
+                "adk_usage_metadata": {
+                  "candidatesTokenCount": 11.0,
+                  "candidatesTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 11.0
+                    }
+                  ],
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 558.0
+                    }
+                  ],
+                  "promptTokenCount": 558.0,
+                  "totalTokenCount": 669.0,
+                  "thoughtsTokenCount": 100.0,
+                  "trafficType": "ON_DEMAND"
+                },
+                "adk_author": "a2a_mortgage_agent",
+                "adk_event_id": "3339a477-c4f6-48e0-a70d-0bd17a189927",
+                "adk_invocation_id": "e-c1fa8c44-dccb-4154-bd60-75e55383c159"
+              },
+              "name": "",
+              "parts": [
+                {
+                  "data": {
+                    "args": {
+                      "first_name": "Julian",
+                      "last_name": "Sterling"
+                    },
+                    "name": "verify_applicant",
+                    "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8"
+                  },
+                  "kind": "data",
+                  "metadata": {
+                    "adk_thought_signature": "CqUDAY89a19t1N4tM0c2+rSntE8S5fchjFwYQwhAlncl2ae/Hr3RCc3gL6kwGhlDjgMQL5BIjjfXQYWKyHPpeE8ogxZahbfGGmBlreJnHTx6RivBEfxmIXsta7wxaoAK7IVWQZu2dpkJ4Y4RHcty+RJYF8/bXyOryY1hSMztUkpJw03Vx1ncz9hJU9l77x203l2D/kAm0pWuspm8IJOBku1+UsNS14CMoZc8cIJXQOZ1OikgJ/C9F1lgk014JLMyUATUQIpMmg/94CJ+MltuSfpUL+IlsYZfVFXibPhU0mWMi3lSbZxEQRsoQ92LMgBdL+Fhp+MWbv+N0zU6MJRmZO1wKeI703rPRGMccMR514XYAhZqI64i8Mkv3iHCd1iGSEdmNIOA/yiXKFuUj3kRnD4tTwl8/ZpzsBcO6c5Lq6DBLBp1AJZAGkrYJ5yppZer0QE5XruJhdz9i9vA310p4LFBpyZOkXbs/RQgvq7yVziOuOFUEmDR8plpBbJ0evnW9Iqi33uSXef98qdnGmMqfXo15ld40WwH8PClxB6YNg5gxVN0xjuKaw==",
+                    "adk_type": "function_call"
+                  }
+                }
+              ]
+            },
+            {
+              "artifactId": "6399ad73-4164-4b7e-a498-217ed0bcd606",
+              "description": "",
+              "metadata": {
+                "adk_author": "a2a_mortgage_agent",
+                "adk_event_id": "3d2d30a5-71f7-4262-b10d-2818562bb189",
+                "adk_invocation_id": "e-c1fa8c44-dccb-4154-bd60-75e55383c159"
+              },
+              "name": "",
+              "parts": [
+                {
+                  "data": {
+                    "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+                    "name": "verify_applicant",
+                    "response": {
+                      "structuredContent": {
+                        "verification": {
+                          "applicant": {
+                            "title": "Registered Nurse - ICU",
+                            "current_annual_salary": 92000.0,
+                            "employer": "City General Hospital",
+                            "year_to_date_earnings": 19200.0,
+                            "employment_status": "Active - Full Time",
+                            "name": "Julian A. Sterling",
+                            "ssn": "323-45-6789",
+                            "start_date": "2018-01-10",
+                            "verification_date": "2026-03-13"
+                          },
+                          "income_summary": {
+                            "combined_current_salary": 190000.0,
+                            "confidence": "HIGH",
+                            "income_trend": "INCREASING",
+                            "two_year_average_agi": 174300.0
+                          },
+                          "source": "National Income Verification Database"
+                        },
+                        "status": "success"
+                      },
+                      "isError": false,
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "{\"status\":\"success\",\"verification\":{\"applicant\":{\"name\":\"Julian A. Sterling\",\"ssn\":\"323-45-6789\",\"employer\":\"City General Hospital\",\"title\":\"Registered Nurse - ICU\",\"employment_status\":\"Active - Full Time\",\"start_date\":\"2018-01-10\",\"current_annual_salary\":92000,\"year_to_date_earnings\":19200,\"verification_date\":\"2026-03-13\"},\"income_summary\":{\"combined_current_salary\":190000,\"two_year_average_agi\":174300,\"income_trend\":\"INCREASING\",\"confidence\":\"HIGH\"},\"source\":\"National Income Verification Database\"}}"
+                        }
+                      ]
+                    }
+                  },
+                  "kind": "data",
+                  "metadata": {
+                    "adk_type": "function_response"
+                  }
+                }
+              ]
+            },
+            {
+              "artifactId": "d2cf9743-4b80-44ad-b913-463fbc9c5c5b",
+              "description": "",
+              "metadata": {
+                "adk_usage_metadata": {
+                  "candidatesTokenCount": 241.0,
+                  "candidatesTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 241.0
+                    }
+                  ],
+                  "totalTokenCount": 1538.0,
+                  "promptTokenCount": 951.0,
+                  "promptTokensDetails": [
+                    {
+                      "modality": "TEXT",
+                      "tokenCount": 951.0
+                    }
+                  ],
+                  "thoughtsTokenCount": 346.0,
+                  "trafficType": "ON_DEMAND"
+                },
+                "adk_author": "a2a_mortgage_agent",
+                "adk_event_id": "d532b8de-d15d-4d63-a0d5-62cd62eb3b39",
+                "adk_invocation_id": "e-c1fa8c44-dccb-4154-bd60-75e55383c159"
+              },
+              "name": "",
+              "parts": [
+                {
+                  "kind": "text",
+                  "text": "Julian Sterling's income has been verified using the `income_verify_applicant` tool.\n\n**Applicant Details:**\n*   **Name:** Julian A. Sterling\n*   **SSN:** 323-45-6789\n*   **Employer:** City General Hospital\n*   **Title:** Registered Nurse - ICU\n*   **Employment Status:** Active - Full Time\n*   **Start Date:** 2018-01-10\n*   **Verification Date:** 2026-03-13\n\n**Income Details:**\n*   **Current Annual Salary:** $92,000 (Source: `income_verify_applicant`)\n*   **Year-to-Date Earnings:** $19,200 (Source: `income_verify_applicant`)\n\n**Income Summary (from National Income Verification Database):**\n*   **Combined Current Salary:** $190,000\n*   **Two-Year Average AGI:** $174,300\n*   **Income Trend:** INCREASING\n*   **Confidence:** HIGH"
+                }
+              ]
+            }
+          ],
+          "contextId": "2c846d17-dbef-42fa-857e-4639f05f8765",
+          "history": [
+            {
+              "contextId": "2c846d17-dbef-42fa-857e-4639f05f8765",
+              "kind": "message",
+              "messageId": "f7203857-bf3e-4895-a14c-325c7b4bc204",
+              "metadata": {},
+              "parts": [
+                {
+                  "kind": "text",
+                  "metadata": {
+                    "is_user_input": true
+                  },
+                  "text": "Can you verify Julian Sterling's income?"
+                },
+                {
+                  "kind": "text",
+                  "metadata": {
+                    "is_user_input": true
+                  },
+                  "text": "For context:"
+                },
+                {
+                  "kind": "text",
+                  "metadata": {
+                    "is_user_input": true
+                  },
+                  "text": "[root_agent] called tool `transfer_to_agent` with parameters: {'agent_name': 'mortgage_tools_agent'}"
+                },
+                {
+                  "kind": "text",
+                  "metadata": {
+                    "is_user_input": true
+                  },
+                  "text": "For context:"
+                },
+                {
+                  "kind": "text",
+                  "metadata": {
+                    "is_user_input": true
+                  },
+                  "text": "[root_agent] `transfer_to_agent` tool returned result: {'result': None}"
+                }
+              ],
+              "role": "user",
+              "taskId": "0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9"
+            }
+          ],
+          "id": "0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9",
+          "kind": "task",
+          "metadata": {
+            "adk_session_id": "2c846d17-dbef-42fa-857e-4639f05f8765",
+            "https://google.github.io/adk-docs/a2a/a2a-extension/": {
+              "adk_agent_executor_v2": true
+            },
+            "adk_user_id": "A2A_USER_2c846d17-dbef-42fa-857e-4639f05f8765",
+            "adk_app_name": "agent"
+          },
+          "status": {
+            "message": {
+              "kind": "message",
+              "messageId": "",
+              "metadata": {},
+              "parts": [],
+              "role": "agent"
+            },
+            "state": "completed"
+          }
+        }
+      },
+      "invocation_id": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+      "author": "mortgage_tools_agent",
+      "actions": {
+        "state_delta": {},
+        "artifact_delta": {},
+        "requested_auth_configs": {},
+        "requested_tool_confirmations": {}
+      },
+      "node_info": {
+        "path": "root_agent@1/mortgage_tools_agent@1"
+      },
+      "id": "b54f9fbf-da00-4ef9-8e72-046ad10e7b3c",
+      "timestamp": 1784512566.5449677
+    }
+  },
+  {
+    "event_type": "get_session_response",
+    "payload": {
+      "output": {
+        "lastUpdateTime": 1784512566.5449677,
+        "events": [
+          {
+            "inputTranscription": null,
+            "finishReason": null,
+            "usageMetadata": null,
+            "partial": null,
+            "outputTranscription": null,
+            "interrupted": null,
+            "author": "user",
+            "turnComplete": null,
+            "actions": {
+              "requestedAuthConfigs": {},
+              "artifactDelta": {},
+              "requestedToolConfirmations": {},
+              "skipSummarization": null,
+              "endOfAgent": null,
+              "rewindBeforeInvocationId": null,
+              "agentState": null,
+              "escalate": null,
+              "setModelResponse": null,
+              "stateDelta": {},
+              "transferToAgent": null,
+              "compaction": null,
+              "route": null,
+              "renderUiWidgets": null
+            },
+            "longRunningToolIds": null,
+            "errorMessage": null,
+            "liveSessionId": null,
+            "content": {
+              "role": "user",
+              "parts": [
+                {
+                  "partMetadata": null,
+                  "mediaResolution": null,
+                  "executableCode": null,
+                  "videoMetadata": null,
+                  "inlineData": null,
+                  "text": "Can you verify Julian Sterling's income?",
+                  "thought": null,
+                  "functionResponse": null,
+                  "toolCall": null,
+                  "codeExecutionResult": null,
+                  "functionCall": null,
+                  "toolResponse": null,
+                  "thoughtSignature": null,
+                  "fileData": null
+                }
+              ]
+            },
+            "isolationScope": null,
+            "liveSessionResumptionUpdate": null,
+            "customMetadata": null,
+            "goAway": null,
+            "modelVersion": null,
+            "nodeInfo": {
+              "messageAsOutput": null,
+              "path": "",
+              "outputFor": null
+            },
+            "logprobsResult": null,
+            "interactionId": null,
+            "branch": null,
+            "environmentId": null,
+            "id": "274bd2f7-5d7c-4b99-9f24-2df37bcbb8dc",
+            "invocationId": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+            "errorCode": null,
+            "citationMetadata": null,
+            "turnCompleteReason": null,
+            "cacheMetadata": null,
+            "groundingMetadata": null,
+            "avgLogprobs": null,
+            "timestamp": 1784512559.1326363,
+            "output": null
+          },
+          {
+            "errorCode": null,
+            "citationMetadata": null,
+            "timestamp": 1784512559.1387317,
+            "output": null,
+            "turnCompleteReason": null,
+            "cacheMetadata": null,
+            "groundingMetadata": null,
+            "avgLogprobs": -0.3862370422908238,
+            "modelVersion": "gemini-2.5-flash",
+            "logprobsResult": null,
+            "interactionId": null,
+            "nodeInfo": {
+              "messageAsOutput": null,
+              "path": "root_agent@1",
+              "outputFor": null
+            },
+            "environmentId": null,
+            "branch": null,
+            "invocationId": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+            "id": "7af0dd06-34f4-4984-8ab3-6f85e4210138",
+            "content": {
+              "parts": [
+                {
+                  "partMetadata": null,
+                  "mediaResolution": null,
+                  "inlineData": null,
+                  "videoMetadata": null,
+                  "executableCode": null,
+                  "text": null,
+                  "thought": null,
+                  "functionResponse": null,
+                  "codeExecutionResult": null,
+                  "toolCall": null,
+                  "fileData": null,
+                  "thoughtSignature": "CsICAY89a1_SIeYR4BVGHTpeqJAS-6bl6h6uQMCz1ShDm09KMysaKDNjDZdrr5dRBT_ihHe2UKi1SaaOAQn0lEpWCn6Z7ZUIfn4plck0CWqmwGDdCI0i7_aLwyaMcJK2VbGrItvwYEZbop8LPXH-XJRQHe-gD5B7OtcPZnVOkLP1XDJad5sHqjNiFR6l-W5JSJmbuURqMdByaFySyLZognGXf525QrvDSqMbAqKKxxnFsIhvfYR2sc614xeajVXS7WZ-uQPSrUTvN_rwT4BWXZb96-Qlwi_ZhHdV1we9OmK-p0SUrUo2i3_yNW5uGRCtASRiczpAFZYA3Y_-cu-rpJRqkbVxseby_teIcD9hK5iYFc_V3OuX1o04P9Gql49Dj-zxuMM24wykT8HQBwALb2EIJ9Pml2WcE8u9f68zoQZQvqSiEg==",
+                  "toolResponse": null,
+                  "functionCall": {
+                    "name": "transfer_to_agent",
+                    "willContinue": null,
+                    "id": "adk-38a945d4-cde0-4e59-8404-e54bb95bcc6c",
+                    "partialArgs": null,
+                    "args": {
+                      "agent_name": "mortgage_tools_agent"
+                    }
+                  }
+                }
+              ],
+              "role": "model"
+            },
+            "actions": {
+              "setModelResponse": null,
+              "stateDelta": {},
+              "transferToAgent": null,
+              "agentState": null,
+              "escalate": null,
+              "route": null,
+              "renderUiWidgets": null,
+              "compaction": null,
+              "artifactDelta": {},
+              "requestedToolConfirmations": {},
+              "requestedAuthConfigs": {},
+              "endOfAgent": null,
+              "rewindBeforeInvocationId": null,
+              "skipSummarization": null
+            },
+            "longRunningToolIds": [],
+            "errorMessage": null,
+            "liveSessionId": null,
+            "isolationScope": null,
+            "customMetadata": null,
+            "liveSessionResumptionUpdate": null,
+            "goAway": null,
+            "finishReason": "STOP",
+            "inputTranscription": null,
+            "partial": null,
+            "outputTranscription": null,
+            "usageMetadata": {
+              "toolUsePromptTokensDetails": null,
+              "candidatesTokenCount": 14,
+              "cacheTokensDetails": null,
+              "trafficType": "ON_DEMAND",
+              "candidatesTokensDetails": [
+                {
+                  "tokenCount": 14,
+                  "modality": "TEXT"
+                }
+              ],
+              "totalTokenCount": 337,
+              "thoughtsTokenCount": 65,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 258
+                }
+              ],
+              "cachedContentTokenCount": null,
+              "promptTokenCount": 258,
+              "toolUsePromptTokenCount": null
+            },
+            "interrupted": null,
+            "author": "root_agent",
+            "turnComplete": null
+          },
+          {
+            "errorCode": null,
+            "groundingMetadata": null,
+            "avgLogprobs": null,
+            "turnCompleteReason": null,
+            "cacheMetadata": null,
+            "timestamp": 1784512559.9338412,
+            "output": null,
+            "citationMetadata": null,
+            "nodeInfo": {
+              "messageAsOutput": null,
+              "path": "root_agent@1",
+              "outputFor": null
+            },
+            "logprobsResult": null,
+            "interactionId": null,
+            "modelVersion": null,
+            "id": "493f2639-0969-4c4a-8d8a-bb2f0fcddc47",
+            "invocationId": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+            "branch": null,
+            "environmentId": null,
+            "isolationScope": null,
+            "longRunningToolIds": null,
+            "errorMessage": null,
+            "liveSessionId": null,
+            "actions": {
+              "setModelResponse": null,
+              "stateDelta": {},
+              "transferToAgent": "mortgage_tools_agent",
+              "agentState": null,
+              "escalate": null,
+              "route": null,
+              "renderUiWidgets": null,
+              "compaction": null,
+              "artifactDelta": {},
+              "requestedToolConfirmations": {},
+              "requestedAuthConfigs": {},
+              "skipSummarization": null,
+              "endOfAgent": null,
+              "rewindBeforeInvocationId": null
+            },
+            "content": {
+              "parts": [
+                {
+                  "text": null,
+                  "videoMetadata": null,
+                  "executableCode": null,
+                  "inlineData": null,
+                  "partMetadata": null,
+                  "mediaResolution": null,
+                  "toolResponse": null,
+                  "functionCall": null,
+                  "fileData": null,
+                  "thoughtSignature": null,
+                  "toolCall": null,
+                  "codeExecutionResult": null,
+                  "functionResponse": {
+                    "scheduling": null,
+                    "willContinue": null,
+                    "parts": null,
+                    "response": {
+                      "result": null
+                    },
+                    "name": "transfer_to_agent",
+                    "id": "adk-38a945d4-cde0-4e59-8404-e54bb95bcc6c"
+                  },
+                  "thought": null
+                }
+              ],
+              "role": "user"
+            },
+            "goAway": null,
+            "liveSessionResumptionUpdate": null,
+            "customMetadata": null,
+            "inputTranscription": null,
+            "finishReason": null,
+            "author": "root_agent",
+            "turnComplete": null,
+            "interrupted": null,
+            "usageMetadata": null,
+            "partial": null,
+            "outputTranscription": null
+          },
+          {
+            "customMetadata": {
+              "a2a:request": {
+                "role": "user",
+                "parts": [
+                  {
+                    "metadata": {
+                      "is_user_input": true
+                    },
+                    "kind": "text",
+                    "text": "Can you verify Julian Sterling's income?"
+                  },
+                  {
+                    "kind": "text",
+                    "text": "For context:",
+                    "metadata": {
+                      "is_user_input": true
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "text": "[root_agent] called tool `transfer_to_agent` with parameters: {'agent_name': 'mortgage_tools_agent'}",
+                    "metadata": {
+                      "is_user_input": true
+                    }
+                  },
+                  {
+                    "text": "For context:",
+                    "kind": "text",
+                    "metadata": {
+                      "is_user_input": true
+                    }
+                  },
+                  {
+                    "text": "[root_agent] `transfer_to_agent` tool returned result: {'result': None}",
+                    "kind": "text",
+                    "metadata": {
+                      "is_user_input": true
+                    }
+                  }
+                ],
+                "kind": "message",
+                "messageId": "f7203857-bf3e-4895-a14c-325c7b4bc204"
+              },
+              "a2a:task_id": "0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9",
+              "a2a:context_id": "2c846d17-dbef-42fa-857e-4639f05f8765",
+              "a2a:response": {
+                "artifacts": [
+                  {
+                    "parts": [
+                      {
+                        "metadata": {
+                          "adk_thought_signature": "CqUDAY89a19t1N4tM0c2+rSntE8S5fchjFwYQwhAlncl2ae/Hr3RCc3gL6kwGhlDjgMQL5BIjjfXQYWKyHPpeE8ogxZahbfGGmBlreJnHTx6RivBEfxmIXsta7wxaoAK7IVWQZu2dpkJ4Y4RHcty+RJYF8/bXyOryY1hSMztUkpJw03Vx1ncz9hJU9l77x203l2D/kAm0pWuspm8IJOBku1+UsNS14CMoZc8cIJXQOZ1OikgJ/C9F1lgk014JLMyUATUQIpMmg/94CJ+MltuSfpUL+IlsYZfVFXibPhU0mWMi3lSbZxEQRsoQ92LMgBdL+Fhp+MWbv+N0zU6MJRmZO1wKeI703rPRGMccMR514XYAhZqI64i8Mkv3iHCd1iGSEdmNIOA/yiXKFuUj3kRnD4tTwl8/ZpzsBcO6c5Lq6DBLBp1AJZAGkrYJ5yppZer0QE5XruJhdz9i9vA310p4LFBpyZOkXbs/RQgvq7yVziOuOFUEmDR8plpBbJ0evnW9Iqi33uSXef98qdnGmMqfXo15ld40WwH8PClxB6YNg5gxVN0xjuKaw==",
+                          "adk_type": "function_call"
+                        },
+                        "kind": "data",
+                        "data": {
+                          "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+                          "name": "verify_applicant",
+                          "args": {
+                            "last_name": "Sterling",
+                            "first_name": "Julian"
+                          }
+                        }
+                      }
+                    ],
+                    "name": "",
+                    "description": "",
+                    "metadata": {
+                      "adk_event_id": "3339a477-c4f6-48e0-a70d-0bd17a189927",
+                      "adk_invocation_id": "e-c1fa8c44-dccb-4154-bd60-75e55383c159",
+                      "adk_usage_metadata": {
+                        "thoughtsTokenCount": 100,
+                        "promptTokenCount": 558,
+                        "trafficType": "ON_DEMAND",
+                        "candidatesTokensDetails": [
+                          {
+                            "tokenCount": 11,
+                            "modality": "TEXT"
+                          }
+                        ],
+                        "totalTokenCount": 669,
+                        "promptTokensDetails": [
+                          {
+                            "modality": "TEXT",
+                            "tokenCount": 558
+                          }
+                        ],
+                        "candidatesTokenCount": 11
+                      },
+                      "adk_author": "a2a_mortgage_agent"
+                    },
+                    "artifactId": "473be4c1-61dd-4b54-89ea-cbdd4f641f6d"
+                  },
+                  {
+                    "description": "",
+                    "metadata": {
+                      "adk_invocation_id": "e-c1fa8c44-dccb-4154-bd60-75e55383c159",
+                      "adk_author": "a2a_mortgage_agent",
+                      "adk_event_id": "3d2d30a5-71f7-4262-b10d-2818562bb189"
+                    },
+                    "parts": [
+                      {
+                        "kind": "data",
+                        "data": {
+                          "response": {
+                            "content": [
+                              {
+                                "text": "{\"status\":\"success\",\"verification\":{\"applicant\":{\"name\":\"Julian A. Sterling\",\"ssn\":\"323-45-6789\",\"employer\":\"City General Hospital\",\"title\":\"Registered Nurse - ICU\",\"employment_status\":\"Active - Full Time\",\"start_date\":\"2018-01-10\",\"current_annual_salary\":92000,\"year_to_date_earnings\":19200,\"verification_date\":\"2026-03-13\"},\"income_summary\":{\"combined_current_salary\":190000,\"two_year_average_agi\":174300,\"income_trend\":\"INCREASING\",\"confidence\":\"HIGH\"},\"source\":\"National Income Verification Database\"}}",
+                                "type": "text"
+                              }
+                            ],
+                            "structuredContent": {
+                              "status": "success",
+                              "verification": {
+                                "source": "National Income Verification Database",
+                                "applicant": {
+                                  "year_to_date_earnings": 19200,
+                                  "employment_status": "Active - Full Time",
+                                  "title": "Registered Nurse - ICU",
+                                  "current_annual_salary": 92000,
+                                  "name": "Julian A. Sterling",
+                                  "start_date": "2018-01-10",
+                                  "verification_date": "2026-03-13",
+                                  "employer": "City General Hospital",
+                                  "ssn": "323-45-6789"
+                                },
+                                "income_summary": {
+                                  "income_trend": "INCREASING",
+                                  "combined_current_salary": 190000,
+                                  "confidence": "HIGH",
+                                  "two_year_average_agi": 174300
+                                }
+                              }
+                            },
+                            "isError": false
+                          },
+                          "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+                          "name": "verify_applicant"
+                        },
+                        "metadata": {
+                          "adk_type": "function_response"
+                        }
+                      }
+                    ],
+                    "name": "",
+                    "artifactId": "6399ad73-4164-4b7e-a498-217ed0bcd606"
+                  },
+                  {
+                    "artifactId": "d2cf9743-4b80-44ad-b913-463fbc9c5c5b",
+                    "description": "",
+                    "metadata": {
+                      "adk_event_id": "d532b8de-d15d-4d63-a0d5-62cd62eb3b39",
+                      "adk_invocation_id": "e-c1fa8c44-dccb-4154-bd60-75e55383c159",
+                      "adk_usage_metadata": {
+                        "candidatesTokenCount": 241,
+                        "trafficType": "ON_DEMAND",
+                        "candidatesTokensDetails": [
+                          {
+                            "modality": "TEXT",
+                            "tokenCount": 241
+                          }
+                        ],
+                        "promptTokensDetails": [
+                          {
+                            "tokenCount": 951,
+                            "modality": "TEXT"
+                          }
+                        ],
+                        "totalTokenCount": 1538,
+                        "promptTokenCount": 951,
+                        "thoughtsTokenCount": 346
+                      },
+                      "adk_author": "a2a_mortgage_agent"
+                    },
+                    "name": "",
+                    "parts": [
+                      {
+                        "text": "Julian Sterling's income has been verified using the `income_verify_applicant` tool.\n\n**Applicant Details:**\n*   **Name:** Julian A. Sterling\n*   **SSN:** 323-45-6789\n*   **Employer:** City General Hospital\n*   **Title:** Registered Nurse - ICU\n*   **Employment Status:** Active - Full Time\n*   **Start Date:** 2018-01-10\n*   **Verification Date:** 2026-03-13\n\n**Income Details:**\n*   **Current Annual Salary:** $92,000 (Source: `income_verify_applicant`)\n*   **Year-to-Date Earnings:** $19,200 (Source: `income_verify_applicant`)\n\n**Income Summary (from National Income Verification Database):**\n*   **Combined Current Salary:** $190,000\n*   **Two-Year Average AGI:** $174,300\n*   **Income Trend:** INCREASING\n*   **Confidence:** HIGH",
+                        "kind": "text"
+                      }
+                    ]
+                  }
+                ],
+                "status": {
+                  "message": {
+                    "role": "agent",
+                    "metadata": {},
+                    "parts": [],
+                    "messageId": "",
+                    "kind": "message"
+                  },
+                  "state": "completed"
+                },
+                "metadata": {
+                  "adk_app_name": "agent",
+                  "adk_session_id": "2c846d17-dbef-42fa-857e-4639f05f8765",
+                  "https://google.github.io/adk-docs/a2a/a2a-extension/": {
+                    "adk_agent_executor_v2": true
+                  },
+                  "adk_user_id": "A2A_USER_2c846d17-dbef-42fa-857e-4639f05f8765"
+                },
+                "kind": "task",
+                "id": "0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9",
+                "contextId": "2c846d17-dbef-42fa-857e-4639f05f8765",
+                "history": [
+                  {
+                    "taskId": "0b938809-f3df-4b9b-b3dd-8ae1c0f80ec9",
+                    "contextId": "2c846d17-dbef-42fa-857e-4639f05f8765",
+                    "kind": "message",
+                    "messageId": "f7203857-bf3e-4895-a14c-325c7b4bc204",
+                    "role": "user",
+                    "metadata": {},
+                    "parts": [
+                      {
+                        "metadata": {
+                          "is_user_input": true
+                        },
+                        "kind": "text",
+                        "text": "Can you verify Julian Sterling's income?"
+                      },
+                      {
+                        "text": "For context:",
+                        "kind": "text",
+                        "metadata": {
+                          "is_user_input": true
+                        }
+                      },
+                      {
+                        "kind": "text",
+                        "text": "[root_agent] called tool `transfer_to_agent` with parameters: {'agent_name': 'mortgage_tools_agent'}",
+                        "metadata": {
+                          "is_user_input": true
+                        }
+                      },
+                      {
+                        "metadata": {
+                          "is_user_input": true
+                        },
+                        "kind": "text",
+                        "text": "For context:"
+                      },
+                      {
+                        "kind": "text",
+                        "text": "[root_agent] `transfer_to_agent` tool returned result: {'result': None}",
+                        "metadata": {
+                          "is_user_input": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "liveSessionResumptionUpdate": null,
+            "goAway": null,
+            "content": {
+              "parts": [
+                {
+                  "inlineData": null,
+                  "executableCode": null,
+                  "videoMetadata": null,
+                  "partMetadata": null,
+                  "mediaResolution": null,
+                  "text": null,
+                  "functionResponse": null,
+                  "thought": null,
+                  "thoughtSignature": "CqUDAY89a19t1N4tM0c2-rSntE8S5fchjFwYQwhAlncl2ae_Hr3RCc3gL6kwGhlDjgMQL5BIjjfXQYWKyHPpeE8ogxZahbfGGmBlreJnHTx6RivBEfxmIXsta7wxaoAK7IVWQZu2dpkJ4Y4RHcty-RJYF8_bXyOryY1hSMztUkpJw03Vx1ncz9hJU9l77x203l2D_kAm0pWuspm8IJOBku1-UsNS14CMoZc8cIJXQOZ1OikgJ_C9F1lgk014JLMyUATUQIpMmg_94CJ-MltuSfpUL-IlsYZfVFXibPhU0mWMi3lSbZxEQRsoQ92LMgBdL-Fhp-MWbv-N0zU6MJRmZO1wKeI703rPRGMccMR514XYAhZqI64i8Mkv3iHCd1iGSEdmNIOA_yiXKFuUj3kRnD4tTwl8_ZpzsBcO6c5Lq6DBLBp1AJZAGkrYJ5yppZer0QE5XruJhdz9i9vA310p4LFBpyZOkXbs_RQgvq7yVziOuOFUEmDR8plpBbJ0evnW9Iqi33uSXef98qdnGmMqfXo15ld40WwH8PClxB6YNg5gxVN0xjuKaw==",
+                  "fileData": null,
+                  "functionCall": {
+                    "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+                    "partialArgs": null,
+                    "args": {
+                      "last_name": "Sterling",
+                      "first_name": "Julian"
+                    },
+                    "name": "verify_applicant",
+                    "willContinue": null
+                  },
+                  "toolResponse": null,
+                  "codeExecutionResult": null,
+                  "toolCall": null
+                },
+                {
+                  "toolCall": null,
+                  "codeExecutionResult": null,
+                  "functionCall": null,
+                  "toolResponse": null,
+                  "thoughtSignature": null,
+                  "fileData": null,
+                  "thought": null,
+                  "functionResponse": {
+                    "id": "adk-9762e5ea-7ebc-4a0b-89f0-25fa7be493e8",
+                    "response": {
+                      "structuredContent": {
+                        "status": "success",
+                        "verification": {
+                          "source": "National Income Verification Database",
+                          "applicant": {
+                            "verification_date": "2026-03-13",
+                            "employer": "City General Hospital",
+                            "ssn": "323-45-6789",
+                            "start_date": "2018-01-10",
+                            "title": "Registered Nurse - ICU",
+                            "year_to_date_earnings": 19200,
+                            "employment_status": "Active - Full Time",
+                            "name": "Julian A. Sterling",
+                            "current_annual_salary": 92000
+                          },
+                          "income_summary": {
+                            "income_trend": "INCREASING",
+                            "combined_current_salary": 190000,
+                            "confidence": "HIGH",
+                            "two_year_average_agi": 174300
+                          }
+                        }
+                      },
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "{\"status\":\"success\",\"verification\":{\"applicant\":{\"name\":\"Julian A. Sterling\",\"ssn\":\"323-45-6789\",\"employer\":\"City General Hospital\",\"title\":\"Registered Nurse - ICU\",\"employment_status\":\"Active - Full Time\",\"start_date\":\"2018-01-10\",\"current_annual_salary\":92000,\"year_to_date_earnings\":19200,\"verification_date\":\"2026-03-13\"},\"income_summary\":{\"combined_current_salary\":190000,\"two_year_average_agi\":174300,\"income_trend\":\"INCREASING\",\"confidence\":\"HIGH\"},\"source\":\"National Income Verification Database\"}}"
+                        }
+                      ],
+                      "isError": false
+                    },
+                    "name": "verify_applicant",
+                    "scheduling": null,
+                    "willContinue": null,
+                    "parts": null
+                  },
+                  "text": null,
+                  "partMetadata": null,
+                  "mediaResolution": null,
+                  "executableCode": null,
+                  "videoMetadata": null,
+                  "inlineData": null
+                },
+                {
+                  "functionResponse": null,
+                  "thought": null,
+                  "thoughtSignature": null,
+                  "fileData": null,
+                  "functionCall": null,
+                  "toolResponse": null,
+                  "codeExecutionResult": null,
+                  "toolCall": null,
+                  "inlineData": null,
+                  "executableCode": null,
+                  "videoMetadata": null,
+                  "partMetadata": null,
+                  "mediaResolution": null,
+                  "text": "Julian Sterling's income has been verified using the `income_verify_applicant` tool.\n\n**Applicant Details:**\n*   **Name:** Julian A. Sterling\n*   **SSN:** 323-45-6789\n*   **Employer:** City General Hospital\n*   **Title:** Registered Nurse - ICU\n*   **Employment Status:** Active - Full Time\n*   **Start Date:** 2018-01-10\n*   **Verification Date:** 2026-03-13\n\n**Income Details:**\n*   **Current Annual Salary:** $92,000 (Source: `income_verify_applicant`)\n*   **Year-to-Date Earnings:** $19,200 (Source: `income_verify_applicant`)\n\n**Income Summary (from National Income Verification Database):**\n*   **Combined Current Salary:** $190,000\n*   **Two-Year Average AGI:** $174,300\n*   **Income Trend:** INCREASING\n*   **Confidence:** HIGH"
+                }
+              ],
+              "role": "model"
+            },
+            "actions": {
+              "skipSummarization": null,
+              "endOfAgent": null,
+              "rewindBeforeInvocationId": null,
+              "requestedAuthConfigs": {},
+              "artifactDelta": {},
+              "requestedToolConfirmations": {},
+              "compaction": null,
+              "route": null,
+              "renderUiWidgets": null,
+              "agentState": null,
+              "escalate": null,
+              "setModelResponse": null,
+              "stateDelta": {},
+              "transferToAgent": null
+            },
+            "longRunningToolIds": null,
+            "errorMessage": null,
+            "liveSessionId": null,
+            "isolationScope": null,
+            "partial": false,
+            "outputTranscription": null,
+            "usageMetadata": null,
+            "interrupted": null,
+            "author": "mortgage_tools_agent",
+            "turnComplete": null,
+            "finishReason": null,
+            "inputTranscription": null,
+            "citationMetadata": null,
+            "timestamp": 1784512566.5449677,
+            "output": null,
+            "turnCompleteReason": null,
+            "cacheMetadata": null,
+            "groundingMetadata": null,
+            "avgLogprobs": null,
+            "errorCode": null,
+            "environmentId": null,
+            "branch": null,
+            "invocationId": "e-7d91e28a-b704-4ce9-b225-8480809ebc77",
+            "id": "b54f9fbf-da00-4ef9-8e72-046ad10e7b3c",
+            "modelVersion": null,
+            "logprobsResult": null,
+            "interactionId": null,
+            "nodeInfo": {
+              "messageAsOutput": null,
+              "path": "root_agent@1/mortgage_tools_agent@1",
+              "outputFor": null
+            }
+          }
+        ],
+        "appName": "agent",
+        "state": {},
+        "id": "439f2e67-c088-4847-a69f-cff5b50ce79e",
+        "userId": "test-user-123"
+      }
+    }
+  }
+]

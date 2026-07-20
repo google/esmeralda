@@ -34,6 +34,12 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 	@uv sync --all-packages --all-extras
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
+test-agents: ## Fast execution for agent unit tests only
+	@echo "🧪 Running unit tests for ADK Agents..."
+	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/test_remote_agent.py
+	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/test_agent.py
+	@echo "✅ Agent tests passed!"
+
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
 	@uv run --package corporate-email --extra dev pytest apps/services/corporate-email/test_main.py
@@ -41,10 +47,7 @@ test: ## Run unit tests across all workspace members
 	@uv run --package income-verification-api --extra dev pytest apps/services/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
-	@echo "🧪 Running unit tests for mortgage-agent..."
-	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/test_remote_agent.py
-	@echo "🧪 Running unit tests for a2a-mortgage-agent..."
-	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/test_agent.py
+	@$(MAKE) test-agents
 	@echo "✅ All unit tests passed!"
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
@@ -203,9 +206,9 @@ build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
 	gcloud builds submit apps/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:latest
 
-build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j4
+build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j5
 	@echo "🏗️  Building all Cloud Run service containers concurrently..."
-	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong
+	@$(MAKE) -j5 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-circuit-breaker
 	@echo "✅ All service containers successfully built and pushed!"
 
 
@@ -248,7 +251,7 @@ build-service-circuit-breaker: deploy-repo ## Build and push Circuit Breaker ser
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
 	gcloud builds submit apps/services/circuit-breaker --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/circuit-breaker:latest
 
-deploy-governance: build-service-circuit-breaker ## Deploy Stage 5: Governance, Observability & Alerts via Terragrunt
+deploy-governance: ## Deploy Stage 5: Governance, Observability & Alerts via Terragrunt
 	@echo "🏛️  Deploying Stage 5: Governance & Observability Stack..."
 	@cd infrastructure/live/dev/stage-5-governance && terragrunt --non-interactive apply -auto-approve
 	@echo "✨ Stage 5 Governance Stack deployed successfully!"
