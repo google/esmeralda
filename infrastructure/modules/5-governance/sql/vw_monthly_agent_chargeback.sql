@@ -8,14 +8,14 @@ WITH combined_token_events AS (
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.model') AS STRING), 'gemini-2.5-flash') AS model,
     STRUCT(
-      COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.prompt_tokens') AS INT64), 150) AS prompt_tokens,
-      COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.completion_tokens') AS INT64), 85) AS completion_tokens,
-      COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.thoughts_tokens') AS INT64), 20) AS thoughts_tokens,
-      COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.cached_tokens') AS INT64), 0) AS cached_tokens,
-      COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.total_tokens') AS INT64), 255) AS total_tokens
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
+      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.total_tokens') AS INT64) AS total_tokens
     ) AS tokens
   FROM `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
-  WHERE textPayload LIKE '%genai_token_consumption%' OR textPayload LIKE '%POST /api%'
+  WHERE textPayload IS NOT NULL AND textPayload LIKE '%genai_token_consumption%'
 ),
 raw_token_metrics AS (
   SELECT
