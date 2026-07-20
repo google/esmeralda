@@ -42,6 +42,26 @@ WITH combined_requests AS (
     `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
   WHERE
     textPayload IS NOT NULL AND textPayload LIKE '%genai_token_consumption%'
+
+  UNION ALL
+
+  -- 3. Direct jsonPayload Log Stream Extraction (handles SDK log_struct telemetry events)
+  SELECT
+    timestamp,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.session_id') AS STRING) AS session_id,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.user_id') AS STRING) AS user_id,
+    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.execution_path') AS STRING) AS execution_path,
+    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.model') AS STRING), 'gemini-2.5-flash') AS model,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
+    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.total_tokens') AS INT64) AS total_tokens
+  FROM
+    `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
+  WHERE
+    jsonPayload IS NOT NULL AND JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.event') = 'genai_token_consumption'
 )
 SELECT
   timestamp,

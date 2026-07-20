@@ -254,8 +254,7 @@ class EsmeraldaAgentUser(HttpUser):
             "input": {
                 "message": query,
                 "user_id": self.user_id,
-                "session_id": self.session_id,
-                "caller_context": self.team
+                "session_id": self.session_id
             }
         }
 
