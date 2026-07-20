@@ -29,6 +29,7 @@ inputs = {
   ]
   alert_email_address          = "esmeralda.secops@google.com"
   runaway_loop_token_threshold = 50000
+  monitoring_config            = local.env_vars.locals.monitoring_config
 }
 
 

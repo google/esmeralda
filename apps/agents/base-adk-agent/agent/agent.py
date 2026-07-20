@@ -24,5 +24,7 @@ root_agent = Agent(
                 "Delegate all document search, income verification, and email "
                 "operations to the mortgage_tools_agent.",
     sub_agents=[mortgage_tools_agent],
-    plugins=[EsmeraldaTelemetryPlugin(agent_name="root_agent")],
+    plugins=[
+        EsmeraldaTelemetryPlugin(agent_name="root_agent"),
+    ],
 )

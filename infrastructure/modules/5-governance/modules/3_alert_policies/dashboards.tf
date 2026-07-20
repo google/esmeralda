@@ -85,6 +85,25 @@ resource "google_monitoring_dashboard" "agent_golden_signals" {
             }
           ]
         }
+      },
+      {
+        "title": "Ingress Gateway Synthetic Uptime Check Status",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_NEXT_OLDER"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ]
+        }
       }
     ]
   }
@@ -101,6 +120,62 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
   "gridLayout": {
     "columns": "2",
     "widgets": [
+      {
+        "title": "Total LLM Token Consumption Volume",
+        "scorecard": {
+          "timeSeriesQuery": {
+            "timeSeriesFilter": {
+              "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
+              "aggregation": {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_DELTA"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Prompt Cache Hit Token Savings",
+        "scorecard": {
+          "timeSeriesQuery": {
+            "timeSeriesFilter": {
+              "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
+              "aggregation": {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_DELTA"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Gemini 2.5 Reasoning (Thoughts) Tokens",
+        "scorecard": {
+          "timeSeriesQuery": {
+            "timeSeriesFilter": {
+              "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
+              "aggregation": {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_DELTA"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "MCP Tool Executions Count",
+        "scorecard": {
+          "timeSeriesQuery": {
+            "timeSeriesFilter": {
+              "filter": "metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
+              "aggregation": {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_DELTA"
+              }
+            }
+          }
+        }
+      },
       {
         "title": "Real-Time Token Consumption Rate (Tokens/Min)",
         "xyChart": {
@@ -166,6 +241,82 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
                   "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ]
+        }
+      },
+      {
+        "title": "MCP Tool Execution Frequency per Microservice",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "STACKED_BAR"
+            }
+          ]
+        }
+      },
+      {
+        "title": "SecOps: IAM Privilege & Role Modification Rate",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/security/iam_privilege_changes\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ]
+        }
+      },
+      {
+        "title": "SecOps: Secret Manager Access Operations",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/security/secret_access_operations\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ]
+        }
+      },
+      {
+        "title": "SecOps: Reasoning Engine Deployment & Modification Rate",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/security/reasoning_engine_deployments\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
