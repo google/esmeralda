@@ -48,7 +48,9 @@ resource "google_bigquery_table" "vw_monthly_chargeback" {
   project    = var.governance_project_id
 
   view {
-    query          = file("${path.module}/../../sql/vw_monthly_agent_chargeback.sql")
+    query = templatefile("${path.module}/../../sql/vw_monthly_agent_chargeback.sql.tpl", {
+      dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+    })
     use_legacy_sql = false
   }
 
@@ -62,7 +64,9 @@ resource "google_bigquery_table" "vw_request_level_telemetry" {
   project    = var.governance_project_id
 
   view {
-    query          = file("${path.module}/../../sql/vw_request_level_telemetry.sql")
+    query = templatefile("${path.module}/../../sql/vw_request_level_telemetry.sql.tpl", {
+      dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+    })
     use_legacy_sql = false
   }
 

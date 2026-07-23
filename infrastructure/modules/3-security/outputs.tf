@@ -55,5 +55,5 @@ output "kong_sa_email" {
 
 output "telemetry_dataset_id" {
   description = "The BigQuery dataset ID capturing agentic telemetry and audit logs"
-  value       = google_bigquery_dataset.telemetry_logs.dataset_id
+  value       = "esmeralda_telemetry_logs_${var.environment}"
 }

@@ -5,17 +5,17 @@ WITH combined_token_events AS (
   UNION ALL
   SELECT
     timestamp,
-    COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
-    COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.model') AS STRING), 'gemini-2.5-flash') AS model,
+    COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
+    COALESCE(jsonPayload.model, 'gemini-2.5-flash') AS model,
     STRUCT(
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.total_tokens') AS INT64) AS total_tokens
+      CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,
+      CAST(jsonPayload.tokens.completion_tokens AS INT64) AS completion_tokens,
+      CAST(jsonPayload.tokens.thoughts_tokens AS INT64) AS thoughts_tokens,
+      CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
+      CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
     ) AS tokens
-  FROM `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
-  WHERE textPayload IS NOT NULL AND textPayload LIKE '%genai_token_consumption%'
+  FROM `esmeralda_telemetry_logs_dev.reasoning_engine_stdout_*`
+  WHERE jsonPayload.event = 'genai_token_consumption'
 ),
 raw_token_metrics AS (
   SELECT

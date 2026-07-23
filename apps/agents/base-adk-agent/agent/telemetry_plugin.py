@@ -124,23 +124,9 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
         return result
 
     def _emit_telemetry_event(self, payload: dict) -> None:
-        """Emits telemetry events to stdout, logger, and direct Cloud Logging API."""
+        """Emits structured JSON telemetry event to stdout for Cloud Logging collection."""
         log_line = json.dumps(payload)
-        sys.stdout.write(log_line + "\n")
-        sys.stdout.flush()
         logger.info(log_line)
-        try:
-            if not hasattr(self, "_cloud_logger"):
-                import os
-                import google.cloud.logging
-                import google.auth
-                _, project = google.auth.default()
-                client = google.cloud.logging.Client(project=os.getenv("GOOGLE_CLOUD_PROJECT", project))
-                self._cloud_logger = client.logger("reasoning_engine_stdout")
-            if hasattr(self, "_cloud_logger") and self._cloud_logger and not hasattr(self._cloud_logger, "_mock_name"):
-                self._cloud_logger.log_struct(payload)
-        except Exception as e:
-            logger.error("Failed to emit Cloud Logging log_struct: %s", e)
 
     def on_model_finish(self, *args: Any, **kwargs: Any) -> None:
         """Compatibility alias for legacy callers."""

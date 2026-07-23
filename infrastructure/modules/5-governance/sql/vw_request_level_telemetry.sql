@@ -19,49 +19,23 @@ WITH combined_requests AS (
 
   UNION ALL
 
-  -- 2. Real-Time Raw Log Stream Extraction (handles formatted textPayload telemetry events)
+  -- 2. Real-Time Raw Log Stream Extraction (handles structured jsonPayload & textPayload telemetry events)
   SELECT
     timestamp,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.session_id') AS STRING) AS session_id,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.user_id') AS STRING) AS user_id,
-    COALESCE(
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.agent_id') AS STRING),
-      'root_agent'
-    ) AS agent_id,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.execution_path') AS STRING) AS execution_path,
-    COALESCE(
-      SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.model') AS STRING),
-      'gemini-2.5-flash'
-    ) AS model,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
-    SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(SUBSTR(textPayload, STRPOS(textPayload, '{'))), '$.tokens.total_tokens') AS INT64) AS total_tokens
+    jsonPayload.session_id,
+    jsonPayload.user_id,
+    COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
+    jsonPayload.execution_path,
+    COALESCE(jsonPayload.model, 'gemini-2.5-flash') AS model,
+    CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,
+    CAST(jsonPayload.tokens.completion_tokens AS INT64) AS completion_tokens,
+    CAST(jsonPayload.tokens.thoughts_tokens AS INT64) AS thoughts_tokens,
+    CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
+    CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
   FROM
-    `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
+    `esmeralda_telemetry_logs_dev.reasoning_engine_stdout_*`
   WHERE
-    textPayload IS NOT NULL AND textPayload LIKE '%genai_token_consumption%'
-
-  UNION ALL
-
-  -- 3. Direct jsonPayload Log Stream Extraction (handles SDK log_struct telemetry events)
-  SELECT
-    timestamp,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.session_id') AS STRING) AS session_id,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.user_id') AS STRING) AS user_id,
-    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.execution_path') AS STRING) AS execution_path,
-    COALESCE(SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.model') AS STRING), 'gemini-2.5-flash') AS model,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
-    SAFE_CAST(JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.tokens.total_tokens') AS INT64) AS total_tokens
-  FROM
-    `esmeralda_telemetry_logs_dev.aiplatform_googleapis_com_reasoning_engine_stdout_*`
-  WHERE
-    jsonPayload IS NOT NULL AND JSON_VALUE(TO_JSON_STRING(jsonPayload), '$.event') = 'genai_token_consumption'
+    jsonPayload.event = 'genai_token_consumption'
 )
 SELECT
   timestamp,

@@ -40,6 +40,13 @@ test-agents: ## Fast execution for agent unit tests only
 	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/test_agent.py
 	@echo "✅ Agent tests passed!"
 
+test-terraform: ## Run syntax validation for all Terraform modules
+	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
+	@find infrastructure/modules -maxdepth 2 -name "main.tf" -execdir sh -c 'terraform init -backend=false -input=false >/dev/null 2>&1 && terraform validate' \;
+	@echo "✅ Terraform validation passed!"
+
+test-all: test test-terraform ## Run all Python unit tests and Terraform validation
+
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
 	@uv run --package corporate-email --extra dev pytest apps/services/corporate-email/test_main.py
@@ -166,7 +173,7 @@ build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
 	gcloud builds submit apps/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:latest
 
-build-agents: deploy-repo ## Build all BYOC agent containers concurrently via make -j2
+build-agents: test-all deploy-repo ## Build all BYOC agent containers concurrently via make -j2
 	@echo "🏗️  Building all BYOC agent containers concurrently..."
 	@$(MAKE) -j2 build-agent-a2a build-agent-root
 	@echo "✅ All agent containers successfully built and pushed!"
