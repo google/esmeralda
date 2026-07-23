@@ -51,7 +51,7 @@ inputs = {
 
   # Path to application YAML configuration
   agent_config_path     = "${get_repo_root()}/apps/agents/a2a-agent/agent.yaml"
-  agent_card_json       = file("${get_repo_root()}/apps/agents/a2a-agent/agent-card.json")
+  agent_card_json       = jsonencode(yamldecode(file("${get_repo_root()}/apps/agents/a2a-agent/agent.yaml")).agent_card)
 }
 
 

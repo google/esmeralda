@@ -29,7 +29,9 @@ from interceptors import (
     CloudLoggingInterceptor,
     BaggageTelemetryInterceptor,
     TelemetryFlushInterceptor,
+    CallerContextInterceptor,
 )
+
 
 # Configure Logging to stdout
 logging.basicConfig(
@@ -121,6 +123,7 @@ try:
         interceptors=[
             ClientPatchInterceptor(),
             CloudLoggingInterceptor(),
+            CallerContextInterceptor(),
             BaggageTelemetryInterceptor(),
             TelemetryFlushInterceptor(),
         ]

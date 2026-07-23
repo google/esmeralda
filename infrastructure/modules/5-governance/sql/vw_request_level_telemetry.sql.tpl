@@ -8,32 +8,32 @@ WITH combined_requests AS (
     user_id,
     agent_id,
     execution_path,
-    COALESCE(model, 'gemini-2.5-flash') AS model,
+    model,
     tokens.prompt_tokens,
     tokens.completion_tokens,
     tokens.thoughts_tokens,
     tokens.cached_tokens,
     tokens.total_tokens
   FROM
-    `esmeralda_telemetry_logs_dev.genai_token_events`
+    `${dataset_id}.genai_token_events`
 
   UNION ALL
 
-  -- 2. Real-Time Raw Log Stream Extraction (handles structured jsonPayload & textPayload telemetry events)
+  -- 2. Real-Time Raw Log Stream Extraction (handles structured jsonPayload telemetry events)
   SELECT
     timestamp,
     jsonPayload.session_id,
     jsonPayload.user_id,
-    COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
+    jsonPayload.agent_id,
     jsonPayload.execution_path,
-    COALESCE(jsonPayload.model, 'gemini-2.5-flash') AS model,
+    jsonPayload.model,
     CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,
     CAST(jsonPayload.tokens.completion_tokens AS INT64) AS completion_tokens,
     CAST(jsonPayload.tokens.thoughts_tokens AS INT64) AS thoughts_tokens,
     CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
     CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
   FROM
-    `esmeralda_telemetry_logs_dev.reasoning_engine_stdout_*`
+    `${dataset_id}.reasoning_engine_stdout_*`
   WHERE
     jsonPayload.event = 'genai_token_consumption'
 )

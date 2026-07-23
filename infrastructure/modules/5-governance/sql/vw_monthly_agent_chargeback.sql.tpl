@@ -1,12 +1,12 @@
 -- FinOps Monthly Agent Chargeback & TCO Summary SQL View
 -- Connects BigQuery token events to Gemini 2.5 SKU pricing models
 WITH combined_token_events AS (
-  SELECT timestamp, agent_id, model, tokens FROM `esmeralda_telemetry_logs_dev.genai_token_events`
+  SELECT timestamp, agent_id, model, tokens FROM `${dataset_id}.genai_token_events`
   UNION ALL
   SELECT
     timestamp,
-    COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
-    COALESCE(jsonPayload.model, 'gemini-2.5-flash') AS model,
+    jsonPayload.agent_id,
+    jsonPayload.model,
     STRUCT(
       CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,
       CAST(jsonPayload.tokens.completion_tokens AS INT64) AS completion_tokens,
@@ -14,7 +14,7 @@ WITH combined_token_events AS (
       CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
       CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
     ) AS tokens
-  FROM `esmeralda_telemetry_logs_dev.reasoning_engine_stdout_*`
+  FROM `${dataset_id}.reasoning_engine_stdout_*`
   WHERE jsonPayload.event = 'genai_token_consumption'
 ),
 raw_token_metrics AS (
