@@ -48,3 +48,35 @@ labels:
   version: "latest"
 
 framework: a2a
+
+agent_card:
+  name: "a2a-mortgage-agent"
+  description: "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities."
+  version: "1.0.0"
+  default_input_modes:
+    - "text/plain"
+  default_output_modes:
+    - "application/json"
+  capabilities:
+    streaming: false
+  preferred_transport: "HTTP+JSON"
+  supports_authenticated_extended_card: true
+  skills:
+    - id: "document-search"
+      name: "Document Search"
+      description: "Search and retrieve mortgage application documents from the legacy document management system."
+      tags:
+        - "dms"
+        - "documents"
+    - id: "income-verification"
+      name: "Income Verification"
+      description: "Verify applicant income against employer records and tax filings."
+      tags:
+        - "income"
+        - "verification"
+    - id: "corporate-email"
+      name: "Corporate Email"
+      description: "Read corporate email inbox for mortgage-related communications."
+      tags:
+        - "email"
+
