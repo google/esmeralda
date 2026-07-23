@@ -25,6 +25,9 @@ from google.adk.runners import Runner
 from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent
 from google.adk.a2a.executor.a2a_agent_executor_impl import _A2aAgentExecutor
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill
+import a2a.types
+if not hasattr(a2a.types, "TransportProtocol"):
+    setattr(a2a.types, "TransportProtocol", "HTTP+JSON")
 from agent.agent import mortgage_assistant_agent
 from plugins.bq_analytics import create_bq_plugin
 
@@ -156,7 +159,9 @@ def load_agent_card_from_yaml():
     except (ValueError, TypeError):
         for key in ("preferred_transport", "url", "supports_authenticated_extended_card"):
             card_kwargs.pop(key, None)
-        return AgentCard(**card_kwargs)
+        card = AgentCard(**card_kwargs)
+        setattr(card, "preferred_transport", "HTTP+JSON")
+        return card
 
 
 def create_a2a_app():
