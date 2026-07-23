@@ -22,6 +22,7 @@ services:
         preserve_host: false
       - name: ${endpoint.logical_name}-path-route
         paths:
+          - /agents/${endpoint.logical_name}
           - /${endpoint.logical_name}
         strip_path: true
         preserve_host: false
