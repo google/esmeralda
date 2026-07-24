@@ -59,6 +59,7 @@ agent_card:
     - "application/json"
   capabilities:
     streaming: false
+  url: "https://a2a-mortgage-agent.esmeralda.internal/api/a2a"
   preferred_transport: "HTTP+JSON"
   supports_authenticated_extended_card: true
   skills:

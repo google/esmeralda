@@ -37,7 +37,7 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 test-agents: ## Fast execution for agent unit tests only
 	@echo "🧪 Running unit tests for ADK Agents..."
 	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/
-	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/test_agent.py
+	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/
 	@echo "✅ Agent tests passed!"
 
 test-terraform: ## Run syntax validation for all Terraform modules
