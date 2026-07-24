@@ -19,15 +19,33 @@ import traceback
 import yaml
 
 import google.auth
-from google.adk.sessions.in_memory_session_service import InMemorySessionService
-from google.adk.sessions.vertex_ai_session_service import VertexAiSessionService
+from google.adk.sessions import InMemorySessionService, VertexAiSessionService
 from google.adk.runners import Runner
-from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent
-from google.adk.a2a.executor.a2a_agent_executor_impl import _A2aAgentExecutor
-from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 import a2a.types
+try:
+    import a2a.utils
+    _tp = getattr(a2a.utils, "TransportProtocol", None)
+except ImportError:
+    _tp = None
+
+if _tp and not hasattr(_tp, "http_json"):
+    setattr(_tp, "http_json", getattr(_tp, "HTTP_JSON", "HTTP+JSON"))
+
 if not hasattr(a2a.types, "TransportProtocol"):
-    setattr(a2a.types, "TransportProtocol", "HTTP+JSON")
+    if _tp:
+        setattr(a2a.types, "TransportProtocol", _tp)
+    else:
+        class _TransportProtocolShim:
+            http_json = "HTTP+JSON"
+            HTTP_JSON = "HTTP+JSON"
+            JSONRPC = "JSONRPC"
+            def __eq__(self, other):
+                return True
+        setattr(a2a.types, "TransportProtocol", _TransportProtocolShim)
+
+from a2a.types import AgentCard, AgentCapabilities, AgentSkill
+from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
+from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent
 from agent.agent import mortgage_assistant_agent
 from plugins.bq_analytics import create_bq_plugin
 
@@ -68,7 +86,7 @@ class AdkAgentExecutorBuilder:
         self.plugins = plugins or []
 
     def __call__(self):
-        return _A2aAgentExecutor(
+        return A2aAgentExecutor(
             runner=Runner(
                 agent=self.agent,
                 app_name="agent",
@@ -154,13 +172,33 @@ def load_agent_card_from_yaml():
             if "preferred_transport" in card_data:
                 card_kwargs["preferred_transport"] = card_data["preferred_transport"]
 
+    for key in ("preferred_transport", "url", "supports_authenticated_extended_card"):
+        card_kwargs.pop(key, None)
+
+    tp = getattr(a2a.types, "TransportProtocol", None)
+    pref_tp = getattr(tp, "HTTP_JSON", getattr(tp, "http_json", "HTTP+JSON")) if tp else "HTTP+JSON"
+
     try:
-        return AgentCard(url="http://localhost:8080", **card_kwargs)
+        return AgentCard(url="http://localhost:8080", preferred_transport=pref_tp, **card_kwargs)
     except (ValueError, TypeError):
-        for key in ("preferred_transport", "url", "supports_authenticated_extended_card"):
-            card_kwargs.pop(key, None)
+        # Protobuf AgentCard in a2a-sdk 1.1.2
         card = AgentCard(**card_kwargs)
-        setattr(card, "preferred_transport", "HTTP+JSON")
+        # Patch __getattr__ on class if not already done so vertexai templates can read legacy attributes safely
+        if not hasattr(AgentCard, "_legacy_shim_patched"):
+            old_getattr = getattr(AgentCard, "__getattr__", None)
+            def _shim_getattr(self, name):
+                if name == "preferred_transport":
+                    _tp_cls = getattr(a2a.types, "TransportProtocol", None)
+                    return getattr(_tp_cls, "HTTP_JSON", getattr(_tp_cls, "http_json", "HTTP+JSON")) if _tp_cls else "HTTP+JSON"
+                if name == "url":
+                    return "http://localhost:8080"
+                if name == "supports_authenticated_extended_card":
+                    return True
+                if old_getattr:
+                    return old_getattr(self, name)
+                raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+            AgentCard.__getattr__ = _shim_getattr
+            AgentCard._legacy_shim_patched = True
         return card
 
 
