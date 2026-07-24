@@ -19,6 +19,12 @@ from unittest.mock import MagicMock
 
 for mod in [
     "google.adk",
+    "google.adk.sessions",
+    "google.adk.runners",
+    "google.adk.a2a",
+    "google.adk.a2a.executor",
+    "google.adk.a2a.executor.a2a_agent_executor",
+    "google.adk.a2a.executor.a2a_agent_executor_impl",
     "google.adk.agents",
     "google.adk.agents.llm_agent",
     "google.adk.agents.remote_a2a_agent",
