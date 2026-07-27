@@ -125,7 +125,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
         "scorecard": {
           "timeSeriesQuery": {
             "timeSeriesFilter": {
-              "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
+              "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
                 "perSeriesAligner": "ALIGN_DELTA"
@@ -139,7 +139,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
         "scorecard": {
           "timeSeriesQuery": {
             "timeSeriesFilter": {
-              "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
+                  "filter": "metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
                 "perSeriesAligner": "ALIGN_DELTA"
@@ -153,7 +153,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
         "scorecard": {
           "timeSeriesQuery": {
             "timeSeriesFilter": {
-              "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
+                  "filter": "metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
                 "perSeriesAligner": "ALIGN_DELTA"
@@ -183,7 +183,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
+                  "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_DELTA"
@@ -202,7 +202,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
+                  "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_99"
@@ -221,7 +221,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
+                      "filter": "metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
@@ -240,7 +240,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"global\" AND metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
+                      "filter": "metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
