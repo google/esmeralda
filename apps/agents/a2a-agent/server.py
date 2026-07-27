@@ -32,16 +32,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 a2a_agent_obj = create_a2a_app()
+# Preserve url defined under agent_card in agent.yaml before set_up() overwrites it
+yaml_card_url = a2a_agent_obj.agent_card.url
 a2a_agent_obj.set_up()
+if yaml_card_url:
+    a2a_agent_obj.agent_card.url = yaml_card_url
 
 server_app = A2ARESTFastAPIApplication(
     agent_card=a2a_agent_obj.agent_card,
+    extended_agent_card=a2a_agent_obj.agent_card,
     http_handler=a2a_agent_obj.request_handler,
 )
 inner_app = server_app.build()
 
 app = FastAPI(title="A2A Mortgage Agent Server")
-# Mount inner app under both /api/a2a and / for full proxy compatibility
+# Mount inner app under /a2a, /api/a2a, and / for full proxy compatibility
+app.mount("/a2a", inner_app)
 app.mount("/api/a2a", inner_app)
 app.mount("/", inner_app)
 
