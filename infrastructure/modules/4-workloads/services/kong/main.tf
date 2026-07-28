@@ -66,12 +66,25 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
   ]
 
   template {
+    scaling {
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
+    }
+
     service_account = data.google_service_account.kong_sa.email
 
     containers {
       image = var.kong_image
       ports {
         container_port = 8000
+      }
+      resources {
+        limits = {
+          cpu    = var.cpu_limit
+          memory = var.memory_limit
+        }
+        cpu_idle          = true
+        startup_cpu_boost = true
       }
       env {
         name  = "KONG_DATABASE"
