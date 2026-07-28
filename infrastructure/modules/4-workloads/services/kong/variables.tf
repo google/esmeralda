@@ -59,3 +59,28 @@ variable "dns_zone_name" {
   type        = string
   default     = ""
 }
+
+variable "min_instances" {
+  description = "Minimum number of warm instances for zero cold-start latency"
+  type        = number
+  default     = 1
+}
+
+variable "max_instances" {
+  description = "Maximum number of instances for auto-scaling"
+  type        = number
+  default     = 10
+}
+
+variable "cpu_limit" {
+  description = "CPU resource limit allocated to the container"
+  type        = string
+  default     = "1"
+}
+
+variable "memory_limit" {
+  description = "Memory resource limit allocated to the container"
+  type        = string
+  default     = "512Mi"
+}
+
