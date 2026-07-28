@@ -119,7 +119,7 @@ try:
     # Wrap the root agent for Vertex AI Agent Engine deployment with Interceptor Pipeline & Telemetry Plugin
     agent_runtime_app = AgentRuntimeApp(
         agent=root_agent,
-        plugins=[EsmeraldaTelemetryPlugin()],
+        plugins=[],
         interceptors=[
             ClientPatchInterceptor(),
             CloudLoggingInterceptor(),
@@ -134,7 +134,7 @@ try:
     app = App(
         name="base_adk_agent",
         root_agent=root_agent,
-        plugins=[EsmeraldaTelemetryPlugin()],
+        plugins=[],
     )
 
     logger.info("✨ Agent Engine App initialized successfully with Interceptor Pipeline.")
