@@ -36,6 +36,7 @@ class TelemetryEmitter:
         log_line = json.dumps(payload)
         sys.stdout.write(log_line + "\n")
         sys.stdout.flush()
+        print(log_line, flush=True)
 
     def emit_token_consumption(
         self,

@@ -187,7 +187,7 @@ def load_agent_card_from_yaml():
 def create_a2a_app():
     card = load_agent_card_from_yaml()
     from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
-    telemetry_plugin = EsmeraldaTelemetryPlugin(agent_name="a2a_mortgage_agent")
+    telemetry_plugin = EsmeraldaTelemetryPlugin()
     plugins = [bq_logging_plugin, telemetry_plugin] if bq_logging_plugin else [telemetry_plugin]
 
     task_store_builder = None

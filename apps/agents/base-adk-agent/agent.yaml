@@ -28,6 +28,7 @@ resources:
   concurrency: 9
 
 env:
+  AGENT_NAME: "root_agent"
   # --- Resource Identity & Dashboard Triggers ---
   # Essential for grouping traces into the 'Vertex AI' specialized UI
   OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai,gcp.resource_type=reasoning_engine"
