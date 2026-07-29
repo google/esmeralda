@@ -15,8 +15,8 @@ resource "google_logging_project_sink" "central_sinks" {
   project     = each.value
   destination = "bigquery.googleapis.com/projects/${var.governance_project_id}/datasets/${data.google_bigquery_dataset.telemetry_logs.dataset_id}"
 
-  # Filter stdout/stderr logs from Reasoning Engines and Cloud Run microservices
-  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\""
+  # Filter stdout/stderr logs from Reasoning Engines, Cloud Run microservices, and Cloud Audit logs
+  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
 
   bigquery_options {
     use_partitioned_tables = true

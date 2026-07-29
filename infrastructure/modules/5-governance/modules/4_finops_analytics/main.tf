@@ -30,6 +30,51 @@ resource "google_bigquery_table" "unified_telemetry_events" {
 EOF
 }
 
+# Partitioned BigQuery Table for Cloud Audit Activity Logs
+resource "google_bigquery_table" "cloudaudit_activity" {
+  dataset_id          = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  table_id            = "cloudaudit_googleapis_com_activity"
+  project             = var.governance_project_id
+  deletion_protection = false
+
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+
+  schema = <<EOF
+[
+  {"name": "timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {
+    "name": "protopayload_auditlog",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {"name": "serviceName", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "methodName", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "resourceName", "type": "STRING", "mode": "NULLABLE"},
+      {
+        "name": "authenticationInfo",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "principalEmail", "type": "STRING", "mode": "NULLABLE"}
+        ]
+      },
+      {
+        "name": "status",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "message", "type": "STRING", "mode": "NULLABLE"}
+        ]
+      }
+    ]
+  }
+]
+EOF
+}
+
 # Monthly Agent Chargeback View
 resource "google_bigquery_table" "vw_monthly_chargeback" {
   dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
@@ -69,9 +114,11 @@ resource "google_bigquery_table" "vw_security_audit_trail" {
   project    = var.governance_project_id
 
   view {
-    query          = file("${path.module}/../../sql/vw_security_audit_trail.sql")
+    query = templatefile("${path.module}/../../sql/vw_security_audit_trail.sql.tpl", {
+      dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+    })
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.unified_telemetry_events]
+  depends_on = [google_bigquery_table.cloudaudit_activity]
 }
