@@ -26,8 +26,9 @@ resource "google_monitoring_notification_channel" "pubsub_alert" {
 
 # 3. Log-Based Metric: Real-Time Token Consumption
 resource "google_logging_metric" "realtime_token_consumption" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
   name        = "genai/realtime_token_consumption"
-  project     = var.governance_project_id
+  project     = each.value
   filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.total_tokens > 0"
   description = "Real-time delta metric for total token consumption per agent inference request"
 
@@ -62,8 +63,9 @@ resource "google_logging_metric" "realtime_token_consumption" {
 
 # 3b. Log-Based Metric: Cached Tokens Counter
 resource "google_logging_metric" "cached_tokens_counter" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
   name        = "genai/cached_tokens"
-  project     = var.governance_project_id
+  project     = each.value
   filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.cached_tokens > 0"
   description = "Real-time metric for Gemini Context Caching token hits"
 
@@ -93,8 +95,9 @@ resource "google_logging_metric" "cached_tokens_counter" {
 
 # 3c. Log-Based Metric: Prompt Tokens Counter
 resource "google_logging_metric" "prompt_tokens_counter" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
   name        = "genai/prompt_tokens"
-  project     = var.governance_project_id
+  project     = each.value
   filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.prompt_tokens > 0"
   description = "Real-time metric for prompt tokens"
 
@@ -124,8 +127,9 @@ resource "google_logging_metric" "prompt_tokens_counter" {
 
 # 3d. Log-Based Metric: Completion Tokens Counter
 resource "google_logging_metric" "completion_tokens_counter" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
   name        = "genai/completion_tokens"
-  project     = var.governance_project_id
+  project     = each.value
   filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.completion_tokens > 0"
   description = "Real-time metric for response completion tokens"
 
@@ -155,8 +159,9 @@ resource "google_logging_metric" "completion_tokens_counter" {
 
 # 3e. Log-Based Metric: Thoughts / Reasoning Tokens Counter
 resource "google_logging_metric" "thoughts_tokens_counter" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
   name        = "genai/thoughts_tokens"
-  project     = var.governance_project_id
+  project     = each.value
   filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.thoughts_tokens > 0"
   description = "Real-time metric for Gemini 2.5 internal reasoning/thoughts tokens"
 
@@ -269,8 +274,9 @@ EOF
 
 # 6. Log-Based Metric: MCP Tool Execution Frequency & Latency
 resource "google_logging_metric" "mcp_tool_execution_count" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
   name        = "genai/mcp_tool_execution_count"
-  project     = var.governance_project_id
+  project     = each.value
   filter      = "jsonPayload.event=\"mcp_tool_execution\""
   description = "Real-time delta metric tracking execution frequency per MCP tool microservice"
 
@@ -482,4 +488,38 @@ EOF
   ]
 
   depends_on = [google_logging_metric.iam_privilege_changes]
+}
+
+# ------------------------------------------------------------------------------
+# TERRAFORM MOVED BLOCKS (Refactoring metrics into for_each maps)
+# ------------------------------------------------------------------------------
+
+moved {
+  from = google_logging_metric.realtime_token_consumption
+  to   = google_logging_metric.realtime_token_consumption["esmeralda-governance-dev"]
+}
+
+moved {
+  from = google_logging_metric.cached_tokens_counter
+  to   = google_logging_metric.cached_tokens_counter["esmeralda-governance-dev"]
+}
+
+moved {
+  from = google_logging_metric.prompt_tokens_counter
+  to   = google_logging_metric.prompt_tokens_counter["esmeralda-governance-dev"]
+}
+
+moved {
+  from = google_logging_metric.completion_tokens_counter
+  to   = google_logging_metric.completion_tokens_counter["esmeralda-governance-dev"]
+}
+
+moved {
+  from = google_logging_metric.thoughts_tokens_counter
+  to   = google_logging_metric.thoughts_tokens_counter["esmeralda-governance-dev"]
+}
+
+moved {
+  from = google_logging_metric.mcp_tool_execution_count
+  to   = google_logging_metric.mcp_tool_execution_count["esmeralda-governance-dev"]
 }

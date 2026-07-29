@@ -19,3 +19,9 @@ variable "runaway_loop_token_threshold" {
   description = "Single-request token cap threshold to trigger runaway loop alert"
   default     = 50000
 }
+
+variable "spoke_project_ids" {
+  type        = list(string)
+  description = "List of spoke GCP project IDs to deploy log-based metrics to"
+  default     = []
+}
