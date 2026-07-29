@@ -1,0 +1,32 @@
+# ==============================================================================
+# Cloud Build Pipeline: ADK Agents (Root & A2A)
+# Triggers on changes to apps/agents/**
+# ==============================================================================
+
+steps:
+  # ----------------------------------------------------------------------------
+  # Step 1: Lint Python Agent Codebase
+  # ----------------------------------------------------------------------------
+  - name: 'python:3.11-slim'
+    id: 'lint-agent-code'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install --quiet ruff pytest
+        ruff check apps/agents/
+
+  # ----------------------------------------------------------------------------
+  # Step 2: Run Agent Unit Tests
+  # ----------------------------------------------------------------------------
+  - name: 'python:3.11-slim'
+    id: 'test-agent-unit'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install --quiet pytest
+        pytest apps/agents/base-adk-agent/tests/ -v
+
+options:
+  logging: CLOUD_LOGGING_ONLY

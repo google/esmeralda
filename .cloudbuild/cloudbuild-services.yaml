@@ -1,0 +1,78 @@
+# ==============================================================================
+# Cloud Build Pipeline: Microservices & Circuit Breaker (Parallel Builds)
+# Triggers on changes to apps/services/**
+# ==============================================================================
+
+steps:
+  # ----------------------------------------------------------------------------
+  # Parallel Step 1: Build & Push Income Verification Service Container
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-income-verification'
+    waitFor: ['-']
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/income-verification-api:latest'
+      - 'apps/services/income-verification'
+
+  # ----------------------------------------------------------------------------
+  # Parallel Step 2: Build & Push Corporate Email Service Container
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-corporate-email'
+    waitFor: ['-']
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/corporate-email:latest'
+      - 'apps/services/corporate-email'
+
+  # ----------------------------------------------------------------------------
+  # Parallel Step 3: Build & Push Legacy DMS Service Container
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-legacy-dms'
+    waitFor: ['-']
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/legacy-dms:latest'
+      - 'apps/services/legacy-dms'
+
+  # ----------------------------------------------------------------------------
+  # Parallel Step 4: Build & Push Circuit Breaker Service Container
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-circuit-breaker'
+    waitFor: ['-']
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/circuit-breaker:latest'
+      - 'apps/services/circuit-breaker'
+
+  # ----------------------------------------------------------------------------
+  # Step 5: Push Containers to Artifact Registry in Parallel
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-all-containers'
+    waitFor: ['build-income-verification', 'build-corporate-email', 'build-legacy-dms', 'build-circuit-breaker']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/income-verification-api:latest &
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/corporate-email:latest &
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/legacy-dms:latest &
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/circuit-breaker:latest &
+        wait
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/income-verification-api:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/corporate-email:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/legacy-dms:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/circuit-breaker:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

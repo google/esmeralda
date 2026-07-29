@@ -89,3 +89,31 @@ class TestHandleToolError:
         error = RuntimeError("something broke")
         result = _handle_tool_error(tool, {}, MagicMock(), error)
         assert result is None
+
+
+class TestTelemetryPluginCallbacks:
+    def test_after_model_callback_positional_invocation(self):
+        import asyncio
+        from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
+        plugin = EsmeraldaTelemetryPlugin(agent_name="a2a_mortgage_agent")
+        mock_ctx = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.usage_metadata = {
+            "prompt_token_count": 120,
+            "candidates_token_count": 60,
+            "thoughts_token_count": 15,
+            "total_token_count": 195
+        }
+        # Verify positional invocation executes cleanly without TypeError
+        asyncio.run(plugin.after_model_callback(mock_ctx, mock_resp))
+
+    def test_after_tool_callback_positional_invocation(self):
+        import asyncio
+        from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
+        plugin = EsmeraldaTelemetryPlugin(agent_name="a2a_mortgage_agent")
+        mock_tool = MagicMock()
+        mock_tool.name = "income_verify_applicant"
+        mock_ctx = MagicMock()
+        # Verify positional invocation executes cleanly without TypeError
+        res = asyncio.run(plugin.after_tool_callback(mock_tool, {"ssn": "123"}, mock_ctx, {"status": "verified"}))
+        assert res == {"status": "verified"}

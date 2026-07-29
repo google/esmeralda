@@ -39,7 +39,9 @@ def _get_id_token(audience: str) -> str:
         logger.warning("Failed to fetch ID token via google.oauth2 (%s), trying IAM API...", e)
         try:
             import json, urllib.request
+            from google.auth.transport.requests import Request as GoogleAuthRequest
             credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            auth_req = GoogleAuthRequest()
             credentials.refresh(auth_req)
             sa_email = getattr(credentials, "service_account_email", None)
             if not sa_email or sa_email == "default" or sa_email == "-":

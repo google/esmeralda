@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from vertexai import agent_engines
 from google.adk.apps import App
 from agent import root_agent
+from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
 
 from interceptors import (
     BaseInterceptor,
@@ -28,7 +29,9 @@ from interceptors import (
     CloudLoggingInterceptor,
     BaggageTelemetryInterceptor,
     TelemetryFlushInterceptor,
+    CallerContextInterceptor,
 )
+
 
 # Configure Logging to stdout
 logging.basicConfig(
@@ -113,12 +116,14 @@ try:
             for interceptor in reversed(self.interceptors):
                 await interceptor.on_shutdown()
 
-    # Wrap the root agent for Vertex AI Agent Engine deployment with Interceptor Pipeline
+    # Wrap the root agent for Vertex AI Agent Engine deployment with Interceptor Pipeline & Telemetry Plugin
     agent_runtime_app = AgentRuntimeApp(
         agent=root_agent,
+        plugins=[],
         interceptors=[
             ClientPatchInterceptor(),
             CloudLoggingInterceptor(),
+            CallerContextInterceptor(),
             BaggageTelemetryInterceptor(),
             TelemetryFlushInterceptor(),
         ]
@@ -129,6 +134,7 @@ try:
     app = App(
         name="base_adk_agent",
         root_agent=root_agent,
+        plugins=[],
     )
 
     logger.info("✨ Agent Engine App initialized successfully with Interceptor Pipeline.")

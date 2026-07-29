@@ -69,51 +69,19 @@ async def main(user_input: str):
         print(f"❌ Card fetch exception: {e}")
     print("-------------------------------------------------------------------------\n")
 
-    # 2. Send Message via A2A ClientFactory (Direct to Public Endpoint)
-    print("💬 --- 2. SENDING MESSAGE VIA A2A CLIENTFACTORY ---")
-    import httpx
-    from a2a.client import ClientFactory, ClientConfig
-    from a2a.types import TransportProtocol, Message, TextPart
-
-    # Get GCP Auth Bearer Token for Vertex AI Reasoning Engine REST API
-    credentials, _ = google.auth.default()
-    auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)
-    token = credentials.token
-
-    public_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{RESOURCE_NAME}/a2a"
-    print(f"📡 Connecting to Public REST Endpoint: {public_url}")
-    
-    config = ClientConfig(
-        httpx_client=httpx.AsyncClient(timeout=60.0, headers={"Authorization": f"Bearer {token}"}),
-        supported_transports=[TransportProtocol.http_json],
-    )
-    factory = ClientFactory(config)
-    
-    from a2a.types import AgentCard
-    local_card_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agent-card.json")
-    with open(local_card_path, "r") as f:
-        card_data = f.read()
-    
-    card_for_test = AgentCard.model_validate_json(card_data)
-    card_for_test.url = public_url
-    card_for_test.additional_interfaces = None
-    client = factory.create(card_for_test)
-
-    message = Message(
-        message_id=f"remote-test-{uuid.uuid4()}",
-        role="user",
-        parts=[TextPart(text=user_input)],
-    )
-
+    print("💬 --- 2. CALLING ON_MESSAGE_SEND (EXACT DOC SPEC) ---")
     try:
-        response_stream = client.send_message(message)
-        print("\n🤖 Agent Response (Stream):")
-        async for chunk in response_stream:
-            print(chunk)
-        print("\n✅ Message exchange SUCCESSFUL!")
+        message_data = {
+            "messageId": f"remote-test-{uuid.uuid4()}",
+            "role": "user",
+            "parts": [{"kind": "text", "text": user_input}],
+        }
+        response = await remote_agent.on_message_send(**message_data)
+        print("\n🤖 Reasoning Engine Response:")
+        print(response)
+        print("\n✅ Reasoning Engine Execution SUCCESSFUL!")
     except Exception as e:
-        print(f"\n❌ Message exchange error: {e}")
+        print(f"\n❌ Execution error: {e}")
         import traceback
         traceback.print_exc()
     print("-------------------------------------------------------------------------\n")

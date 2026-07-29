@@ -16,7 +16,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -O expand_aliases -lc
 
-.PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-projects deploy-networking deploy-security build-agents deploy-workloads clean preflight
+.PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-projects deploy-networking deploy-security build-agents deploy-workloads build-service-circuit-breaker deploy-governance deploy-all test-governance-chaos clean preflight
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -34,6 +34,19 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 	@uv sync --all-packages --all-extras
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
+test-agents: ## Fast execution for agent unit tests only
+	@echo "🧪 Running unit tests for ADK Agents..."
+	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/
+	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/
+	@echo "✅ Agent tests passed!"
+
+test-terraform: ## Run syntax validation for all Terraform modules
+	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
+	@find infrastructure/modules -maxdepth 2 -name "main.tf" -execdir sh -c 'terraform init -backend=false -input=false >/dev/null 2>&1 && terraform validate' \;
+	@echo "✅ Terraform validation passed!"
+
+test-all: test test-terraform ## Run all Python unit tests and Terraform validation
+
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
 	@uv run --package corporate-email --extra dev pytest apps/services/corporate-email/test_main.py
@@ -41,10 +54,7 @@ test: ## Run unit tests across all workspace members
 	@uv run --package income-verification-api --extra dev pytest apps/services/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
-	@echo "🧪 Running unit tests for mortgage-agent..."
-	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/test_remote_agent.py
-	@echo "🧪 Running unit tests for a2a-mortgage-agent..."
-	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/test_agent.py
+	@$(MAKE) test-agents
 	@echo "✅ All unit tests passed!"
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
@@ -163,7 +173,7 @@ build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
 	gcloud builds submit apps/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:latest
 
-build-agents: deploy-repo ## Build all BYOC agent containers concurrently via make -j2
+build-agents: test-all deploy-repo ## Build all BYOC agent containers concurrently via make -j2
 	@echo "🏗️  Building all BYOC agent containers concurrently..."
 	@$(MAKE) -j2 build-agent-a2a build-agent-root
 	@echo "✅ All agent containers successfully built and pushed!"
@@ -203,20 +213,14 @@ build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
 	gcloud builds submit apps/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:latest
 
-build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j4
+build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j5
 	@echo "🏗️  Building all Cloud Run service containers concurrently..."
-	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong
+	@$(MAKE) -j5 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-circuit-breaker
 	@echo "✅ All service containers successfully built and pushed!"
 
 
 
 build-mcp-servers: build-services ## Alias for backwards compatibility
-
-
-deploy-repo: ## Step 4.1: Deploy Artifact Registry Docker repository
-	@echo "📦 Deploying Artifact Registry repository..."
-	@cd infrastructure/live/dev/stage-4-workloads/services/repository && terragrunt --non-interactive apply -auto-approve
-	@echo "✅ Repository ready!"
 
 deploy-services: ## Step 4.2: Deploy Cloud Run services (corporate-email, income-verification, legacy-dms, kong)
 	@echo "🚀 Deploying Cloud Run Services..."
@@ -246,6 +250,28 @@ deploy-workloads-step-by-step: ## Deploy all Stage 4 workloads using native Terr
 	@echo "✨ All Stage 4 workloads deployed successfully!"
 
 deploy-workloads: build-agents build-services deploy-workloads-step-by-step ## Full automated build and deploy of all Stage 4 workloads
+
+build-service-circuit-breaker: deploy-repo ## Build and push Circuit Breaker service container
+	@echo "🏗️  Building and pushing Circuit Breaker service container..."
+	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
+	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/services/circuit-breaker --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/circuit-breaker:latest
+
+deploy-governance: ## Deploy Stage 5: Governance, Observability & Alerts via Terragrunt
+	@echo "🏛️  Deploying Stage 5: Governance & Observability Stack..."
+	@cd infrastructure/live/dev/stage-5-governance && terragrunt --non-interactive apply -auto-approve
+	@echo "✨ Stage 5 Governance Stack deployed successfully!"
+
+deploy-all: deploy-foundations deploy-workloads deploy-governance ## Full automated deploy of all 5 stages of the Esmeralda platform
+
+test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
+	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
+	@uv run python apps/agents/base-adk-agent/scripts/chaos_telemetry_test.py
+
+load-test-root-agent: ## Run Locust load test against the Root Agent on Vertex AI Reasoning Engines
+	@echo "⚡ Running Locust load test for Root Agent on Vertex AI..."
+	@uv run locust -f apps/agents/base-adk-agent/scripts/locustfile.py --headless -u 5 -r 1 --run-time 1m --host https://us-central1-aiplatform.googleapis.com
 
 clean: ## Clean python virtual environments, caches, and terragrunt cache files recursively
 	@echo "🧹 Cleaning up local caches and environments..."
