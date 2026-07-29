@@ -121,78 +121,59 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
     "columns": "2",
     "widgets": [
       {
-        "title": "Total LLM Token Consumption Volume",
-        "scorecard": {
-          "timeSeriesQuery": {
-            "timeSeriesFilter": {
-              "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
-              "aggregation": {
-                "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA",
-                "crossSeriesReducer": "REDUCE_SUM"
-              }
+        "title": "Total LLM Token Consumption Volume over Time",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesQueryLanguage": "fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/realtime_token_consumption' | align delta(1m) | sum"
+              },
+              "plotType": "LINE"
             }
-          }
+          ]
         }
       },
       {
-        "title": "Prompt Cache Hit Token Savings",
-        "scorecard": {
-          "timeSeriesQuery": {
-            "timeSeriesFilter": {
-              "filter": "metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
-              "aggregation": {
-                "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA",
-                "crossSeriesReducer": "REDUCE_SUM"
-              }
+        "title": "Prompt Cache Hit Token Savings over Time",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesQueryLanguage": "fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/cached_tokens' | align delta(1m) | sum"
+              },
+              "plotType": "LINE"
             }
-          }
+          ]
         }
       },
       {
-        "title": "Gemini 2.5 Reasoning (Thoughts) Tokens",
-        "scorecard": {
-          "timeSeriesQuery": {
-            "timeSeriesFilter": {
-              "filter": "metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
-              "aggregation": {
-                "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA",
-                "crossSeriesReducer": "REDUCE_SUM"
-              }
+        "title": "Gemini 2.5 Reasoning (Thoughts) Tokens over Time",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesQueryLanguage": "fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/thoughts_tokens' | align delta(1m) | sum"
+              },
+              "plotType": "LINE"
             }
-          }
+          ]
         }
       },
       {
-        "title": "MCP Tool Executions Count",
-        "scorecard": {
-          "timeSeriesQuery": {
-            "timeSeriesFilter": {
-              "filter": "metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
-              "aggregation": {
-                "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA",
-                "crossSeriesReducer": "REDUCE_SUM"
-              }
-            }
-          }
-        }
-      },
-      {
-        "title": "Real-Time Token Consumption Rate (Tokens/Min)",
+        "title": "MCP Tool Executions Count over Time",
         "xyChart": {
           "dataSets": [
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
+                  "filter": "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_DELTA",
                     "crossSeriesReducer": "REDUCE_SUM",
-                    "groupByFields": ["metric.label.agent_id"]
+                    "groupByFields": [
+                      "metric.label.tool_name"
+                    ]
                   }
                 }
               },
@@ -208,53 +189,11 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
+                  "filter": "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_99",
                     "crossSeriesReducer": "REDUCE_PERCENTILE_99"
-                  }
-                }
-              },
-              "plotType": "LINE"
-            }
-          ]
-        }
-      },
-      {
-        "title": "Gemini Context Caching Hits (Cached Tokens Rate)",
-        "xyChart": {
-          "dataSets": [
-            {
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
-                  "aggregation": {
-                    "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_DELTA",
-                    "crossSeriesReducer": "REDUCE_SUM",
-                    "groupByFields": ["metric.label.agent_id"]
-                  }
-                }
-              },
-              "plotType": "LINE"
-            }
-          ]
-        }
-      },
-      {
-        "title": "Gemini 2.5 Reasoning / Thoughts Token Consumption Rate",
-        "xyChart": {
-          "dataSets": [
-            {
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
-                  "aggregation": {
-                    "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_DELTA",
-                    "crossSeriesReducer": "REDUCE_SUM",
-                    "groupByFields": ["metric.label.agent_id"]
                   }
                 }
               },
@@ -270,7 +209,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
+                  "filter": "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" AND metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
