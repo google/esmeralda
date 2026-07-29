@@ -1,53 +1,93 @@
-# Centralized Observability, Metrics Dashboards & FinOps Guide
+# Centralized Governance, Observability & FinOps Guide (Stage 5)
 
 ## Overview
 
-Esmeralda centralizes all monitoring, alerting, log archival, and token cost analytics in **`prj-esmeralda-governance`** following a Hub-and-Spoke Telemetry pattern.
+Esmeralda centralizes all platform observability, real-time token cost accounting, security audit logging, PII inspection, and compliance archival into **`prj-esmeralda-governance`** following a Hub-and-Spoke Telemetry Architecture.
 
-```
-                     ┌───────────────────────────────────────────────┐
-                     │          Hub: prj-esmeralda-governance        │
-                     ├───────────────────────────────────────────────┤
-  Spoke Projects ───►│ • Cloud Monitoring Dashboards (Golden Signals)│
-  (Root, A2A,        │ • Real-time FinOps Token Analytics Dashboard   │
-   Gateway, MCPs)    │ • BigQuery Telemetry Dataset & Chargeback View│
-                     │ • Cloud DLP PII Redaction Template           │
-                     │ • Coldline GCS Long-Term Archive Bucket       │
-                     └───────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Spokes["Workload Spoke Projects"]
+        RA["esmeralda-root-agent-3a3d<br/>(Vertex AI Reasoning Engine)"]
+        A2A["esmeralda-a2a-3a3d<br/>(A2A Sub-Agents)"]
+        GW["esmeralda-gateway-3a3d<br/>(Kong / Ingress Gateway)"]
+        MCP["esmeralda-mcps-3a3d<br/>(Cloud Run MCP Tools)"]
+    end
+
+    subgraph Hub["Central Governance Hub: esmeralda-governance-3a3d"]
+        SINK["Central Cloud Logging Sinks<br/>(google_logging_project_sink)"]
+        
+        subgraph BigQuery["BigQuery Dataset: esmeralda_telemetry_logs_dev"]
+            ENV["genai_telemetry_events<br/>(Unified Event Envelope)"]
+            AUDIT_TBL["cloudaudit_googleapis_com_activity<br/>(Cloud Audit Logs)"]
+            STDOUT_TBL["aiplatform_googleapis_com_reasoning_engine_stdout<br/>(Live stdout Stream)"]
+            RUN_TBL["run_googleapis_com_requests<br/>(Cloud Run HTTP Telemetry)"]
+            
+            VW1["vw_monthly_agent_chargeback<br/>(FinOps TCO & Cache ROI)"]
+            VW2["vw_request_level_telemetry<br/>(Turn-by-Turn Cost Breakdown)"]
+            VW3["vw_security_audit_trail<br/>(IAM & Secret SecOps Audit)"]
+        end
+
+        GCS["Coldline GCS Archive Bucket<br/>(7-Year Regulatory Retention)"]
+        
+        subgraph Monitoring["Cloud Monitoring & Safety"]
+            MQL["MQL Token Analytics Dashboard<br/>(Real-Time Token & MCP Charts)"]
+            GOLD["Golden Signals SRE Dashboard<br/>(Latency P95/P99, QPS, Error Rates)"]
+            SLO["SLO Framework<br/>(99.9% Availability, 95% < 1.5s Latency)"]
+            ALERTS["Alert Policies & Pub/Sub<br/>(Runaway Loops, IAM Escalations)"]
+            DLP["Cloud DLP PII Inspection Template<br/>(Email, SSN, Credit Card, Phone)"]
+        end
+    end
+
+    Spokes -->|Stdout/Stderr & Audit Logs| SINK
+    SINK -->|Stream Ingestion| BigQuery
+    SINK -->|Dual-Write Archival| GCS
+    ENV --> VW1 & VW2
+    STDOUT_TBL --> VW1 & VW2
+    AUDIT_TBL --> VW3
+    BigQuery --> Monitoring
 ```
 
 ---
 
-## Provisioned Cloud Monitoring Dashboards (IaC)
+## 1. Telemetry Ingestion & Storage Architecture
 
-### 1. Agent Platform Golden Signals & Health Dashboard
-* **Dashboard ID**: `projects/644727420518/dashboards/9ce0dd33-650e-4c42-acd3-31ab034ab680`
-* **Widgets Included**:
-  1. **Latency Percentiles (P50, P95, P99)**: Tracks Cloud Run container response time distributions.
-  2. **Agent Request Volume & Error Rates**: Monitors HTTP 2xx, 4xx, and 5xx status code rates.
-  3. **Vertex AI Reasoning Engine QPS & 429 Quota Errors**: Real-time monitor for API rate limit exhaustion.
-  4. **Cloud Run Container Concurrency**: Instance count & active requests per revision.
+### Central Logging Sinks (`modules/1_telemetry_sinks`)
+Central Cloud Logging sinks (`google_logging_project_sink.central_sinks`) are deployed across all spoke projects (`esmeralda-root-agent-3a3d`, `esmeralda-a2a-3a3d`, `esmeralda-gateway-3a3d`, `esmeralda-mcps-3a3d`). 
 
-### 2. FinOps & Real-Time Token Budget Dashboard
-* **Dashboard ID**: `projects/644727420518/dashboards/99d5f7a5-fccd-4de2-85c2-d33c68d94b75`
-* **Widgets Included**:
-  1. **Real-Time Token Consumption Rate (Tokens/Min)**: Delta metric extracting total tokens per request.
-  2. **P99 Token Consumption Spike Detector**: Identifies runaway agent reasoning loops exceeding 50,000 tokens/req.
+* **Routing Filter**:
+  ```hcl
+  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
+  ```
+* **Exclusions**: Debug logs (`severity < INFO`) are automatically excluded unless they contain structured `genai_token_consumption` events to optimize BigQuery ingestion costs.
+
+### 7-Year Regulatory Coldline Archival
+* **Bucket Name**: `esmeralda-telemetry-archive-${governance_project_id}`
+* **Storage Class**: `COLDLINE`
+* **Retention Policy**: Enforces a 7-year regulatory compliance hold (`retention_period = 220898400` seconds / 2555 days) with automated lifecycle deletion.
 
 ---
 
-## BigQuery FinOps Chargeback Analytics
+## 2. BigQuery Data Engine (`modules/4_finops_analytics`)
 
-Raw token consumption events are ingested into partitioned BigQuery table `genai_token_events`. 
+Dataset `esmeralda_telemetry_logs_dev` in project `esmeralda-governance-3a3d` hosts native tables and analytical SQL views:
 
-### Summary SQL View: `vw_monthly_agent_chargeback`
-Calculates net monthly chargeback based on Gemini 2.5 Flash pricing:
-- **Uncached Prompt Tokens**: $0.075 per 1M tokens
-- **Cached Prompt Tokens**: $0.01875 per 1M tokens (75% savings)
-- **Response Tokens**: $0.30 per 1M tokens
-- **Reasoning Tokens**: $0.30 per 1M tokens
+### Primary Tables
 
-#### Sample Query:
+| Table ID | Partitioning & Clustering | Description |
+| :--- | :--- | :--- |
+| **`genai_telemetry_events`** | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Unified JSON Event Envelope storing `timestamp`, `event_type`, `session_id`, `user_id`, `agent_id`, `execution_path`, and `payload` (`JSON`). |
+| **`cloudaudit_googleapis_com_activity`** | Partitioned `DAY` (`timestamp`) | Streamed GCP Cloud Audit Activity logs for IAM, Secret Manager, and Reasoning Engine operations. |
+| **`aiplatform_googleapis_com_reasoning_engine_stdout`** | Partitioned `DAY` (`timestamp`) | Real-time stdout stream logs from Vertex AI Reasoning Engines across all agent spoke projects. |
+| **`run_googleapis_com_requests`** | Partitioned `DAY` (`timestamp`) | Cloud Run HTTP request logs (Ingress Gateway and MCP microservices). |
+
+### Analytical Views
+
+#### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
+Calculates monthly agent cost breakdown and context caching savings based on Gemini 2.5 SKU pricing:
+* **Uncached Prompt Tokens**: `$0.075` per 1M tokens
+* **Cached Prompt Tokens**: `$0.01875` per 1M tokens (**75% cost reduction**)
+* **Response & Reasoning Tokens**: `$0.30` per 1M tokens
+
 ```sql
 SELECT 
   billing_month,
@@ -61,20 +101,52 @@ FROM `esmeralda-governance-3a3d.esmeralda_telemetry_logs_dev.vw_monthly_agent_ch
 ORDER BY billing_month DESC;
 ```
 
+#### 2. `vw_request_level_telemetry` (Turn-by-Turn Cost Breakdown)
+Unifies real-time stdout streams and event envelopes to output exact per-request costs (`request_cost_usd`), token counts (`prompt`, `completion`, `thoughts`, `cached`), `execution_path`, and session context.
+
+#### 3. `vw_security_audit_trail` (SecOps Compliance Audit)
+Filters audit logs for security critical methods:
+* `SetIamPolicy`: Tracks IAM role modifications and privilege escalations.
+* `AccessSecretVersion`: Audits Secret Manager credential reads.
+* `ReasoningEngine`: Tracks Reasoning Engine deployments, updates, and deletions.
+
 ---
 
-## Long-Term GCS Archival
+## 3. Provisioned Cloud Monitoring Dashboards (`modules/3_alert_policies`)
 
-All logs routed through central sinks are dual-written to:
-- **GCS Archival Bucket**: `esmeralda-telemetry-archive-esmeralda-governance-3a3d`
-- **Storage Class**: `COLDLINE`
-- **Retention / Lifecycle**: Automated deletion after **365 days**.
+### 1. FinOps Real-Time Token Analytics Dashboard
+* **Dashboard ID**: `projects/644727420518/dashboards/99d5f7a5-fccd-4de2-85c2-d33c68d94b75`
+* **Widgets**:
+  1. **Total LLM Token Consumption Volume over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/realtime_token_consumption' | align delta(1m) | sum`)
+  2. **Prompt Cache Hit Token Savings over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/cached_tokens' | align delta(1m) | sum`)
+  3. **Gemini 2.5 Reasoning (Thoughts) Tokens over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/thoughts_tokens' | align delta(1m) | sum`)
+  4. **MCP Tool Executions Count over Time** (Line Chart: `logging.googleapis.com/user/genai/mcp_tool_execution_count`)
+  5. **P99 Token Consumption Spike (Runaway Loop Detector)** (Line Chart: `ALIGN_PERCENTILE_99`)
+  6. **MCP Execution Frequency Breakdown by Tool Name** (Bar Chart grouped by `metric.label.tool_name`)
+
+### 2. Golden Signals & SRE Health Dashboard
+* **Dashboard ID**: `projects/644727420518/dashboards/9ce0dd33-650e-4c42-acd3-31ab034ab680`
+* **Widgets**: Container Latency P50/P95/P99, HTTP Request Volume, Error Rate Breakdown (2xx/4xx/5xx), Synthetic Uptime Probes, Container Instance Concurrency.
 
 ---
 
-## Active Alert Policies & Automated Remediation
+## 4. Alert Policies, SLOs & DLP Safety (`modules/3_alert_policies`, `modules/2_dlp_inspection`)
 
-| Alert Policy | Threshold | Per-Series Aligner | Target Action |
-| :--- | :--- | :--- | :--- |
-| **Runaway Agent Loop Cap** | `> 50,000 tokens/req` | `ALIGN_PERCENTILE_99` (60s) | Pushes alert to Pub/Sub `esmeralda-monitoring-alerts-dev`. Triggers **Circuit Breaker Service** to isolate session. |
-| **Reasoning Engine Quota** | `> 80 QPS` or HTTP 429 | `ALIGN_RATE` (60s) | Notifies SecOps team email (`esmeralda.secops@google.com`). |
+### Automated Alert Policies
+
+| Alert Policy Name | Filter / Condition | Action / Target |
+| :--- | :--- | :--- |
+| **Runaway Loop Token Cap** | Total tokens > 1,000,000 / min | Pub/Sub Topic `esmeralda-monitoring-alerts-dev` -> Circuit Breaker Service |
+| **P95 Latency Degradation** | Ingress Gateway P95 > 2500ms | Pub/Sub Topic `esmeralda-monitoring-alerts-dev` |
+| **IAM Privilege Escalation** | `protoPayload.methodName:"SetIamPolicy"` | SecOps Pub/Sub Alert |
+| **Secret Access Audit** | `protoPayload.methodName:"AccessSecretVersion"` | SecOps Pub/Sub Alert |
+| **Token Anomaly Spike** | Reasoning Engine Token Spike | Pub/Sub Alert Notification |
+
+### Platform Service Level Objectives (SLOs)
+* **Ingress Gateway Availability SLO**: 99.9% success rate target over a 30-day rolling window.
+* **Ingress Gateway Latency SLO**: 95% of HTTP requests served under 1500ms target over a 30-day rolling window.
+
+### Cloud Data Loss Prevention (DLP) PII Template
+* **Template ID**: `projects/esmeralda-governance-3a3d/locations/global/inspectTemplates/4523020575977087996`
+* **Inspected infoTypes**: `EMAIL_ADDRESS`, `CREDIT_CARD_NUMBER`, `US_SOCIAL_SECURITY_NUMBER`, `PHONE_NUMBER`.
+* **Likelihood Threshold**: `POSSIBLE`.
