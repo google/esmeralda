@@ -42,6 +42,7 @@ module "alert_policies" {
   source                       = "./modules/3_alert_policies"
   environment                  = var.environment
   governance_project_id        = var.governance_project_id
+  spoke_project_ids            = var.spoke_project_ids
   alert_email_address          = var.alert_email_address
   runaway_loop_token_threshold = var.runaway_loop_token_threshold
 }
