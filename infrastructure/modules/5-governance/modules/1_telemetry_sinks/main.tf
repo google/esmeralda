@@ -18,6 +18,10 @@ resource "google_logging_project_sink" "central_sinks" {
   # Filter stdout/stderr logs from Reasoning Engines and Cloud Run microservices
   filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\""
 
+  bigquery_options {
+    use_partitioned_tables = true
+  }
+
   exclusions {
     name        = "exclude-debug-logs"
     description = "Exclude verbose debug log entries to minimize BigQuery ingestion costs"
