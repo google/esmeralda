@@ -19,10 +19,23 @@ resource "google_cloud_run_v2_service" "corporate_email" {
   ]
 
   template {
+    scaling {
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
+    }
+
     containers {
       image = var.container_image
       ports {
         container_port = 8080
+      }
+      resources {
+        limits = {
+          cpu    = var.cpu_limit
+          memory = var.memory_limit
+        }
+        cpu_idle          = true
+        startup_cpu_boost = true
       }
       
       # Inject tracing and telemetry endpoints

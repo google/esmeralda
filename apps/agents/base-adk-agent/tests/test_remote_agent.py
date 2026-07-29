@@ -41,6 +41,32 @@ class TestA2aMetadataProvider:
         metadata = _a2a_metadata_provider(ctx, MagicMock())
         assert metadata == {}
 
+
+class TestTelemetryPluginCallbacks:
+    def test_after_model_callback_positional_invocation(self):
+        from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
+        plugin = EsmeraldaTelemetryPlugin(agent_name="test_agent")
+        mock_ctx = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.usage_metadata = {
+            "prompt_token_count": 100,
+            "candidates_token_count": 50,
+            "thoughts_token_count": 10,
+            "total_token_count": 160
+        }
+        # Verify positional invocation executes cleanly without TypeError
+        asyncio.run(plugin.after_model_callback(mock_ctx, mock_resp))
+
+    def test_after_tool_callback_positional_invocation(self):
+        from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
+        plugin = EsmeraldaTelemetryPlugin(agent_name="test_agent")
+        mock_tool = MagicMock()
+        mock_tool.name = "test_tool"
+        mock_ctx = MagicMock()
+        # Verify positional invocation executes cleanly without TypeError
+        res = asyncio.run(plugin.after_tool_callback(mock_tool, {"arg": "val"}, mock_ctx, {"status": "ok"}))
+        assert res == {"status": "ok"}
+
     def test_returns_empty_when_no_state(self):
         ctx = MagicMock()
         ctx.session.state = None

@@ -54,7 +54,6 @@ async def main(user_input: str):
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     RESOURCE_ID = os.getenv("ROOT_REASONING_ENGINE_ID", "864970954164404224")
     
-    # Reasoning Engine REST API stream URL
     base_url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
     stream_url = f"{base_url}:streamQuery?alt=sse"
 
@@ -70,51 +69,66 @@ async def main(user_input: str):
         "Content-Type": "application/json"
     }
 
-    print("📝 Creating persistent session on Vertex AI Agent Engine...")
-    query_url = f"{base_url}:query"
+    print("📝 1. Provisioning GCP Control Plane Session (Vertex AI Sessions API)...")
+    sessions_api_url = f"{base_url}/sessions"
     create_session_payload = {
-        "class_method": "async_create_session",
-        "input": {
-            "user_id": "test-user-123"
-        }
+        "user_id": "test-user-123"
     }
 
     session_id = None
     async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            resp = await client.post(query_url, json=create_session_payload, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                output = data.get("output", {})
-                if isinstance(output, dict):
-                    session_id = output.get("id") or output.get("name", "").split("/")[-1]
-                print(f"✅ Session Created: {session_id}")
+        resp = await client.post(sessions_api_url, json=create_session_payload, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            operation_name = data.get("name", "")
+            parts = operation_name.split("/")
+            if "sessions" in parts:
+                session_id = parts[parts.index("sessions") + 1]
             else:
-                print(f"⚠️ Create Session returned status {resp.status_code}: {resp.text}")
-        except Exception as e:
-            print(f"⚠️ Create Session call failed: {e}")
+                session_id = parts[-1]
+            print(f"✅ Control Plane Session Provisioned (19-Digit Integer ID: {session_id})")
+        else:
+            print(f"❌ Failed to create session via Control Plane Sessions API: HTTP {resp.status_code} - {resp.text}")
+            sys.exit(1)
+
+    if not session_id:
+        print("❌ Error: Server did not return a valid session ID.")
+        sys.exit(1)
+
+    print("📝 2. Registering 19-Digit Session ID in ADK Agent Runtime (async_create_session)...")
+    query_url = f"{base_url}:query"
+    adk_create_payload = {
+        "class_method": "async_create_session",
+        "input": {
+            "user_id": "test-user-123",
+            "session_id": session_id
+        }
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(query_url, json=adk_create_payload, headers=headers)
+        if resp.status_code == 200:
+            print(f"✅ Session {session_id} successfully registered in ADK Runner SessionStore!")
+        else:
+            print(f"⚠️ ADK session registration returned HTTP {resp.status_code}: {resp.text}")
 
     query_payload = {
         "class_method": "async_stream_query",
         "input": {
             "message": user_input,
             "user_id": "test-user-123",
+            "session_id": session_id
         }
     }
-    if session_id:
-        query_payload["input"]["session_id"] = session_id
 
     print(f"\n📡 Stream Query URL: {stream_url}")
     print(f"💬 Sending query: '{user_input}' (session_id={session_id})")
     print("\n🤖 --- AGENT RESPONSE STREAM ---")
     
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream("POST", stream_url, json=query_payload, headers=headers) as response:
                 if response.status_code != 200:
-                    # Read response body for error details
                     await response.aread()
-
                     print(f"❌ Error HTTP Status: {response.status_code}")
                     print(f"Details: {response.text}")
                     sys.exit(1)
@@ -124,7 +138,6 @@ async def main(user_input: str):
                         data_str = line[5:].strip() if line.startswith("data:") else line.strip()
                         try:
                             data_json = json.loads(data_str)
-                            # Extract text content if present in ADK Event format
                             if isinstance(data_json, dict):
                                 content = data_json.get("content", {})
                                 if isinstance(content, dict) and "parts" in content:
@@ -146,27 +159,6 @@ async def main(user_input: str):
         print(f"\n❌ Error during execution: {e}")
         import traceback
         traceback.print_exc()
-
-    if session_id:
-        print("\n🔍 Fetching persisted session from Vertex AI Agent Engine...")
-        get_session_payload = {
-            "class_method": "async_get_session",
-            "input": {
-                "user_id": "test-user-123",
-                "session_id": session_id
-            }
-        }
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                resp = await client.post(query_url, json=get_session_payload, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    print(f"✅ Session Retrieved Successfully!")
-                    print(json.dumps(data.get("output", {}), indent=2))
-                else:
-                    print(f"⚠️ Get Session returned status {resp.status_code}: {resp.text}")
-            except Exception as e:
-                print(f"⚠️ Get Session call failed: {e}")
 
     print("--------------------------------\n")
 
