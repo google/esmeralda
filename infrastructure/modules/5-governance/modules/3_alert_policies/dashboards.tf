@@ -128,7 +128,8 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
               "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA"
+                "perSeriesAligner": "ALIGN_DELTA",
+                "crossSeriesReducer": "REDUCE_SUM"
               }
             }
           }
@@ -139,10 +140,11 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
         "scorecard": {
           "timeSeriesQuery": {
             "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
+              "filter": "metric.type=\"logging.googleapis.com/user/genai/cached_tokens\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA"
+                "perSeriesAligner": "ALIGN_DELTA",
+                "crossSeriesReducer": "REDUCE_SUM"
               }
             }
           }
@@ -153,10 +155,11 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
         "scorecard": {
           "timeSeriesQuery": {
             "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
+              "filter": "metric.type=\"logging.googleapis.com/user/genai/thoughts_tokens\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA"
+                "perSeriesAligner": "ALIGN_DELTA",
+                "crossSeriesReducer": "REDUCE_SUM"
               }
             }
           }
@@ -170,7 +173,8 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
               "filter": "metric.type=\"logging.googleapis.com/user/genai/mcp_tool_execution_count\"",
               "aggregation": {
                 "alignmentPeriod": "300s",
-                "perSeriesAligner": "ALIGN_DELTA"
+                "perSeriesAligner": "ALIGN_DELTA",
+                "crossSeriesReducer": "REDUCE_SUM"
               }
             }
           }
