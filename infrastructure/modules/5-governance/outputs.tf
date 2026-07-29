@@ -19,6 +19,11 @@ output "token_events_table_id" {
   description = "BigQuery token events table ID"
 }
 
+output "unified_events_table_id" {
+  value       = module.finops_analytics.unified_events_table_id
+  description = "Unified BigQuery telemetry event envelope table ID"
+}
+
 output "chargeback_view_id" {
   value       = module.finops_analytics.chargeback_view_id
   description = "BigQuery FinOps monthly chargeback view ID"

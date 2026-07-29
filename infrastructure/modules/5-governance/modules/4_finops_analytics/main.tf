@@ -41,6 +41,32 @@ resource "google_bigquery_table" "token_events" {
 EOF
 }
 
+# Unified Event Envelope Telemetry Table for Infinite Multi-Event Scaling
+resource "google_bigquery_table" "unified_telemetry_events" {
+  dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  table_id   = "genai_telemetry_events"
+  project    = var.governance_project_id
+
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+
+  clustering = ["event_type", "agent_id", "session_id"]
+
+  schema = <<EOF
+[
+  {"name": "timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "event_type", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "session_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "user_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "agent_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "execution_path", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "payload", "type": "JSON", "mode": "NULLABLE"}
+]
+EOF
+}
+
 # Monthly Agent Chargeback View
 resource "google_bigquery_table" "vw_monthly_chargeback" {
   dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
