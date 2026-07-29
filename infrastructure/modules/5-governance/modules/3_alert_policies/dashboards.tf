@@ -280,63 +280,6 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
             }
           ]
         }
-      },
-      {
-        "title": "SecOps: IAM Privilege & Role Modification Rate",
-        "xyChart": {
-          "dataSets": [
-            {
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/security/iam_privilege_changes\"",
-                  "aggregation": {
-                    "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_RATE"
-                  }
-                }
-              },
-              "plotType": "LINE"
-            }
-          ]
-        }
-      },
-      {
-        "title": "SecOps: Secret Manager Access Operations",
-        "xyChart": {
-          "dataSets": [
-            {
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/security/secret_access_operations\"",
-                  "aggregation": {
-                    "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_RATE"
-                  }
-                }
-              },
-              "plotType": "LINE"
-            }
-          ]
-        }
-      },
-      {
-        "title": "SecOps: Reasoning Engine Deployment & Modification Rate",
-        "xyChart": {
-          "dataSets": [
-            {
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/security/reasoning_engine_deployments\"",
-                  "aggregation": {
-                    "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_RATE"
-                  }
-                }
-              },
-              "plotType": "LINE"
-            }
-          ]
-        }
       }
     ]
   }
