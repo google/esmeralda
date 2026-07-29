@@ -211,7 +211,8 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
                   "filter": "metric.type=\"logging.googleapis.com/user/genai/realtime_token_consumption\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_MAX"
+                    "perSeriesAligner": "ALIGN_PERCENTILE_99",
+                    "crossSeriesReducer": "REDUCE_PERCENTILE_99"
                   }
                 }
               },
