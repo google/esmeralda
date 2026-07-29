@@ -23,6 +23,7 @@ locals {
   }
 
   net_host_apis = [
+    "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "dns.googleapis.com",
     "servicenetworking.googleapis.com",
@@ -33,6 +34,7 @@ locals {
   ]
 
   gateway_apis = [
+    "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "apigee.googleapis.com",
     "certificatemanager.googleapis.com",
@@ -43,6 +45,7 @@ locals {
   ]
 
   cicd_apis = [
+    "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
@@ -52,6 +55,7 @@ locals {
   ]
 
   mcps_apis = [
+    "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "run.googleapis.com",
     "artifactregistry.googleapis.com",
@@ -139,7 +143,11 @@ locals {
     "cloudtrace.googleapis.com",
     "monitoring.googleapis.com",
     "cloudkms.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "dlp.googleapis.com",
+    "pubsub.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "looker.googleapis.com"
   ]
 }
 

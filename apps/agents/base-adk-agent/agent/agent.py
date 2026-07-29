@@ -15,12 +15,17 @@
 import os
 from google.adk.agents import Agent
 from agent.remote_agent import mortgage_tools_agent
+from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
+
+telemetry_plugin = EsmeraldaTelemetryPlugin()
 
 root_agent = Agent(
-    name="root_agent",
+    name=os.getenv("AGENT_NAME", "root_agent"),
     model=os.getenv("MODEL_NAME", "gemini-2.5-flash"),
     instruction="You are a mortgage underwriting assistant coordinator. "
                 "Delegate all document search, income verification, and email "
                 "operations to the mortgage_tools_agent.",
     sub_agents=[mortgage_tools_agent],
+    after_model_callback=telemetry_plugin.after_model_callback,
+    after_tool_callback=telemetry_plugin.after_tool_callback,
 )

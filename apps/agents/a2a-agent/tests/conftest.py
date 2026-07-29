@@ -19,6 +19,12 @@ from unittest.mock import MagicMock
 
 for mod in [
     "google.adk",
+    "google.adk.sessions",
+    "google.adk.runners",
+    "google.adk.a2a",
+    "google.adk.a2a.executor",
+    "google.adk.a2a.executor.a2a_agent_executor",
+    "google.adk.a2a.executor.a2a_agent_executor_impl",
     "google.adk.agents",
     "google.adk.agents.llm_agent",
     "google.adk.agents.remote_a2a_agent",
@@ -27,8 +33,16 @@ for mod in [
     "google.adk.tools.base_tool",
     "google.adk.tools.tool_context",
     "google.adk.tools.mcp_tool",
-    "google.adk.tools.mcp_tool.mcp_session_manager",
     "google.genai",
     "google.genai.types",
 ]:
     sys.modules.setdefault(mod, MagicMock())
+
+class BasePlugin:
+    def __init__(self, name: str = "base"):
+        self.name = name
+
+base_plugin_mod = MagicMock()
+base_plugin_mod.BasePlugin = BasePlugin
+sys.modules.setdefault("google.adk.plugins", base_plugin_mod)
+sys.modules.setdefault("google.adk.plugins.base_plugin", base_plugin_mod)

@@ -31,33 +31,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-if "GOOGLE_CLOUD_PROJECT" not in os.environ:
-    if "GOOGLE_CLOUD_PROJECT" not in os.environ and "PROJECT_ID" in os.environ:
-        os.environ["GOOGLE_CLOUD_PROJECT"] = os.environ["PROJECT_ID"]
-
 a2a_agent_obj = create_a2a_app()
+# Preserve url defined under agent_card in agent.yaml before set_up() overwrites it
+yaml_card_url = a2a_agent_obj.agent_card.url
 a2a_agent_obj.set_up()
+if yaml_card_url:
+    a2a_agent_obj.agent_card.url = yaml_card_url
 
-rest_builder = A2ARESTFastAPIApplication(
+server_app = A2ARESTFastAPIApplication(
     agent_card=a2a_agent_obj.agent_card,
+    extended_agent_card=a2a_agent_obj.agent_card,
     http_handler=a2a_agent_obj.request_handler,
 )
+inner_app = server_app.build()
 
-# Build main app at /api/a2a prefix
-app = rest_builder.build(rpc_url="/api/a2a")
-
-# Mount sub-apps at /a2a and root to handle any proxy path variation
-for prefix in ["/a2a", ""]:
-    sub_app = rest_builder.build(rpc_url=prefix)
-    app.mount(prefix if prefix else "/root_a2a", sub_app)
-
-@app.get("/health")
-@app.get("/")
-def health_check():
-    return {"status": "ok", "agent": a2a_agent_obj.agent_card.name}
-
-logger.info("A2A REST Server initialized on port 8080 with /health probes.")
+app = FastAPI(title="A2A Mortgage Agent Server")
+# Mount inner app under /a2a, /api/a2a, and / for full proxy compatibility
+app.mount("/a2a", inner_app)
+app.mount("/api/a2a", inner_app)
+app.mount("/", inner_app)
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8080"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 8080))
+    host = os.environ.get("HOST", "0.0.0.0")
+    logger.info(f"Starting A2A Mortgage Agent Server on {host}:{port}...")
+    uvicorn.run(app, host=host, port=port)

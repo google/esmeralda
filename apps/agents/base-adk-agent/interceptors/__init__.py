@@ -19,6 +19,7 @@ from interceptors.client_patch import ClientPatchInterceptor
 from interceptors.cloud_logging import CloudLoggingInterceptor
 from interceptors.baggage_telemetry import BaggageTelemetryInterceptor
 from interceptors.telemetry_flush import TelemetryFlushInterceptor
+from interceptors.caller_context import CallerContextInterceptor
 
 __all__ = [
     "BaseInterceptor",
@@ -26,4 +27,6 @@ __all__ = [
     "CloudLoggingInterceptor",
     "BaggageTelemetryInterceptor",
     "TelemetryFlushInterceptor",
+    "CallerContextInterceptor",
 ]
+

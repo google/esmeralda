@@ -447,69 +447,6 @@ resource "google_service_account_iam_member" "test_vm_token_creator" {
   member             = "serviceAccount:${google_service_account.test_vm_sa.email}"
 }
 
-# ====================================================================
-# 4. ENTERPRISE SYSTEM & TELEMETRY COMPLIANCE SINK
-# ====================================================================
-
-# Set up BigQuery Dataset to centralize OpenTelemetry and Gemini executions logs
-resource "google_bigquery_dataset" "telemetry_logs" {
-  dataset_id                  = "esmeralda_telemetry_logs_${var.environment}"
-  project                     = var.governance_project_id
-  location                    = var.region
-  description                 = "Centralized dataset for Esmeralda micro-agent audit and observability logs"
-  default_table_expiration_ms = 2592000000 # 30 Days Retention
-}
-
-locals {
-  monitored_projects = {
-    net_host   = var.net_host_project_id
-    gateway    = var.gateway_project_id
-    cicd       = var.cicd_project_id
-    mcps       = var.mcps_project_id
-    a2a        = var.a2a_project_id
-    root       = var.root_project_id
-    governance = var.governance_project_id
-  }
-}
-
-
-# Deploy Log Sinks across all six isolated project boundaries
-resource "google_logging_project_sink" "central_sinks" {
-  for_each    = local.monitored_projects
-  name        = "esmeralda-central-telemetry-sink-${var.environment}"
-  project     = each.value
-  destination = "bigquery.googleapis.com/projects/${var.governance_project_id}/datasets/${google_bigquery_dataset.telemetry_logs.dataset_id}"
-
-  # Target Vertex AI stdout logs, custom tool traces, and database auditing events
-  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\""
-
-  unique_writer_identity = true
-}
-
-# Authorize each Logging sink writer identity to insert rows into our BigQuery Dataset
-resource "google_bigquery_dataset_iam_member" "dataset_writers" {
-  for_each   = google_logging_project_sink.central_sinks
-  dataset_id = google_bigquery_dataset.telemetry_logs.dataset_id
-  project    = var.governance_project_id
-  role       = "roles/bigquery.dataEditor"
-  member     = each.value.writer_identity
-}
-
-# Grant BigQuery Data Editor permissions to agent service accounts for BigQueryAgentAnalyticsPlugin
-resource "google_bigquery_dataset_iam_member" "a2a_agent_bq_writer" {
-  dataset_id = google_bigquery_dataset.telemetry_logs.dataset_id
-  project    = var.governance_project_id
-  role       = "roles/bigquery.dataEditor"
-  member     = "serviceAccount:sa-esmeralda-a2a-${var.environment}@${var.a2a_project_id}.iam.gserviceaccount.com"
-}
-
-resource "google_bigquery_dataset_iam_member" "root_agent_bq_writer" {
-  dataset_id = google_bigquery_dataset.telemetry_logs.dataset_id
-  project    = var.governance_project_id
-  role       = "roles/bigquery.dataEditor"
-  member     = "serviceAccount:sa-esmeralda-root-${var.environment}@${var.root_project_id}.iam.gserviceaccount.com"
-}
-
 # --------------------------------------------------------------------
 # Direct VPC Egress Subnet User Permissions (AUDIT-01 Fix)
 # --------------------------------------------------------------------

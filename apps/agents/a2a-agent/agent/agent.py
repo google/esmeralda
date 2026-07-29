@@ -27,6 +27,7 @@ from google.genai import types
 
 from agent import USER_AUTH_TOKEN_KEY
 from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
+from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
 from agent.tools import dms_toolset, email_toolset, income_toolset
 
 logger = logging.getLogger(__name__)

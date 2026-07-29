@@ -2,7 +2,7 @@
 
 To maintain a scalable, secure, and resilient enterprise AI agent platform, Esmeralda enforces an opinionated **AgentOps** and **Software Development Lifecycle (SDLC)** strategy. Rather than consolidating the entire system into a monolithic codebase, Esmeralda models the platform as a collection of decoupled, loosely-coupled microservices and reasoning engines. 
 
-This guide details the repository strategy, the cross-team coordination workflows, the automated CI/CD container promotion pipeline, and the operational governance rules required to run Esmeralda at scale.
+This guide details the repository strategy, cross-team coordination workflows, automated CI/CD container promotion pipelines, operational governance rules, [Test Account Provisioning on Spanner](02-creating-test-accounts-on-spanner.md), and [Centralized Observability & Metrics Dashboards](03-centralized-monitoring-and-dashboards.md).
 
 ---
 
