@@ -269,6 +269,10 @@ test-governance-chaos: ## Run local chaos simulation test for governance telemet
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
 	@uv run python apps/agents/base-adk-agent/scripts/chaos_telemetry_test.py
 
+load-test-root-agent: ## Run Locust load test against the Root Agent on Vertex AI Reasoning Engines
+	@echo "⚡ Running Locust load test for Root Agent on Vertex AI..."
+	@uv run locust -f apps/agents/base-adk-agent/scripts/locustfile.py --headless -u 5 -r 1 --run-time 1m --host https://us-central1-aiplatform.googleapis.com
+
 clean: ## Clean python virtual environments, caches, and terragrunt cache files recursively
 	@echo "🧹 Cleaning up local caches and environments..."
 	@rm -rf .venv .uv .pytest_cache
