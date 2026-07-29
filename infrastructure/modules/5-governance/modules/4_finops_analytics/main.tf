@@ -4,43 +4,6 @@ data "google_bigquery_dataset" "telemetry_logs" {
   project    = var.governance_project_id
 }
 
-# Partitioned BigQuery Table for Structured Token Events
-resource "google_bigquery_table" "token_events" {
-  dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
-  table_id   = "genai_token_events"
-  project    = var.governance_project_id
-
-  time_partitioning {
-    type  = "DAY"
-    field = "timestamp"
-  }
-
-  clustering = ["agent_id", "user_id", "model"]
-
-  schema = <<EOF
-[
-  {"name": "timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
-  {"name": "agent_id", "type": "STRING", "mode": "NULLABLE"},
-  {"name": "execution_path", "type": "STRING", "mode": "NULLABLE"},
-  {"name": "session_id", "type": "STRING", "mode": "NULLABLE"},
-  {"name": "user_id", "type": "STRING", "mode": "NULLABLE"},
-  {"name": "model", "type": "STRING", "mode": "NULLABLE"},
-  {
-    "name": "tokens",
-    "type": "RECORD",
-    "mode": "NULLABLE",
-    "fields": [
-      {"name": "prompt_tokens", "type": "INTEGER", "mode": "NULLABLE"},
-      {"name": "completion_tokens", "type": "INTEGER", "mode": "NULLABLE"},
-      {"name": "thoughts_tokens", "type": "INTEGER", "mode": "NULLABLE"},
-      {"name": "cached_tokens", "type": "INTEGER", "mode": "NULLABLE"},
-      {"name": "total_tokens", "type": "INTEGER", "mode": "NULLABLE"}
-    ]
-  }
-]
-EOF
-}
-
 # Unified Event Envelope Telemetry Table for Infinite Multi-Event Scaling
 resource "google_bigquery_table" "unified_telemetry_events" {
   dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
@@ -80,7 +43,7 @@ resource "google_bigquery_table" "vw_monthly_chargeback" {
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.token_events]
+  depends_on = [google_bigquery_table.unified_telemetry_events]
 }
 
 # Per-Request Level Telemetry View (Lists every individual request & session)
@@ -96,7 +59,7 @@ resource "google_bigquery_table" "vw_request_level_telemetry" {
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.token_events]
+  depends_on = [google_bigquery_table.unified_telemetry_events]
 }
 
 # Security & Compliance Audit Trail View (IAM changes, secret accesses, deployments)
@@ -110,5 +73,5 @@ resource "google_bigquery_table" "vw_security_audit_trail" {
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.token_events]
+  depends_on = [google_bigquery_table.unified_telemetry_events]
 }

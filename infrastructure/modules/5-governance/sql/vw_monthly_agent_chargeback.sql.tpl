@@ -1,7 +1,19 @@
 -- FinOps Monthly Agent Chargeback & TCO Summary SQL View
--- Connects BigQuery token events to Gemini 2.5 SKU pricing models
+-- Connects BigQuery telemetry events to Gemini 2.5 SKU pricing models
 WITH combined_token_events AS (
-  SELECT timestamp, agent_id, model, tokens FROM `${dataset_id}.genai_token_events`
+  SELECT
+    timestamp,
+    agent_id,
+    COALESCE(JSON_VALUE(payload, '$.model'), 'gemini-2.5-flash') AS model,
+    STRUCT(
+      CAST(JSON_VALUE(payload, '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
+      CAST(JSON_VALUE(payload, '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
+      CAST(JSON_VALUE(payload, '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
+      CAST(JSON_VALUE(payload, '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
+      CAST(JSON_VALUE(payload, '$.tokens.total_tokens') AS INT64) AS total_tokens
+    ) AS tokens
+  FROM `${dataset_id}.genai_telemetry_events`
+  WHERE event_type = 'genai_token_consumption'
   UNION ALL
   SELECT
     timestamp,
@@ -14,7 +26,7 @@ WITH combined_token_events AS (
       CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
       CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
     ) AS tokens
-  FROM `${dataset_id}.reasoning_engine_stdout_*`
+  FROM `${dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout`
   WHERE jsonPayload.event = 'genai_token_consumption'
 ),
 raw_token_metrics AS (
