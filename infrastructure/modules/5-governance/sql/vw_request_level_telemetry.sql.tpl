@@ -1,25 +1,27 @@
 -- Per-Request Telemetry Detail SQL View
 -- Lists every individual inference turn, session ID, user ID, token count, and cost breakdown
 WITH combined_requests AS (
-  -- 1. Structured Token Events Table
+  -- 1. Unified Telemetry Events Table
   SELECT
     timestamp,
     session_id,
     user_id,
     agent_id,
     execution_path,
-    model,
-    tokens.prompt_tokens,
-    tokens.completion_tokens,
-    tokens.thoughts_tokens,
-    tokens.cached_tokens,
-    tokens.total_tokens
+    JSON_VALUE(payload, '$.model') AS model,
+    CAST(JSON_VALUE(payload, '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
+    CAST(JSON_VALUE(payload, '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
+    CAST(JSON_VALUE(payload, '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
+    CAST(JSON_VALUE(payload, '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
+    CAST(JSON_VALUE(payload, '$.tokens.total_tokens') AS INT64) AS total_tokens
   FROM
-    `${dataset_id}.genai_token_events`
+    `${dataset_id}.genai_telemetry_events`
+  WHERE
+    event_type = 'genai_token_consumption'
 
   UNION ALL
 
-  -- 2. Real-Time Raw Log Stream Extraction (handles structured jsonPayload telemetry events)
+  -- 2. Real-Time Raw Log Stream Extraction
   SELECT
     timestamp,
     jsonPayload.session_id,
@@ -33,7 +35,7 @@ WITH combined_requests AS (
     CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
     CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
   FROM
-    `${dataset_id}.reasoning_engine_stdout_*`
+    `${dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout`
   WHERE
     jsonPayload.event = 'genai_token_consumption'
 )

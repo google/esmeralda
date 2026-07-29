@@ -14,11 +14,6 @@ output "dlp_inspect_template_id" {
   description = "Cloud DLP PII inspection template ID"
 }
 
-output "token_events_table_id" {
-  value       = module.finops_analytics.token_events_table_id
-  description = "BigQuery token events table ID"
-}
-
 output "unified_events_table_id" {
   value       = module.finops_analytics.unified_events_table_id
   description = "Unified BigQuery telemetry event envelope table ID"
