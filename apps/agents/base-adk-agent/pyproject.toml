@@ -27,7 +27,7 @@ dependencies = [
     "opentelemetry-sdk>=1.36.0,<1.45.0",
     "fsspec[gcs]",
     "httpx",
-    "a2a-sdk>=0.3.26,<1.0.0",
+    "a2a-sdk>=0.3.26,<2.0.0",
 ]
 
 [project.optional-dependencies]
