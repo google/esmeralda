@@ -39,4 +39,6 @@ inputs = {
   a2a_run_service_agent     = dependency.projects.outputs.a2a_run_service_agent
   a2a_vertex_service_agent  = dependency.projects.outputs.a2a_vertex_service_agent
   root_vertex_service_agent = dependency.projects.outputs.root_vertex_service_agent
+
+  enable_secure_web_proxy   = false
 }
