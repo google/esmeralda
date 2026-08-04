@@ -1,0 +1,38 @@
+# apps/services/corporate-email/cloudbuild.yaml
+# Cloud Build pipeline for Corporate Email Microservice container build & Agent Registry registration
+
+steps:
+  # Step 1: Build Docker Container
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/corporate-email:latest', '.']
+
+  # Step 2: Push Docker Image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/corporate-email:latest']
+
+  # Step 3: Register/Sync Microservice Endpoint in GCP Agent Registry
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud alpha agent-registry services create corporate-email \
+          --project=${_MCPS_PROJECT_ID} \
+          --location=${_REGION} \
+          --description="FastMCP service providing internal email verification tools" \
+          --protocol-binding=JSONRPC \
+          --url="http://corporate-email.esmeralda.internal:8001/mcp" || \
+        gcloud alpha agent-registry services update corporate-email \
+          --project=${_MCPS_PROJECT_ID} \
+          --location=${_REGION} \
+          --description="FastMCP service providing internal email verification tools" \
+          --protocol-binding=JSONRPC \
+          --url="http://corporate-email.esmeralda.internal:8001/mcp"
+
+substitutions:
+  _REGION: 'us-central1'
+  _CICD_PROJECT_ID: ''
+  _MCPS_PROJECT_ID: ''
+
+options:
+  logging: CLOUD_LOGGING_ONLY

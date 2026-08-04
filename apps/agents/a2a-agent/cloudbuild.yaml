@@ -1,0 +1,38 @@
+# apps/agents/a2a-agent/cloudbuild.yaml
+# Cloud Build pipeline for Mortgage A2A Agent container build & Agent Registry registration
+
+steps:
+  # Step 1: Build Docker Container
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest', '.']
+
+  # Step 2: Push Docker Image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest']
+
+  # Step 3: Register/Sync A2A Agent Endpoint in GCP Agent Registry
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud alpha agent-registry services create mortgage-a2a-agent \
+          --project=${_A2A_PROJECT_ID} \
+          --location=${_REGION} \
+          --description="A2A Agent providing domain mortgage processing capabilities" \
+          --protocol-binding=HTTP_JSON \
+          --url="http://a2a-mortgage-agent.esmeralda.internal:8000/a2a" || \
+        gcloud alpha agent-registry services update mortgage-a2a-agent \
+          --project=${_A2A_PROJECT_ID} \
+          --location=${_REGION} \
+          --description="A2A Agent providing domain mortgage processing capabilities" \
+          --protocol-binding=HTTP_JSON \
+          --url="http://a2a-mortgage-agent.esmeralda.internal:8000/a2a"
+
+substitutions:
+  _REGION: 'us-central1'
+  _CICD_PROJECT_ID: ''
+  _A2A_PROJECT_ID: ''
+
+options:
+  logging: CLOUD_LOGGING_ONLY
