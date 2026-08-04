@@ -1,0 +1,46 @@
+# apps/services/legacy-dms/cloudbuild.yaml
+# Cloud Build pipeline for Legacy DMS Microservice container build & Agent Registry registration across spoke projects
+
+steps:
+  # Step 1: Build Docker Container
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:latest', '.']
+
+  # Step 2: Push Docker Image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:latest']
+
+  # Step 3: Discover agent spoke projects and register/sync endpoint with tool-spec
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
+        echo "Cloud Build discovered spoke projects for registration: $$SPOKE_PROJECTS"
+        for PROJ in $$SPOKE_PROJECTS; do
+          echo "Syncing legacy-dms in project $$PROJ..."
+          gcloud alpha agent-registry services create legacy-dms \
+            --project=$$PROJ \
+            --location=${_REGION} \
+            --display-name="legacy-dms" \
+            --description="FastMCP service providing legacy document management and retrieval tools" \
+            --interfaces="url=http://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+            --mcp-server-spec-type=tool-spec \
+            --mcp-server-spec-content=tools.json || \
+          gcloud alpha agent-registry services update legacy-dms \
+            --project=$$PROJ \
+            --location=${_REGION} \
+            --display-name="legacy-dms" \
+            --description="FastMCP service providing legacy document management and retrieval tools" \
+            --interfaces="url=http://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+            --mcp-server-spec-type=tool-spec \
+            --mcp-server-spec-content=tools.json
+        done
+
+substitutions:
+  _REGION: 'us-central1'
+  _CICD_PROJECT_ID: ''
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Run evals and read the criteria -  
+Evaluate Agents on Gemini Enterprise Agent Platform
+</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title"> 
+Evaluate Agents on Gemini Enterprise Agent Platform
+</div>
+            <h1 class="lesson-title">Run evals and read the criteria</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/tmKUhf51saqebyiwK4DrT9KGpkhlM2Jw" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/tmKUhf51saqebyiwK4DrT9KGpkhlM2Jw</a>
+            </div>
+        </header>
+        <main class="content">
+            <hr class="block-divider" />
+<div class="block-paragraph"><p><span style="font-size: 1.8rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you’ll learn the three ways to run an ADK eval, the two local reference metrics that decide pass or fail, and how thresholds are set in a config file.</span></span></p></div>
+<div class="block-heading"><p><strong>Three ways to run an eval</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.8rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The same eval data runs from three entry points, each suited to a different situation.</span></span></p></div>
+<ol class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The <strong>adk web</strong> UI is for interactive debugging.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The <strong>adk eval</strong> CLI is for scripted and CI runs.</span></span></p></li>
+<li><p style="line-height: 1.2"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The <strong>pytest</strong> entry point folds evaluation into your test suite.</span></span></p></li>
+</ol>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Note:</strong> These commands and the config in this lesson are indicative. The companion lab runs ADK evals step by step.</span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/lfy-5cULrg1rgODj.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<hr class="block-divider" />
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/Y8r54JchXXA-KUFC.jpg" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-heading"><p><strong>The two local reference metrics</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Two metrics run entirely on your machine with no billing, so the inner loop stays fast. Together they answer “did the agent take the right steps and say roughly the right thing.”</span></span></p><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more</em>&nbsp;</p></div>
+<div class="block-generic">tool_trajectory_avg_score</div>
+<div class="block-generic">response_match_score</div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/0YXyQSQExaZMgQIg.jpg" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Tip:</strong> Both reference metrics ship with defaults, so a run with no config still grades them. tool_trajectory_avg_score defaults to an EXACT match at threshold 1.0, and response_match_score defaults to 0.8. Every <em>other</em> metric’s threshold is something you set explicitly. Don’t assume one exists.</span></span></p></div>
+<div class="block-heading"><p><strong>Set thresholds in test_config.son</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">A test_config.json file maps each metric to a pass threshold, so you decide how strict the run is. The simple form takes a number. The extended form lets you relax the tool-trajectory check from an exact match to an ordered or any-order match.</span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Valid match_type values are EXACT, IN_ORDER, and ANY_ORDER. Because model output varies between runs, AgentEvaluator.evaluate() also accepts num_runs to repeat each case and average the result. That keeps a nondeterministic agent from failing on a single unlucky run.</span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/KPdroArJW1Z1A62U.jpg" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+        </main>
+    </div>
+</body>
+</html>
