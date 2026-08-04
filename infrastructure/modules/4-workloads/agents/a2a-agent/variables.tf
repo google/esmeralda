@@ -14,6 +14,12 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "enable_agent_identity" {
+  description = "Whether to enable Vertex AI Agent Identity instead of standard custom Service Account"
+  type        = bool
+  default     = true
+}
+
 variable "subnet_id" {
   description = "The self-link of the backend workload subnet inside the Shared VPC"
   type        = string

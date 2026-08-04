@@ -41,6 +41,7 @@ inputs = {
 
   region                = local.env_vars.locals.region
   environment           = local.env_vars.locals.environment
+  org_id                = lookup(local.env_vars.locals, "org_id", "")
 
   backend_subnet_id     = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 
