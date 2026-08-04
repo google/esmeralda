@@ -23,6 +23,10 @@ locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
 }
 
+dependency "agent_gateway" {
+  config_path = "../gateways/agent-gateway/a2a-agent"
+}
+
 inputs = {
   project_id            = dependency.projects.outputs.a2a_project_id
   region                = local.env_vars.locals.region
@@ -31,6 +35,9 @@ inputs = {
   net_host_project_id   = dependency.projects.outputs.net_host_project_id
   vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+
+  # Agent Gateway Egress Binding
+  agent_gateway_id      = dependency.agent_gateway.outputs.gateway_id
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,

@@ -17,6 +17,19 @@ RUN pip install --no-cache-dir .
 # Copy agent application files
 COPY . .
 
+# Install Agent Gateway CA root certificates if provided
+ARG AGENT_GATEWAY_ROOT_CERTIFICATES
+RUN if [ -n "$AGENT_GATEWAY_ROOT_CERTIFICATES" ]; then \
+     echo "Installing Agent Gateway root certificates..."; \
+     printf "%b" "$AGENT_GATEWAY_ROOT_CERTIFICATES" | awk 'BEGIN {c=0} /BEGIN CERTIFICATE/ {c++} c > 0 { print > "/usr/local/share/ca-certificates/agw-" c ".crt" }'; \
+     update-ca-certificates; \
+   fi
+
+# Configure SSL/TLS trust paths for Python HTTP libraries, OpenSSL, and gRPC
+ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${AGENT_GATEWAY_ROOT_CERTIFICATES:+/etc/ssl/certs/ca-certificates.crt}
+ENV REQUESTS_CA_BUNDLE=${AGENT_GATEWAY_ROOT_CERTIFICATES:+/etc/ssl/certs/ca-certificates.crt}
+ENV SSL_CERT_FILE=${AGENT_GATEWAY_ROOT_CERTIFICATES:+/etc/ssl/certs/ca-certificates.crt}
+
 # Expose standard container port
 ENV PORT=8080
 EXPOSE 8080

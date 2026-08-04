@@ -27,10 +27,17 @@ locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
 }
 
+dependency "agent_gateway" {
+  config_path = "../gateways/agent-gateway/root-agent"
+}
+
 inputs = {
   project_id            = dependency.projects.outputs.root_project_id
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.root_agent_sa_email
+
+  # Agent Gateway Egress Binding
+  agent_gateway_id      = dependency.agent_gateway.outputs.gateway_id
 
   # BYOC Container Image URI
   agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:latest"

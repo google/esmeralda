@@ -43,6 +43,12 @@ variable "agent_image_uri" {
   type        = string
 }
 
+variable "agent_gateway_id" {
+  description = "The resource ID of the Agent Gateway instance (AGENT_TO_ANYWHERE egress mode) to bind"
+  type        = string
+  default     = ""
+}
+
 
 variable "vpc_id" {
   description = "The self-link of the central Shared VPC network"

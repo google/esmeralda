@@ -408,6 +408,15 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
       max_instances         = local.yaml_max_inst
       container_concurrency = local.yaml_concurrency
 
+      dynamic "agent_gateway_config" {
+        for_each = var.agent_gateway_id != "" ? [1] : []
+        content {
+          agent_to_anywhere_config {
+            agent_gateway = var.agent_gateway_id
+          }
+        }
+      }
+
       resource_limits = (local.yaml_cpu != null || local.yaml_memory != null) ? {
         cpu    = local.yaml_cpu
         memory = local.yaml_memory

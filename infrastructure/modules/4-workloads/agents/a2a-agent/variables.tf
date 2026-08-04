@@ -54,6 +54,12 @@ variable "invoker_service_accounts" {
   default     = []
 }
 
+variable "agent_gateway_id" {
+  description = "The resource ID of the Agent Gateway instance (AGENT_TO_ANYWHERE egress mode) to bind"
+  type        = string
+  default     = ""
+}
+
 # Cloud SQL Sizing Variables
 variable "sql_tier" {
   description = "The machine instance type allocated for the Cloud SQL PostgreSQL task store"
