@@ -10,29 +10,29 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/income-verification-api:latest']
 
-  # Step 3: Register/Sync Microservice Endpoint across all agent-spoke projects
+  # Step 3: Discover agent spoke projects and register/sync endpoint
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
-        echo "Found agent spoke projects for registration: $$SPOKE_PROJECTS"
+        echo "Cloud Build discovered spoke projects for registration: $$SPOKE_PROJECTS"
         for PROJ in $$SPOKE_PROJECTS; do
-          echo "Registering income-verification in project $$PROJ..."
+          echo "Syncing income-verification in project $$PROJ..."
           gcloud alpha agent-registry services create income-verification \
             --project=$$PROJ \
             --location=${_REGION} \
             --display-name="income-verification" \
             --description="FastMCP service providing applicant employment and income verification tools" \
-            --interfaces="url=http://income-verification.esmeralda.internal:8002/mcp,protocolBinding=json-rpc" \
+            --interfaces="url=http://income-verification.esmeralda.internal:8002/mcp,protocolBinding=jsonrpc" \
             --mcp-server-spec-type=no-spec || \
           gcloud alpha agent-registry services update income-verification \
             --project=$$PROJ \
             --location=${_REGION} \
             --display-name="income-verification" \
             --description="FastMCP service providing applicant employment and income verification tools" \
-            --interfaces="url=http://income-verification.esmeralda.internal:8002/mcp,protocolBinding=json-rpc"
+            --interfaces="url=http://income-verification.esmeralda.internal:8002/mcp,protocolBinding=jsonrpc"
         done
 
 substitutions:
