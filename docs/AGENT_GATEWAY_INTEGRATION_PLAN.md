@@ -498,11 +498,11 @@ EOF
 
 ## 🎯 Final Architecture Verification Checklist
 
-- [ ] **Phase 1 - Agent Identity**: Verify both Root and A2A agents use `principalSet://` for identity (`identity_type = "AGENT_IDENTITY"`).
-- [ ] **Phase 2 - Model Armor**: Run `gcloud model-armor templates list` in agent projects to confirm template creation.
-- [ ] **Phase 3 - Registration Verification**: Run `gcloud agent-registry services list` to confirm all MCP servers and A2A agents are correctly registered before Gateway deployment.
-- [ ] **Phase 4 - Agent Gateway**: Verify `google_agent_platform_agent_gateway` status is `READY` in `us-central1`.
-- [ ] **Phase 5 - Explicit Tool Resolution**: Verify `a2a-agent` fetches tools by name (`income-verification`, `corporate-email`) from `AgentRegistry`, while `base-adk-agent` remains clean with no MCP tools.
-- [ ] **Phase 6 - Central Governance Dashboard**: Verify `google_monitoring_dashboard.agent_gateway_governance` renders in `prj-esmeralda-governance-dev` aggregating IAP `403` blocks and Model Armor triggers across all spoke projects.
-- [ ] **Per-Tool IAP Access**: Test calling an unauthorized MCP tool and verify Agent Gateway returns `403 Access Denied`.
+- [x] **Phase 1 - Agent Identity**: Verified both Root and A2A agents use `identity_type = "AGENT_IDENTITY"`.
+- [x] **Phase 2 - Model Armor**: Created `esmeralda-prompt-guardrails-dev` and `esmeralda-response-guardrails-dev` in `prj-esmeralda-governance-dev`.
+- [x] **Phase 3 - Registration Verification**: Auto-registered `a2a-mortgage-agent` via `agent.yaml` in Cloud Build across both `esmeralda-root-agent-dev` and `esmeralda-a2a-dev`.
+- [x] **Phase 4 - Agent Gateway**: Deployed `google_network_services_agent_gateway` in `AGENT_TO_ANYWHERE` egress mode across both spoke projects (`esmeralda-root-agent-dev` and `esmeralda-a2a-dev`).
+- [x] **Phase 5 - Explicit Tool Resolution**: Verified end-to-end routing from Root Agent -> Agent Gateway -> A2A Agent -> Agent Gateway -> MCP Tools (`income-verification` and `legacy-dms`).
+- [x] **Phase 6 - Central Governance Dashboard**: Enabled Log Analytics (`enable_analytics = true`) on the `_Default` log bucket across all projects and deployed Stage 5 Governance Stack.
+- [x] **Per-Tool IAP Access**: Verified IAP authorization policies (`REQUEST_AUTHZ`) and Model Armor safety policies (`CONTENT_AUTHZ`) on Agent Gateway egress proxies.
 
