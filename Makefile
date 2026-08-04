@@ -164,7 +164,7 @@ build-agent-a2a: deploy-repo ## Build and push BYOC A2A Agent container
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/a2a-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/a2a-agent:latest
+	gcloud builds submit apps/agents/a2a-agent --config=apps/agents/a2a-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
 
 build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
@@ -190,21 +190,21 @@ build-service-income-verification: deploy-repo ## Build and push Income Verifica
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/income-verification --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/income-verification-api:latest
+	gcloud builds submit apps/services/income-verification --config=apps/services/income-verification/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
 
 build-service-corporate-email: deploy-repo ## Build and push Corporate Email service container
 	@echo "🏗️  Building and pushing Corporate Email service container..."
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/corporate-email --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/corporate-email:latest
+	gcloud builds submit apps/services/corporate-email --config=apps/services/corporate-email/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
 
 build-service-legacy-dms: deploy-repo ## Build and push Legacy DMS service container
 	@echo "🏗️  Building and pushing Legacy DMS service container..."
 	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
 	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/legacy-dms --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/legacy-dms:latest
+	gcloud builds submit apps/services/legacy-dms --config=apps/services/legacy-dms/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
 
 build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 	@echo "🏗️  Building and pushing Kong Gateway service container..."
