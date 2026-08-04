@@ -1,5 +1,5 @@
 # apps/services/legacy-dms/cloudbuild.yaml
-# Cloud Build pipeline for Legacy DMS Microservice container build & Agent Registry registration
+# Cloud Build pipeline for Legacy DMS Microservice container build & Agent Registry registration across spoke projects
 
 steps:
   # Step 1: Build Docker Container
@@ -10,29 +10,34 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:latest']
 
-  # Step 3: Register/Sync Microservice Endpoint in GCP Agent Registry
+  # Step 3: Register/Sync Microservice Endpoint across all agent-spoke projects
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        gcloud alpha agent-registry services create legacy-dms \
-          --project=${_MCPS_PROJECT_ID} \
-          --location=${_REGION} \
-          --description="FastMCP service providing legacy document management and retrieval tools" \
-          --protocol-binding=JSONRPC \
-          --url="http://legacy-dms.esmeralda.internal:8003/mcp" || \
-        gcloud alpha agent-registry services update legacy-dms \
-          --project=${_MCPS_PROJECT_ID} \
-          --location=${_REGION} \
-          --description="FastMCP service providing legacy document management and retrieval tools" \
-          --protocol-binding=JSONRPC \
-          --url="http://legacy-dms.esmeralda.internal:8003/mcp"
+        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
+        echo "Found agent spoke projects for registration: $$SPOKE_PROJECTS"
+        for PROJ in $$SPOKE_PROJECTS; do
+          echo "Registering legacy-dms in project $$PROJ..."
+          gcloud alpha agent-registry services create legacy-dms \
+            --project=$$PROJ \
+            --location=${_REGION} \
+            --display-name="legacy-dms" \
+            --description="FastMCP service providing legacy document management and retrieval tools" \
+            --interfaces="url=http://legacy-dms.esmeralda.internal:8003/mcp,protocolBinding=json-rpc" \
+            --mcp-server-spec-type=no-spec || \
+          gcloud alpha agent-registry services update legacy-dms \
+            --project=$$PROJ \
+            --location=${_REGION} \
+            --display-name="legacy-dms" \
+            --description="FastMCP service providing legacy document management and retrieval tools" \
+            --interfaces="url=http://legacy-dms.esmeralda.internal:8003/mcp,protocolBinding=json-rpc"
+        done
 
 substitutions:
   _REGION: 'us-central1'
   _CICD_PROJECT_ID: ''
-  _MCPS_PROJECT_ID: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY

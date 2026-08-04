@@ -107,7 +107,7 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
         mount_path = "/etc/kong"
       }
     }
-    
+
     volumes {
       name = "kong-config"
       secret {
@@ -118,7 +118,7 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
         }
       }
     }
-    
+
     # Direct VPC Egress: Mounts Cloud Run inside the Shared VPC directly
     vpc_access {
       network_interfaces {
@@ -136,7 +136,7 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
   location = var.region
   name     = google_cloud_run_v2_service.kong_gateway.name
   role     = "roles/run.invoker"
-  members  = [
+  members = [
     for sa in var.invoker_service_accounts : "serviceAccount:${sa}"
   ]
 }

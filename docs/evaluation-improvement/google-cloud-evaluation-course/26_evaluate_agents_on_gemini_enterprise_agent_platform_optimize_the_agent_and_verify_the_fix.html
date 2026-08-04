@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimize the agent and verify the fix -  
+Evaluate Agents on Gemini Enterprise Agent Platform
+</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title"> 
+Evaluate Agents on Gemini Enterprise Agent Platform
+</div>
+            <h1 class="lesson-title">Optimize the agent and verify the fix</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/77IMSoDHYEx_UZ0MBVkUXLz3HDlV7aq5" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/77IMSoDHYEx_UZ0MBVkUXLz3HDlV7aq5</a>
+            </div>
+        </header>
+        <main class="content">
+            <hr class="block-divider" />
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you’ll learn where optimization runs on the platform, what it actually changes, and how to prove a fix worked. Once you’ve localized a root cause, you close the loop by refining the agent and grading performance of the new version.</span></span></p></div>
+<div class="block-heading"><p><strong>Run optimization to refine the agent</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/fGwPuRFcmENOovxZ.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Optimization has no console launch page. It runs through the SDK and ADK tooling, and the optimizer iteratively refines the agent against your test suite. The console role is limited to identifying the inputs. You open the failing run, and its metrics and test cases are what the optimizer improves against.</span></span></p></div>
+
+                <blockquote class="block-quote">
+                    <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Warning:</strong> </span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Optimization runs from the SDK and ADK tooling, not a console page. Don’t look for a launch button in the evaluation report. Seed the run from there and launch it programmatically.</span></span></p>
+                    
+                </blockquote>
+                
+<div class="block-heading"><p><strong>Verify the fix by re-running the same evaluation</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/monitoring-1.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Run the optimized agent against the same suite, not a fresh one, so before-and-after scores are directly comparable. Track all metrics together. A fix can lift one score while it quietly degrades another, and a single re-run on the shared suite is what makes that trade-off visible.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Improvement is not guaranteed on every Quality Flywheel Lap. This evaluate-and-optimize loop is a form of hill climbing, so a refinement can overfit your eval set or stall at a local peak. Treat each lap as a hypothesis the re-run has to confirm, and rely on the held suite to catch a change that looks better but isn’t. The dedicated hill climbing course covers these dynamics in depth.</span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/KyoMvCZK8Lz2344w.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Tip</strong>: Re-use the exact suite that seeded optimization for the verification run. A different suite makes the before-and-after comparison meaningless.</span></span></p></div>
+        </main>
+    </div>
+</body>
+</html>

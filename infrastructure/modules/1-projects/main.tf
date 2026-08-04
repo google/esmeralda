@@ -18,9 +18,8 @@ locals {
 
   # Systematic project-specific labeling mapping for FinOps and Cost Center attribution
   common_labels = {
-    "env"            = var.environment
-    "managed-by"     = "terragrunt-esmeralda"
-    "agent_platform" = "agent-spoke-project"
+    "env"        = var.environment
+    "managed-by" = "terragrunt-esmeralda"
   }
 
   net_host_apis = [
@@ -62,7 +61,8 @@ locals {
     "artifactregistry.googleapis.com",
     "secretmanager.googleapis.com",
     "logging.googleapis.com",
-    "cloudbuild.googleapis.com"
+    "cloudbuild.googleapis.com",
+    "agentregistry.googleapis.com"
   ]
 
 
@@ -231,8 +231,9 @@ resource "google_project" "a2a" {
   auto_create_network = false
 
   labels = merge(local.common_labels, {
-    "cost-center" = "enterprise-ai-platform"
-    "team"        = "core-ai-agents"
+    "cost-center"    = "enterprise-ai-platform"
+    "team"           = "core-ai-agents"
+    "agent_platform" = "agent-spoke-project"
   })
 }
 
@@ -246,8 +247,9 @@ resource "google_project" "root_agent" {
   auto_create_network = false
 
   labels = merge(local.common_labels, {
-    "cost-center" = "lob-business-solutions"
-    "team"        = "lob-root-agent"
+    "cost-center"    = "lob-business-solutions"
+    "team"           = "lob-root-agent"
+    "agent_platform" = "agent-spoke-project"
   })
 }
 

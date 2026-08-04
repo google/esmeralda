@@ -26,7 +26,7 @@ variable "agent_endpoints" {
     engine_id    = string
     endpoint_url = string
   }))
-  default     = {}
+  default = {}
 }
 
 variable "environment" {
