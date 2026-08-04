@@ -33,3 +33,23 @@ output "finops_dashboard_id" {
   value       = module.alert_policies.finops_dashboard_id
   description = "Cloud Monitoring FinOps Token Analytics Dashboard ID"
 }
+
+output "model_armor_prompt_template_id" {
+  value       = module.model_armor.prompt_template_id
+  description = "Model Armor Prompt Inbound Guardrails Template ID"
+}
+
+output "model_armor_prompt_template_name" {
+  value       = module.model_armor.prompt_template_name
+  description = "Model Armor Prompt Inbound Guardrails Template Full Resource Name"
+}
+
+output "model_armor_response_template_id" {
+  value       = module.model_armor.response_template_id
+  description = "Model Armor Response Outbound Guardrails Template ID"
+}
+
+output "model_armor_response_template_name" {
+  value       = module.model_armor.response_template_name
+  description = "Model Armor Response Outbound Guardrails Template Full Resource Name"
+}
