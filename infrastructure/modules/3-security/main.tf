@@ -60,7 +60,7 @@ resource "google_kms_crypto_key" "secrets_key" {
 # Dynamic key IDs resolution based on BYO toggle
 locals {
   resolved_database_key_id = var.byo_security ? var.existing_database_key_id : try(google_kms_crypto_key.database_key[0].id, "")
-  resolved_secrets_key_id  = var.byo_security ? var.existing_secrets_key_id  : try(google_kms_crypto_key.secrets_key[0].id, "")
+  resolved_secrets_key_id  = var.byo_security ? var.existing_secrets_key_id : try(google_kms_crypto_key.secrets_key[0].id, "")
 }
 
 # --------------------------------------------------------------------
@@ -147,9 +147,9 @@ resource "google_project_iam_member" "mcps_roles" {
     "roles/monitoring.metricWriter",
     "roles/cloudtrace.agent"
   ])
-  project  = var.mcps_project_id
-  role     = each.key
-  member   = "serviceAccount:${google_service_account.mcps_sa.email}"
+  project = var.mcps_project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.mcps_sa.email}"
 }
 
 # Dedicated Cloud Build & Container Delivery Identity for CI/CD Hub
@@ -167,9 +167,9 @@ resource "google_project_iam_member" "cicd_builder_roles" {
     "roles/artifactregistry.admin",
     "roles/logging.logWriter"
   ])
-  project  = var.cicd_project_id
-  role     = each.key
-  member   = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
+  project = var.cicd_project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
 }
 
 
@@ -198,9 +198,9 @@ resource "google_project_iam_member" "a2a_roles" {
     "roles/cloudapiregistry.viewer",
     "roles/iam.serviceAccountTokenCreator"
   ])
-  project  = var.a2a_project_id
-  role     = each.key
-  member   = "serviceAccount:${google_service_account.a2a_sa.email}"
+  project = var.a2a_project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.a2a_sa.email}"
 }
 
 # Grant A2A Service account reading rights on the Database Master secret (resolves to existing or new)
@@ -267,9 +267,9 @@ resource "google_project_iam_member" "root_roles" {
     "roles/cloudapiregistry.viewer",
     "roles/iam.serviceAccountTokenCreator"
   ])
-  project  = var.root_project_id
-  role     = each.key
-  member   = "serviceAccount:${google_service_account.root_sa.email}"
+  project = var.root_project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.root_sa.email}"
 }
 
 # Allow Vertex AI Reasoning Engine robots to act as Root Service Account and create tokens
@@ -421,9 +421,9 @@ resource "google_project_iam_member" "test_vm_roles" {
     "roles/cloudtrace.agent",
     "roles/aiplatform.user"
   ])
-  project  = var.root_project_id
-  role     = each.key
-  member   = "serviceAccount:${google_service_account.test_vm_sa.email}"
+  project = var.root_project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.test_vm_sa.email}"
 }
 
 # Grant run.invoker in tools project so operators can curl private Cloud Run MCP servers

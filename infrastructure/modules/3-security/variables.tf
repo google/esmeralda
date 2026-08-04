@@ -42,6 +42,12 @@ variable "region" {
   default     = "us-central1"
 }
 
+variable "org_id" {
+  description = "The GCP Organization ID (numeric string)"
+  type        = string
+  default     = ""
+}
+
 # Workload and Governance project numbers are resolved dynamically in main.tf via data "google_project"
 
 # BYO Security Toggles

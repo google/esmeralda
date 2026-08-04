@@ -65,10 +65,10 @@ resource "google_sql_user" "postgres_user" {
 
 # Create IAM User mapped to the agent's service account to leverage Cloud IAM Db Authentication
 resource "google_sql_user" "agent_iam_user" {
-  name     = trimsuffix(var.agent_service_account, ".gserviceaccount.com")
-  instance = google_sql_database_instance.task_store.name
-  project  = var.project_id
-  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+  name       = trimsuffix(var.agent_service_account, ".gserviceaccount.com")
+  instance   = google_sql_database_instance.task_store.name
+  project    = var.project_id
+  type       = "CLOUD_IAM_SERVICE_ACCOUNT"
   depends_on = [google_sql_user.postgres_user]
 }
 
@@ -134,10 +134,10 @@ resource "google_cloud_run_v2_job" "schema_bootstrap" {
     template {
       # Runs under a standard service account that has access to execute VPC jobs
       service_account = var.agent_service_account
-      
+
       containers {
         # Light, standard alpine-postgres client image
-        image = "alpine:latest"
+        image   = "alpine:latest"
         command = ["/bin/sh", "-c"]
         args = [
           "apk add --no-cache postgresql-client && psql \"postgresql://postgres:${random_password.postgres_pwd.result}@${google_sql_database_instance.task_store.private_ip_address}/${var.database_name}\" -c \"GRANT ALL PRIVILEGES ON DATABASE ${var.database_name} TO \\\"${google_sql_user.agent_iam_user.name}\\\"; GRANT ALL PRIVILEGES ON SCHEMA public TO \\\"${google_sql_user.agent_iam_user.name}\\\";\""
@@ -309,7 +309,7 @@ locals {
   yaml_memory      = try(local.agent_config.resources.memory, null)
 
   # 3. Framework
-  yaml_framework   = try(local.agent_config.framework, "a2a")
+  yaml_framework = try(local.agent_config.framework, "a2a")
 
   # 4. Environment Variables & Runtime Infrastructure Overrides
   yaml_env_vars = try(local.agent_config.env, {})
@@ -330,15 +330,15 @@ locals {
   )
 
   # Split the URI to get registry, repository, and image details dynamically
-  image_uri_parts = split("/", var.agent_image_uri)
-  registry_host   = local.image_uri_parts[0]
-  registry_project= local.image_uri_parts[1]
-  registry_repo   = local.image_uri_parts[2]
-  
+  image_uri_parts  = split("/", var.agent_image_uri)
+  registry_host    = local.image_uri_parts[0]
+  registry_project = local.image_uri_parts[1]
+  registry_repo    = local.image_uri_parts[2]
+
   image_name_and_tag = split(":", local.image_uri_parts[3])
   image_name         = local.image_name_and_tag[0]
   image_tag          = length(local.image_name_and_tag) > 1 ? local.image_name_and_tag[1] : "latest"
-  
+
   registry_region = replace(split(".", local.registry_host)[0], "-docker", "")
 
   agent_card_json = var.agent_card_json
@@ -357,7 +357,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
   description  = local.yaml_desc
   region       = var.region
   project      = var.project_id
-  depends_on   = [
+  depends_on = [
     null_resource.trigger_bootstrap,
     google_storage_bucket.staging,
     google_project_iam_member.vertex_ai_network_admin,
@@ -367,7 +367,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
   spec {
     agent_framework = local.yaml_framework
-    service_account = var.agent_service_account
+    service_account = var.enable_agent_identity ? null : var.agent_service_account
 
     class_methods = jsonencode([
       {
@@ -403,6 +403,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
 
     deployment_spec {
+      identity_type         = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
       min_instances         = local.yaml_min_inst
       max_instances         = local.yaml_max_inst
       container_concurrency = local.yaml_concurrency
