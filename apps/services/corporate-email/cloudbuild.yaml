@@ -10,7 +10,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/corporate-email:latest']
 
-  # Step 3: Discover agent spoke projects and register/sync endpoint
+  # Step 3: Discover agent spoke projects and register/sync endpoint with tool-spec
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -25,14 +25,17 @@ steps:
             --location=${_REGION} \
             --display-name="corporate-email" \
             --description="FastMCP service providing internal email verification tools" \
-            --interfaces="url=http://corporate-email.esmeralda.internal:8001/mcp,protocolBinding=jsonrpc" \
-            --mcp-server-spec-type=no-spec || \
+            --interfaces="url=http://corporate-email.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+            --mcp-server-spec-type=tool-spec \
+            --mcp-server-spec-content=tools.json || \
           gcloud alpha agent-registry services update corporate-email \
             --project=$$PROJ \
             --location=${_REGION} \
             --display-name="corporate-email" \
             --description="FastMCP service providing internal email verification tools" \
-            --interfaces="url=http://corporate-email.esmeralda.internal:8001/mcp,protocolBinding=jsonrpc"
+            --interfaces="url=http://corporate-email.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+            --mcp-server-spec-type=tool-spec \
+            --mcp-server-spec-content=tools.json
         done
 
 substitutions:
