@@ -9,6 +9,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = ">= 5.0"
+    }
   }
 }
 
@@ -50,6 +54,13 @@ module "alert_policies" {
 # 5. Submodule 4: FinOps Analytics (Token Events Table & Chargeback View)
 module "finops_analytics" {
   source                = "./modules/4_finops_analytics"
+  environment           = var.environment
+  governance_project_id = var.governance_project_id
+}
+
+# 6. Submodule 5: Model Armor Guardrail Templates
+module "model_armor" {
+  source                = "./modules/5_model_armor"
   environment           = var.environment
   governance_project_id = var.governance_project_id
 }
