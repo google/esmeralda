@@ -132,51 +132,28 @@ output "model_armor_template_name" {
 
 ---
 
-## Phase 3: Agent Registry Services & Automated CI/CD Registration
+## Phase 3: Agent Registry Services & Automated CI/CD Registration [COMPLETED]
 
 ### 3.1 Overview
-Define `google_agent_registry_service` for static tools and implement a post-deployment CI/CD script that uses `gcloud agent-registry services create` to dynamically register pre-defined `.esmeralda.internal` URLs across all active agent project registries. Doing this in Phase 3 allows testing and verifying that tools and agents are properly registered before deploying the Agent Gateway in Phase 4.
+Dynamic multi-spoke project discovery and registration pipeline integrated directly into Cloud Build for all MCP servers (`income-verification`, `corporate-email`, `legacy-dms`) and A2A Agents (`a2a-mortgage-agent`).
 
-### 3.2 Step-by-Step Implementation
-
-1. **GCP Project Labeling in Stage 1 Terraform (`infrastructure/modules/1-projects/`)**:
-   Add the `agent_platform = "agent-spoke-project"` label to all agent projects (`root-agent` and `a2a-agent`) in Terraform so the discovery script can locate them dynamically:
-
-```hcl
-# In infrastructure/modules/1-projects/main.tf
-resource "google_project" "root_agent" {
-  name       = "prj-esmeralda-root-agent-${var.environment}"
-  project_id = var.root_project_id
-  org_id     = var.org_id
-
-  labels = {
-    agent_platform = "agent-spoke-project"
-    environment    = var.environment
-  }
-}
-
-resource "google_project" "a2a_agent" {
-  name       = "prj-esmeralda-a2a-${var.environment}"
-  project_id = var.a2a_project_id
-  org_id     = var.org_id
-
-  labels = {
-    agent_platform = "agent-spoke-project"
-    environment    = var.environment
-  }
-}
-```
-
-2. **Pre-defined Internal DNS Format**:
-   - `https://income-verification.esmeralda.internal/mcp`
-   - `https://corporate-email.esmeralda.internal/mcp`
-   - `https://mortgage-a2a-agent.esmeralda.internal`
-
-### 3.2 Implementation Architecture
-1. **Stage 1 Project Labeling**: Add `"agent_platform" = "agent-spoke-project"` to `common_labels` in `infrastructure/modules/1-projects/main.tf`.
-2. **Atomic Cloud Build Integration**: Embed `gcloud alpha agent-registry services create/update` step directly in `apps/services/income-verification/cloudbuild.yaml`, `apps/services/corporate-email/cloudbuild.yaml`, and `apps/agents/a2a-agent/cloudbuild.yaml`.
-3. **Declarative Terraform Provisioning**: `infrastructure/modules/4-workloads/agent_registry/main.tf` using `google_agent_registry_service`.
-4. **CI/CD IAM Rights**: Grant `roles/agentregistry.admin` to `sa-esmeralda-builder-dev` in `infrastructure/modules/3-security/main.tf`.
+### 3.2 Implemented Architecture
+1. **Dynamic Spoke Discovery**:
+   Cloud Build pipelines dynamically query all spoke projects labeled with `agent_platform=agent-spoke-project` using in-step gcloud execution:
+   ```bash
+   SPOKE_PROJECTS=$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
+   ```
+2. **Version-Controlled MCP Tool Specs (`tools.json`)**:
+   MCP servers embed full OpenAPI/JSON Schema `TOOL_SPEC` definitions registered via `--mcp-server-spec-type=tool-spec --mcp-server-spec-content=tools.json` and `protocolBinding=jsonrpc`:
+   - `income-verification`: `verify_applicant`
+   - `corporate-email`: `send_email`, `read_email`
+   - `legacy-dms`: `search_documents`, `get_document`
+3. **Single Source of Truth A2A Agent Card (`agent.yaml`)**:
+   `apps/agents/a2a-agent/agent.yaml` serves as the single source of truth for the A2A Agent Card spec. Step 3 of `apps/agents/a2a-agent/cloudbuild.yaml` parses `agent.yaml` in memory using Python, registering a full `A2A_AGENT_CARD` specification with `supportedInterfaces` (`http://a2a-mortgage-agent.esmeralda.internal/a2a`, `HTTP_JSON`, `0.3`), input/output modes, capabilities, and A2A skills (`document-search`, `income-verification`, `corporate-email`).
+4. **Builder SA IAM Authorization**:
+   Granted `roles/browser` (`resourcemanager.projects.list`) and `roles/agentregistry.admin` to `sa-esmeralda-builder-dev` across all spoke projects in `infrastructure/modules/3-security/main.tf`.
+5. **Clean Internal Domain Formatting**:
+   All registered service URLs use clean `.esmeralda.internal` domain names without port numbers.
 
 ---
 

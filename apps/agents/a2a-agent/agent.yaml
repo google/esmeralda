@@ -53,15 +53,16 @@ agent_card:
   name: "a2a-mortgage-agent"
   description: "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities."
   version: "1.0.0"
+  capabilities:
+    streaming: false
   default_input_modes:
     - "text/plain"
   default_output_modes:
     - "application/json"
-  capabilities:
-    streaming: false
-  url: "http://a2a-mortgage-agent.esmeralda.internal"
-  preferred_transport: "HTTP+JSON"
-  supports_authenticated_extended_card: true
+  supported_interfaces:
+    - url: "http://a2a-mortgage-agent.esmeralda.internal/a2a"
+      protocol_binding: "HTTP_JSON"
+      protocol_version: "0.3"
   skills:
     - id: "document-search"
       name: "Document Search"
