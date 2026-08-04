@@ -94,9 +94,13 @@ graph TD
 *   **Workload Service Account Roles Alignment**:
     In the monolithic setup, the single `test-vm-sa` account accumulated over 11 roles (including `roles/aiplatform.user`, `roles/storage.objectAdmin`, `roles/telemetry.writer`, and `roles/bigquery.jobUser`) because the VM also acted as the execution identity for the Reasoning Engine. In our enterprise multi-project landing zone, we **split and assign these roles to distinct service accounts** according to the principle of least privilege, guaranteeing full feature-parity:
     *   **`sa-esmeralda-mcps`** (Central Tools Project): Authorized with `roles/logging.logWriter`, `roles/monitoring.metricWriter`, and `roles/cloudtrace.agent` to write application telemetry.
-    *   **`sa-esmeralda-a2a`** (AI Platform Project): Fully loaded with the transactional database and AI roles: `roles/cloudsql.client`, `roles/cloudsql.instanceUser`, `roles/aiplatform.user`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/storage.objectAdmin` (for reasoning templates GCS buckets), `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
-    *   **`sa-esmeralda-root`** (Business Unit App Project): Fully loaded with the customer reasoning and orchestration roles: `roles/aiplatform.user`, `roles/storage.objectAdmin`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/cloudtrace.agent`, `roles/serviceusage.serviceUsageConsumer`, and `roles/telemetry.writer`.
-*   **Dedicated Test VM Identity (`sa-esmeralda-test-vm`)**:
+    *   **`sa-esmeralda-a2a`** (AI Platform Project): Operates with Vertex AI **Agent Identity** (`identity_type = "AGENT_IDENTITY"`), using `sa-mcp-invoker` for token creation and Cloud Run invoker rights on tool services.
+    *   **`sa-esmeralda-root`** (Business Unit App Project): Operates with Vertex AI **Agent Identity** (`identity_type = "AGENT_IDENTITY"`), delegating multi-agent graph routing and Model Armor callouts.
+    *   **`sa-esmeralda-builder-dev`** (CI/CD Builder SA): Granted `roles/browser` (`resourcemanager.projects.list`) and `roles/agentregistry.admin` across spoke projects to dynamically discover and register Agent Registry services during Cloud Build execution.
+    *   **`sa-mcp-invoker-dev`** (Dedicated MCP Invoker SA): Granted `roles/run.invoker` on Cloud Run MCP servers and bound via `roles/iam.serviceAccountTokenCreator` to Reasoning Engine Agent Identities.
+* **Model Armor Security Templates (`model_armor.tf`)**:
+  Provisions centralized Model Armor floor setting templates in `prj-esmeralda-governance` for content safety, PII masking, prompt injection prevention, and jailbreak detection. Agent Identities consume these templates over `roles/modelarmor.user` and `roles/modelarmor.calloutUser`.
+* **Dedicated Test VM Identity (`sa-esmeralda-test-vm`)**:
     To support connectivity testing, local debugging, and tool testing (DMS, Calculator) from a secure jumpbox without over-privileging operators, we introduce a dedicated Test VM Service Account. It resides in the Business Unit project (`prj-esmeralda-root-agent`) or `prj-esmeralda-net-host` and is assigned:
     *   `roles/logging.logWriter` and `roles/monitoring.metricWriter` for VM health logging.
     *   `roles/run.invoker` inside `prj-esmeralda-mcps` (to invoke private Cloud Run MCP server tools).

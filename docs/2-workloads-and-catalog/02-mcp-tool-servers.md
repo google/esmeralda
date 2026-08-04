@@ -64,19 +64,19 @@ infrastructure/modules/4-workloads/services/
 
 ### 1. Corporate Email Server (`services/corporate-email/`)
 
-This module deploys the `corporate-email` tool server on Cloud Run. It mounts the service directly inside the Shared VPC to resolve downstream targets privately, locks down the service's HTTP ingress, and grants invoker privileges exclusively to designated agent service accounts.
+This module deploys the `corporate-email` tool server on Cloud Run. Step 3 of `apps/services/corporate-email/cloudbuild.yaml` dynamically registers the server into all spoke project registries (`labels.agent_platform=agent-spoke-project`) using version-controlled `tools.json` definitions (`send_email`, `read_email`) with `--mcp-server-spec-type=tool-spec` and `protocolBinding=jsonrpc` at `http://corporate-email.esmeralda.internal/mcp`.
 
 ---
 
 ### 2. Income Verification Server (`services/income-verification/`)
 
-This module deploys the `income-verification` tool server. It integrates the verification server with regional telemetry logs and enforces strict IAM token-based OIDC protection.
+This module deploys the `income-verification` tool server. Step 3 of `apps/services/income-verification/cloudbuild.yaml` dynamically registers the server into all spoke project registries using version-controlled `tools.json` definitions (`verify_applicant`) with `--mcp-server-spec-type=tool-spec` and `protocolBinding=jsonrpc` at `http://income-verification.esmeralda.internal/mcp`.
 
 ---
 
 ### 3. Legacy DMS Server (`services/legacy-dms/`)
 
-This module deploys the `legacy-dms` (Document Management System) tool server on Cloud Run. It secures interactions with the core asset store and registers with API Hub.
+This module deploys the `legacy-dms` (Document Management System) tool server on Cloud Run. Step 3 of `apps/services/legacy-dms/cloudbuild.yaml` dynamically registers the server into all spoke project registries using version-controlled `tools.json` definitions (`search_documents`, `get_document`) with `--mcp-server-spec-type=tool-spec` and `protocolBinding=jsonrpc` at `http://legacy-dms.esmeralda.internal/mcp`.
 
 ---
 
