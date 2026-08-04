@@ -2,8 +2,8 @@
 
 # Deploy Income Verification on Cloud Run with internal-and-load-balancing ingress
 resource "google_cloud_run_v2_service" "income_verification" {
-  name     = "income-verification-${var.environment}"
-  location = var.region
+  name                = "income-verification-${var.environment}"
+  location            = var.region
   project             = var.project_id
   ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   deletion_protection = false
@@ -63,7 +63,7 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
   location = var.region
   name     = google_cloud_run_v2_service.income_verification.name
   role     = "roles/run.invoker"
-  members  = [
+  members = [
     for sa in var.invoker_service_accounts : "serviceAccount:${sa}"
   ]
 }

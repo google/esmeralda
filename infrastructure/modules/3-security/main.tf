@@ -177,6 +177,7 @@ resource "google_project_iam_member" "cicd_builder_agent_registry" {
   for_each = toset([
     var.mcps_project_id,
     var.a2a_project_id,
+    var.root_project_id,
   ])
   project = each.key
   role    = "roles/agentregistry.admin"

@@ -27,7 +27,7 @@ variable "agent_endpoints" {
     endpoint_url = string
     audience     = string
   }))
-  default     = {}
+  default = {}
 }
 
 variable "environment" {

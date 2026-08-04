@@ -224,11 +224,11 @@ module "secure_web_proxy" {
   name       = "gateway-swp-${var.environment}"
   network    = google_compute_network.shared_vpc[0].id
   subnetwork = google_compute_subnetwork.core[0].id
-  
+
   gateway_config = {
     addresses = ["10.0.1.100"]
   }
-  
+
   policy_rules = {
     allow-all = {
       priority        = 1000
@@ -247,7 +247,7 @@ module "secure_web_proxy" {
 locals {
   target_vpc_id    = var.byo_networking ? var.existing_vpc_id : try(google_compute_network.shared_vpc[0].id, "")
   target_subnet_id = var.byo_networking ? var.existing_subnet_id : try(google_compute_subnetwork.core[0].id, "")
-  
+
   # Parse subnet name and region from the subnet ID URI
   subnet_parsed_name   = element(split("/", local.target_subnet_id), length(split("/", local.target_subnet_id)) - 1)
   subnet_parsed_region = element(split("/", local.target_subnet_id), length(split("/", local.target_subnet_id)) - 3)
@@ -373,7 +373,7 @@ module "psc_interface_dns_zone" {
   }
   recordsets = {
     # Resolve wildcard gateway endpoints to the future internal gateway IP placeholder
-    "A *"   = { records = ["10.0.1.200"] } # Placeholder for regional load balancer VIP
+    "A *" = { records = ["10.0.1.200"] } # Placeholder for regional load balancer VIP
     # Resolve swp to the Secure Web Proxy IP
     "A swp" = { records = ["10.0.1.100"] }
   }
