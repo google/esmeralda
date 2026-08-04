@@ -37,12 +37,12 @@ resource "google_logging_metric" "realtime_token_consumption" {
     value_type  = "DISTRIBUTION"
     unit        = "1"
     labels {
-      key         = "agent_id"
-      value_type  = "STRING"
+      key        = "agent_id"
+      value_type = "STRING"
     }
     labels {
-      key         = "user_id"
-      value_type  = "STRING"
+      key        = "user_id"
+      value_type = "STRING"
     }
   }
 
@@ -74,8 +74,8 @@ resource "google_logging_metric" "cached_tokens_counter" {
     value_type  = "DISTRIBUTION"
     unit        = "1"
     labels {
-      key         = "agent_id"
-      value_type  = "STRING"
+      key        = "agent_id"
+      value_type = "STRING"
     }
   }
 
@@ -106,8 +106,8 @@ resource "google_logging_metric" "prompt_tokens_counter" {
     value_type  = "DISTRIBUTION"
     unit        = "1"
     labels {
-      key         = "agent_id"
-      value_type  = "STRING"
+      key        = "agent_id"
+      value_type = "STRING"
     }
   }
 
@@ -138,8 +138,8 @@ resource "google_logging_metric" "completion_tokens_counter" {
     value_type  = "DISTRIBUTION"
     unit        = "1"
     labels {
-      key         = "agent_id"
-      value_type  = "STRING"
+      key        = "agent_id"
+      value_type = "STRING"
     }
   }
 
@@ -170,8 +170,8 @@ resource "google_logging_metric" "thoughts_tokens_counter" {
     value_type  = "DISTRIBUTION"
     unit        = "1"
     labels {
-      key         = "agent_id"
-      value_type  = "STRING"
+      key        = "agent_id"
+      value_type = "STRING"
     }
   }
 
@@ -285,16 +285,16 @@ resource "google_logging_metric" "mcp_tool_execution_count" {
     value_type  = "INT64"
     unit        = "1"
     labels {
-      key         = "tool_name"
-      value_type  = "STRING"
+      key        = "tool_name"
+      value_type = "STRING"
     }
     labels {
-      key         = "mcp_service"
-      value_type  = "STRING"
+      key        = "mcp_service"
+      value_type = "STRING"
     }
     labels {
-      key         = "status"
-      value_type  = "STRING"
+      key        = "status"
+      value_type = "STRING"
     }
   }
 

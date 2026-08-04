@@ -51,7 +51,7 @@ resource "google_storage_bucket" "telemetry_archive" {
   uniform_bucket_level_access = true
 
   retention_policy {
-    is_locked      = false
+    is_locked        = false
     retention_period = 220898400 # 7 Years (in seconds)
   }
 
