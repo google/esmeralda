@@ -28,7 +28,7 @@ resource "google_apihub_api_hub_instance" "main" {
   project             = var.project_id
   location            = var.region
   api_hub_instance_id = var.api_hub_instance_id
-  
+
   config {
     disable_search  = false
     vertex_location = "us"

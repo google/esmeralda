@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Read a trace to debug agent behavior -  
+Evaluate Agents on Gemini Enterprise Agent Platform
+</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title"> 
+Evaluate Agents on Gemini Enterprise Agent Platform
+</div>
+            <h1 class="lesson-title">Read a trace to debug agent behavior</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/eGOgPNcbe8jIQM8KRqly7bZcypwO69l_" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/eGOgPNcbe8jIQM8KRqly7bZcypwO69l_</a>
+            </div>
+        </header>
+        <main class="content">
+            <hr class="block-divider" />
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you’ll learn to treat the trace as the ground truth for what the agent actually did, recognize what a specific failure looks like inside a session, and backtrack from a wrong answer to the turn that caused it. This is the skill every triage step in later modules depends on.</span></span></p></div>
+<div class="block-heading"><p><strong>The trace as ground truth</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">When you need to know what the agent did, rather than what it should have done, you read the trace. Because it records the actual model inputs, responses, and tool calls in order, it is the single authoritative account of a run. Scores and rationales summarize it, but the trace is the evidence beneath them. Reading it is how you confirm whether a low score reflects a real behavior problem or a noisy judge.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">You open a trace from the agent’s Traces tab, or from a session in Session view to see the full multi-turn conversation. Each turn shows the prompt the agent received, the tools it called with their arguments, and the response it produced. Together these let you replay the agent’s reasoning one step at a time.</span></span></p></div>
+<div class="block-heading"><p><strong>What a wrong-product turn looks like</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Consider the course’s canonical failure. A user says “my instance is down.” The Google Cloud Support agent assumes Compute Engine and troubleshoots it for three turns, when the resource is actually a Cloud SQL instance. In the trace, the failure is visible at the moment it happens. The agent calls lookup_resource and get_logs against a Compute Engine assumption it never confirmed, instead of asking which product the user means.</span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 2rem"><span style="color: rgb(26, 115, 232); text-decoration: inherit" data-color-scope="inner"><strong>Turn 1</strong></span></span></p><p><span style="font-size: 1.7rem"> <strong>User: </strong>my instance is down<br class="break-when-trailing"><strong>Agent: </strong>[calls lookup_resource(type="compute")] &nbsp;&lt;- assumes the product</span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 2rem"><span style="color: rgb(26, 115, 232); text-decoration: inherit" data-color-scope="inner"><strong>Turn 2</strong></span></span></p><p><span style="font-size: 1.7rem"> <strong>Agent:&nbsp;</strong>[calls get_logs(service="compute")] here are the Compute Engine logs</span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 2rem"><span style="color: rgb(26, 115, 232); text-decoration: inherit" data-color-scope="inner"><strong>Turn 3</strong></span></span></p><p><span style="font-size: 1.7rem"><strong>Agent:</strong> your VM looks healthy, try restarting it &nbsp;&nbsp;&lt;- wrong: it is a Cloud SQL instance</span></p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The trace makes the difference between symptom and cause concrete. The wrong final answer is the symptom. The unconfirmed product assumption several turns earlier is the cause. Reading the turns in order separates the two, instead of guessing from the final response alone.</span></span></p></div>
+<div class="block-heading"><p><strong>Backtrack to the root turn</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">A failing answer is rarely where the agent first went wrong. You walk the trace backward, from the bad response to the earliest turn that forced it. You start at the failing turn, then read upstream until you reach the decision that started the wrong path, the root turn. For the support agent, that is the turn where it committed to Compute Engine without disambiguating.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Once you track down the root turn, you turn a vague “the agent gave a wrong answer” into an actionable insight. The root turn names what to change. Here, the agent should ask a clarifying question before it acts. </span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/M2_L3_backtrack%20(1).png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+        </main>
+    </div>
+</body>
+</html>

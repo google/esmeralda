@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Introduction to the hill climbing toolbox - Use Model Hill Climbing for ADK Agent Optimization</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title">Use Model Hill Climbing for ADK Agent Optimization</div>
+            <h1 class="lesson-title">Introduction to the hill climbing toolbox</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-UMHHZD-A/content/index.html#/lessons/YEhG2_0wQAV2ByHq0Iq4PxPlYLX-fgQ5" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-UMHHZD-A/content/index.html#/lessons/YEhG2_0wQAV2ByHq0Iq4PxPlYLX-fgQ5</a>
+            </div>
+        </header>
+        <main class="content">
+            <div class="block-paragraph">In this lesson, you'll learn the six layers you can modify in generative and agentic systems, and the rule that governs when to target each layer. The different changes you can make to these layers are your toolbox, and diagnosis is how you select the correct layer and tool.<br><br>First, you'll walk through the six layers, from the core model up to the user experience. Then, you'll learn why you must diagnose before making adjustments, and how diagnosis is a key part of effective hill climbing hypotheses.</div>
+<div class="block-heading">The six hill climbing layers</div>
+<div class="block-paragraph">When you decide to change a generative or agentic system, that change happens in a specific layer in the system. The hill climbing toolbox is organized around the six layers commonly present in generative and agentic systems.</div>
+<div class="block-generic">Model layer</div>
+<div class="block-generic">Prompt layer</div>
+<div class="block-generic">Tool and skill layer</div>
+<div class="block-generic">Framework and context layer</div>
+<div class="block-generic">Agent design layer</div>
+<div class="block-generic">System and UX layer</div>
+<div class="block-paragraph">These layers are not ranked. A model swap and a UX change can be both legitimate mitigations, and the right one depends entirely on what's failing. Which layer you touch on a given pass comes from diagnosis, not preference.<br><br>The bulk of this course is organized by layer: model and prompt in Module 3, tools and skills in Module 4, framework and context in Module 5, and agent design and the surrounding system in Module 6.</div>
+<div class="block-heading">Diagnosis as the central activity</div>
+<div class="block-paragraph">The most important rule in this course is simple: diagnose before you adjust anything. Every layer in the toolbox is tempting. However, a change made without knowing the cause is a guess, and a guess can cause a hard-to-debug regression.<br><br>Blind tweaks often cause regressions because a generative or agentic system has many interacting parts. A prompt edit that fixes one failure can break something else. A model swap that raises quality can exceed your latency budget. When you change a system without a diagnosis, your are more likely to be trading a visible problem for an invisible one. You may be fixing a symptom, but the root cause lives in a different layer and the failure will then manifest in a different form.<br><br>Diagnosis is finding the "why." It's the work of locating where a system fails and understanding the mechanism behind the failure. Only once you know the "why" can you write a real hypothesis. Your hypothesis is the "if I change X, then metric A improves, because..." statement. Diagnosis supplies the "because." Without the "because", the hypothesis you formulate is a wish, not an educated guess.</div>
+        </main>
+    </div>
+</body>
+</html>

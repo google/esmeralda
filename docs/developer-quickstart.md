@@ -238,3 +238,20 @@ gcloud ai reasoning-engines predict \
   --input='{"message": {"role": "user", "parts": [{"kind": "text", "text": "Check email for Sarah Johnson and verify her income."}]}}'
 ```
 This triggers the Root Orchestrator, which queries the Corporate Email MCP, fetches documents from Legacy DMS, sends verification queries to the Mortgage Assistant, and returns the final decision stream.
+
+### 4. Verifying GCP Agent Registry Registrations
+To verify that all MCP servers and A2A Agents have registered automatically across all spoke projects:
+
+```bash
+# List all registered services in a target spoke project (e.g. esmeralda-root-agent-3a3d or esmeralda-a2a-3a3d)
+gcloud alpha agent-registry services list \
+  --project="esmeralda-root-agent-3a3d" \
+  --location="us-central1"
+
+# Verify full A2A Agent Card specification with indexed skills
+gcloud alpha agent-registry services list \
+  --project="esmeralda-root-agent-3a3d" \
+  --location="us-central1" \
+  --filter="displayName:a2a-mortgage-agent"
+```
+

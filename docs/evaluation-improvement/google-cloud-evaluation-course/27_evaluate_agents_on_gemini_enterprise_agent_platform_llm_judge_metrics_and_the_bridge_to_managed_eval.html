@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM-judge metrics and the bridge to managed eval -  
+Evaluate Agents on Gemini Enterprise Agent Platform
+</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title"> 
+Evaluate Agents on Gemini Enterprise Agent Platform
+</div>
+            <h1 class="lesson-title">LLM-judge metrics and the bridge to managed eval</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/_qJfUVTzqG4pMLoLFphOkI9txykhI_BN" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/_qJfUVTzqG4pMLoLFphOkI9txykhI_BN</a>
+            </div>
+        </header>
+        <main class="content">
+            <hr class="block-divider" />
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you’ll learn how to grade semantics and safety with LLM-judge metrics, and how a build-time ADK agent graduates to the managed evaluation from Modules 5 and 7.</span></span></p></div>
+<div class="block-heading"><p><strong>Grade meaning with LLM-judge metrics</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The reference metrics check the exact tool calls and wording. </span><a rel="noopener noreferrer nofollow" target="_blank" href="https://adk.dev/evaluate/criteria/">LLM-judge metrics </a><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">check whether the answer means the right thing. A judge model scores semantic quality, rubric adherence, hallucination, and safety, and a separate family grades whole multi-turn conversations.</span></span></p></div>
+<div class="block-paragraph"><div class="rise-table-wrap"><table class="block-text__table" style="width: 100%"><tbody><tr><th colspan="1" rowspan="1" class="" style="" scope="col"><p><span style="font-size: 1.7rem">Family</span></p></th><th colspan="1" rowspan="1" class="" style="" scope="col"><p><span style="font-size: 1.7rem">Metrics</span></p></th><th colspan="1" rowspan="1" class="" style="" scope="col"><p><span style="font-size: 1.7rem">Where it runs</span></p></th></tr><tr><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem">Reference</span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">tool_trajectory_avg_score, response_match_score</span></span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">On your machine (free)</span></span></p></td></tr><tr><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem">LLM-judge</span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">final_response_match_v2, rubric_based_final_response_quality_v1, rubric_based_tool_use_quality_v1, hallucinations_v1</span></span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">On your machine, calling a judge model</span></span></p></td></tr><tr><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem">Multi-turn and safety</span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">multi_turn_task_success_v1, multi_turn_trajectory_quality_v1, multi_turn_tool_use_quality_v1, safety_v1</span></span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Gen AI evaluation service</span></span></p></td></tr></tbody></table></div></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">You configure a judge metric with judge_model_options. It names the judge model and how many samples it averages.</span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Note:</strong> This judge-metric configuration is indicative. The companion lab covers setting up and running LLM-judge metrics in full.</span></span></p></div>
+<div class="block-heading"><p><strong>Bridge to managed evaluation</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Build-time evaluation and the managed platform work together as one Quality Flywheel. Once the agent passes locally, you deploy it to </span><a rel="noopener noreferrer nofollow" target="_blank" href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/agents/quickstart-adk">Agent Runtime</a><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"> and evaluate it through the managed client.evals API from Modules 5 and 7. That covers scenario generation, the User Simulator, rubric metrics, online monitors, and issue clustering.</span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/rise/courses/FWi7g0Vgdf5vm6HUAJ0qLkeCTMc7rYRn/AymDbebczWETXAI0.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">This bridge closes the loop the whole course has been building. You got oriented (Module 1), instrumented the agent (Module 2), generated eval cases (Module 3), defined metrics (Module 4), ran offline evaluations (Module 5), monitored production and alerted on drift (Module 6), and diagnosed, optimized, and verified fixes (Module 7). This module added the build-time half. It catches regressions in ADK before you deploy. Together they form one continuous Quality Flywheel, from a developer’s machine to live production. You now have the map and the tools to run that loop on your own agent.</span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/data%20scientists.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+        </main>
+    </div>
+</body>
+</html>

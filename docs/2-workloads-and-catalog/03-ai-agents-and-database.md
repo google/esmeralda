@@ -189,6 +189,24 @@ flowchart TD
 
 ---
 
+### 3. Agent Registry CI/CD Auto-Registration (`agent.yaml` Single Source of Truth)
+
+In Esmeralda, `apps/agents/a2a-agent/agent.yaml` serves as the single source of truth for both runtime deployment and GCP Agent Registry metadata cataloging.
+
+* **Single Source of Truth (`agent.yaml`)**:
+  The `agent_card` block in `agent.yaml` declares the full A2A v1.0 Agent Card specification:
+  - `name`: `a2a-mortgage-agent`
+  - `supported_interfaces`: `url` (`http://a2a-mortgage-agent.esmeralda.internal/a2a`), `protocol_binding` (`HTTP_JSON`), `protocol_version` (`0.3`)
+  - `default_input_modes` (`["text/plain"]`), `default_output_modes` (`["application/json"]`)
+  - `capabilities` (`streaming: false`)
+  - `skills`: `document-search`, `income-verification`, `corporate-email` with IDs, names, descriptions, and tags.
+* **Automated Cloud Build Registration Step**:
+  Step 3 of `apps/agents/a2a-agent/cloudbuild.yaml` dynamically queries all spoke projects labeled `agent_platform=agent-spoke-project`, parses `agent.yaml` in memory via Python, and executes `gcloud alpha agent-registry services create/update` with `--agent-spec-type=a2a-agent-card`.
+* **Clean Domain Format**:
+  All registered service endpoints utilize clean internal domain names (`http://a2a-mortgage-agent.esmeralda.internal/a2a`) without port numbers.
+
+---
+
 ### File Inventory & Blueprints
 
 ```text

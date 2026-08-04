@@ -2,8 +2,8 @@
 
 # Deploy Corporate Email on Cloud Run with internal-and-load-balancing ingress
 resource "google_cloud_run_v2_service" "corporate_email" {
-  name     = "corporate-email-${var.environment}"
-  location = var.region
+  name                = "corporate-email-${var.environment}"
+  location            = var.region
   project             = var.project_id
   ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" # Allows ILB & Internal Shared VPC calls
   deletion_protection = false
@@ -37,7 +37,7 @@ resource "google_cloud_run_v2_service" "corporate_email" {
         cpu_idle          = true
         startup_cpu_boost = true
       }
-      
+
       # Inject tracing and telemetry endpoints
       env {
         name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -66,7 +66,7 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
   location = var.region
   name     = google_cloud_run_v2_service.corporate_email.name
   role     = "roles/run.invoker"
-  members  = [
+  members = [
     for sa in var.invoker_service_accounts : "serviceAccount:${sa}"
   ]
 }
