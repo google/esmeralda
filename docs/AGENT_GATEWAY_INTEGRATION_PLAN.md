@@ -157,10 +157,10 @@ Dynamic multi-spoke project discovery and registration pipeline integrated direc
 
 ---
 
-## Phase 4: GCP Agent Gateway Module (`google_agent_platform_agent_gateway`)
+## Phase 4: GCP Agent Gateway Module (`google_network_services_agent_gateway`) [COMPLETED]
 
 ### 4.1 Overview
-Create the native GCP **Agent Gateway** Terraform module in `infrastructure/modules/4-workloads/gateways/agent-gateway/`. Deploy instances in `AGENT_TO_ANYWHERE` (egress) mode with IAP `REQUEST_AUTHZ` pointing to the Registries populated in Phase 3, and Model Armor `CONTENT_AUTHZ` configured in Phase 2.
+Created the native GCP **Agent Gateway** Terraform module in `infrastructure/modules/4-workloads/gateways/agent-gateway/`. Deploys instances in `AGENT_TO_ANYWHERE` (egress) mode using `google_network_services_agent_gateway` with IAP `REQUEST_AUTHZ` pointing to the Registries populated in Phase 3, and Model Armor `CONTENT_AUTHZ` configured in Phase 2.
 
 > [!NOTE]
 > **Network Attachment & DNS Peering Alignment**:

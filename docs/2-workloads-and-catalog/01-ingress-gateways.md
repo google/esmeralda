@@ -107,6 +107,39 @@ This preserves the unified interface contract! The ILB routes all `*.esmeralda.i
 
 ---
 
+### Option D: Native GCP Agent Gateway (`gateways/agent-gateway/`)
+
+The native GCP **Agent Gateway** adapter (`google_network_services_agent_gateway`) provisions a Google-managed agent proxy running in `AGENT_TO_ANYWHERE` egress mode. It connects directly to the Shared VPC via a dedicated Network Attachment (`agw-egress-na-dev`), resolves internal domain names (`esmeralda.internal.`) via Shared VPC DNS Peering, and links to the regional Agent Registry (`//agentregistry.googleapis.com/...`).
+
+```mermaid
+graph LR
+    subgraph AgentProject["prj-esmeralda-root-agent"]
+        Agent["Reasoning Engine Container"] -->|Egress| AGW["GCP Agent Gateway<br/>(AGENT_TO_ANYWHERE Mode)"]
+    end
+
+    subgraph SecurityPolicy["Security & Governance"]
+        IAP["IAP Authorization Policy<br/>(REQUEST_AUTHZ Profile)"]
+        MA["Model Armor Policy<br/>(CONTENT_AUTHZ Profile)"]
+        Reg["Regional Agent Registry"]
+    end
+
+    subgraph SharedVPC["Shared VPC (prj-esmeralda-net-host)"]
+        NA["Network Attachment<br/>(agw-egress-na-dev)"]
+        DNS["DNS Peering<br/>(esmeralda.internal.)"]
+    end
+
+    AGW --> SecurityPolicy
+    AGW --> NA
+    AGW --> DNS
+```
+
+Key capabilities:
+* **IAP Access Control (`REQUEST_AUTHZ`)**: Enforces IAP access control via `google_network_services_authz_extension` and `google_network_security_authz_policy`.
+* **Model Armor Floor Settings (`CONTENT_AUTHZ`)**: Inspects agent traffic payloads for PII, prompt injection, and harm categories using Model Armor templates provisioned in `prj-esmeralda-governance`.
+* **Agent Registry Interoperability**: Automatically resolves `.esmeralda.internal` URLs and tool specifications dynamically from the linked Regional Agent Registry.
+
+---
+
 ## Exhaustive Gateway Adapter Implementation Breakdown
 
 A code inspection of `infrastructure/modules/4-workloads/services/` reveals the exact Terraform and serverless resources deployed by each gateway adapter:
