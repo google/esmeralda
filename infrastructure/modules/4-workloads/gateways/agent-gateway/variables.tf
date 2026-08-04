@@ -25,8 +25,8 @@ variable "net_host_project_id" {
   type        = string
 }
 
-variable "vpc_name" {
-  description = "The name of the Shared VPC network"
+variable "network_id" {
+  description = "The self-link or resource name of the Shared VPC network"
   type        = string
 }
 

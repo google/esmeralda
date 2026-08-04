@@ -29,7 +29,7 @@ inputs = {
   environment               = local.env_vars.locals.environment
   subnet_id                 = dependency.networking.outputs.subnet_id
   net_host_project_id       = dependency.projects.outputs.net_host_project_id
-  vpc_name                  = dependency.networking.outputs.network_name
+  network_id                = dependency.networking.outputs.network_id
   governance_project_id     = dependency.projects.outputs.governance_project_id
   model_armor_template_name = try(dependency.security.outputs.model_armor_template_name, "")
 }

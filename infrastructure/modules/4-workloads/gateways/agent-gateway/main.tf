@@ -7,6 +7,10 @@ data "google_project" "gateway" {
   project_id = var.project_id
 }
 
+data "google_project" "net_host" {
+  project_id = var.net_host_project_id
+}
+
 # 1. Network Attachment for Gateway VPC Egress
 resource "google_compute_network_attachment" "agent_gateway" {
   project               = var.project_id
@@ -28,18 +32,12 @@ resource "google_network_services_agent_gateway" "egress_gateway" {
   }
 
   registries = [
-    "//agentregistry.googleapis.com/projects/${var.project_id}/locations/${var.region}"
+    "//agentregistry.googleapis.com/projects/${data.google_project.gateway.number}/locations/${var.region}"
   ]
 
   network_config {
     egress {
       network_attachment = google_compute_network_attachment.agent_gateway.id
-    }
-
-    dns_peering_config {
-      domains        = ["esmeralda.internal."]
-      target_project = var.net_host_project_id
-      target_network = var.vpc_name
     }
   }
 }
@@ -140,3 +138,5 @@ resource "google_project_iam_member" "gateway_model_armor_callout" {
   role    = "roles/modelarmor.calloutUser"
   member  = "serviceAccount:service-${data.google_project.gateway.number}@gcp-sa-agentplatform.iam.gserviceaccount.com"
 }
+
+

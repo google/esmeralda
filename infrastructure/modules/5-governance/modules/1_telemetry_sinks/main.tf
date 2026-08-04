@@ -1,5 +1,17 @@
 locals {
-  monitored_projects = toset(var.spoke_project_ids)
+  monitored_projects     = toset(var.spoke_project_ids)
+  all_monitored_projects = toset(concat([var.governance_project_id], var.spoke_project_ids))
+}
+
+# ------------------------------------------------------------------------------
+# OBSERVABILITY ANALYTICS & LOG VIEWS (_Default bucket & _AllLogs view)
+# ------------------------------------------------------------------------------
+resource "google_logging_project_bucket_config" "default_log_analytics" {
+  for_each         = local.all_monitored_projects
+  project          = each.value
+  location         = "global"
+  bucket_id        = "_Default"
+  enable_analytics = true
 }
 
 # Reference Central BigQuery Telemetry Dataset

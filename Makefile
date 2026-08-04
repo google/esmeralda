@@ -234,6 +234,18 @@ deploy-gateway: ## Step 4.3: Deploy Kong API Gateway individually
 	@cd infrastructure/live/dev/stage-4-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
 	@echo "✅ Gateway deployed!"
 
+deploy-agent-gateway-root: ## Deploy GCP Agent Gateway in root-agent spoke project
+	@echo "🚀 Deploying GCP Agent Gateway in Root Agent project..."
+	@cd infrastructure/live/dev/stage-4-workloads/gateways/agent-gateway/root-agent && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ Root Agent Gateway deployed!"
+
+deploy-agent-gateway-a2a: ## Deploy GCP Agent Gateway in a2a-agent spoke project
+	@echo "🚀 Deploying GCP Agent Gateway in A2A Agent project..."
+	@cd infrastructure/live/dev/stage-4-workloads/gateways/agent-gateway/a2a-agent && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ A2A Agent Gateway deployed!"
+
+deploy-agent-gateways: deploy-agent-gateway-root deploy-agent-gateway-a2a ## Deploy GCP Agent Gateways in both spoke projects
+
 deploy-agent-a2a: ## Step 4.4: Deploy A2A Mortgage Specialist Reasoning Engine
 	@echo "🚀 Deploying A2A Reasoning Engine Agent..."
 	@cd infrastructure/live/dev/stage-4-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
