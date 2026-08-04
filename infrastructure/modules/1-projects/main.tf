@@ -6,20 +6,21 @@ resource "random_id" "project_suffix" {
 
 locals {
   suffix = random_id.project_suffix.hex
-  
+
   # Resolve Project IDs dynamically: Use existing ID if BYO, otherwise generate unique name
   net_host_id   = var.byo_net_host_project ? var.existing_net_host_project : "${var.project_prefix}-net-host-${local.suffix}"
-  gateway_id    = var.byo_gateway_project  ? var.existing_gateway_project  : "${var.project_prefix}-gateway-${local.suffix}"
+  gateway_id    = var.byo_gateway_project ? var.existing_gateway_project : "${var.project_prefix}-gateway-${local.suffix}"
   governance_id = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
-  cicd_id       = var.byo_cicd_project     ? var.existing_cicd_project     : "${var.project_prefix}-cicd-artifacts-${local.suffix}"
+  cicd_id       = var.byo_cicd_project ? var.existing_cicd_project : "${var.project_prefix}-cicd-artifacts-${local.suffix}"
   mcps_id       = "${var.project_prefix}-mcps-${local.suffix}"
   a2a_id        = "${var.project_prefix}-a2a-${local.suffix}"
   root_agent_id = "${var.project_prefix}-root-agent-${local.suffix}"
 
   # Systematic project-specific labeling mapping for FinOps and Cost Center attribution
   common_labels = {
-    "env"        = var.environment
-    "managed-by" = "terragrunt-esmeralda"
+    "env"            = var.environment
+    "managed-by"     = "terragrunt-esmeralda"
+    "agent_platform" = "agent-spoke-project"
   }
 
   net_host_apis = [
@@ -158,12 +159,12 @@ locals {
 
 # Provisioned conditionally: Only created if the customer does not BYO
 resource "google_project" "net_host" {
-  count           = var.byo_net_host_project ? 0 : 1
-  name            = local.net_host_id
-  project_id      = local.net_host_id
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  count               = var.byo_net_host_project ? 0 : 1
+  name                = local.net_host_id
+  project_id          = local.net_host_id
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
@@ -174,12 +175,12 @@ resource "google_project" "net_host" {
 
 # Provisioned conditionally: Only created if the customer does not BYO
 resource "google_project" "gateway" {
-  count           = var.byo_gateway_project ? 0 : 1
-  name            = local.gateway_id
-  project_id      = local.gateway_id
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  count               = var.byo_gateway_project ? 0 : 1
+  name                = local.gateway_id
+  project_id          = local.gateway_id
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
@@ -190,13 +191,13 @@ resource "google_project" "gateway" {
 
 # Central CI/CD & Artifacts Project: Conditional creation
 resource "google_project" "cicd" {
-  count           = var.byo_cicd_project ? 0 : 1
-  name            = local.cicd_id
-  project_id      = local.cicd_id
+  count      = var.byo_cicd_project ? 0 : 1
+  name       = local.cicd_id
+  project_id = local.cicd_id
 
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
@@ -207,11 +208,11 @@ resource "google_project" "cicd" {
 
 # Central Tools Project: ALWAYS created by Esmeralda from scratch
 resource "google_project" "mcps" {
-  name            = local.mcps_id
-  project_id      = local.mcps_id
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  name                = local.mcps_id
+  project_id          = local.mcps_id
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
@@ -222,11 +223,11 @@ resource "google_project" "mcps" {
 
 # Core AI Platform Project: ALWAYS created by Esmeralda from scratch
 resource "google_project" "a2a" {
-  name            = local.a2a_id
-  project_id      = local.a2a_id
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  name                = local.a2a_id
+  project_id          = local.a2a_id
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
@@ -237,11 +238,11 @@ resource "google_project" "a2a" {
 
 # Line-of-Business User Facing Root Agent Project: ALWAYS created from scratch
 resource "google_project" "root_agent" {
-  name            = local.root_agent_id
-  project_id      = local.root_agent_id
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  name                = local.root_agent_id
+  project_id          = local.root_agent_id
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
@@ -252,12 +253,12 @@ resource "google_project" "root_agent" {
 
 # Governance and Telemetry Hub Project: Conditional creation
 resource "google_project" "governance" {
-  count           = var.byo_governance_project ? 0 : 1
-  name            = local.governance_id
-  project_id      = local.governance_id
-  folder_id       = var.folder_id != "" ? var.folder_id : null
-  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account = var.billing_account
+  count               = var.byo_governance_project ? 0 : 1
+  name                = local.governance_id
+  project_id          = local.governance_id
+  folder_id           = var.folder_id != "" ? var.folder_id : null
+  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account     = var.billing_account
   auto_create_network = false
 
   labels = merge(local.common_labels, {
