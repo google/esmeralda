@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How the pieces fit: approaches, engine, and the course map -  
+Evaluate Agents on Gemini Enterprise Agent Platform
+</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title"> 
+Evaluate Agents on Gemini Enterprise Agent Platform
+</div>
+            <h1 class="lesson-title">How the pieces fit: approaches, engine, and the course map</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/6avVLx80e-PjE3TNm-supdsn0PVhmc-_" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/index.html#/lessons/6avVLx80e-PjE3TNm-supdsn0PVhmc-_</a>
+            </div>
+        </header>
+        <main class="content">
+            <hr class="block-divider" />
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you’ll connect the pieces. You’ll see the multiple evaluation options available in Gemini Enterprise Agent Platform for agents. You will also see how every stage of the Quality Flywheel maps onto the modules ahead. By the end, you’ll hold one mental model of the whole course.</span></span></p></div>
+<div class="block-heading"><p><strong>Offline evaluation versus online monitoring</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p>Gemini Enterprise gives you two ways to evaluate the agent. </p><p><strong>Offline evaluation</strong> scores data you already have, such as captured traces, sessions, or simulated sessions. You run it from the New experiment wizard on the Evaluation page. </p><p><strong>Online monitoring</strong> scores a sample of live production traffic on a recurring schedule. You run it from the Online monitors tab. Offline evaluation is the focus of Module 5. Online monitoring is Module 6.</p><p>Within offline evaluation, the cadence shifts with the lifecycle stage. You run ad-hoc checks while developing new agent logic. Then you schedule the same evaluation in a continuous integration and delivery (CI/CD) pipeline for regression testing. Both cadences go through the one New experiment wizard.</p><p>Use offline while you build and test, and online once the agent serves real users.</p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/M1_L1_eval-types.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p>Within offline evaluation, the cadence shifts with the lifecycle stage. You run ad-hoc checks while developing new agent logic. Then you schedule the same evaluation in a continuous integration and delivery (CI/CD) pipeline for regression testing. Both cadences go through the one New experiment wizard.</p><p>Use offline while you build and test, and online once the agent serves real users.</p></div>
+<div class="block-paragraph"><div class="rise-table-wrap"><table class="block-text__table" style="width: 100%"><tbody><tr><th colspan="1" rowspan="1" class="" style="width: 21.2581%" scope="col"><p>GEAP feature</p></th><th colspan="1" rowspan="1" class="" style="width: 26.2617%" scope="col"><p>What it scores</p></th><th colspan="1" rowspan="1" class="" style="width: 24.2933%" scope="col"><p>Where you run it</p></th><th colspan="1" rowspan="1" class="" style="width: 27.707%" scope="col"><p>When you use it</p></th></tr><tr><td style="text-align: left; vertical-align: middle; width: 21.2581%" colspan="1" rowspan="1" class=""><p style="line-height: 1.2; text-align: left"><span style="font-size: 1.5rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Offline evaluation</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle; width: 26.2617%"><p>Data you already have: traces, sessions, or simulated sessions</p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle; width: 24.2933%"><p>New experiment wizard</p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle; width: 27.707%"><p>Ad-hoc during development, or scheduled in a CI/CD pipeline</p></td></tr><tr><td style="text-align: left; vertical-align: middle; width: 21.2581%" colspan="1" rowspan="1" class=""><p style="text-align: left">Online monitoring</p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle; width: 26.2617%"><p>A sample of live production traffic</p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle; width: 24.2933%"><p>Online monitors tab</p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle; width: 27.707%"><p>On a schedule, in production</p></td></tr></tbody></table></div></div>
+<div class="block-heading"><p><strong>The console and the SDK reach the same eval engine</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Agent evaluation has two entry points to the same underlying eval engine. One is the Google Cloud console wizard, a guided flow with prompts and built-in dashboards. The other is the Agent Platform SDK client, the scriptable path for repeatable runs in a CI/CD pipeline. </span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">This course works in the console, so that is what the lessons show, and the SDK runs the same evaluations through code. Because both reach the same engine, what gets measured does not change between them.</span></span></p></div>
+<div class="block-heading"><p><strong>The course map: how the Quality Flywheel maps to the modules</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Every module from here is one stage of the Quality Flywheel, run in one of the console areas you just toured.</span></span></p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Every module from here is one stage of the Quality Flywheel, run in one of the console areas you just toured.</span></span></p><ul style="--marker-color: #1a73e8"><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 2 instruments the agent so the evaluator can read its traces.</span></span></p></li><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 3 generates eval cases with </span><a rel="noopener noreferrer nofollow" target="_blank" href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/optimize/evaluation/evaluate-simulated"><span style="color: #1a73e8; text-decoration: inherit" data-color-scope="inner"><strong>scenario generation</strong></span></a><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"> and the User Simulator.</span></span></p></li><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 4 defines the metrics that grade them.</span></span></p></li><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 5 runs offline evaluations on the Experiments tab and reads the results.</span></span></p></li><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 6 monitors live traffic and alerts on drift.</span></span></p></li><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 7 clusters failures with Automatic Loss Analysis, runs optimization, and re-runs the evaluation to verify the fix, closing the loop.</span></span></p></li><li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Module 8 is the build-time lane. You evaluate the agent locally with the </span><a rel="noopener noreferrer nofollow" target="_blank" href="https://adk.dev/"><span style="color: #1a73e8; text-decoration: inherit" data-color-scope="inner"><strong>Agent Development Kit (ADK)</strong></span></a><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">, Google’s open-source framework for building agents, before it ever deploys. Then you graduate it to the same managed evaluation once it runs on the platform.</span></span></p></li></ul><p></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-VEEPTD-A/content/assets/M1-2_L3_course-map.png" alt="Course Image" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><strong>Keep this </strong><span style="color: #1a73e8; text-decoration: inherit" data-color-scope="inner"><strong>map</strong></span><strong> in mind as you go. Each module then tells you which stage you’re in and which part of the console delivers it.</strong></p></div>
+        </main>
+    </div>
+</body>
+</html>

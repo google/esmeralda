@@ -23,10 +23,10 @@ resource "google_apigee_envgroup_attachment" "env_to_group" {
 }
 
 resource "google_apigee_instance" "apigee_instance" {
-  name                 = "apigee-instance-${var.environment}"
-  org_id               = google_apigee_organization.apigee_org.id
-  location             = var.region
-  peering_cidr_range   = "10.12.0.0/22"
+  name               = "apigee-instance-${var.environment}"
+  org_id             = google_apigee_organization.apigee_org.id
+  location           = var.region
+  peering_cidr_range = "10.12.0.0/22"
 }
 
 resource "google_apigee_instance_attachment" "env_to_instance" {

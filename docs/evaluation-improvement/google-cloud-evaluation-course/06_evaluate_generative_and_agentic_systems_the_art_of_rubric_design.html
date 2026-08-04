@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The art of rubric design - Evaluate Generative and Agentic Systems</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title">Evaluate Generative and Agentic Systems</div>
+            <h1 class="lesson-title">The art of rubric design</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-EVUMOD-A/content/index.html#/lessons/29AIxVhoXnjSBTu2JOlrN2ZOw3Co4DhF" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-EVUMOD-A/content/index.html#/lessons/29AIxVhoXnjSBTu2JOlrN2ZOw3Co4DhF</a>
+            </div>
+        </header>
+        <main class="content">
+            <div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you'll learn how to design, write, and iteratively refine rubrics to evaluate agentic and generative systems.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Converting subjective user vibes into clear, repeatable metrics is one of the biggest causes of failed agentic and generative system development efforts. In this lesson, you'll learn how to write precise operational definitions, how to balance rubric detail against inflexibility, the steps to make rubrics stronger with human agreement, and walk through improvement of a rubric (including an example).</span></span></p><p>By the end of this lesson, you'll be able to:</p></div>
+<ol class="block-list">
+<li><strong>1.</strong> <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Explain why objective rubrics are the foundation of both human evaluation and autoraters.</span></span></p></li>
+<li><strong>2.</strong> <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Write operational definitions that transform vague quality criteria into specific constraints.</span></span></p></li>
+<li><strong>3.</strong> <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Balance rubric length, exhaustiveness, and specificity during design.</span></span></p></li>
+<li><strong>4.</strong> <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Identify characteristics of poor rubric designs and fix them.</span></span></p></li>
+<li><strong>5.</strong> <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Iterate on rubrics using a structured feedback loop.</span></span></p></li>
+<li><strong>6.</strong> <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Explain the importance of naive annotator agreement to rubric quality validation.</span></span></p></li>
+</ol>
+<div class="block-heading"><p><strong>Rubrics as the foundation of evaluation</strong></p></div>
+<div class="block-heading"><p><strong>Business outcomes</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">When you evaluate a generative or agentic system, you must have a way to measure quality that goes beyond subjective "vibes." Informal reviews are useful during early prototyping, but they are too inconsistent to guide systemic hill climbing.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">To perform useful evaluation of subjective tasks, you must establish a rubric. In agentic and generative systems, a rubric is a set of guidelines. It defines a high-quality output when many valid outputs exist. </span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Rubrics are the foundation for both human computation and automated evaluation of tasks lacking straightforward ground truth:</span></span></p></div>
+<div class="block-paragraph"><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more</em>.</p></div>
+<div class="block-paragraph"><p>Without a strong and clear rubric, you cannot trust your evaluation. If your human annotators do not have a shared definition of quality, your autoraters will not either. A weak rubric produces random, unhelpful evaluations. These mislead your analysis, ruin hill climbing, and derail your launch.</p></div>
+<div class="block-heading"><p><strong>Moving from vague criteria to operational definitions</strong></p></div>
+<div class="block-heading"><p><strong>Business outcomes</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">To build an effective rubric, you must move away from vague quality descriptions and establish operational definitions. An operational definition is a clear, unambiguous definition of a quality attribute in measurable terms. If five people grade an output using an operational definition, they must all arrive at the same rating.</span></span></p></div>
+
+                <blockquote class="block-quote">
+                    <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">For example, instructing an annotator or an autorater to check if a chatbot response "sounds professional" is highly subjective.</span></span></p>
+                    
+                </blockquote>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Instead, you must operationalize "professional" into concrete criteria:</span></span></p></div>
+<ul class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The chatbot does not apologize in the first sentence.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The chatbot uses an active voice.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The chatbot directs the user to a clear next step.</span></span></p></li>
+</ul>
+<div class="block-paragraph"><p>When you draft your operational definitions, you must balance three key rubric attributes:</p></div>
+<div class="block-paragraph"><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more.</em></p></div>
+<div class="block-generic">Length</div>
+<div class="block-generic">Exhaustiveness</div>
+<div class="block-generic">Specificity</div>
+<div class="block-heading"><p><strong>Designing effective rubrics</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Take a look at this rubric:</span></span></p></div>
+<div class="block-paragraph"><div class="rise-table-wrap"><table class="block-text__table" style="width: 100%"><tbody><tr><th colspan="1" rowspan="1" class="" style="" scope="col"><p><span style="font-size: 1.7rem">Criterion</span></p></th><th colspan="1" rowspan="1" class="" style="" scope="col"><p><span style="font-size: 1.7rem">Rating 0 (Poor)</span></p></th><th colspan="1" rowspan="1" class="" style="" scope="col"><p><span style="font-size: 1.7rem">Rating 1 (Good)</span></p></th></tr><tr><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem">Correctness</span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The answer has errors or mistakes.</span></span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The answer seems basically correct and trustworthy.</span></span></p></td></tr><tr><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem">Length &amp; style</span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The response is too short or too long.</span></span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The response is a good length and flows nicely.</span></span></p></td></tr><tr><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem">Humanness</span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Sounds like a robot.</span></span></p></td><td style="text-align: left" colspan="1" rowspan="1" class=""><p style="text-align: left"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Sounds like a real person wrote it.</span></span></p></td></tr></tbody></table></div></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">What do you think of this rubric? Do you like it? Do you think it could be better?</span></span></p></div>
+<hr class="block-divider" />
+<div class="block-heading"><p><strong>Good rubric designs practices</strong></p></div>
+<div class="block-paragraph"><p><em>Click each tab to learn more.</em>&nbsp;</p></div>
+<div class="block-generic">Graduated scales versus binary checks</div>
+<div class="block-generic">Clear operational definitions versus subjective vibes</div>
+<div class="block-generic">Concrete anchors versus abstract instructions</div>
+<hr class="block-divider" />
+<div class="block-heading"><p><strong>Critique challenge: improving the bad rubric</strong></p></div>
+<div class="block-heading"><strong>Heading</strong></div>
+<div class="block-paragraph"><p>Review the bad rubric above again. How would you apply the three design practices to make it useful? Think about how you would rewrite the criteria:</p></div>
+<ul class="block-list">
+<li><p>How would you decompose "Correctness" into distinct operational dimensions?</p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">What specific thresholds would define "too short" or "too long"?</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">How would you define "humanness" objectively? What examples would you provide for a rating of 1 vs. 5?</span></span></p></li>
+</ul>
+<hr class="block-divider" />
+<div class="block-heading"><p><strong>An improved graduated rubric</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Here is a significantly better, graduated version of that rubric:</span></span></p></div>
+<div class="block-paragraph"><div class="rise-table-wrap"><table class="block-text__table" style="margin-right: 0%; width: 100%"><tbody><tr><th colspan="1" rowspan="1" class="" style="width: 20.544%" scope="col"><p><span style="font-size: 1.7rem">Criterion</span></p></th><th colspan="1" rowspan="1" class="" style="width: 27.5529%" scope="col"><p><span style="font-size: 1.7rem">Rating 1 (Poor)</span></p></th><th colspan="1" rowspan="1" class="" style="width: 27.2368%" scope="col"><p><span style="font-size: 1.7rem">Rating 3 (Good)</span></p></th><th colspan="1" rowspan="1" class="" style="width: 24.0789%" scope="col"><p><span style="font-size: 1.7rem">Rating 5 (Excellent)</span></p></th></tr><tr><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Factual accuracy &amp; groundedness</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: top"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response contains significant factual errors or fabrications (hallucinations).</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: top"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is mostly accurate but has minor errors or includes outside information.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: top"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is entirely factually correct and fully grounded in the provided sources.</span></span></p></td></tr><tr><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Completeness</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is incomplete or misses the main point.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is accurate but could be more comprehensive.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is factually accurate and complete.</span></span></p></td></tr><tr><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Conciseness &amp; relevance</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is overly verbose, contains irrelevant information, or is confusingly short.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is generally on-topic but could be more concise.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Response is succinct and provides exactly the information needed without being wordy.</span></span></p></td></tr><tr><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Tone &amp; empathy</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Tone is inappropriate, dismissive, or unhelpful.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Tone is neutral and professional but lacks any sense of empathy.</span></span></p></td><td colspan="1" rowspan="1" class="" style="vertical-align: middle"><p style="line-height: 1.38"><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Tone is professional, polite, and shows appropriate empathy for the user's situation.</span></span></p></td></tr></tbody></table></div></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">While this graduated rubric is a major improvement, a closer critique reveals lingering ambiguities:</span></span></p><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more</em>.</p></div>
+<div class="block-generic">Factual accuracy & groundedness (Rating 3)</div>
+<div class="block-generic">Completeness (Rating 1 & Rating 3)</div>
+<div class="block-generic">Completeness (Rating 5)</div>
+<div class="block-generic">Conciseness & relevance (Rating 1 & 5)</div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Can you identify some more?</span></span></p></div>
+<div class="block-heading"><p><strong>The rubric iteration process</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Above, we see that even a carefully rewritten rubric can still be improved. No matter how much you work on a rubric, you can improve it. But eventually you might run into difficulty knowing if you have the right length, exhaustiveness, and specificity.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The way to know your rubric is good is to iteratively refine it. Do not expect to write a perfect rubric on your first draft. Instead, iterate through a structured feedback loop:</span></span></p><p><em>Click the marker numbers in the diagram to learn more.</em></p></div>
+<div class="block-generic">Draft a pilot rubric</div>
+<div class="block-generic">Annotate a small test batch</div>
+<div class="block-generic">Analyze disagreements</div>
+<div class="block-generic">Refine the criteria</div>
+<div class="block-generic">Iterate</div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Rubric iteration requires a deep understanding of system requirements and edge cases. For this reason, the development team, product managers, and subject matter experts (SMEs) must lead the process. </span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Do not delegate initial rubric design to generic, crowdsourced annotator pools. They lack the context needed to identify and resolve subtle rubric ambiguities.</span></span></p></div>
+<div class="block-heading"><p><strong>Measuring agreement</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">To verify that your rubric is objective, you must measure annotator agreement. Ensure you test annotators who did not build the rubric. This naive agreement is the ultimate metric of rubric strength. If different annotators use a rubric and arrive at similar ratings, the rubric is strong.</span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 3.2rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">When you measure agreement, </span><span style="color: #1a73e8; text-decoration: inherit" data-color-scope="inner"><strong>do not rely only on simple percentage agreement</strong></span><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">.</span></span></p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Percent agreement is highly misleading. It does not account for chance agreement, and it biases outcomes towards the middle of the scale.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Instead, you must consider:</span></span></p><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more</em>.</p></div>
+<div class="block-generic">Disagreement severity</div>
+<div class="block-generic">Individual annotator biases</div>
+<div class="block-generic">Rating commonality</div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">You can also use autorater agreement to help with rubric authoring. See the lesson on human computation for more information on analyzing annotator agreement.</span></span></p></div>
+        </main>
+    </div>
+</body>
+</html>

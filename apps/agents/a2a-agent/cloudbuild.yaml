@@ -1,5 +1,5 @@
 # apps/agents/a2a-agent/cloudbuild.yaml
-# Cloud Build pipeline for Mortgage A2A Agent container build & Agent Registry registration
+# Cloud Build pipeline for Mortgage A2A Agent container build & Agent Registry registration across spoke projects
 
 steps:
   # Step 1: Build Docker Container
@@ -10,29 +10,34 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest']
 
-  # Step 3: Register/Sync A2A Agent Endpoint in GCP Agent Registry
+  # Step 3: Register/Sync A2A Agent Endpoint across all agent-spoke projects
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        gcloud alpha agent-registry services create mortgage-a2a-agent \
-          --project=${_A2A_PROJECT_ID} \
-          --location=${_REGION} \
-          --description="A2A Agent providing domain mortgage processing capabilities" \
-          --protocol-binding=HTTP_JSON \
-          --url="http://a2a-mortgage-agent.esmeralda.internal:8000/a2a" || \
-        gcloud alpha agent-registry services update mortgage-a2a-agent \
-          --project=${_A2A_PROJECT_ID} \
-          --location=${_REGION} \
-          --description="A2A Agent providing domain mortgage processing capabilities" \
-          --protocol-binding=HTTP_JSON \
-          --url="http://a2a-mortgage-agent.esmeralda.internal:8000/a2a"
+        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
+        echo "Found agent spoke projects for registration: $$SPOKE_PROJECTS"
+        for PROJ in $$SPOKE_PROJECTS; do
+          echo "Registering mortgage-a2a-agent in project $$PROJ..."
+          gcloud alpha agent-registry services create mortgage-a2a-agent \
+            --project=$$PROJ \
+            --location=${_REGION} \
+            --display-name="mortgage-a2a-agent" \
+            --description="A2A Agent providing domain mortgage processing capabilities" \
+            --interfaces="url=http://a2a-mortgage-agent.esmeralda.internal:8000/a2a,protocolBinding=http-json" \
+            --agent-spec-type=no-spec || \
+          gcloud alpha agent-registry services update mortgage-a2a-agent \
+            --project=$$PROJ \
+            --location=${_REGION} \
+            --display-name="mortgage-a2a-agent" \
+            --description="A2A Agent providing domain mortgage processing capabilities" \
+            --interfaces="url=http://a2a-mortgage-agent.esmeralda.internal:8000/a2a,protocolBinding=http-json"
+        done
 
 substitutions:
   _REGION: 'us-central1'
   _CICD_PROJECT_ID: ''
-  _A2A_PROJECT_ID: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY

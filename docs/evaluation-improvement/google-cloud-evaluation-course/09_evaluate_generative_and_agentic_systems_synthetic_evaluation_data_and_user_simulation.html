@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthetic evaluation data and user simulation - Evaluate Generative and Agentic Systems</title>
+    <style>
+        body {
+            font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #202124;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+        }
+        header {
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .course-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a73e8;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .lesson-title {
+            font-size: 28px;
+            color: #202124;
+            margin: 0;
+            font-weight: 500;
+        }
+        .source-link {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #5f6368;
+        }
+        .source-link a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .source-link a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            font-size: 16px;
+        }
+        .block-heading h1, .block-heading h2, .block-heading h3 {
+            color: #202124;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .block-paragraph p {
+            margin-bottom: 1em;
+        }
+        .block-list {
+            margin-bottom: 1.5em;
+            padding-left: 1.5em;
+        }
+        .block-image {
+            margin: 2em 0;
+            text-align: center;
+        }
+        figcaption {
+            font-size: 13px;
+            color: #5f6368;
+            margin-top: 8px;
+        }
+        blockquote {
+            border-left: 4px solid #1a73e8;
+            margin: 1.5em 0;
+            padding: 10px 20px;
+            background: #f1f3f4;
+            border-radius: 0 4px 4px 0;
+        }
+        hr.block-divider {
+            border: 0;
+            height: 1px;
+            background: #dadce0;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="course-title">Evaluate Generative and Agentic Systems</div>
+            <h1 class="lesson-title">Synthetic evaluation data and user simulation</h1>
+            <div class="source-link">
+                Source: <a href="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-EVUMOD-A/content/index.html#/lessons/8tLCk_GuJvSAOQSWaBy-C9nFtsdWe0-8" target="_blank" rel="noopener">https://storage.googleapis.com/cloud-training/cls-html5-courses/P-EVUMOD-A/content/index.html#/lessons/8tLCk_GuJvSAOQSWaBy-C9nFtsdWe0-8</a>
+            </div>
+        </header>
+        <main class="content">
+            <div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In this lesson, you'll learn how to create synthetic data to evaluate generative and agentic systems.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">While online evaluation data is essential, it is not always available or sufficient. Synthetic evaluation data can fill this gap. You'll explore the advantages and risks of synthetic data, and learn how to generate synthetic evaluation data using both single prompts and simulated users.</span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">By the end of this lesson, you'll be able to:</span></span></p></div>
+<ol class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Explain the benefits and risks of using synthetic data for evaluation.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Apply best practices to generate diverse single-turn simulated evaluation data.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Explain how to configure multi-turn user simulations to generate synthetic evaluation data.</span></span></p></li>
+</ol>
+<div class="block-heading"><p><strong>Introduction to synthetic evaluation data</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Online data is essential for comprehensive evaluation, but relying solely on capturing real online data to fill the need for online evaluation data has shortcomings:</span></span></p><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more</em>.</p></div>
+<div class="block-generic">Privacy and compliance barriers</div>
+<div class="block-generic">Cold-start scenarios</div>
+<div class="block-generic">Absent edge cases</div>
+<div class="block-generic">Safety, security, and adversarial testing</div>
+<div class="block-paragraph"><p><span style="font-size: 3.2rem"><span style="color: rgb(26, 115, 232); text-decoration: inherit" data-color-scope="inner">Synthetic data</span><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"> can fill this gap.</span></span></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">In the context of generative AI, the best way to create synthetic data is through simulation. Using generative AI, you simulate things a user might input into your system, or even full user interactions. Your system then responds to these simulated inputs as if they were real users, giving you synthetic evaluation data.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The primary use of synthetic evaluation data is during hill climbing to:</span></span></p></div>
+<ul class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Identify and fix specific deficiencies.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Ensure the system can handle critical edge cases.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Maintain output quality regression test coverage where real evaluation data is scarce.</span></span></p></li>
+</ul>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Despite the advantages of synthetic data, be aware it carries some risks:</span></span></p><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more</em>.</p></div>
+<div class="block-generic">Model errors</div>
+<div class="block-generic">Representational groups</div>
+<div class="block-generic">Workload distribution errors</div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Despite these risks, synthetic data is an essential part of the evaluation toolbox, and a critical component of an evaluation plan for any high-value user-facing system.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">The following sections cover two kinds of data simulation:</span></span></p></div>
+<ol class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Single turn</strong>: Prompting a model to generate prompts that will then be fed into your system one at a time.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>User simulation</strong>: Directing an AI to impersonate a user.</span></span></p></li>
+</ol>
+<div class="block-heading"><p><strong>Generating single-turn simulated data</strong></p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">To simulate single-turn interactions, you use a foundation model to generate large numbers of prompts that will then be fed into your system one at a time. The simulation ends once your system generates a final response; there are no additional turns in the interaction.</span></span></p></div>
+
+                <blockquote class="block-quote">
+                    <p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">For example, you may want to test an e-commerce chatbot's ability to answer questions about a return policy. You start by gathering a list of 1000 of your products. You then might provide a template like "Can I return [product] because [reason]?" and generate 5 prompts for each product asking the model to come up with [reason], potentially providing some instructions on what a good [reason] looks like.</span></span></p>
+                    
+                </blockquote>
+                
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Alternatively, you may provide more open-ended instructions to the LLM asking it to generate a product return request, letting the model be more creative.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Here are some best practices for simulating single-turn interactions:</span></span></p><p><em>Click each </em><strong><em>+</em></strong><em> button to expand the items and learn more.</em>&nbsp;</p></div>
+<div class="block-generic">Use prompt templates or detailed instructions</div>
+<div class="block-generic">Implement diverse seeding</div>
+<div class="block-generic">Audit outputs</div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">To prevent the generator model from creating homogenous (repetitive) prompts, you can apply two advanced techniques:</span></span></p></div>
+<ol class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Embedding-based topic clustering</strong>: Generate a large pool of prompts, calculate their embeddings, and cluster them. You can then identify and prune over-represented clusters to ensure broad coverage.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Persona-based generation</strong>: Seed the generator prompts with specific target user personas. For example, instruct the model to generate inputs from a "first-time buyer," an "impatient customer," or a "disgruntled returner." You can use the model to help you create a long and rich list of different personas for your simulation task.</span></span></p></li>
+</ol>
+<div class="block-heading"><p>User interaction simulation</p></div>
+<div class="block-paragraph"><p>When we show up to the present moment with all of our senses, we invite the world to fill us with joy. </p><p>The pains of the past are behind us. </p><p>The future has yet to unfold. </p><p>But the now is full of beauty simply waiting for our attention.</p></div>
+<div class="block-heading"><p><strong>The centralized gateway architecture</strong></p></div>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Evaluating conversational, multi-turn agents requires more than single-turn prompts. The system's response depends on the context of the entire conversation. To evaluate these systems, you must use user simulation.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="inner">User simulation is an evaluation technique where specialized user agents act as virtual users to interact with and test the target system.</span></span></p></div>
+
+                <figure class="block-image">
+                    <img src="https://storage.googleapis.com/cloud-training/cls-html5-courses/P-EVUMOD-A/content/assets/Untitled%20presentation%20(10).png" alt="User simulation diagram" style="max-width: 100%; height: auto; border-radius: 8px;" />
+                    
+                </figure>
+                
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Simulating users requires careful configuration and monitoring. Because simulated user agents generate free-form responses, the risk of generating inappropriate outputs is higher than in single-turn generation.</span></span></p><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">To test conversational agents, you configure simulated user agents with specific goals and rules:</span></span></p></div>
+<ol class="block-list">
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Define a persona</strong>: Give the simulated agent a persona, such as an increasingly frustrated customer.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Set a conversational goal</strong>: Instruct the simulated agent to achieve a goal, like returning an item.</span></span></p></li>
+<li><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer"><strong>Introduce conversational shifts</strong>: Tell the agent to change its mind mid-conversation (for example, switching from returning item A17 to returning item B12) to test how well the target system maintains context.</span></span></p></li>
+</ol>
+<div class="block-paragraph"><p><span style="font-size: 1.7rem"><span style="color: rgb(0, 0, 0); text-decoration: inherit" data-color-scope="outer">Note that other courses in this learning path will cover user simulation in more detail, and demonstrate how you can do it in the Gemini Enterprise Agent Platform.</span></span></p></div>
+        </main>
+    </div>
+</body>
+</html>
