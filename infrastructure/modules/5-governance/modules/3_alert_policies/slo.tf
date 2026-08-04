@@ -24,7 +24,7 @@ resource "google_monitoring_slo" "platform_availability_slo" {
   slo_id       = "platform-availability-995"
   display_name = "99.5% Platform Availability - 30-Day Rolling Window"
 
-  goal            = 0.995
+  goal                = 0.995
   rolling_period_days = 30
 
   basic_sli {
@@ -41,7 +41,7 @@ resource "google_monitoring_slo" "reasoning_latency_slo" {
   slo_id       = "reasoning-latency-95-8s"
   display_name = "95% End-to-End Latency < 8,000 ms - 30-Day Rolling Window"
 
-  goal            = 0.95
+  goal                = 0.95
   rolling_period_days = 30
 
   request_based_sli {
