@@ -145,7 +145,7 @@ locals {
   yaml_memory      = try(local.agent_config.resources.memory, null)
 
   # 3. Framework (Mapping custom aliases like "a2a" to Vertex AI's "google-adk")
-  yaml_framework   = try(local.agent_config.framework == "a2a" ? "google-adk" : local.agent_config.framework, "google-adk")
+  yaml_framework = try(local.agent_config.framework == "a2a" ? "google-adk" : local.agent_config.framework, "google-adk")
 
   # 4. Environment Variables & Runtime Infrastructure Overrides
   yaml_env_vars = try(local.agent_config.env, {})
@@ -164,15 +164,15 @@ locals {
   )
 
   # Split the URI to get registry, repository, and image details dynamically
-  image_uri_parts = split("/", var.agent_image_uri)
-  registry_host   = local.image_uri_parts[0]
-  registry_project= local.image_uri_parts[1]
-  registry_repo   = local.image_uri_parts[2]
-  
+  image_uri_parts  = split("/", var.agent_image_uri)
+  registry_host    = local.image_uri_parts[0]
+  registry_project = local.image_uri_parts[1]
+  registry_repo    = local.image_uri_parts[2]
+
   image_name_and_tag = split(":", local.image_uri_parts[3])
   image_name         = local.image_name_and_tag[0]
   image_tag          = length(local.image_name_and_tag) > 1 ? local.image_name_and_tag[1] : "latest"
-  
+
   registry_region = replace(split(".", local.registry_host)[0], "-docker", "")
 }
 
@@ -189,7 +189,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
   description  = local.yaml_desc
   region       = var.region
   project      = var.project_id
-  depends_on   = [
+  depends_on = [
     google_storage_bucket.staging,
     google_project_iam_member.vertex_ai_network_admin,
     google_project_iam_member.vertex_re_network_admin,
@@ -198,15 +198,14 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
   spec {
     agent_framework = local.yaml_framework
-    service_account = var.agent_service_account
+    service_account = var.enable_agent_identity ? null : var.agent_service_account
 
     container_spec {
       image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"
     }
 
-
-
     deployment_spec {
+      identity_type         = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
       min_instances         = local.yaml_min_inst
       max_instances         = local.yaml_max_inst
       container_concurrency = local.yaml_concurrency

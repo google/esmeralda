@@ -20,6 +20,12 @@ variable "agent_service_account" {
   type        = string
 }
 
+variable "enable_agent_identity" {
+  description = "Whether to enable Vertex AI Agent Identity instead of standard custom Service Account"
+  type        = bool
+  default     = true
+}
+
 # Run-time Dependency Injections
 variable "gateway_mcp_url" {
   description = "The injected private or public endpoint URI of the active API Ingress Gateway (from Option A, B, or C)"
