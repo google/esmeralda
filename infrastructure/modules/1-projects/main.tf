@@ -147,7 +147,8 @@ locals {
     "dlp.googleapis.com",
     "pubsub.googleapis.com",
     "cloudresourcemanager.googleapis.com",
-    "looker.googleapis.com"
+    "looker.googleapis.com",
+    "modelarmor.googleapis.com"
   ]
 }
 
