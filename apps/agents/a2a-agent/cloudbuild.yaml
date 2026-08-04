@@ -10,16 +10,16 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest']
 
-  # Step 3: Register/Sync A2A Agent Endpoint across all agent-spoke projects
+  # Step 3: Discover agent spoke projects and register/sync endpoint
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
-        echo "Found agent spoke projects for registration: $$SPOKE_PROJECTS"
+        echo "Cloud Build discovered spoke projects for registration: $$SPOKE_PROJECTS"
         for PROJ in $$SPOKE_PROJECTS; do
-          echo "Registering mortgage-a2a-agent in project $$PROJ..."
+          echo "Syncing mortgage-a2a-agent in project $$PROJ..."
           gcloud alpha agent-registry services create mortgage-a2a-agent \
             --project=$$PROJ \
             --location=${_REGION} \

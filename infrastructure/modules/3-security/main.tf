@@ -172,7 +172,7 @@ resource "google_project_iam_member" "cicd_builder_roles" {
   member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
 }
 
-# Grant Cloud Build Builder SA permission to register services in Agent Registry atomically
+# Grant Cloud Build Builder SA permission to list projects and register services in Agent Registry atomically
 resource "google_project_iam_member" "cicd_builder_agent_registry" {
   for_each = toset([
     var.mcps_project_id,
@@ -181,6 +181,17 @@ resource "google_project_iam_member" "cicd_builder_agent_registry" {
   ])
   project = each.key
   role    = "roles/agentregistry.admin"
+  member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
+}
+
+resource "google_project_iam_member" "cicd_builder_browser" {
+  for_each = toset([
+    var.mcps_project_id,
+    var.a2a_project_id,
+    var.root_project_id,
+  ])
+  project = each.key
+  role    = "roles/browser"
   member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
 }
 

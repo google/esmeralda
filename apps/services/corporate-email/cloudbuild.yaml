@@ -10,29 +10,29 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/corporate-email:latest']
 
-  # Step 3: Register/Sync Microservice Endpoint across all agent-spoke projects
+  # Step 3: Discover agent spoke projects and register/sync endpoint
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
-        echo "Found agent spoke projects for registration: $$SPOKE_PROJECTS"
+        echo "Cloud Build discovered spoke projects for registration: $$SPOKE_PROJECTS"
         for PROJ in $$SPOKE_PROJECTS; do
-          echo "Registering corporate-email in project $$PROJ..."
+          echo "Syncing corporate-email in project $$PROJ..."
           gcloud alpha agent-registry services create corporate-email \
             --project=$$PROJ \
             --location=${_REGION} \
             --display-name="corporate-email" \
             --description="FastMCP service providing internal email verification tools" \
-            --interfaces="url=http://corporate-email.esmeralda.internal:8001/mcp,protocolBinding=json-rpc" \
+            --interfaces="url=http://corporate-email.esmeralda.internal:8001/mcp,protocolBinding=jsonrpc" \
             --mcp-server-spec-type=no-spec || \
           gcloud alpha agent-registry services update corporate-email \
             --project=$$PROJ \
             --location=${_REGION} \
             --display-name="corporate-email" \
             --description="FastMCP service providing internal email verification tools" \
-            --interfaces="url=http://corporate-email.esmeralda.internal:8001/mcp,protocolBinding=json-rpc"
+            --interfaces="url=http://corporate-email.esmeralda.internal:8001/mcp,protocolBinding=jsonrpc"
         done
 
 substitutions:
