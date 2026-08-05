@@ -43,6 +43,8 @@ resource "google_service_account_iam_member" "a2a_agent_identity_impersonates_mc
 resource "google_project_iam_member" "root_agent_identity_roles" {
   for_each = toset([
     "roles/aiplatform.user",
+    "roles/aiplatform.agentDefaultAccess",
+    "roles/agentregistry.viewer",
     "roles/storage.objectAdmin",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
@@ -64,6 +66,8 @@ resource "google_project_iam_member" "a2a_agent_identity_roles" {
     "roles/cloudsql.client",
     "roles/cloudsql.instanceUser",
     "roles/aiplatform.user",
+    "roles/aiplatform.agentDefaultAccess",
+    "roles/agentregistry.viewer",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
     "roles/cloudtrace.agent",

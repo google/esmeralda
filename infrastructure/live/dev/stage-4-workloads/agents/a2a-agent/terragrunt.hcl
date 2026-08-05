@@ -24,7 +24,7 @@ locals {
 }
 
 dependency "agent_gateway" {
-  config_path = "../gateways/agent-gateway/a2a-agent"
+  config_path = "../../gateways/agent-gateway/a2a-agent"
 }
 
 inputs = {

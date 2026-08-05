@@ -80,6 +80,26 @@ resource "google_compute_network" "shared_vpc" {
   auto_create_subnetworks = false
 }
 
+# Cloud Router for Shared VPC Egress NAT
+resource "google_compute_router" "nat_router" {
+  count   = var.byo_networking ? 0 : 1
+  name    = "cr-esmeralda-nat-${var.environment}"
+  project = var.net_host_project_id
+  region  = var.region
+  network = google_compute_network.shared_vpc[0].id
+}
+
+# Cloud NAT for Egress Internet & Public Google API Connectivity
+resource "google_compute_router_nat" "nat_gateway" {
+  count                              = var.byo_networking ? 0 : 1
+  name                               = "nat-esmeralda-outbound-${var.environment}"
+  project                            = var.net_host_project_id
+  router                             = google_compute_router.nat_router[0].name
+  region                             = var.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+}
+
 # Core Subnet for Workloads
 resource "google_compute_subnetwork" "core" {
   count                    = var.byo_networking ? 0 : 1
@@ -88,6 +108,17 @@ resource "google_compute_subnetwork" "core" {
   region                   = var.region
   network                  = google_compute_network.shared_vpc[0].id
   ip_cidr_range            = "10.0.1.0/24"
+  private_ip_google_access = true
+}
+
+# Dedicated Subnet for Agent Gateway PSC Network Attachment Egress
+resource "google_compute_subnetwork" "agw_egress" {
+  count                    = var.byo_networking ? 0 : 1
+  name                     = "sb-esmeralda-agw-egress-${var.environment}"
+  project                  = var.net_host_project_id
+  region                   = var.region
+  network                  = google_compute_network.shared_vpc[0].id
+  ip_cidr_range            = "10.0.3.0/24"
   private_ip_google_access = true
 }
 
@@ -297,6 +328,18 @@ resource "google_compute_subnetwork_iam_member" "network_users" {
   depends_on = [time_sleep.iam_propagation]
 }
 
+# Grant compute.networkUser on the Dedicated Agent Gateway Egress subnet to all service project robots
+resource "google_compute_subnetwork_iam_member" "agw_egress_network_users" {
+  for_each   = !var.byo_networking ? toset(local.subnet_network_users) : toset([])
+  project    = var.net_host_project_id
+  region     = var.region
+  subnetwork = google_compute_subnetwork.agw_egress[0].name
+  role       = "roles/compute.networkUser"
+  member     = each.value
+
+  depends_on = [time_sleep.iam_propagation]
+}
+
 # Grant compute.networkUser on the PSC Interface subnet to all service project robots
 resource "google_compute_subnetwork_iam_member" "psc_interface_users" {
   for_each   = !var.byo_networking && var.enable_psc_interface ? toset(local.subnet_network_users) : toset([])
@@ -357,6 +400,70 @@ resource "google_dns_managed_zone" "private_dns" {
       network_url = local.target_vpc_id
     }
   }
+}
+
+# B. Private Google Access Managed Zone for *.googleapis.com (Official Agent Gateway Egress requirement)
+resource "google_dns_managed_zone" "googleapis_private_dns" {
+  count       = var.byo_networking ? 0 : 1
+  name        = "googleapis-private-dns-${var.environment}"
+  project     = var.net_host_project_id
+  dns_name    = "googleapis.com."
+  description = "Private Google Access DNS Override for Agent Gateway Egress"
+
+  visibility = "private"
+
+  private_visibility_config {
+    networks {
+      network_url = local.target_vpc_id
+    }
+  }
+}
+
+resource "google_dns_record_set" "googleapis_cname" {
+  count        = var.byo_networking ? 0 : 1
+  name         = "*.googleapis.com."
+  project      = var.net_host_project_id
+  managed_zone = google_dns_managed_zone.googleapis_private_dns[0].name
+  type         = "CNAME"
+  ttl          = 300
+  rrdatas      = ["private.googleapis.com."]
+}
+
+resource "google_dns_record_set" "private_googleapis_a" {
+  count        = var.byo_networking ? 0 : 1
+  name         = "private.googleapis.com."
+  project      = var.net_host_project_id
+  managed_zone = google_dns_managed_zone.googleapis_private_dns[0].name
+  type         = "A"
+  ttl          = 300
+  rrdatas      = ["199.36.153.8", "199.36.153.9", "199.36.153.10", "199.36.153.11"]
+}
+
+# C. Private Google Access Managed Zone for *.run.app (Official Cloud Run Egress requirement)
+resource "google_dns_managed_zone" "run_app_private_dns" {
+  count       = var.byo_networking ? 0 : 1
+  name        = "run-app-private-dns-${var.environment}"
+  project     = var.net_host_project_id
+  dns_name    = "run.app."
+  description = "Private Google Access DNS Override for Cloud Run Services Egress"
+
+  visibility = "private"
+
+  private_visibility_config {
+    networks {
+      network_url = local.target_vpc_id
+    }
+  }
+}
+
+resource "google_dns_record_set" "run_app_cname" {
+  count        = var.byo_networking ? 0 : 1
+  name         = "*.run.app."
+  project      = var.net_host_project_id
+  managed_zone = google_dns_managed_zone.run_app_private_dns[0].name
+  type         = "CNAME"
+  ttl          = 300
+  rrdatas      = ["private.googleapis.com."]
 }
 
 # B. Dedicated Private Zone for Gateway & SWP Resolution Peering

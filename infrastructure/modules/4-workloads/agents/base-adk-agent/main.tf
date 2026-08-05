@@ -151,11 +151,17 @@ locals {
   yaml_env_vars = try(local.agent_config.env, {})
 
   runtime_overrides = {
-    GCS_BUCKET        = try(google_storage_bucket.logs.name, null)
-    GATEWAY_MCP_URL   = try(var.gateway_mcp_url, null)
-    A2A_AGENT_URL     = try(var.a2a_agent_url, null)
-    EVENTS_DATASET_ID = try(google_bigquery_dataset.analytics.dataset_id, null)
-    EVENTS_TABLE_ID   = "${replace(local.yaml_name, "-", "_")}_events"
+    GCS_BUCKET                                               = try(google_storage_bucket.logs.name, null)
+    GATEWAY_MCP_URL                                          = try(var.gateway_mcp_url, null)
+    A2A_AGENT_URL                                            = try(var.a2a_agent_url, null)
+    EVENTS_DATASET_ID                                        = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_TABLE_ID                                          = "${replace(local.yaml_name, "-", "_")}_events"
+    GRPC_IPV6_PREFER                                         = "0"
+    GOOGLE_API_USE_CLIENT_CERTIFICATE                        = "false"
+    GOOGLE_API_USE_MTLS_ENDPOINT                             = "never"
+    GOOGLE_GENAI_USE_VERTEXAI                                = "True"
+    GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES = "false"
+    ADK_ENABLE_MCP_GRACEFUL_ERROR_HANDLING                  = "true"
   }
 
   final_env_vars = merge(
@@ -185,10 +191,11 @@ data "google_artifact_registry_docker_image" "agent_image" {
 }
 
 resource "google_vertex_ai_reasoning_engine" "agent" {
-  display_name = "${local.yaml_name}-${var.environment}"
-  description  = local.yaml_desc
-  region       = var.region
-  project      = var.project_id
+  provider      = google-beta
+  display_name  = "${local.yaml_name}-${var.environment}"
+  description   = local.yaml_desc
+  region        = var.region
+  project       = var.project_id
   depends_on = [
     google_storage_bucket.staging,
     google_project_iam_member.vertex_ai_network_admin,
@@ -198,6 +205,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
   spec {
     agent_framework = local.yaml_framework
+    identity_type   = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
     service_account = var.enable_agent_identity ? null : var.agent_service_account
 
     container_spec {
@@ -205,7 +213,6 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
     }
 
     deployment_spec {
-      identity_type         = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
       min_instances         = local.yaml_min_inst
       max_instances         = local.yaml_max_inst
       container_concurrency = local.yaml_concurrency
@@ -234,14 +241,14 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
       }
 
       dynamic "psc_interface_config" {
-        for_each = var.enable_psc_network ? [1] : []
+        for_each = var.enable_psc_network && var.agent_gateway_id == "" ? [1] : []
         content {
           network_attachment = google_compute_network_attachment.psc_attachment[0].id
 
           dynamic "dns_peering_configs" {
-            for_each = var.net_host_project_id != "" && var.vpc_name != "" ? [1] : []
+            for_each = var.net_host_project_id != "" && var.vpc_name != "" ? ["esmeralda.internal.", "googleapis.com.", "run.app."] : []
             content {
-              domain         = "esmeralda.internal."
+              domain         = dns_peering_configs.value
               target_project = var.net_host_project_id
               target_network = var.vpc_name
             }
@@ -270,6 +277,28 @@ resource "null_resource" "runtime_config_sync" {
       # This mimics updating the local environment config or calling a centralized config service
       echo "GATEWAY_MCP_URL=${var.gateway_mcp_url}" > .env.runtime
       echo "A2A_AGENT_URL=${var.a2a_agent_url}" >> .env.runtime
+    EOT
+  }
+}
+
+# Bind Reasoning Engine to Agent Gateway via API Patch (Official GCP Pattern)
+resource "null_resource" "agent_gateway_binding" {
+  count = var.agent_gateway_id != "" ? 1 : 0
+
+  triggers = {
+    reasoning_engine_id = google_vertex_ai_reasoning_engine.agent.id
+    gateway_id          = var.agent_gateway_id
+  }
+
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "🌐 Patching Root Reasoning Engine ${google_vertex_ai_reasoning_engine.agent.id} with Agent Gateway ${var.agent_gateway_id}..."
+      TOKEN=$(gcloud auth print-access-token)
+      curl -s -X PATCH \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json; charset=utf-8" \
+        -d '{"spec":{"deploymentSpec":{"agentGatewayConfig":{"agentToAnywhereConfig":{"agentGateway":"'${var.agent_gateway_id}'"}}}}}' \
+        "https://${var.region}-aiplatform.googleapis.com/v1beta1/${google_vertex_ai_reasoning_engine.agent.id}?updateMask=spec.deploymentSpec.agentGatewayConfig"
     EOT
   }
 }

@@ -28,7 +28,7 @@ locals {
 }
 
 dependency "agent_gateway" {
-  config_path = "../gateways/agent-gateway/root-agent"
+  config_path = "../../gateways/agent-gateway/root-agent"
 }
 
 inputs = {

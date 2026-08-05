@@ -39,3 +39,8 @@ output "secure_web_proxy_ip" {
   description = "The private IP address of the Secure Web Proxy"
   value       = var.enable_secure_web_proxy && !var.byo_networking ? "10.0.1.100" : ""
 }
+
+output "agw_egress_subnet_id" {
+  description = "The dedicated subnet ID for Agent Gateway PSC Network Attachment egress"
+  value       = var.byo_networking ? var.existing_subnet_id : try(google_compute_subnetwork.agw_egress[0].id, "")
+}
