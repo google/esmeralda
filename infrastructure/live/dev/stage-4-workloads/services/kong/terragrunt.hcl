@@ -64,7 +64,8 @@ inputs = {
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
     dependency.security.outputs.a2a_agent_sa_email,
-    dependency.security.outputs.root_agent_sa_email
+    dependency.security.outputs.root_agent_sa_email,
+    dependency.security.outputs.mcp_invoker_sa_email
   ]
 
   agent_endpoints = {

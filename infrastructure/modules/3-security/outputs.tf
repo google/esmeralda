@@ -57,3 +57,8 @@ output "telemetry_dataset_id" {
   description = "The BigQuery dataset ID capturing agentic telemetry and audit logs"
   value       = "esmeralda_telemetry_logs_${var.environment}"
 }
+
+output "mcp_invoker_sa_email" {
+  description = "The email address of the shared MCP invoker service account"
+  value       = google_service_account.mcp_invoker_sa.email
+}

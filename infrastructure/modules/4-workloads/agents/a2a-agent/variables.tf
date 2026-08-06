@@ -54,6 +54,12 @@ variable "invoker_service_accounts" {
   default     = []
 }
 
+variable "mcp_invoker_sa_email" {
+  description = "The email address of the shared MCP invoker service account for IAM impersonation"
+  type        = string
+  default     = ""
+}
+
 # Cloud SQL Sizing Variables
 variable "sql_tier" {
   description = "The machine instance type allocated for the Cloud SQL PostgreSQL task store"
