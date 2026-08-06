@@ -38,6 +38,7 @@ inputs = {
 
   # Agent Gateway Egress Binding
   agent_gateway_id      = dependency.agent_gateway.outputs.gateway_id
+  agw_ca_secret_name    = dependency.agent_gateway.outputs.agw_ca_secret_name
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,

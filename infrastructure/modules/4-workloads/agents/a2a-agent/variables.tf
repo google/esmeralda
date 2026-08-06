@@ -104,6 +104,13 @@ variable "environment" {
   default     = "dev"
 }
 
+variable "agw_ca_secret_name" {
+  description = "Optional Secret Manager secret resource path for the Agent Gateway Root CA bundle"
+  type        = string
+  default     = ""
+}
+
+
 variable "agent_config_path" {
   description = "Absolute path to the agent.yaml file defining agent resources, metadata, and environment variables"
   type        = string

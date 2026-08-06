@@ -38,6 +38,7 @@ inputs = {
 
   # Agent Gateway Egress Binding
   agent_gateway_id      = dependency.agent_gateway.outputs.gateway_id
+  agw_ca_secret_name    = dependency.agent_gateway.outputs.agw_ca_secret_name
 
   # BYOC Container Image URI
   agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:latest"

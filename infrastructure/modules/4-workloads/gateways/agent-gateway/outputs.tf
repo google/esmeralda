@@ -17,3 +17,14 @@ output "iap_policy_id" {
   description = "The ID of the IAP authorization policy targeting the Agent Gateway"
   value       = google_network_security_authz_policy.iap_policy.id
 }
+
+output "agw_ca_secret_name" {
+  description = "The Secret Manager secret name for the Agent Gateway Root CA bundle"
+  value       = google_secret_manager_secret.agw_ca_cert.name
+}
+
+output "agw_ca_secret_id" {
+  description = "The Secret Manager secret ID for the Agent Gateway Root CA bundle"
+  value       = google_secret_manager_secret.agw_ca_cert.secret_id
+}
+

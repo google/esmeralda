@@ -162,6 +162,7 @@ locals {
     GOOGLE_GENAI_USE_VERTEXAI                                = "True"
     GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES = "false"
     ADK_ENABLE_MCP_GRACEFUL_ERROR_HANDLING                  = "true"
+    SECRET_NAME                                              = var.agw_ca_secret_name
   }
 
   final_env_vars = merge(

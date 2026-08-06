@@ -439,6 +439,17 @@ resource "google_dns_record_set" "private_googleapis_a" {
   rrdatas      = ["199.36.153.8", "199.36.153.9", "199.36.153.10", "199.36.153.11"]
 }
 
+resource "google_compute_route" "private_googleapis" {
+  count            = var.byo_networking ? 0 : 1
+  name             = "route-pga-private-googleapis-${var.environment}"
+  project          = var.net_host_project_id
+  network          = local.target_vpc_id
+  dest_range       = "199.36.153.0/24"
+  next_hop_gateway = "default-internet-gateway"
+  priority         = 1000
+}
+
+
 # C. Private Google Access Managed Zone for *.run.app (Official Cloud Run Egress requirement)
 resource "google_dns_managed_zone" "run_app_private_dns" {
   count       = var.byo_networking ? 0 : 1

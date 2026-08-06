@@ -22,6 +22,7 @@ dependencies = [
     "google-adk[a2a,otel-gcp]>=2.4.0",
     "google-auth",
     "google-cloud-logging",
+    "google-cloud-secret-manager",
     "pyyaml",
     "opentelemetry-api>=1.36.0,<1.43.0",
     "opentelemetry-sdk>=1.36.0,<1.45.0",

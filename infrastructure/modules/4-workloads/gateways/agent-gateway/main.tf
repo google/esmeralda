@@ -253,4 +253,36 @@ resource "null_resource" "grant_iap_egress" {
   }
 }
 
+# 10. Agent Gateway Root CA Bundle Secret in Secret Manager
+resource "google_secret_manager_secret" "agw_ca_cert" {
+  project   = var.project_id
+  secret_id = "agw-root-ca-cert-${var.environment}"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "agw_ca_cert_latest" {
+  secret      = google_secret_manager_secret.agw_ca_cert.id
+  secret_data = join("\n\n", google_network_services_agent_gateway.egress_gateway.agent_gateway_card[0].root_certificates)
+}
+
+# Secret Manager Access permissions for Reasoning Engine Service Accounts
+resource "google_secret_manager_secret_iam_member" "agw_ca_secret_access_re" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.agw_ca_cert.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:service-${data.google_project.gateway.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
+}
+
+resource "google_secret_manager_secret_iam_member" "agw_ca_secret_access_aiplatform" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.agw_ca_cert.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:service-${data.google_project.gateway.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+}
+
+
+
 
