@@ -315,13 +315,14 @@ locals {
   yaml_env_vars = try(local.agent_config.env, {})
 
   runtime_overrides = {
-    GCS_BUCKET         = try(google_storage_bucket.logs.name, null)
-    CLOUD_SQL_INSTANCE = try("${var.project_id}:${var.region}:${google_sql_database_instance.task_store.name}", null)
-    DB_IAM_USER        = try(google_sql_user.agent_iam_user.name, null)
-    DB_NAME            = try(var.database_name, null)
-    USE_CLOUD_SQL      = "0"
-    EVENTS_DATASET_ID  = try(google_bigquery_dataset.analytics.dataset_id, null)
-    EVENTS_TABLE_ID    = "${replace(local.yaml_name, "-", "_")}_events"
+    GCS_BUCKET             = try(google_storage_bucket.logs.name, null)
+    CLOUD_SQL_INSTANCE     = try("${var.project_id}:${var.region}:${google_sql_database_instance.task_store.name}", null)
+    DB_IAM_USER            = try(google_sql_user.agent_iam_user.name, null)
+    DB_NAME                = try(var.database_name, null)
+    USE_CLOUD_SQL          = "0"
+    EVENTS_DATASET_ID      = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_TABLE_ID        = "${replace(local.yaml_name, "-", "_")}_events"
+    SERVICE_ACCOUNT_EMAIL = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account
   }
 
   final_env_vars = merge(
@@ -353,6 +354,7 @@ data "google_artifact_registry_docker_image" "agent_image" {
 }
 
 resource "google_vertex_ai_reasoning_engine" "agent" {
+  provider     = google-beta
   display_name = "${local.yaml_name}-${var.environment}"
   description  = local.yaml_desc
   region       = var.region
@@ -368,6 +370,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
   spec {
     agent_framework = local.yaml_framework
     service_account = var.enable_agent_identity ? null : var.agent_service_account
+    identity_type   = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
 
     class_methods = jsonencode([
       {
@@ -403,7 +406,6 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
 
     deployment_spec {
-      identity_type         = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
       min_instances         = local.yaml_min_inst
       max_instances         = local.yaml_max_inst
       container_concurrency = local.yaml_concurrency

@@ -36,33 +36,36 @@ DEFAULT_GATEWAY_AUDIENCE = "http://esmeralda.internal"
 
 
 def _get_oidc_token(audience: str) -> str:
-    """Generate an OIDC ID token via Google auth / IAM Credentials API."""
+    """Generate an OIDC ID token for target SERVICE_ACCOUNT_EMAIL using IAM impersonation."""
+    sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
+    if sa_email:
+        try:
+            from google.auth import impersonated_credentials
+            from google.auth.transport.requests import Request as GoogleAuthRequest
+            source_creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            impersonated = impersonated_credentials.Credentials(
+                source_credentials=source_creds,
+                target_principal=sa_email,
+                target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            id_token_creds = impersonated_credentials.IDTokenCredentials(
+                target_credentials=impersonated,
+                target_audience=audience,
+                include_email=True,
+            )
+            auth_req = GoogleAuthRequest()
+            id_token_creds.refresh(auth_req)
+            return id_token_creds.token
+        except Exception as e:
+            logger.warning("Failed to fetch impersonated ID token for %s (%s)", sa_email, e)
+
     try:
-        credentials, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        auth_req = google.auth.transport.requests.Request()
-        credentials.refresh(auth_req)
-        access_token = credentials.token
-
-        sa_email = getattr(credentials, "service_account_email", None)
-        if not sa_email or sa_email == "default" or sa_email == "-":
-            sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
-
-        url = (
-            f"https://iamcredentials.googleapis.com/v1/projects/-"
-            f"/serviceAccounts/{sa_email}:generateIdToken"
-        )
-        req_body = json.dumps({"audience": audience, "includeEmail": True}).encode("utf-8")
-        req = urllib.request.Request(url, data=req_body, headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        })
-
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())["token"]
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        auth_req = GoogleAuthRequest()
+        return google_id_token.fetch_id_token(auth_req, audience)
     except Exception as e:
-        logger.warning("Failed to fetch OIDC token via IAM API (%s), bypassing ID token header.", e)
+        logger.warning("Failed to fetch ID token via Metadata Server: %s", e)
         return ""
 
 

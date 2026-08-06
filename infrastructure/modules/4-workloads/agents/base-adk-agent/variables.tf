@@ -99,3 +99,9 @@ variable "agent_config_path" {
   default     = ""
 }
 
+variable "mcp_invoker_sa_email" {
+  description = "The email address of the shared MCP invoker service account for IAM impersonation"
+  type        = string
+  default     = ""
+}
+
