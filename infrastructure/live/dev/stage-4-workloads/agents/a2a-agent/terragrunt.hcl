@@ -31,6 +31,7 @@ inputs = {
   net_host_project_id   = dependency.projects.outputs.net_host_project_id
   vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+  mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
