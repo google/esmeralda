@@ -151,11 +151,12 @@ locals {
   yaml_env_vars = try(local.agent_config.env, {})
 
   runtime_overrides = {
-    GCS_BUCKET        = try(google_storage_bucket.logs.name, null)
-    GATEWAY_MCP_URL   = try(var.gateway_mcp_url, null)
-    A2A_AGENT_URL     = try(var.a2a_agent_url, null)
-    EVENTS_DATASET_ID = try(google_bigquery_dataset.analytics.dataset_id, null)
-    EVENTS_TABLE_ID   = "${replace(local.yaml_name, "-", "_")}_events"
+    GCS_BUCKET             = try(google_storage_bucket.logs.name, null)
+    GATEWAY_MCP_URL        = try(var.gateway_mcp_url, null)
+    A2A_AGENT_URL          = try(var.a2a_agent_url, null)
+    EVENTS_DATASET_ID      = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_TABLE_ID        = "${replace(local.yaml_name, "-", "_")}_events"
+    SERVICE_ACCOUNT_EMAIL = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account
   }
 
   final_env_vars = merge(
@@ -185,6 +186,7 @@ data "google_artifact_registry_docker_image" "agent_image" {
 }
 
 resource "google_vertex_ai_reasoning_engine" "agent" {
+  provider     = google-beta
   display_name = "${local.yaml_name}-${var.environment}"
   description  = local.yaml_desc
   region       = var.region
@@ -199,13 +201,13 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
   spec {
     agent_framework = local.yaml_framework
     service_account = var.enable_agent_identity ? null : var.agent_service_account
+    identity_type   = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
 
     container_spec {
       image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"
     }
 
     deployment_spec {
-      identity_type         = var.enable_agent_identity ? "AGENT_IDENTITY" : "SERVICE_ACCOUNT"
       min_instances         = local.yaml_min_inst
       max_instances         = local.yaml_max_inst
       container_concurrency = local.yaml_concurrency
