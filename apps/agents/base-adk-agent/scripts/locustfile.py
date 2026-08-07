@@ -145,6 +145,32 @@ class RootAgentMultiTurnUser(HttpUser):
                         exception=None
                     )
                     response.success()
+
+            # 1b. Register session in ADK Runner SessionStore
+            adk_create_url = f"/v1beta1/projects/{PROJECT}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}:query"
+            adk_create_payload = {
+                "class_method": "async_create_session",
+                "input": {
+                    "user_id": self.user_id,
+                    "session_id": self.session_id
+                }
+            }
+            try:
+                with self.client.post(
+                    adk_create_url,
+                    json=adk_create_payload,
+                    headers=self.headers,
+                    catch_response=True
+                ) as reg_resp:
+                    if reg_resp.status_code != 200:
+                        reg_resp.failure(f"ADK Session Registration HTTP {reg_resp.status_code}: {reg_resp.text}")
+                        self.session_id = None
+                        return
+                    reg_resp.success()
+            except Exception as e:
+                logger.error(f"Failed ADK session registration: {e}")
+                self.session_id = None
+                return
             except Exception as e:
                 session_latency = (time.time() - session_start) * 1000
                 events.request.fire(
