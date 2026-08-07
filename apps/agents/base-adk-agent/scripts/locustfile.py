@@ -145,6 +145,17 @@ class RootAgentMultiTurnUser(HttpUser):
                         exception=None
                     )
                     response.success()
+            except Exception as e:
+                session_latency = (time.time() - session_start) * 1000
+                events.request.fire(
+                    request_type="AgentSession",
+                    name="0. Create Control Plane Session",
+                    response_time=session_latency,
+                    response_length=0,
+                    exception=e
+                )
+                logger.error(f"Failed session creation: {e}")
+                return
 
             # 1b. Register session in ADK Runner SessionStore
             adk_create_url = f"/v1beta1/projects/{PROJECT}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}:query"
@@ -170,17 +181,6 @@ class RootAgentMultiTurnUser(HttpUser):
             except Exception as e:
                 logger.error(f"Failed ADK session registration: {e}")
                 self.session_id = None
-                return
-            except Exception as e:
-                session_latency = (time.time() - session_start) * 1000
-                events.request.fire(
-                    request_type="AgentSession",
-                    name="0. Create Control Plane Session",
-                    response_time=session_latency,
-                    response_length=0,
-                    exception=e
-                )
-                logger.error(f"Failed session creation: {e}")
                 return
 
         # 2. Execute streaming turn query
