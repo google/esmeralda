@@ -92,7 +92,8 @@ class AdkAgentExecutorBuilder:
                 app_name="agent",
                 session_service=_create_session_service(),
                 plugins=self.plugins
-            )
+            ),
+            use_legacy=False,
         )
 
 
@@ -177,7 +178,7 @@ def load_agent_card_from_yaml():
     tp = getattr(a2a.types, "TransportProtocol", None)
     pref_tp = getattr(tp, "HTTP_JSON", getattr(tp, "http_json", "HTTP+JSON")) if tp else "HTTP+JSON"
 
-    card_kwargs.setdefault("url", "https://a2a-mortgage-agent.esmeralda.internal/api/a2a")
+    card_kwargs.setdefault("url", "http://a2a-mortgage-agent.esmeralda.internal")
     card_kwargs.setdefault("preferred_transport", pref_tp)
     card_kwargs.setdefault("supports_authenticated_extended_card", True)
 
