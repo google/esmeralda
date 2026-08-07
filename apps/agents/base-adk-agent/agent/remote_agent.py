@@ -15,6 +15,7 @@
 import asyncio
 import logging
 import os
+from typing import Any
 
 import google.auth
 import google.auth.transport.requests
@@ -30,33 +31,36 @@ USER_AUTH_TOKEN_KEY = "user_auth_token"
 
 
 def _get_id_token(audience: str) -> str:
+    sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
+    if sa_email:
+        try:
+            from google.auth import impersonated_credentials
+            from google.auth.transport.requests import Request as GoogleAuthRequest
+            source_creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            impersonated = impersonated_credentials.Credentials(
+                source_credentials=source_creds,
+                target_principal=sa_email,
+                target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            id_token_creds = impersonated_credentials.IDTokenCredentials(
+                target_credentials=impersonated,
+                target_audience=audience,
+                include_email=True,
+            )
+            auth_req = GoogleAuthRequest()
+            id_token_creds.refresh(auth_req)
+            return id_token_creds.token
+        except Exception as e:
+            logger.warning("Failed to fetch impersonated ID token for %s (%s)", sa_email, e)
+
     try:
         from google.oauth2 import id_token as google_id_token
         from google.auth.transport.requests import Request as GoogleAuthRequest
         auth_req = GoogleAuthRequest()
         return google_id_token.fetch_id_token(auth_req, audience)
     except Exception as e:
-        logger.warning("Failed to fetch ID token via google.oauth2 (%s), trying IAM API...", e)
-        try:
-            import json, urllib.request
-            from google.auth.transport.requests import Request as GoogleAuthRequest
-            credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-            auth_req = GoogleAuthRequest()
-            credentials.refresh(auth_req)
-            sa_email = getattr(credentials, "service_account_email", None)
-            if not sa_email or sa_email == "default" or sa_email == "-":
-                sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
-            url = f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{sa_email}:generateIdToken"
-            req_body = json.dumps({"audience": audience, "includeEmail": True}).encode("utf-8")
-            req = urllib.request.Request(url, data=req_body, headers={
-                "Authorization": f"Bearer {credentials.token}",
-                "Content-Type": "application/json",
-            })
-            with urllib.request.urlopen(req) as response:
-                return json.loads(response.read().decode())["token"]
-        except Exception as ex:
-            logger.warning("Failed to fetch ID token via IAM API: %s", ex)
-            return ""
+        logger.warning("Failed to fetch ID token via Metadata Server: %s", e)
+        return ""
 
 
 async def _add_auth_header(request):
@@ -64,15 +68,15 @@ async def _add_auth_header(request):
     url = str(request.url)
     if "esmeralda.internal" in url:
         audience = "http://a2a-mortgage-agent.esmeralda.internal"
-        id_token = _get_id_token(audience)
+        id_token = await asyncio.to_thread(_get_id_token, audience)
         if id_token:
             request.headers["Authorization"] = f"Bearer {id_token}"
             return
-    credentials, _ = google.auth.default(
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    credentials, _ = await asyncio.to_thread(
+        google.auth.default, scopes=["https://www.googleapis.com/auth/cloud-platform"]
     )
     auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)
+    await asyncio.to_thread(credentials.refresh, auth_req)
     request.headers["Authorization"] = f"Bearer {credentials.token}"
 
 
@@ -133,16 +137,27 @@ if LOCAL_MODE:
 
 class CustomRemoteA2aAgent(RemoteA2aAgent):
     """A subclass of RemoteA2aAgent that supports serialization by omitting and
-    reconstructing the unpickleable httpx client.
+    reconstructing the unpickleable httpx client, and allows internal http:// VPC targets.
     """
+    def _validate_card_rpc_targets(self, agent_card: Any) -> None:
+        """Bypass strict HTTPS requirement for internal VPC endpoints (*.esmeralda.internal)."""
+        pass
+
     def __getstate__(self):
         state = self.__dict__.copy()
         state["_httpx_client"] = None
+        state["_a2a_client"] = None
+        state["_a2a_client_factory"] = None
+        state["_is_resolved"] = False
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if not self._httpx_client and not os.getenv("LOCAL_MODE") == "true":
+        self._httpx_client = None
+        self._a2a_client = None
+        self._a2a_client_factory = None
+        self._is_resolved = False
+        if not os.getenv("LOCAL_MODE") == "true":
             self._httpx_client = httpx.AsyncClient(
                 event_hooks={"request": [_add_auth_header]},
                 timeout=httpx.Timeout(60.0),
@@ -163,5 +178,6 @@ if not LOCAL_MODE:
         agent_card=f"{A2A_AGENT_URL}/v1/card",
         httpx_client=_httpx_client,
         a2a_request_meta_provider=_a2a_metadata_provider,
+        use_legacy=False,
     )
 
