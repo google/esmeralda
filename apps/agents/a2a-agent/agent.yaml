@@ -53,14 +53,19 @@ agent_card:
   name: "a2a-mortgage-agent"
   description: "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities."
   version: "1.0.0"
+  url: "http://a2a-mortgage-agent.esmeralda.internal"
   capabilities:
     streaming: false
+    extensions:
+      - uri: "https://google.github.io/adk-docs/a2a/a2a-extension/"
+        description: "Ability to use the new agent executor implementation"
+        required: false
   default_input_modes:
     - "text/plain"
   default_output_modes:
     - "application/json"
   supported_interfaces:
-    - url: "http://a2a-mortgage-agent.esmeralda.internal/a2a"
+    - url: "http://a2a-mortgage-agent.esmeralda.internal"
       protocol_binding: "HTTP_JSON"
       protocol_version: "0.3"
   skills:
