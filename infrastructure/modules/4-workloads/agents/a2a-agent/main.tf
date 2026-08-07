@@ -253,6 +253,13 @@ resource "google_project_iam_member" "invokers_aiplatform_user" {
   member   = "serviceAccount:${each.value}"
 }
 
+resource "google_project_iam_member" "agent_identity_aiplatform_user" {
+  count   = var.enable_agent_identity ? 1 : 0
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "principalSet://agents.global.org-${data.google_project.current.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.current.number}"
+}
+
 resource "google_project_iam_member" "vertex_re_dns_peer" {
   count   = var.net_host_project_id != "" ? 1 : 0
   project = var.net_host_project_id
