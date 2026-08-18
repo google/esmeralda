@@ -4,20 +4,20 @@
 steps:
   # Step 1: Build Docker Container
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:latest', '.']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:${_TAG}', '.']
 
   # Step 2: Push Docker Image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:latest']
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/legacy-dms:${_TAG}']
 
-  # Step 3: Discover agent spoke projects and register/sync endpoint with tool-spec
+  # Step 3: Discover agent spoke projects matching _ENV and register/sync endpoint with tool-spec
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
-        echo "Cloud Build discovered spoke projects for registration: $$SPOKE_PROJECTS"
+        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project AND labels.env=${_ENV}" --format="value(projectId)")
+        echo "Cloud Build discovered spoke projects for environment ${_ENV}: $$SPOKE_PROJECTS"
         for PROJ in $$SPOKE_PROJECTS; do
           echo "Syncing legacy-dms in project $$PROJ..."
           gcloud alpha agent-registry services create legacy-dms \
@@ -41,6 +41,8 @@ steps:
 substitutions:
   _REGION: 'us-central1'
   _CICD_PROJECT_ID: ''
+  _TAG: 'latest'
+  _ENV: 'dev'
 
 options:
   logging: CLOUD_LOGGING_ONLY
