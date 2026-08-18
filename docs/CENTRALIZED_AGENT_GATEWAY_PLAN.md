@@ -2,7 +2,7 @@
 
 This document provides an exhaustive architectural analysis and step-by-step implementation plan for integrating Google Cloud's **Centralized Agent Gateway** (`AGENT_TO_ANYWHERE`), **Agent Registry** (`agentregistry.googleapis.com`), **SPIFFE Agent Identity** (`principal://...`), **IAP CEL Authorization Policies**, and **Model Armor Guardrails** into the **Esmeralda** multi-project enterprise agent architecture.
 
-This plan incorporates every specification, constraint, and gotcha from Google Cloud's official August 7, 2026 architectural paradigm (*Cross Project Agent Runtime & Agent Gateway* by James Duncan, following the **August 4, 2026 GA rollout** of cross-project bindings; internal tracking references `b/535999861`, `b/536001237`).
+This plan incorporates every specification, constraint, and gotcha from Google Cloud's official August 7, 2026 architectural specification (*Cross Project Agent Runtime & Agent Gateway*, following the **August 4, 2026 GA rollout** of cross-project bindings).
 
 ---
 
@@ -71,6 +71,21 @@ flowchart TB
 | **A2A Agent Spoke** | `esmeralda-a2a-3a3d` | **Specialized Mortgage Execution** | Vertex AI Reasoning Engine (`a2a-mortgage-agent`), bound via `agentGatewayConfig` to `esmeralda-governance`. **No local VPC needed.** |
 | **MCP Tools Spoke** | `esmeralda-mcps-3a3d` | **Backend Business Services** | Cloud Run FastMCP servers (`legacy-dms`, `income-verification`, `corporate-email`), private Internal Load Balancer VIP (`10.0.1.3`). |
 
+### 2.1 Mandatory Project API Enablement Matrix
+To support Centralized Agent Gateway v2, the following GCP APIs must be enabled via `google_project_service` inside `infrastructure/modules/1-projects/main.tf`:
+
+| GCP API Service (`*.googleapis.com`) | `net-host` | `governance` | `cicd` | `root-agent` | `a2a-agent` | `mcps` | Purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`serviceusage.googleapis.com`** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | API enablement and quota enforcement |
+| **`networkservices.googleapis.com`** | | ✅ | | | | | Central Agent Gateway (`AGENT_TO_ANYWHERE`) |
+| **`agentregistry.googleapis.com`** | | ✅ | | | | | Central Agent Registry catalog & tool specs |
+| **`modelarmor.googleapis.com`** | | ✅ | | | | | Prompt injection defense & PII masking (`[EMAIL_ADDRESS]`) |
+| **`iap.googleapis.com`** | | ✅ | | | | | IAP authorization engine & CEL rule evaluation |
+| **`secretmanager.googleapis.com`** | | ✅ | ✅ | ✅ | ✅ | ✅ | Two-Vault Secret Manager config & credentials |
+| **`aiplatform.googleapis.com`** | | | | ✅ | ✅ | | Vertex AI Reasoning Engines & Agent Identity |
+| **`run.googleapis.com`** | | ✅ | | | | ✅ | Cloud Run FastMCP tool servers & Kong proxy |
+| **`dns.googleapis.com`** | ✅ | | | | | | Private Cloud DNS managed zones (`esmeralda.internal.`) |
+
 ---
 
 ## 3. Detailed Architectural Specification by Tier
@@ -110,34 +125,35 @@ All agent runtimes require access to a standard set of Google Cloud APIs to disc
 8. `https://aiplatform.us-central1.rep.googleapis.com` (Regional Endpoint Protocol)
 
 ##### B. Cross-Project MCP Server Registration (Tier 2 Tools)
-When registering Cloud Run MCP servers (`legacy-dms`, `income-verification`, `corporate-email`):
+When registering Cloud Run MCP servers (`legacy-dms`, `income-verification`, `corporate-email`), preserve Esmeralda's exact `cloudbuild.yaml` specification using `tools.json` and `--interfaces="url=http://...,protocolBinding=jsonrpc"`:
 * **CRITICAL REQUIREMENT**: The `--interfaces url` parameter **must include the full `/mcp` endpoint path** (e.g. `http://legacy-dms.esmeralda.internal/mcp`), not just the service root!
 
 ```bash
-gcloud agent-registry services create legacy-dms-mcp \
-    --project="esmeralda-governance-3a3d" \
-    --location="us-central1" \
-    --display-name="Legacy DMS Document Search & Retrieval" \
+gcloud agent-registry services create legacy-dms \
+    --project="${_GOVERNANCE_PROJECT_ID}" \
+    --location="${_REGION}" \
+    --display-name="legacy-dms" \
+    --description="FastMCP service providing legacy document management and retrieval tools" \
+    --interfaces="url=http://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
     --mcp-server-spec-type=tool-spec \
-    --mcp-server-spec-content="$(cat toolspec_dms.json)" \
-    --interfaces="protocolBinding=JSONRPC,url=http://legacy-dms.esmeralda.internal/mcp"
+    --mcp-server-spec-content=tools.json
 ```
 
 ##### C. Cross-Project Agent-to-Agent (A2A) Registration (Tier 2 Peers)
-When registering an A2A agent (`a2a-mortgage-agent`) so the Root Agent can discover and call it:
-* If calling the standard Vertex AI REST query endpoint:
-  `url=https://us-central1-aiplatform.googleapis.com/v1beta1/projects/${A2A_PROJECT_NUMBER}/locations/us-central1/reasoningEngines/${ENGINE_ID}:query`
-* If calling our private internal A2A extension endpoint over ILB/VPC:
-  `url=http://a2a-mortgage-agent.esmeralda.internal`
+When registering an A2A agent (`a2a-mortgage-agent`), preserve Esmeralda's exact `agent.yaml` manifest parser step from [`apps/agents/a2a-agent/cloudbuild.yaml`](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/apps/agents/a2a-agent/cloudbuild.yaml#L19-L39). The script dynamically extracts `agent_card` from `agent.yaml` and embeds `supportedInterfaces` (with `protocolVersion: "0.3"`):
 
 ```bash
-gcloud agent-registry services create a2a-mortgage-agent-service \
-    --project="esmeralda-governance-3a3d" \
-    --location="us-central1" \
-    --display-name="A2A Mortgage Underwriting Specialist" \
+# 1. Parse agent.yaml into exact A2A Agent Card JSON schema
+CARD_JSON=$(python3 -c "import yaml, json; data=yaml.safe_load(open('agent.yaml'))['agent_card']; print(json.dumps({'name': data['name'], 'description': data['description'], 'version': data['version'], 'capabilities': data.get('capabilities', {}), 'defaultInputModes': data.get('default_input_modes', ['text/plain']), 'defaultOutputModes': data.get('default_output_modes', ['application/json']), 'supportedInterfaces': [{'url': i['url'], 'protocolBinding': i['protocol_binding'], 'protocolVersion': i.get('protocol_version', '0.3')} for i in data.get('supported_interfaces', [])], 'skills': data.get('skills', [])}))")
+
+# 2. Register into Central Governance Project
+gcloud agent-registry services create a2a-mortgage-agent \
+    --project="${_GOVERNANCE_PROJECT_ID}" \
+    --location="${_REGION}" \
+    --display-name="a2a-mortgage-agent" \
+    --description="A2A Agent providing domain mortgage processing capabilities" \
     --agent-spec-type=a2a-agent-card \
-    --agent-spec-content="$(cat agentcard_a2a.json)" \
-    --interfaces="protocolBinding=JSON_HTTP,url=http://a2a-mortgage-agent.esmeralda.internal"
+    --agent-spec-content="$CARD_JSON"
 ```
 
 #### 3.3 Two-Tier IAP Authorization & CEL Guardrails
@@ -156,19 +172,19 @@ IAP evaluates the SPIFFE identity of the calling agent against server-generated 
 ##### Step-by-Step IAP Authorization for MCP Tools (`--resource-type=agent-registry --mcp-server`)
 1. Fetch the server-generated resource ID:
 ```bash
-REGISTRY_RESOURCE=$(gcloud agent-registry services describe legacy-dms-mcp \
-    --project="esmeralda-governance-3a3d" \
-    --location="us-central1" \
+REGISTRY_RESOURCE=$(gcloud agent-registry services describe legacy-dms \
+    --project="${_GOVERNANCE_PROJECT_ID}" \
+    --location="${_REGION}" \
     --format='value(registryResource)')
 RESOURCE_ID=$(basename "$REGISTRY_RESOURCE")
 ```
 2. Grant `roles/iap.egressor` on that specific MCP server with mandatory CEL condition:
 ```bash
-CALLING_PRINCIPAL="principal://agents.global.org-${ORG_ID}.system.id.goog/resources/aiplatform/projects/${A2A_PROJECT_NUMBER}/locations/us-central1/reasoningEngines/${A2A_ENGINE_ID}"
+CALLING_PRINCIPAL="principal://agents.global.org-${_ORG_ID}.system.id.goog/resources/aiplatform/projects/${_A2A_PROJECT_NUMBER}/locations/${_REGION}/reasoningEngines/${_A2A_ENGINE_ID}"
 
 gcloud iap web add-iam-policy-binding \
-    --project="esmeralda-governance-3a3d" \
-    --region="us-central1" \
+    --project="${_GOVERNANCE_PROJECT_ID}" \
+    --region="${_REGION}" \
     --resource-type=agent-registry \
     --mcp-server="${RESOURCE_ID}" \
     --member="${CALLING_PRINCIPAL}" \
@@ -181,40 +197,40 @@ gcloud iap web add-iam-policy-binding \
 Notice `--agent="${RESOURCE_ID}"` instead of `--mcp-server`:
 ```bash
 gcloud iap web add-iam-policy-binding \
-    --project="esmeralda-governance-3a3d" \
-    --region="us-central1" \
+    --project="${_GOVERNANCE_PROJECT_ID}" \
+    --region="${_REGION}" \
     --resource-type=agent-registry \
     --agent="${A2A_RESOURCE_ID}" \
-    --member="principal://agents.global.org-${ORG_ID}.system.id.goog/resources/aiplatform/projects/${ROOT_PROJECT_NUMBER}/locations/us-central1/reasoningEngines/${ROOT_ENGINE_ID}" \
+    --member="principal://agents.global.org-${_ORG_ID}.system.id.goog/resources/aiplatform/projects/${_ROOT_PROJECT_NUMBER}/locations/${_REGION}/reasoningEngines/${_ROOT_ENGINE_ID}" \
     --role="roles/iap.egressor"
 ```
 
 #### 3.4 Central Model Armor Inspection & HTTP 799 Rejections
-* Configure `google_model_armor_template` in `esmeralda-governance-3a3d`:
+* Configure `google_model_armor_template` in the Central Governance Project (`var.governance_project_id`):
   * **Prompt Injection & Jailbreak**: `filter_enforcement = "BLOCK"`, `confidence_level = "LOW_AND_ABOVE"`.
   * **Sensitive Data Protection (DLP)**: Masking PII (`[EMAIL_ADDRESS]`, `[SSN]`, `[CREDIT_CARD_NUMBER]`) on responses returned from MCP servers back to agents.
   * **Violation Behavior**: Model Armor inspection rejections trigger an immediate **HTTP 799 status code** back to the calling agent.
 
 ---
 
-### Tier 2: Agent Runtime Spoke Projects (`esmeralda-root-agent` & `esmeralda-a2a`)
+### Tier 2: Agent Runtime Spoke Projects (`root-agent` & `a2a-agent`)
 
 #### 4.1 Cross-Project IAM Binding
-Grant the runtime project's Vertex AI Service Agent (`service-${AE_PROJECT_NUMBER}@gcp-sa-aiplatform.iam.gserviceaccount.com`) access to the central Agent Gateway in `esmeralda-governance-3a3d`:
+Grant the runtime project's Vertex AI Service Agent (`service-${AE_PROJECT_NUMBER}@gcp-sa-aiplatform.iam.gserviceaccount.com`) access to the central Agent Gateway:
 
 ```bash
 # Create Custom Least-Privilege Role in Central Governance Project
 gcloud iam roles create ae_agw_cross_project_sa \
-  --project="esmeralda-governance-3a3d" \
+  --project="${GOVERNANCE_PROJECT_ID}" \
   --title="AE AGW Cross Project SA" \
   --description="Custom role for cross-project service agent to access Agent Gateways and Operations" \
   --permissions="networkservices.agentGateways.get,networkservices.operations.get" \
   --stage="GA"
 
 # Bind Custom Role to Spoke Project's Vertex AI Service Agent
-gcloud projects add-iam-policy-binding "esmeralda-governance-3a3d" \
+gcloud projects add-iam-policy-binding "${GOVERNANCE_PROJECT_ID}" \
   --member="serviceAccount:service-${AE_PROJECT_NUMBER}@gcp-sa-aiplatform.iam.gserviceaccount.com" \
-  --role="projects/esmeralda-governance-3a3d/roles/ae_agw_cross_project_sa"
+  --role="projects/${GOVERNANCE_PROJECT_ID}/roles/ae_agw_cross_project_sa"
 ```
 
 #### 4.2 Reasoning Engine Deployment Configuration (`agent_gateway_config`)
@@ -227,8 +243,8 @@ remote_agent = client.agent_engines.create(
         "agent_gateway_config": {
             "agent_to_anywhere_config": {
                 "agent_gateway": (
-                    "projects/esmeralda-governance-3a3d/locations/us-central1/"
-                    "agentGateways/esmeralda-central-gateway-dev"
+                    f"projects/{governance_project_id}/locations/{region}/"
+                    f"agentGateways/{central_gateway_name}"
                 )
             },
         },
@@ -241,35 +257,95 @@ remote_agent = client.agent_engines.create(
 )
 ```
 
-#### 4.3 BYOC Custom Container Trust & CA Patching (Lessons from Phase 4)
-Because Esmeralda uses custom Bring Your Own Container (BYOC) images for A2A (`a2a-agent@sha256:...`), we must ensure the custom container trusts the Agent Gateway proxy CA:
-1. **CA Certificate Injection**: In the Dockerfile or startup script, ensure `/etc/ssl/certs/ca-certificates.crt` includes the GCP Agent Gateway proxy root CA (or inherit from the Google-provided base Agent Engine runtime image).
-2. **HTTP Client Proxy Awareness**: Ensure Python HTTP clients (`httpx`, `aiohttp`, `requests`) respect the proxy environment variables injected by Agent Gateway (`http_proxy`, `https_proxy`, `SSL_CERT_FILE`).
+#### 4.3 BYOC Custom Container Trust & CA Patching (Leveraging `feat/phase-4-agent-gateway`)
+Because Esmeralda uses custom Bring Your Own Container (BYOC) images (`a2a-agent@sha256:...`), the container does not automatically include Agent Gateway's TLS proxy root CA or force Python asynchronous HTTP clients to route through `http_proxy`/`https_proxy`. We must cherry-pick two critical fixes from our `feat/phase-4-agent-gateway` branch:
+
+1. **Dynamic CA Certificate Injection (`scripts/entrypoint.sh`)**:
+   At container startup, query GCP Secret Manager for the Agent Gateway root CA certificate (`agw-root-ca-cert`) and register it into `/usr/local/share/ca-certificates/`:
+   ```bash
+   # From apps/agents/a2a-agent/scripts/entrypoint.sh
+   url = f'https://secretmanager.googleapis.com/v1/{secret_name}/versions/latest:access'
+   # ... save cert to /usr/local/share/ca-certificates/agw-gateway.crt ...
+   os.system('update-ca-certificates')
+   ```
+2. **`aiohttp.ClientSession(trust_env=True)` Patch (`agent/__init__.py`)**:
+   By default, Python's `aiohttp` library ignores `http_proxy`/`https_proxy` environment variables unless `trust_env=True` is explicitly set. Patch `aiohttp.ClientSession.__init__` globally when the agent app boots:
+   ```python
+   # From apps/agents/a2a-agent/agent/__init__.py
+   import aiohttp
+   _orig_aiohttp_init = aiohttp.ClientSession.__init__
+   def _patched_aiohttp_init(self, *args, **kwargs):
+       if "trust_env" not in kwargs:
+           kwargs["trust_env"] = True
+       _orig_aiohttp_init(self, *args, **kwargs)
+   aiohttp.ClientSession.__init__ = _patched_aiohttp_init
+   ```
+
+#### 4.4 Zero-Config CI/CD Discovery via the Two-Vault Secret Manager Pattern
+To avoid granting organization-wide `roles/resourcemanager.projectViewer` to CI/CD pipelines just to discover where `agentregistry.googleapis.com` lives, Esmeralda implements the **Two-Vault Secret Manager Pattern**:
+
+1. **CI/CD Pointer Vault (`prj-esmeralda-cicd`)**:
+   In `infrastructure/modules/3-security/main.tf`, provision a single bootstrap secret inside `esmeralda-cicd-3a3d`:
+   ```hcl
+   resource "google_secret_manager_secret" "gov_project_id" {
+     secret_id = "secret-esmeralda-governance-id-${var.environment}"
+     project   = var.cicd_project_id
+   }
+
+   resource "google_secret_manager_secret_version" "gov_project_id" {
+     secret      = google_secret_manager_secret.gov_project_id.id
+     secret_data = var.governance_project_id
+   }
+   ```
+   Grant `roles/secretmanager.secretAccessor` on this secret to the CI/CD builder identity (`sa-esmeralda-builder@esmeralda-cicd-3a3d.iam.gserviceaccount.com`).
+2. **Central Platform Vault (`prj-esmeralda-governance`)**:
+   Because `sa-esmeralda-builder` runs inside `esmeralda-cicd-3a3d`, any Cloud Build step can read `secret-esmeralda-governance-id` without specifying `--project`:
+   ```bash
+   GOV_PROJECT=$(gcloud secrets versions access latest --secret="secret-esmeralda-governance-id-${_ENV}")
+   echo "Resolved Central Governance Project: $GOV_PROJECT"
+   ```
+   Once `$GOV_PROJECT` is resolved, `sa-esmeralda-builder` uses its `roles/agentregistry.admin` and `roles/iap.admin` permissions on `$GOV_PROJECT` to register MCP tool specs and bind spoke agent SPIFFE principals.
 
 ---
 
-## 5. Esmeralda Implementation Roadmap & Migration Plan
+## 5. Exhaustive Refactoring & Migration Guide (Files to Create, Modify, and Delete)
 
-### Step 1: Central Governance Terraform Module (`infrastructure/modules/5-governance/agent-gateway/`)
-* Create a dedicated Terraform module in `esmeralda-governance-3a3d` provisioning:
-  1. `google_compute_network_attachment` (PSC attachment to `/28` subnet in `esmeralda-net-host`).
-  2. `google_network_services_agent_gateway` (`AGENT_TO_ANYWHERE` with `dnsPeeringConfig`).
-  3. `google_model_armor_template` (Guardrails & DLP PII masking).
-  4. Custom IAM Role `ae_agw_cross_project_sa` & bindings for `root-agent` and `a2a-agent` Vertex AI service agents.
+### 5.1 New Files to CREATE
+1. **`infrastructure/modules/5-governance/agent-gateway/main.tf`**
+   * Creates `google_compute_network_attachment` inside `esmeralda-governance-3a3d` referencing `/28` subnet in `esmeralda-net-host-3a3d`.
+   * Creates `google_network_services_agent_gateway` (`AGENT_TO_ANYWHERE`) with `dnsPeeringConfig` targeting `esmeralda.internal.`.
+   * Creates `google_model_armor_template` for prompt injection (`LOW_AND_ABOVE`) and PII masking (`[EMAIL_ADDRESS]`, `[SSN]`).
+   * Creates custom role `ae_agw_cross_project_sa` and binds `root-agent` & `a2a-agent` Vertex AI service agents.
+2. **`scripts/register_central_catalog.sh`**
+   * Idempotently registers all 8 Google APIs endpoints into `esmeralda-governance-3a3d`.
+   * Registers `legacy-dms`, `income-verification`, `corporate-email`, and `a2a-mortgage-agent` into `esmeralda-governance-3a3d`.
+   * Queries generated `registryResource` IDs and attaches `roles/iap.egressor` CEL bindings (`mcp.toolName == ''` or read-only restriction).
 
-### Step 2: Automated Registry Catalog Registration Script (`scripts/register_central_catalog.sh`)
-* Create a script to idempotently register all 8 Google APIs, MCP servers, and A2A agents into `esmeralda-governance-3a3d`.
-* Automatically query the generated `registryResource` IDs and attach `roles/iap.egressor` bindings with the CEL read-only condition (`mcp.tool.isReadOnly == true || mcp.toolName == ''`) for `a2a-mortgage-agent`.
+### 5.2 Existing Files to MODIFY
+1. **`infrastructure/modules/1-projects/main.tf`**
+   * Add `networkservices.googleapis.com`, `agentregistry.googleapis.com`, `modelarmor.googleapis.com`, `iap.googleapis.com` to `google_project_service` for `var.governance_project_id`.
+2. **`infrastructure/modules/3-security/main.tf`**
+   * Add `secret-esmeralda-governance-id` resource to `var.cicd_project_id`.
+   * Grant `roles/agentregistry.admin` and `roles/iap.admin` on `var.governance_project_id` to `sa-esmeralda-builder`.
+3. **`apps/services/legacy-dms/cloudbuild.yaml`, `income-verification/cloudbuild.yaml`, `corporate-email/cloudbuild.yaml`, `apps/agents/a2a-agent/cloudbuild.yaml`**
+   * Replace the `gcloud projects list --filter="labels.agent_platform=agent-spoke-project"` loop with:
+     `GOV_PROJECT=$(gcloud secrets versions access latest --secret="secret-esmeralda-governance-id-${_ENV}")`.
+   * Register service into `$GOV_PROJECT` and query `registryResource` to attach `roles/iap.egressor` bindings.
+4. **`infrastructure/modules/4-workloads/agents/a2a-agent/main.tf` & `base-adk-agent/main.tf`**
+   * Remove `psc_interface_config` block from `deployment_spec`.
+   * Add `agent_gateway_config` to `deployment_spec` pointing to `esmeralda-governance-3a3d`'s central `AGENT_TO_ANYWHERE` gateway.
+   * Set `identity_type = "AGENT_IDENTITY"`.
+   * Add `"GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES": "False"` to environment variables.
+5. **`apps/agents/a2a-agent/Dockerfile` & `scripts/entrypoint.sh`**
+   * Add Secret Manager root CA bundle fetcher and system trust store registration (`update-ca-certificates`).
+6. **`apps/agents/a2a-agent/agent/__init__.py`**
+   * Add `aiohttp.ClientSession(trust_env=True)` monkeypatch so asynchronous HTTP requests route through `http_proxy`/`https_proxy`.
+7. **`Makefile`**
+   * Add `deploy-agent-gateway-central`, `register-catalog`, and verification targets.
 
-### Step 3: Update Reasoning Engine Modules & Remove Spoke VPCs
-* Update `infrastructure/modules/4-workloads/agents/a2a-agent/main.tf` and `base-adk-agent/main.tf`:
-  * Remove local PSC network attachments in the spoke projects.
-  * Add `agent_gateway_config` pointing to `esmeralda-governance-3a3d`'s central `AGENT_TO_ANYWHERE` gateway.
-  * Ensure `identity_type = "AGENT_IDENTITY"`.
+### 5.3 Files / Resources to DELETE
+1. **Per-Spoke PSC Network Attachments (`google_compute_network_attachment`)**
+   * Delete local network attachment resources inside `infrastructure/modules/4-workloads/agents/a2a-agent/main.tf` and `base-adk-agent/main.tf` (spokes no longer need local VPC attachments).
+2. **Per-Spoke Agent Gateways**
+   * Delete redundant per-spoke Agent Gateway definitions inside `infrastructure/modules/4-workloads/gateways/agent-gateway/a2a-agent/` and `root-agent/`.
 
-### Step 4: End-to-End Verification via `test_through_gateway.sh`
-* Run our newly created `apps/agents/a2a-agent/scripts/test_through_gateway.sh` to verify:
-  1. OIDC token minting under Agent Identity (`principal://...`).
-  2. Routing through `AGENT_TO_ANYWHERE` in `esmeralda-governance-3a3d`.
-  3. IAP CEL policy evaluation (`mcp.toolName == ''` or `mcp.tool.isReadOnly == true`).
-  4. Model Armor PII masking verification on returned tax return documents (and verifying `HTTP 799` rejection on malicious injection prompts).
