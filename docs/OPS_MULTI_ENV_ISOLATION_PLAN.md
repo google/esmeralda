@@ -106,11 +106,14 @@ build-agents: ## Build container images and tag for $(ENV)
 	@echo "🏗️  Building container images for $(ENV)..."
 	@gcloud builds submit apps/agents/a2a-agent --substitutions=_ENV=$(ENV),_TAG=$(TAG) ...
 
-promote-image: ## Tag existing container image in Artifact Registry as new release tag
-	@make promote-image PROMOTE_FROM=latest PROMOTE_TO=v1.0.0 SERVICE=all
+status-release: ## Inspect current PRD release tag and promotion options
+	@make status-release
 
-promote-release: ## Tag containers as v1.0.0, update prd/env.yaml container_tag, and deploy PRD
-	@make promote-release PROMOTE_TO=v1.0.0
+promote-patch: ## Bump PRD release tag by patch (e.g. v1.0.0 -> v1.0.1), tag images, update prd/env.yaml (ZERO auto deploy)
+	@make promote-patch
+
+promote-minor: ## Bump PRD release tag by minor (e.g. v1.0.0 -> v1.1.0), tag images, update prd/env.yaml (ZERO auto deploy)
+	@make promote-minor
 ```
 
 ---
