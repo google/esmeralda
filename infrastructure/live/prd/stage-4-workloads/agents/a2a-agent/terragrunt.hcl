@@ -45,4 +45,16 @@ inputs = {
   
   database_name         = "a2a_tasks"
   enable_iam_user       = true
+
+  invoker_service_accounts = [
+    dependency.security.outputs.test_vm_sa_email,
+    dependency.security.outputs.root_agent_sa_email,
+    dependency.security.outputs.kong_sa_email
+  ]
+
+  agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/a2a-agent:${lookup(local.env_vars.locals, "container_tag", "latest")}"
+  psc_subnet_id         = dependency.networking.outputs.psc_subnet_id
+  enable_psc_network    = true
+  agent_config_path     = "${get_repo_root()}/apps/agents/a2a-agent/agent.yaml"
+  agent_card_json       = jsonencode(yamldecode(file("${get_repo_root()}/apps/agents/a2a-agent/agent.yaml")).agent_card)
 }

@@ -4,13 +4,13 @@
 steps:
   # Step 1: Build Docker Container
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest', '.']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}', '.']
 
   # Step 2: Push Docker Image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest']
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}']
 
-  # Step 3: Register/Sync A2A Agent Endpoint across all agent-spoke projects using agent_card.json
+  # Step 3: Register/Sync A2A Agent Endpoint across all agent-spoke projects matching _ENV
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -18,8 +18,8 @@ steps:
       - |
         pip install pyyaml --quiet --break-system-packages
         CARD_JSON=$(python3 -c "import yaml, json; data=yaml.safe_load(open('agent.yaml'))['agent_card']; print(json.dumps({'name': data['name'], 'description': data['description'], 'version': data['version'], 'capabilities': data.get('capabilities', {}), 'defaultInputModes': data.get('default_input_modes', ['text/plain']), 'defaultOutputModes': data.get('default_output_modes', ['application/json']), 'supportedInterfaces': [{'url': i['url'], 'protocolBinding': i['protocol_binding'], 'protocolVersion': i.get('protocol_version', '0.3')} for i in data.get('supported_interfaces', [])], 'skills': data.get('skills', [])}))")
-        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project" --format="value(projectId)")
-        echo "Cloud Build discovered spoke projects for registration: $$SPOKE_PROJECTS"
+        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project AND labels.env=${_ENV}" --format="value(projectId)")
+        echo "Cloud Build discovered spoke projects for environment ${_ENV}: $$SPOKE_PROJECTS"
         for PROJ in $$SPOKE_PROJECTS; do
           echo "Syncing a2a-mortgage-agent in project $$PROJ..."
           gcloud alpha agent-registry services create a2a-mortgage-agent \
@@ -41,6 +41,8 @@ steps:
 substitutions:
   _REGION: 'us-central1'
   _CICD_PROJECT_ID: ''
+  _TAG: 'latest'
+  _ENV: 'dev'
 
 options:
   logging: CLOUD_LOGGING_ONLY
