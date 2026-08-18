@@ -16,6 +16,9 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -O expand_aliases -lc
 
+ENV ?= dev
+LIVE_DIR = infrastructure/live/$(ENV)
+
 .PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-projects deploy-networking deploy-security build-agents deploy-workloads build-service-circuit-breaker deploy-governance deploy-all test-governance-chaos clean preflight
 
 help: ## Show this help message
@@ -145,33 +148,33 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 	disown -a 2>/dev/null || true; \
 	exit $$status
 
-deploy-projects: ## Deploy Stage 1: Projects via Terragrunt
-	@echo "🏗️  Deploying Stage 1: Projects..."
-	@cd infrastructure/live/dev/stage-1-projects && terragrunt --non-interactive apply -auto-approve
+deploy-projects: ## Deploy Stage 1: Projects via Terragrunt for $(ENV)
+	@echo "🏗️  Deploying Stage 1: Projects for $(ENV)..."
+	@cd $(LIVE_DIR)/stage-1-projects && terragrunt --non-interactive apply -auto-approve
 
-deploy-networking: ## Deploy Stage 2: Networking via Terragrunt
-	@echo "🏗️  Deploying Stage 2: Networking..."
-	@cd infrastructure/live/dev/stage-2-networking && terragrunt --non-interactive apply -auto-approve
+deploy-networking: ## Deploy Stage 2: Networking via Terragrunt for $(ENV)
+	@echo "🏗️  Deploying Stage 2: Networking for $(ENV)..."
+	@cd $(LIVE_DIR)/stage-2-networking && terragrunt --non-interactive apply -auto-approve
 
-deploy-security: ## Deploy Stage 3: Security via Terragrunt
-	@echo "🏗️  Deploying Stage 3: Security..."
-	@cd infrastructure/live/dev/stage-3-security && terragrunt --non-interactive apply -auto-approve
+deploy-security: ## Deploy Stage 3: Security via Terragrunt for $(ENV)
+	@echo "🏗️  Deploying Stage 3: Security for $(ENV)..."
+	@cd $(LIVE_DIR)/stage-3-security && terragrunt --non-interactive apply -auto-approve
 
 deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy core foundations (Projects, Networking, Security) collectively via Terragrunt
 
 build-agent-a2a: deploy-repo ## Build and push BYOC A2A Agent container
 	@echo "🏗️  Building and pushing A2A Agent container via Cloud Build..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/a2a-agent --config=apps/agents/a2a-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/agents/a2a-agent --config=apps/agents/a2a-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
 
 build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:latest
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:$(TAG)
 
 build-agents: test-all deploy-repo ## Build all BYOC agent containers concurrently via make -j2
 	@echo "🏗️  Building all BYOC agent containers concurrently..."
@@ -180,38 +183,38 @@ build-agents: test-all deploy-repo ## Build all BYOC agent containers concurrent
 
 deploy-repo: ## Step 4.1: Deploy Artifact Registry Docker repository in CI/CD project
 	@echo "📦 Provisioning Artifact Registry repository in Stage 4..."
-	@cd infrastructure/live/dev/stage-4-workloads/services/repository && terragrunt apply -- -auto-approve
+	@cd $(LIVE_DIR)/stage-4-workloads/services/repository && terragrunt apply -- -auto-approve
 	@echo "✅ Artifact Registry repository provisioned successfully!"
 
 deploy-mcp-repo: deploy-repo ## Alias for backwards compatibility
 
 build-service-income-verification: deploy-repo ## Build and push Income Verification API service container
 	@echo "🏗️  Building and pushing Income Verification service container..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/income-verification --config=apps/services/income-verification/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/services/income-verification --config=apps/services/income-verification/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
 
 build-service-corporate-email: deploy-repo ## Build and push Corporate Email service container
 	@echo "🏗️  Building and pushing Corporate Email service container..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/corporate-email --config=apps/services/corporate-email/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/services/corporate-email --config=apps/services/corporate-email/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
 
 build-service-legacy-dms: deploy-repo ## Build and push Legacy DMS service container
 	@echo "🏗️  Building and pushing Legacy DMS service container..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/legacy-dms --config=apps/services/legacy-dms/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/services/legacy-dms --config=apps/services/legacy-dms/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
 
 build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 	@echo "🏗️  Building and pushing Kong Gateway service container..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:latest
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	gcloud builds submit apps/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:$(TAG)
 
 build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j5
 	@echo "🏗️  Building all Cloud Run service containers concurrently..."
@@ -224,24 +227,24 @@ build-mcp-servers: build-services ## Alias for backwards compatibility
 
 deploy-services: ## Step 4.2: Deploy Cloud Run services (corporate-email, income-verification, legacy-dms, kong)
 	@echo "🚀 Deploying Cloud Run Services..."
-	@cd infrastructure/live/dev/stage-4-workloads/services && terragrunt --non-interactive run --all apply
+	@cd $(LIVE_DIR)/stage-4-workloads/services && terragrunt --non-interactive run --all apply
 	@echo "✅ Cloud Run Services deployed!"
 
 deploy-mcps: deploy-services ## Alias for backwards compatibility
 
 deploy-gateway: ## Step 4.3: Deploy Kong API Gateway individually
 	@echo "🚀 Deploying Kong API Gateway..."
-	@cd infrastructure/live/dev/stage-4-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/stage-4-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
 	@echo "✅ Gateway deployed!"
 
 deploy-agent-a2a: ## Step 4.4: Deploy A2A Mortgage Specialist Reasoning Engine
 	@echo "🚀 Deploying A2A Reasoning Engine Agent..."
-	@cd infrastructure/live/dev/stage-4-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/stage-4-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
 	@echo "✅ A2A Agent deployed!"
 
 deploy-agent-root: ## Step 4.5: Deploy LOB Root Coordinator Reasoning Engine
 	@echo "🚀 Deploying Root Coordinator Reasoning Engine Agent..."
-	@cd infrastructure/live/dev/stage-4-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/stage-4-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
 	@echo "✅ Root Coordinator deployed!"
 
 deploy-agents: deploy-agent-a2a deploy-agent-root ## Deploy all Reasoning Engine agents (A2A Agent & Root Coordinator)
@@ -249,24 +252,50 @@ deploy-agents: deploy-agent-a2a deploy-agent-root ## Deploy all Reasoning Engine
 
 deploy-workloads-step-by-step: ## Deploy all Stage 4 workloads using native Terragrunt dependency DAG graph
 	@echo "🚀 Deploying Stage 4 workloads with native Terragrunt DAG..."
-	@cd infrastructure/live/dev/stage-4-workloads && terragrunt --non-interactive run --all apply
+	@cd $(LIVE_DIR)/stage-4-workloads && terragrunt --non-interactive run --all apply
 	@echo "✨ All Stage 4 workloads deployed successfully!"
 
 deploy-workloads: build-services deploy-services build-agents deploy-agents ## Full automated build and deploy of Stage 4 (build services -> deploy services -> build agents -> deploy agents)
 
 build-service-circuit-breaker: deploy-repo ## Build and push Circuit Breaker service container
 	@echo "🏗️  Building and pushing Circuit Breaker service container..."
-	@export CICD_PROJ=$$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' infrastructure/live/dev/env.yaml); \
-	export BUILDER_SA=$$(cd infrastructure/live/dev/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
 	gcloud builds submit apps/services/circuit-breaker --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/circuit-breaker:latest
 
 deploy-governance: ## Deploy Stage 5: Governance, Observability & Alerts via Terragrunt
 	@echo "🏛️  Deploying Stage 5: Governance & Observability Stack..."
-	@cd infrastructure/live/dev/stage-5-governance && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/stage-5-governance && terragrunt --non-interactive apply -auto-approve
 	@echo "✨ Stage 5 Governance Stack deployed successfully!"
 
 deploy-all: deploy-foundations deploy-workloads deploy-governance ## Full automated deploy of all 5 stages of the Esmeralda platform
+
+PROMOTE_FROM ?= latest
+PROMOTE_TO ?= v1.0.0
+SERVICE ?= all
+
+promote-image: ## Promote container image tag in Artifact Registry (e.g. make promote-image PROMOTE_FROM=latest PROMOTE_TO=v1.0.0)
+	@echo "🏷️  Promoting Artifact Registry tag from $(PROMOTE_FROM) to $(PROMOTE_TO)..."
+	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	if [ "$(SERVICE)" = "all" ]; then \
+		for svc in a2a-agent root-agent income-verification-api corporate-email legacy-dms kong-gateway; do \
+			echo "  -> Tagging $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$$svc:$(PROMOTE_FROM) as $(PROMOTE_TO)..."; \
+			gcloud artifacts docker tags add $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$$svc:$(PROMOTE_FROM) $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$$svc:$(PROMOTE_TO) --quiet || true; \
+		done; \
+	else \
+		echo "  -> Tagging $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$(SERVICE):$(PROMOTE_FROM) as $(PROMOTE_TO)..."; \
+		gcloud artifacts docker tags add $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$(SERVICE):$(PROMOTE_FROM) $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$(SERVICE):$(PROMOTE_TO); \
+	fi
+	@echo "✅ Container tag promotion complete!"
+
+promote-release: promote-image ## Promote all container images to PROMOTE_TO and deploy to PRD (e.g. make promote-release PROMOTE_TO=v1.0.0)
+	@echo "📝 Updating PRD container_tag in infrastructure/live/prd/env.yaml to $(PROMOTE_TO)..."
+	@sed -i 's/container_tag:[[:space:]]*"[^"]*"/container_tag: "$(PROMOTE_TO)"/g' infrastructure/live/prd/env.yaml
+	@echo "🚀 Deploying PRD workloads with new container tag $(PROMOTE_TO)..."
+	@$(MAKE) deploy-workloads ENV=prd
+	@echo "🎉 Production release $(PROMOTE_TO) promoted and deployed successfully!"
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
