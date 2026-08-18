@@ -271,31 +271,17 @@ deploy-governance: ## Deploy Stage 5: Governance, Observability & Alerts via Ter
 
 deploy-all: deploy-foundations deploy-workloads deploy-governance ## Full automated deploy of all 5 stages of the Esmeralda platform
 
-PROMOTE_FROM ?= latest
-PROMOTE_TO ?= v1.0.0
-SERVICE ?= all
+status-release: ## Inspect current PRD release tag and promotion options
+	@uv run python scripts/release_manager.py status
 
-promote-image: ## Promote container image tag in Artifact Registry (e.g. make promote-image PROMOTE_FROM=latest PROMOTE_TO=v1.0.0)
-	@echo "🏷️  Promoting Artifact Registry tag from $(PROMOTE_FROM) to $(PROMOTE_TO)..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	if [ "$(SERVICE)" = "all" ]; then \
-		for svc in a2a-agent root-agent income-verification-api corporate-email legacy-dms kong-gateway; do \
-			echo "  -> Tagging $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$$svc:$(PROMOTE_FROM) as $(PROMOTE_TO)..."; \
-			gcloud artifacts docker tags add $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$$svc:$(PROMOTE_FROM) $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$$svc:$(PROMOTE_TO) --quiet || true; \
-		done; \
-	else \
-		echo "  -> Tagging $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$(SERVICE):$(PROMOTE_FROM) as $(PROMOTE_TO)..."; \
-		gcloud artifacts docker tags add $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$(SERVICE):$(PROMOTE_FROM) $$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/$(SERVICE):$(PROMOTE_TO); \
-	fi
-	@echo "✅ Container tag promotion complete!"
+promote-patch: ## Bump PRD release tag by patch (e.g. v1.0.0 -> v1.0.1), tag images, update prd/env.yaml (ZERO auto deploy)
+	@uv run python scripts/release_manager.py promote --bump patch
 
-promote-release: promote-image ## Promote all container images to PROMOTE_TO and deploy to PRD (e.g. make promote-release PROMOTE_TO=v1.0.0)
-	@echo "📝 Updating PRD container_tag in infrastructure/live/prd/env.yaml to $(PROMOTE_TO)..."
-	@sed -i 's/container_tag:[[:space:]]*"[^"]*"/container_tag: "$(PROMOTE_TO)"/g' infrastructure/live/prd/env.yaml
-	@echo "🚀 Deploying PRD workloads with new container tag $(PROMOTE_TO)..."
-	@$(MAKE) deploy-workloads ENV=prd
-	@echo "🎉 Production release $(PROMOTE_TO) promoted and deployed successfully!"
+promote-minor: ## Bump PRD release tag by minor (e.g. v1.0.0 -> v1.1.0), tag images, update prd/env.yaml (ZERO auto deploy)
+	@uv run python scripts/release_manager.py promote --bump minor
+
+promote: ## Tag explicit release TAG, update prd/env.yaml (e.g. make promote TAG=v2.0.0) (ZERO auto deploy)
+	@uv run python scripts/release_manager.py promote --tag $(TAG)
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
