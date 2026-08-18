@@ -1,5 +1,9 @@
 # Esmeralda Agent Gateway & Platform Governance Integration Plan
 
+> [!NOTE]
+> **SUPERSEDED BY AUGUST 2026 CENTRALIZED GOVERNANCE RELEASE**:
+> See [CENTRALIZED_AGENT_GATEWAY_PLAN.md](file:///usr/local/google/home/afonsomenegola/codigos/esmeralda/docs/CENTRALIZED_AGENT_GATEWAY_PLAN.md) for the official Google Cloud **Centralized Agent Gateway v2** specification (released August 7, 2026). In the centralized v2 model, per-spoke gateways and registries are eliminated in favor of binding all spoke projects to a single central `AGENT_TO_ANYWHERE` gateway and catalog in `prj-esmeralda-governance`.
+
 This document outlines the step-by-step implementation plan to integrate native **GCP Agent Gateway**, **Model Armor guardrails**, **Agent Identity**, **Agent Registry tool discovery**, and **automated CI/CD registration** into the Esmeralda framework.
 
 ---
