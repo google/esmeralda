@@ -19,18 +19,18 @@ Google Cloud's new cross-project binding support allows **all Agent Runtime spok
 ```mermaid
 flowchart TB
     subgraph "Spoke: Root Agent Project (esmeralda-root-agent)"
-        RA["Root Orchestrator\n(Reasoning Engine)\nSPIFFE: principal://...root_re_id"]
+        RA["Root Orchestrator (Reasoning Engine)<br>SPIFFE: principal://...root_re_id"]
     end
 
     subgraph "Spoke: A2A Agent Project (esmeralda-a2a)"
-        A2A["A2A Mortgage Specialist\n(Reasoning Engine)\nSPIFFE: principal://...a2a_re_id"]
+        A2A["A2A Mortgage Specialist (Reasoning Engine)<br>SPIFFE: principal://...a2a_re_id"]
     end
 
     subgraph "Centralized Governance Project (esmeralda-governance)"
-        AR["Central Agent Registry\n(agentregistry.googleapis.com)\n- 8 Google APIs Endpoints\n- Registered MCP Tools\n- Registered A2A Agents"]
-        IAP["IAP Authorization Engine\nCEL: mcp.tool.isReadOnly == true\n|| mcp.toolName == ''"]
-        MA["Model Armor Inspection\n- Prompt Injection / Jailbreak\n- PII Masking [EMAIL_ADDRESS]\n- Rejections trigger HTTP 799"]
-        AGW["Central Agent Gateway\n(AGENT_TO_ANYWHERE)\nPSC Network Attachment"]
+        AR["Central Agent Registry (agentregistry.googleapis.com)<br>- 8 Google APIs Endpoints<br>- Registered MCP Tools<br>- Registered A2A Agents"]
+        IAP["IAP Authorization Engine<br>CEL: mcp.tool.isReadOnly == true<br>OR mcp.toolName == empty"]
+        MA["Model Armor Inspection<br>- Prompt Injection / Jailbreak<br>- PII Masking [EMAIL_ADDRESS]<br>- Rejections trigger HTTP 799"]
+        AGW["Central Agent Gateway (AGENT_TO_ANYWHERE)<br>PSC Network Attachment"]
         
         AR --- IAP
         IAP --- MA
@@ -38,23 +38,23 @@ flowchart TB
     end
 
     subgraph "Shared VPC Host Project (esmeralda-net-host)"
-        VPC["Shared VPC (vpc-esmeralda-shared-dev)\n/28 Gateway Egress Subnet"]
-        DNS["Private Cloud DNS Peering\nZone: *.esmeralda.internal."]
+        VPC["Shared VPC (vpc-esmeralda-shared-dev)<br>/28 Gateway Egress Subnet"]
+        DNS["Private Cloud DNS Peering<br>Zone: *.esmeralda.internal."]
         VPC --- DNS
     end
 
     subgraph "Spoke: MCP Backend Project (esmeralda-mcps)"
-        DMS["Legacy DMS FastMCP\n(http://legacy-dms.esmeralda.internal/mcp)"]
-        INC["Income Verification FastMCP\n(http://income-verification.esmeralda.internal/mcp)"]
-        EML["Corporate Email FastMCP\n(http://corporate-email.esmeralda.internal/mcp)"]
+        DMS["Legacy DMS FastMCP<br>http://legacy-dms.esmeralda.internal/mcp"]
+        INC["Income Verification FastMCP<br>http://income-verification.esmeralda.internal/mcp"]
+        EML["Corporate Email FastMCP<br>http://corporate-email.esmeralda.internal/mcp"]
     end
 
-    RA -->|1. Cross-Project Binding\nAgent Identity| AGW
-    A2A -->|1. Cross-Project Binding\nAgent Identity| AGW
-    AGW -->|2. Egress via PSC Attachment\nDNS Resolution (.esmeralda.internal.)| VPC
-    VPC -->|3. Route to Private Cloud Run| DMS
-    VPC -->|3. Route to Private Cloud Run| INC
-    VPC -->|3. Route to Private Cloud Run| EML
+    RA -->|"1. Cross-Project Binding (Agent Identity)"| AGW
+    A2A -->|"1. Cross-Project Binding (Agent Identity)"| AGW
+    AGW -->|"2. Egress via PSC Attachment & Private DNS"| VPC
+    VPC -->|"3. Route to Private Cloud Run"| DMS
+    VPC -->|"3. Route to Private Cloud Run"| INC
+    VPC -->|"3. Route to Private Cloud Run"| EML
 ```
 
 > **Roadmap Note (Resource Manager Auto-Discovery)**: In the current implementation, agents and MCP servers are manually registered into the central governance project's Agent Registry via `gcloud agent-registry services create`. In an upcoming release, Agent Registry will automatically discover and register agents and MCP servers across all projects under a specified Resource Manager folder into the designated management project.
