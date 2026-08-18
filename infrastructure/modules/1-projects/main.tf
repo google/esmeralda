@@ -165,7 +165,8 @@ resource "google_project" "net_host" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center" = "networking-infrastructure"
@@ -181,7 +182,8 @@ resource "google_project" "gateway" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center" = "ingress-gateways"
@@ -198,7 +200,8 @@ resource "google_project" "cicd" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center" = "shared-cicd-and-artifacts"
@@ -213,7 +216,8 @@ resource "google_project" "mcps" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center" = "central-developer-tools"
@@ -228,7 +232,8 @@ resource "google_project" "a2a" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center"    = "enterprise-ai-platform"
@@ -244,7 +249,8 @@ resource "google_project" "root_agent" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center"    = "lob-business-solutions"
@@ -261,7 +267,8 @@ resource "google_project" "governance" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  auto_create_network = true
+  deletion_policy     = "DELETE"
 
   labels = merge(local.common_labels, {
     "cost-center" = "central-governance-and-telemetry"
@@ -273,6 +280,32 @@ resource "google_project" "governance" {
 # 2. GCP SERVICE APIS ENABLEMENT
 # ====================================================================
 
+resource "google_project_service" "serviceusage_bootstrap" {
+  for_each = toset(compact([
+    var.byo_net_host_project ? "" : local.net_host_id,
+    var.byo_gateway_project ? "" : local.gateway_id,
+    var.byo_cicd_project ? "" : local.cicd_id,
+    local.mcps_id,
+    local.a2a_id,
+    local.root_agent_id,
+    var.byo_governance_project ? "" : local.governance_id
+  ]))
+  project                    = each.key
+  service                    = "serviceusage.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+
+  depends_on = [
+    google_project.net_host,
+    google_project.gateway,
+    google_project.cicd,
+    google_project.mcps,
+    google_project.a2a,
+    google_project.root_agent,
+    google_project.governance
+  ]
+}
+
 # Enable APIs on Shared VPC project only if Esmeralda created it
 resource "google_project_service" "net_host" {
   for_each                   = var.byo_net_host_project ? [] : toset(local.net_host_apis)
@@ -281,7 +314,7 @@ resource "google_project_service" "net_host" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.net_host]
+  depends_on = [google_project.net_host, google_project_service.serviceusage_bootstrap]
 }
 
 # Enable APIs on Ingress Gateway project only if Esmeralda created it
@@ -292,7 +325,7 @@ resource "google_project_service" "gateway" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.gateway]
+  depends_on = [google_project.gateway, google_project_service.serviceusage_bootstrap]
 }
 
 # Enable CI/CD & Artifacts APIs
@@ -303,7 +336,7 @@ resource "google_project_service" "cicd" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.cicd]
+  depends_on = [google_project.cicd, google_project_service.serviceusage_bootstrap]
 }
 
 # Enable Central Tools APIs
@@ -314,7 +347,7 @@ resource "google_project_service" "mcps" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.mcps]
+  depends_on = [google_project.mcps, google_project_service.serviceusage_bootstrap]
 }
 
 
@@ -326,7 +359,7 @@ resource "google_project_service" "a2a" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.a2a]
+  depends_on = [google_project.a2a, google_project_service.serviceusage_bootstrap]
 }
 
 # Enable Line-of-Business APIs
@@ -337,7 +370,7 @@ resource "google_project_service" "root_agent" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.root_agent]
+  depends_on = [google_project.root_agent, google_project_service.serviceusage_bootstrap]
 }
 
 # Enable Governance and Telemetry APIs only if created by Esmeralda
@@ -348,7 +381,7 @@ resource "google_project_service" "governance" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.governance]
+  depends_on = [google_project.governance, google_project_service.serviceusage_bootstrap]
 }
 
 # ====================================================================
