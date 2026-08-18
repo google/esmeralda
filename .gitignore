@@ -53,3 +53,5 @@ Thumbs.db
 *.sublime-*
 *.swp
 *.swo
+docs/evaluation-improvement/
+links.txt
