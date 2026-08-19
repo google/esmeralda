@@ -24,12 +24,12 @@ output "mcps_sa_email" {
 
 output "cicd_builder_sa_email" {
   description = "The email address of the dedicated Cloud Build container delivery service account in CI/CD project"
-  value       = google_service_account.cicd_builder_sa.email
+  value       = local.builder_sa_email
 }
 
 output "mcps_builder_sa_email" {
   description = "Alias for backwards compatibility"
-  value       = google_service_account.cicd_builder_sa.email
+  value       = local.builder_sa_email
 }
 
 

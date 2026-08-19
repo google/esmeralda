@@ -16,8 +16,8 @@ steps:
     args:
       - '-c'
       - |
-        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project AND labels.env=${_ENV}" --format="value(projectId)")
-        echo "Cloud Build discovered spoke projects for environment ${_ENV}: $$SPOKE_PROJECTS"
+        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project AND labels.env=${_ENV} AND name:${_PROJECT_PREFIX}*" --format="value(projectId)")
+        echo "Cloud Build discovered spoke projects for environment ${_ENV} (prefix ${_PROJECT_PREFIX}): $$SPOKE_PROJECTS"
         for PROJ in $$SPOKE_PROJECTS; do
           echo "Syncing legacy-dms in project $$PROJ..."
           gcloud alpha agent-registry services create legacy-dms \
@@ -43,6 +43,7 @@ substitutions:
   _CICD_PROJECT_ID: ''
   _TAG: 'latest'
   _ENV: 'dev'
+  _PROJECT_PREFIX: 'esm-dev'
 
 options:
   logging: CLOUD_LOGGING_ONLY
