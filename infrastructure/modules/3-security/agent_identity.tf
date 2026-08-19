@@ -51,7 +51,9 @@ resource "google_project_iam_member" "root_agent_identity_roles" {
     "roles/telemetry.writer",
     "roles/browser",
     "roles/cloudapiregistry.viewer",
-    "roles/iam.serviceAccountTokenCreator"
+    "roles/iam.serviceAccountTokenCreator",
+    "roles/bigquery.dataEditor",
+    "roles/bigquery.jobUser"
   ])
   project = var.root_project_id
   role    = each.key
@@ -72,7 +74,9 @@ resource "google_project_iam_member" "a2a_agent_identity_roles" {
     "roles/serviceusage.serviceUsageConsumer",
     "roles/browser",
     "roles/cloudapiregistry.viewer",
-    "roles/iam.serviceAccountTokenCreator"
+    "roles/iam.serviceAccountTokenCreator",
+    "roles/bigquery.dataEditor",
+    "roles/bigquery.jobUser"
   ])
   project = var.a2a_project_id
   role    = each.key
