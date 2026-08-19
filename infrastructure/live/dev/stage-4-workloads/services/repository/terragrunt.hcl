@@ -15,7 +15,8 @@ locals {
 }
 
 inputs = {
-  project_id = dependency.projects.outputs.cicd_project_id
-  region     = local.env_vars.locals.region
+  project_id       = dependency.projects.outputs.cicd_project_id
+  byo_cicd_project = local.env_vars.locals.byo_cicd_project
+  region           = local.env_vars.locals.region
 }
 

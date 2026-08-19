@@ -280,21 +280,14 @@ resource "google_project" "governance" {
 # 2. GCP SERVICE APIS ENABLEMENT
 # ====================================================================
 
-resource "google_project_service" "serviceusage_bootstrap" {
-  for_each = toset(compact([
-    var.byo_net_host_project ? "" : local.net_host_id,
-    var.byo_gateway_project ? "" : local.gateway_id,
-    var.byo_cicd_project ? "" : local.cicd_id,
-    local.mcps_id,
-    local.a2a_id,
-    local.root_agent_id,
-    var.byo_governance_project ? "" : local.governance_id
-  ]))
-  project                    = each.key
-  service                    = "serviceusage.googleapis.com"
-  disable_on_destroy         = false
-  disable_dependent_services = false
-
+resource "null_resource" "serviceusage_bootstrap" {
+  triggers = {
+    net_host_id   = local.net_host_id
+    mcps_id       = local.mcps_id
+    a2a_id        = local.a2a_id
+    root_agent_id = local.root_agent_id
+    governance_id = local.governance_id
+  }
   depends_on = [
     google_project.net_host,
     google_project.gateway,
@@ -304,6 +297,19 @@ resource "google_project_service" "serviceusage_bootstrap" {
     google_project.root_agent,
     google_project.governance
   ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "🚀 Activating serviceusage.googleapis.com directly via gcloud POST on newly created projects..."
+      for p in ${local.net_host_id} ${local.gateway_id} ${local.cicd_id} ${local.mcps_id} ${local.a2a_id} ${local.root_agent_id} ${local.governance_id}; do
+        if [ -n "$p" ] && [ "$p" != "null" ] && [ "$p" != "esmeralda-cicd-artifacts-3a3d" ]; then
+          echo "  -> Enabling serviceusage & cloudresourcemanager on $p..."
+          gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com --project="$p" || true
+        fi
+      done
+      sleep 15
+    EOT
+  }
 }
 
 # Enable APIs on Shared VPC project only if Esmeralda created it
@@ -314,7 +320,7 @@ resource "google_project_service" "net_host" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.net_host, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.net_host, null_resource.serviceusage_bootstrap]
 }
 
 # Enable APIs on Ingress Gateway project only if Esmeralda created it
@@ -325,7 +331,7 @@ resource "google_project_service" "gateway" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.gateway, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.gateway, null_resource.serviceusage_bootstrap]
 }
 
 # Enable CI/CD & Artifacts APIs
@@ -336,7 +342,7 @@ resource "google_project_service" "cicd" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.cicd, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.cicd, null_resource.serviceusage_bootstrap]
 }
 
 # Enable Central Tools APIs
@@ -347,7 +353,7 @@ resource "google_project_service" "mcps" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.mcps, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.mcps, null_resource.serviceusage_bootstrap]
 }
 
 
@@ -359,7 +365,7 @@ resource "google_project_service" "a2a" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.a2a, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.a2a, null_resource.serviceusage_bootstrap]
 }
 
 # Enable Line-of-Business APIs
@@ -370,7 +376,7 @@ resource "google_project_service" "root_agent" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.root_agent, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.root_agent, null_resource.serviceusage_bootstrap]
 }
 
 # Enable Governance and Telemetry APIs only if created by Esmeralda
@@ -381,7 +387,7 @@ resource "google_project_service" "governance" {
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.governance, google_project_service.serviceusage_bootstrap]
+  depends_on = [google_project.governance, null_resource.serviceusage_bootstrap]
 }
 
 # ====================================================================

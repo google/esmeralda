@@ -18,6 +18,7 @@ SHELL := /bin/bash
 
 ENV ?= dev
 LIVE_DIR = infrastructure/live/$(ENV)
+TAG ?= $(ENV)-latest
 
 .PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-projects deploy-networking deploy-security build-agents deploy-workloads build-service-circuit-breaker deploy-governance deploy-all test-governance-chaos clean preflight
 
@@ -166,8 +167,9 @@ build-agent-a2a: deploy-repo ## Build and push BYOC A2A Agent container
 	@echo "🏗️  Building and pushing A2A Agent container via Cloud Build..."
 	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
 	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/a2a-agent --config=apps/agents/a2a-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
+	gcloud builds submit apps/agents/a2a-agent --config=apps/agents/a2a-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
 
 build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
@@ -192,22 +194,25 @@ build-service-income-verification: deploy-repo ## Build and push Income Verifica
 	@echo "🏗️  Building and pushing Income Verification service container..."
 	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
 	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/income-verification --config=apps/services/income-verification/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
+	gcloud builds submit apps/services/income-verification --config=apps/services/income-verification/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
 
 build-service-corporate-email: deploy-repo ## Build and push Corporate Email service container
 	@echo "🏗️  Building and pushing Corporate Email service container..."
 	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
 	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/corporate-email --config=apps/services/corporate-email/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
+	gcloud builds submit apps/services/corporate-email --config=apps/services/corporate-email/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
 
 build-service-legacy-dms: deploy-repo ## Build and push Legacy DMS service container
 	@echo "🏗️  Building and pushing Legacy DMS service container..."
 	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
 	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/legacy-dms --config=apps/services/legacy-dms/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV)
+	gcloud builds submit apps/services/legacy-dms --config=apps/services/legacy-dms/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
 
 build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 	@echo "🏗️  Building and pushing Kong Gateway service container..."
@@ -218,7 +223,7 @@ build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
 
 build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j5
 	@echo "🏗️  Building all Cloud Run service containers concurrently..."
-	@$(MAKE) -j5 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-circuit-breaker
+	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong
 	@echo "✅ All service containers successfully built and pushed!"
 
 
