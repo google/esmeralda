@@ -36,12 +36,16 @@ dependency "networking" {
 inputs = {
   # Dynamically fetches workload project IDs provisioned dynamically by Esmeralda's Stage 1!
   project_id            = dependency.projects.outputs.a2a_project_id
+  environment           = local.env_vars.locals.environment
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+  mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
   
   # Dynamic Fallback: Use client's existing VPC if BYO is active, else use dependency outputs
   vpc_id                = local.byo_networking ? local.env_vars.locals.existing_vpc_id  : dependency.networking.outputs.network_id
   subnet_id             = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
+  net_host_project_id   = dependency.projects.outputs.net_host_project_id
+  vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   
   database_name         = "a2a_tasks"
   enable_iam_user       = true

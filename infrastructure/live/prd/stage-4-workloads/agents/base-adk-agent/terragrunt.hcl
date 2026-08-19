@@ -29,6 +29,7 @@ locals {
 
 inputs = {
   project_id            = dependency.projects.outputs.root_project_id
+  environment           = local.env_vars.locals.environment
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.root_agent_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email

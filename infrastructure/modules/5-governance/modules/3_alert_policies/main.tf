@@ -489,37 +489,3 @@ EOF
 
   depends_on = [google_logging_metric.iam_privilege_changes]
 }
-
-# ------------------------------------------------------------------------------
-# TERRAFORM MOVED BLOCKS (Refactoring metrics into for_each maps)
-# ------------------------------------------------------------------------------
-
-moved {
-  from = google_logging_metric.realtime_token_consumption
-  to   = google_logging_metric.realtime_token_consumption["esmeralda-governance-dev"]
-}
-
-moved {
-  from = google_logging_metric.cached_tokens_counter
-  to   = google_logging_metric.cached_tokens_counter["esmeralda-governance-dev"]
-}
-
-moved {
-  from = google_logging_metric.prompt_tokens_counter
-  to   = google_logging_metric.prompt_tokens_counter["esmeralda-governance-dev"]
-}
-
-moved {
-  from = google_logging_metric.completion_tokens_counter
-  to   = google_logging_metric.completion_tokens_counter["esmeralda-governance-dev"]
-}
-
-moved {
-  from = google_logging_metric.thoughts_tokens_counter
-  to   = google_logging_metric.thoughts_tokens_counter["esmeralda-governance-dev"]
-}
-
-moved {
-  from = google_logging_metric.mcp_tool_execution_count
-  to   = google_logging_metric.mcp_tool_execution_count["esmeralda-governance-dev"]
-}
