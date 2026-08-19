@@ -60,7 +60,7 @@ inputs = {
   subnet_id           = dependency.networking.outputs.subnet_id
   net_host_project_id = dependency.projects.outputs.net_host_project_id
   dns_zone_name       = dependency.networking.outputs.dns_zone_name
-  kong_image          = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/kong-gateway:latest"
+  kong_image          = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/kong-gateway:${lookup(local.env_vars.locals, "container_tag", "latest")}"
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
