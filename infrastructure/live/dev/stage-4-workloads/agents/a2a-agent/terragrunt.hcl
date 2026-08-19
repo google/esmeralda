@@ -25,6 +25,7 @@ locals {
 
 inputs = {
   project_id            = dependency.projects.outputs.a2a_project_id
+  environment           = local.env_vars.locals.environment
   region                = local.env_vars.locals.region
   vpc_id                = dependency.networking.outputs.network_id
   subnet_id             = dependency.networking.outputs.subnet_id

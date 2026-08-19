@@ -53,9 +53,11 @@ module "alert_policies" {
 
 # 5. Submodule 4: FinOps Analytics (Token Events Table & Chargeback View)
 module "finops_analytics" {
-  source                = "./modules/4_finops_analytics"
-  environment           = var.environment
-  governance_project_id = var.governance_project_id
+  source                 = "./modules/4_finops_analytics"
+  environment            = var.environment
+  governance_project_id  = var.governance_project_id
+  enable_analytics_views = var.enable_analytics_views
+  depends_on             = [module.telemetry_sinks]
 }
 
 # 6. Submodule 5: Model Armor Guardrail Templates
