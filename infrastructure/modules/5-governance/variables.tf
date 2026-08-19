@@ -27,3 +27,9 @@ variable "runaway_loop_token_threshold" {
   default     = 50000
   description = "Single-request token threshold cap triggering runaway loop alert"
 }
+
+variable "enable_analytics_views" {
+  type        = bool
+  default     = false
+  description = "Set to true after initial agent inference traffic has generated BigQuery log tables"
+}
