@@ -274,6 +274,11 @@ deploy-governance: ## Deploy Stage 5: Governance, Observability & Alerts via Ter
 	@cd $(LIVE_DIR)/stage-5-governance && terragrunt --non-interactive apply -auto-approve
 	@echo "✨ Stage 5 Governance Stack deployed successfully!"
 
+deploy-governance-views: ## Deploy Stage 5 BigQuery FinOps & Telemetry SQL Views (after agent testing generates logs)
+	@echo "📊 Deploying BigQuery FinOps & Telemetry SQL Views for $(ENV)..."
+	@cd $(LIVE_DIR)/stage-5-governance && terragrunt --non-interactive apply -var="enable_analytics_views=true" -auto-approve
+	@echo "✨ Stage 5 BigQuery FinOps Views deployed successfully!"
+
 deploy-all: deploy-foundations deploy-workloads deploy-governance ## Full automated deploy of all 5 stages of the Esmeralda platform
 
 status-release: ## Inspect current PRD release tag and promotion options

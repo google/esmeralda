@@ -22,7 +22,6 @@ inputs = {
   spoke_project_ids            = [
     dependency.projects.outputs.net_host_project_id,
     dependency.projects.outputs.gateway_project_id,
-    dependency.projects.outputs.cicd_project_id,
     dependency.projects.outputs.mcps_project_id,
     dependency.projects.outputs.a2a_project_id,
     dependency.projects.outputs.root_project_id
