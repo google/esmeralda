@@ -32,6 +32,7 @@ inputs = {
   net_host_project_id   = dependency.projects.outputs.net_host_project_id
   gateway_project_id    = dependency.projects.outputs.gateway_project_id
   cicd_project_id       = dependency.projects.outputs.cicd_project_id
+  byo_cicd_project      = local.env_vars.locals.byo_cicd_project
   mcps_project_id       = dependency.projects.outputs.mcps_project_id
 
   a2a_project_id        = dependency.projects.outputs.a2a_project_id

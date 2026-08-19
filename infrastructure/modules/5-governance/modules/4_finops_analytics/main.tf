@@ -1,12 +1,6 @@
-# Reference Central BigQuery Telemetry Dataset
-data "google_bigquery_dataset" "telemetry_logs" {
-  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
-  project    = var.governance_project_id
-}
-
 # Unified Event Envelope Telemetry Table for Infinite Multi-Event Scaling
 resource "google_bigquery_table" "unified_telemetry_events" {
-  dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "genai_telemetry_events"
   project    = var.governance_project_id
 
@@ -32,7 +26,7 @@ EOF
 
 # Partitioned BigQuery Table for Cloud Audit Activity Logs
 resource "google_bigquery_table" "cloudaudit_activity" {
-  dataset_id          = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
   table_id            = "cloudaudit_googleapis_com_activity"
   project             = var.governance_project_id
   deletion_protection = false
@@ -77,13 +71,14 @@ EOF
 
 # Monthly Agent Chargeback View
 resource "google_bigquery_table" "vw_monthly_chargeback" {
-  dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  count      = var.enable_analytics_views ? 1 : 0
+  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "vw_monthly_agent_chargeback"
   project    = var.governance_project_id
 
   view {
     query = templatefile("${path.module}/../../sql/vw_monthly_agent_chargeback.sql.tpl", {
-      dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
     })
     use_legacy_sql = false
   }
@@ -93,13 +88,14 @@ resource "google_bigquery_table" "vw_monthly_chargeback" {
 
 # Per-Request Level Telemetry View (Lists every individual request & session)
 resource "google_bigquery_table" "vw_request_level_telemetry" {
-  dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  count      = var.enable_analytics_views ? 1 : 0
+  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "vw_request_level_telemetry"
   project    = var.governance_project_id
 
   view {
     query = templatefile("${path.module}/../../sql/vw_request_level_telemetry.sql.tpl", {
-      dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
     })
     use_legacy_sql = false
   }
@@ -109,13 +105,13 @@ resource "google_bigquery_table" "vw_request_level_telemetry" {
 
 # Security & Compliance Audit Trail View (IAM changes, secret accesses, deployments)
 resource "google_bigquery_table" "vw_security_audit_trail" {
-  dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "vw_security_audit_trail"
   project    = var.governance_project_id
 
   view {
     query = templatefile("${path.module}/../../sql/vw_security_audit_trail.sql.tpl", {
-      dataset_id = data.google_bigquery_dataset.telemetry_logs.dataset_id
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
     })
     use_legacy_sql = false
   }

@@ -154,9 +154,14 @@ resource "google_project_iam_member" "mcps_roles" {
 
 # Dedicated Cloud Build & Container Delivery Identity for CI/CD Hub
 resource "google_service_account" "cicd_builder_sa" {
+  count        = var.byo_cicd_project ? 0 : 1
   account_id   = "sa-esmeralda-builder-${var.environment}"
   display_name = "Esmeralda CI/CD Container Builder Workload Service Account"
   project      = var.cicd_project_id
+}
+
+locals {
+  builder_sa_email = var.byo_cicd_project ? "sa-esmeralda-builder-dev@${var.cicd_project_id}.iam.gserviceaccount.com" : google_service_account.cicd_builder_sa[0].email
 }
 
 # Grant dedicated builder SA least-privilege rights to build and push containers in CI/CD project
@@ -169,7 +174,7 @@ resource "google_project_iam_member" "cicd_builder_roles" {
   ])
   project = var.cicd_project_id
   role    = each.key
-  member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
+  member  = "serviceAccount:${local.builder_sa_email}"
 }
 
 # Grant Cloud Build Builder SA permission to list projects and register services in Agent Registry atomically
@@ -181,7 +186,7 @@ resource "google_project_iam_member" "cicd_builder_agent_registry" {
   ])
   project = each.key
   role    = "roles/agentregistry.admin"
-  member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
+  member  = "serviceAccount:${local.builder_sa_email}"
 }
 
 resource "google_project_iam_member" "cicd_builder_browser" {
@@ -192,7 +197,7 @@ resource "google_project_iam_member" "cicd_builder_browser" {
   ])
   project = each.key
   role    = "roles/browser"
-  member  = "serviceAccount:${google_service_account.cicd_builder_sa.email}"
+  member  = "serviceAccount:${local.builder_sa_email}"
 }
 
 

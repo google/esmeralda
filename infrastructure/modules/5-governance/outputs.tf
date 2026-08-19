@@ -53,3 +53,13 @@ output "model_armor_response_template_name" {
   value       = module.model_armor.response_template_name
   description = "Model Armor Response Outbound Guardrails Template Full Resource Name"
 }
+
+output "governance_status" {
+  value       = var.enable_analytics_views ? "✅ Full Governance, Telemetry Sinks & FinOps SQL Views Deployed." : "✅ Core Governance, Telemetry Sinks & Guardrails Deployed (Day-0 Bootstrap)."
+  description = "Status of the Stage 5 Governance deployment"
+}
+
+output "next_steps" {
+  value       = var.enable_analytics_views ? "All FinOps BigQuery views and monitoring dashboards are active." : "BigQuery sinks are active. Run agent verification tests to stream initial logs, then enable views via: make deploy-governance-views ENV=${var.environment}"
+  description = "Recommended next steps for governance and analytics"
+}

@@ -63,6 +63,12 @@ variable "existing_database_key_id" {
   default     = ""
 }
 
+variable "byo_cicd_project" {
+  description = "Whether CI/CD project is shared/BYO so we reuse the existing sa-esmeralda-builder service account"
+  type        = bool
+  default     = false
+}
+
 variable "existing_secrets_key_id" {
   description = "The full resource URI of the existing secrets KMS key. Required if byo_security is true."
   type        = string

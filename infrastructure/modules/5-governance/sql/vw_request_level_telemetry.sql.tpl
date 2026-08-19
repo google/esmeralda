@@ -1,10 +1,11 @@
 -- Per-Request Telemetry Detail SQL View
--- Lists every individual inference turn, session ID, user ID, token count, and cost breakdown
+-- Lists every individual inference turn, session ID, trace ID, user ID, token count, and cost breakdown
 WITH combined_requests AS (
   -- 1. Unified Telemetry Events Table
   SELECT
     timestamp,
     session_id,
+    JSON_VALUE(payload, '$.trace_id') AS trace_id,
     user_id,
     agent_id,
     execution_path,
@@ -25,6 +26,7 @@ WITH combined_requests AS (
   SELECT
     timestamp,
     jsonPayload.session_id,
+    COALESCE(jsonPayload.trace_id, REGEXP_EXTRACT(trace, r'projects/[^/]+/traces/(.+)'), trace) AS trace_id,
     jsonPayload.user_id,
     jsonPayload.agent_id,
     jsonPayload.execution_path,
@@ -42,6 +44,7 @@ WITH combined_requests AS (
 SELECT
   timestamp,
   session_id,
+  trace_id,
   user_id,
   agent_id,
   execution_path,
