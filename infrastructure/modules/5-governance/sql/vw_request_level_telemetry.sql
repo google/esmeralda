@@ -1,10 +1,11 @@
 -- Per-Request Telemetry Detail SQL View
--- Lists every individual inference turn, session ID, user ID, token count, and cost breakdown
+-- Lists every individual inference turn, session ID, trace ID, user ID, token count, and cost breakdown
 WITH combined_requests AS (
   -- 1. Structured Token Events Table
   SELECT
     timestamp,
     session_id,
+    trace_id,
     user_id,
     agent_id,
     execution_path,
@@ -23,6 +24,7 @@ WITH combined_requests AS (
   SELECT
     timestamp,
     jsonPayload.session_id,
+    COALESCE(jsonPayload.trace_id, REGEXP_EXTRACT(trace, r'projects/[^/]+/traces/(.+)')) AS trace_id,
     jsonPayload.user_id,
     COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
     jsonPayload.execution_path,
@@ -40,6 +42,7 @@ WITH combined_requests AS (
 SELECT
   timestamp,
   session_id,
+  trace_id,
   user_id,
   agent_id,
   execution_path,
