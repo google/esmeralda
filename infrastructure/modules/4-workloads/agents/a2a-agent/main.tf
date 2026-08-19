@@ -121,9 +121,10 @@ resource "google_project_iam_member" "cloudsql_user_role" {
 # This connects privately via direct VPC IP and executes administrative SQL GRANT queries,
 # completely eliminating the need for a local-exec postgresql client or provider.
 resource "google_cloud_run_v2_job" "schema_bootstrap" {
-  name     = "${var.agent_name}-db-bootstrap-${var.environment}"
-  location = var.region
-  project  = var.project_id
+  name                = "${var.agent_name}-db-bootstrap-${var.environment}"
+  location            = var.region
+  project             = var.project_id
+  deletion_protection = false
   depends_on = [
     null_resource.db_ready,
     google_project_iam_member.cloudsql_client_role,

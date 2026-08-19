@@ -9,6 +9,7 @@ terraform {
 }
 
 resource "google_artifact_registry_repository" "esmeralda_containers" {
+  count         = var.byo_cicd_project ? 0 : 1
   location      = var.region
   repository_id = "esmeralda-containers"
   description   = "Unified Docker container repository for Esmeralda microservices and AI agents"

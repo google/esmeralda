@@ -115,6 +115,7 @@ resource "google_project_iam_member" "vertex_ai_network_admin" {
   member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
 }
 
+
 resource "google_compute_network_attachment" "psc_attachment" {
   count                 = var.enable_psc_network ? 1 : 0
   name                  = "${local.yaml_name}-psc-attachment-${var.environment}"

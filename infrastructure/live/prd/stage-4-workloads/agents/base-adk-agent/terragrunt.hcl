@@ -35,7 +35,7 @@ inputs = {
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
 
   # BYOC Container Image URI
-  agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:latest"
+  agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:${lookup(local.env_vars.locals, "container_tag", "latest")}"
 
 
 
