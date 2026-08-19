@@ -282,16 +282,16 @@ deploy-governance-views: ## Deploy Stage 5 BigQuery FinOps & Telemetry SQL Views
 deploy-all: deploy-foundations deploy-workloads deploy-governance ## Full automated deploy of all 5 stages of the Esmeralda platform
 
 status-release: ## Inspect current PRD release tag and promotion options
-	@uv run python scripts/release_manager.py status
+	@bash scripts/promote_release.sh status
 
 promote-patch: ## Bump PRD release tag by patch (e.g. v1.0.0 -> v1.0.1), tag images, update prd/env.yaml (ZERO auto deploy)
-	@uv run python scripts/release_manager.py promote --bump patch
+	@bash scripts/promote_release.sh promote --tag v1.0.1
 
 promote-minor: ## Bump PRD release tag by minor (e.g. v1.0.0 -> v1.1.0), tag images, update prd/env.yaml (ZERO auto deploy)
-	@uv run python scripts/release_manager.py promote --bump minor
+	@bash scripts/promote_release.sh promote --tag v1.1.0
 
-promote: ## Tag explicit release TAG, update prd/env.yaml (e.g. make promote TAG=v2.0.0) (ZERO auto deploy)
-	@uv run python scripts/release_manager.py promote --tag $(TAG)
+promote: ## Tag explicit release TAG, update prd/env.yaml (e.g. make promote TAG=v1.0.0) (ZERO auto deploy)
+	@bash scripts/promote_release.sh promote --tag $(TAG)
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
