@@ -1,179 +1,97 @@
-# Stage 4 Workloads: Swappable Ingress Gateways
+# 🚪 Stage 4 Workloads: Swappable Ingress Gateways
 
-Stage 4 transitions Esmeralda from foundational infrastructure into **Composable AI Applications**. The architecture adopts an independent catalog pattern: every gateway, MCP tool, or AI agent is structured as a reusable module, enabling granular deployments onto the foundational projects provisioned in Stage 1.
+Welcome to the technical deep-dive for **Stage 4 Ingress Gateways**.
 
-## Gateway Adapter Pattern: Why Swappable Gateways?
-
-To ensure the platform can be deployed into any enterprise corporate environment, Esmeralda enforces the **Gateway Adapter Pattern**. Downstream agents (the reasoning engines) remain completely agnostic of *how* traffic is routed or which specific gateway is active.
-
-### The Rationale Behind Abstracted Ingress Gateways
-
-*   **Preventing Gateway Lock-In**: Enterprise API routing requirements differ greatly. A large corporation may require Apigee X for compliance and monitoring, a smaller business unit might select Kong on Cloud Run, while a developer sandbox might bypass gateways entirely and use an Internal Load Balancer (ILB) to reduce costs.
-*   **DNS & Routing Decoupling**: Downstream agents do not query gateways directly using hardcoded API URLs. Instead, they query standard DNS visibility paths (e.g., `http://email.internal.gateway/mcp`).
-*   **OIDC Token Injection**: Private tools and reasoning engines require Google OIDC tokens to authorize invocations. Rather than forcing agent developers to write OAuth2/IAM token-exchange logic inside Python agent code, the active gateway adapter intercepts requests, queries the GCP metadata server (or exchanges service account credentials), and injects the authorization bearer header dynamically.
-
-We define three distinct gateway options under `/modules/4-workloads/services/`. Platform engineers can select their desired adapter by changing the `source` path of their live gateway Terragrunt configuration:
-
-```text
-infrastructure/modules/4-workloads/services/
-├── apigee/                 # Option A: Enterprise-grade Apigee X Ingress
-├── kong/                   # Option B: Lightweight, serverless Kong Gateway on Cloud Run
-└── ilb/                    # Option C: Direct GCP Regional L7 Internal HTTP(S) Load Balancer
-```
-
-### The Swappable Gateway Contract
-
-To maintain complete interchangeability, all three gateway sub-modules **must accept the exact same input variables** and **expose the exact same output variables**. This contract enforces the **Gateway Adapter Pattern**: downstream agents (the reasoning engine workloads) remain completely agnostic of *how* ingress is routed or which API gateway is active.
-
-### Option A: Apigee X Enterprise Gateway (`services/apigee/`)
-
-The Apigee X adapter implements an enterprise-grade API management plane. It provisions an Apigee Organization, binds an Apigee Environment to the gateway project, creates an Environment Group to register hostnames (`*.esmeralda.internal`), and hooks up the Apigee runtime plane to the Shared VPC via Private Service Connect (PSC).
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client as Client Prompt / Agent
-    participant Apigee as Apigee X Enterprise Proxy
-    participant KVM as Apigee KVM (Key-Value Map)
-    participant IAM as Google IAM / STS
-    participant Vertex as Vertex AI Reasoning Engine
-
-    Client->>Apigee: 1. HTTPS POST (Host: a2a-agent.esmeralda.internal)
-    Apigee->>KVM: 2. KVM-Lookup.xml (Extract 'a2a-agent' sub-domain)
-    KVM-->>Apigee: 3. Return target URL: https://us-central1-aiplatform.googleapis.com/...
-    Apigee->>IAM: 4. Generate-Bearer-Token.xml (Exchange SA credentials)
-    IAM-->>Apigee: 5. Return short-lived OAuth2 Bearer Token
-    Apigee->>Vertex: 6. Proxy Request with Authorization: Bearer <token>
-    Vertex-->>Client: 7. Stream Response (SSE)
-```
-
-To handle dynamic Vertex AI Reasoning Engine IDs (which change on every deployment), the Apigee adapter populates an **Apigee Key Value Map (KVM)** using Terraform's `null_resource` local-exec trigger. At runtime, an Apigee Proxy intercepts `*.esmeralda.internal`, extracts the logical agent name from the host header, looks up the target endpoint URL in the KVM, performs Google Service Account token exchange, and proxies the query to Vertex AI.
-
-Inside the Apigee API Proxy (`/apiproxy/policies/`), we implement:
-*   **KVM-Lookup.xml** (extracts the sub-domain e.g. `a2a-agent` from `request.header.host`, looks up target in KVM)
-*   **Generate-Bearer-Token.xml** (uses Google Application Default Credentials or the Apigee Service Account's Identity Token to authenticate with Vertex AI)
+Stage 4 transitions Esmeralda into **Composable AI Workloads**. This guide details the **Gateway Adapter Pattern** that decouples API traffic ingress from downstream AI Reasoning Engines and MCP microservices.
 
 ---
 
-### Option B: Lightweight Kong Gateway on Cloud Run (`services/kong/`)
+## 💡 The 60-Second Mental Model: Why Swappable Gateways?
 
-The Kong adapter deploys the lightweight, open-source Kong Gateway container in a DB-less serverless mode on Cloud Run inside the gateway project (`prj-esmeralda-gateway`). It uses Secret Manager to load Kong's declarative configuration routing rules and binds to the central Shared VPC via Direct VPC Egress for low-latency, private routing to downstream agents.
+In enterprise environments, different business units and IT organizations have divergent API gateway standards:
+* **Large Financial Enterprises** mandate **Apigee X** for API product cataloging, rate limiting, and compliance auditing.
+* **Agile Cloud-Native Teams** prefer **Kong Gateway on Cloud Run** for lightweight, zero-cost serverless DB-less execution.
+* **Internal Platform Teams** prefer native **Regional L7 Internal Load Balancers (ILB)** with a **Routing Broker** to avoid running third-party gateway appliances.
 
-```mermaid
-graph LR
-    subgraph GatewayProject["prj-esmeralda-gateway"]
-        Secret["Secret Manager<br/>(Declarative kong.yml)"]
-        Kong["Kong Gateway on Cloud Run<br/>(DB-less Serverless Container)"]
-        Plugin["GCP Service Account Plugin<br/>(OIDC Token Injector)"]
-    end
-
-    subgraph SharedVPC["Shared VPC (prj-esmeralda-net-host)"]
-        Egress["Direct VPC Egress Tunnel"]
-    end
-
-    subgraph Target["Workload Projects"]
-        Vertex["Vertex AI Reasoning Engine / MCP Server"]
-    end
-
-    Secret -. Loaded at startup .-> Kong
-    Kong --> Plugin
-    Plugin --> Egress --> Vertex
-```
-
-To support swappability, we compile the DB-less `kong.yml` dynamically inside Terraform using the `templatefile()` function, mapping each logical name from `var.agent_endpoints` to its dynamic Vertex AI Reasoning Engine URL. We also configure Kong's **GCP Service Account plugin** to transparently inject the Google OIDC tokens required to authorize calls to private Vertex AI reasoning engine endpoints.
+**Esmeralda enforces an abstracted Gateway Adapter Pattern: downstream AI agents and MCP tools expose the exact same interface contract regardless of which gateway adapter is active.**
 
 ---
 
-### Option C: Direct Regional L7 Internal HTTP(S) Load Balancer (`services/ilb/`)
+## 🎭 Persona & Role Breakdown: Who Owns Ingress Gateways?
 
-The direct L7 Internal Load Balancer (ILB) bypasses API gateway appliances entirely, routing traffic directly using Google Cloud's managed regional L7 load balancer. However, because an ILB lacks a programming engine and cannot natively rewrite paths or dynamically inject Google OIDC tokens to private Vertex AI Reasoning Engine API endpoints, a **Routing Broker proxy container** (Cloud Run + Serverless NEG) is packaged **inside** the ILB module itself.
-
-```mermaid
-graph LR
-    Client(["Client / Root Agent"]) -->|*.esmeralda.internal| ILB["Regional L7 Internal Load Balancer"]
-    ILB -->|Serverless NEG| Broker["Routing Broker Container<br/>(Cloud Run Proxy)"]
-    
-    subgraph BrokerLogic["Routing Broker Runtime"]
-        Env["AGENT_ENDPOINTS_JSON<br/>(Dynamic Route Map)"]
-        Meta["GCP Metadata Server<br/>(Fetch IAM ID Token)"]
-    end
-
-    Broker -. Reads .-> Env
-    Broker -. Fetches Token .-> Meta
-    Broker -->|Authenticated Proxy| Vertex["Vertex AI Reasoning Engine API"]
-```
-
-This preserves the unified interface contract! The ILB routes all `*.esmeralda.internal` traffic to the `routing_broker` Cloud Run service. The Routing Broker container reads the dynamic `agent_endpoints` map via an environment variable (`AGENT_ENDPOINTS_JSON`), intercepts incoming agent requests, matches the host header prefix to obtain the target engine URL, retrieves an IAM ID Token from the metadata server, and proxies the query payload directly to the Vertex AI Reasoning Engine.
+| Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
+| :--- | :--- | :--- | :--- |
+| 🛡️ **PlatformOps / Ingress Lead** | Managing SSL certificates, ingress security policies, API proxy policies, and token exchange. | `infrastructure/modules/4-workloads/gateways/`, Apigee proxy XMLs, `kong.yml`, ILB URL maps. | Internal agent prompt graphs, Python business logic. |
+| 🌐 **NetOps Engineer** | Providing proxy-only subnets and managing Cloud DNS bindings. | `sb-esmeralda-proxy` subnetwork, DNS A records (`*.esmeralda.internal`). | Ingress route transformation policies. |
+| 🧑‍💻 **AI Application Developer** | Calling target endpoints via standard internal DNS hostnames. | Consuming `http://a2a-mortgage-agent.esmeralda.internal/v1/message:send`. | Gateway configuration, OIDC token generation, or proxy infrastructure. |
 
 ---
 
-## Exhaustive Gateway Adapter Implementation Breakdown
+## 🏛️ Architecture Decision Records (ADRs): The "Why"
 
-A code inspection of `infrastructure/modules/4-workloads/services/` reveals the exact Terraform and serverless resources deployed by each gateway adapter:
+### ADR-04.1: Gateway Adapter Contract & OIDC Token Injection
+* **Context:** Private Vertex AI Reasoning Engines and Cloud Run MCP servers require Google IAM OIDC tokens with `roles/run.invoker` or `roles/aiplatform.user` to authorize requests. Hardcoding token-generation logic inside Python agent code tightly couples business logic to Google Cloud and breaks local testing.
+* **Decision:** The Ingress Gateway acts as an **Identity-Injecting Reverse Proxy**:
+  1. Intercepts incoming requests on `*.esmeralda.internal`.
+  2. Resolves target endpoint URLs from dynamic environment mappings.
+  3. Fetches short-lived Google OIDC ID tokens from the GCP Metadata Server (or IAM STS).
+  4. Injects `Authorization: Bearer <oidc_token>` before proxying the payload over Private Service Connect.
+* **Benefit:** AI developers write pure HTTP/JSON requests with zero IAM boilerplate.
+
+---
+
+## 🧭 The 3 Swappable Gateway Options
 
 ```mermaid
 flowchart TD
-    subgraph Client["Incoming Traffic (*.esmeralda.internal)"]
-        Req["Client Prompt / Root Orchestrator"]
+    Req["Incoming User / Agent Prompt<br/>(Host: a2a-mortgage-agent.esmeralda.internal)"]
+    
+    subgraph Adapters["Selectable Gateway Adapter (modules/4-workloads/gateways/)"]
+        direction TB
+        OptA["<b>Option A: Apigee X</b><br/>• Enterprise API management<br/>• Dynamic KVM route lookup<br/>• Policy-driven token exchange"]
+        OptB["<b>Option B: Kong DB-less</b><br/>• Serverless Cloud Run (Port 8000)<br/>• Secret Manager kong.yml<br/>• GCP Service Account Plugin"]
+        OptC["<b>Option C: Regional L7 ILB</b><br/>• Native GCP L7 Load Balancer<br/>• Serverless NEG<br/>• Routing Broker Container"]
     end
 
-    subgraph Adapters["Swappable Gateway Adapters (modules/4-workloads/services/)"]
-        subgraph OptA["Option A: services/apigee"]
-            A_Org["Apigee Organization & Env Group"]
-            A_Inst["Apigee Instance (Peering 10.12.0.0/22)"]
-            A_KVM["KVM Sync Trigger (null_resource)"]
-        end
+    Backend["Vertex AI Reasoning Engine<br/>(a2a-agent / base-adk-agent)"]
 
-        subgraph OptB["Option B: services/kong"]
-            B_Secret["Secret Manager (kong.yml)"]
-            B_Run["Cloud Run DB-less Container (Port 8000)"]
-            B_SA["kong-gateway-sa (OIDC Plugin)"]
-        end
-
-        subgraph OptC["Option C: services/ilb"]
-            C_ILB["Forwarding Rule & URL Map"]
-            C_NEG["Serverless NEG (neg-broker)"]
-            C_Broker["Routing Broker Cloud Run Container"]
-        end
-    end
-
-    subgraph Backend["Target Workloads"]
-        Vertex["Vertex AI Reasoning Engine API"]
-    end
-
-    Req -->|Select source path in terragrunt.hcl| Adapters
-    A_Inst & A_KVM -->|1. KVM Lookup & Token Exchange| Vertex
-    B_Run & B_SA -->|2. Direct VPC Egress & OIDC Injection| Vertex
-    C_Broker -->|3. AGENT_ENDPOINTS_JSON & Metadata Token| Vertex
+    Req --> OptA & OptB & OptC
+    OptA & OptB & OptC ==>|Private Routing + OIDC Bearer Token| Backend
 ```
-
-### 1. Option A: Apigee X Enterprise Gateway (`services/apigee/main.tf`)
-*   **Organization & Environment Plane**: Provisions `google_apigee_organization.apigee_org` bound directly to `var.vpc_id`, alongside `google_apigee_environment.apigee_env` (`var.environment`).
-*   **Environment Group**: Creates `google_apigee_envgroup.apigee_envgroup` registering the corporate domain hostname `*.esmeralda.internal`, attached via `google_apigee_envgroup_attachment.env_to_group`.
-*   **Runtime Instance & PSC Peering**: Deploys `google_apigee_instance.apigee_instance` in `var.region`, allocating peering CIDR range `10.12.0.0/22` inside the Shared VPC.
-*   **Dynamic KVM Sync (`null_resource.populate_apigee_kvm`)**: Iterates across `var.agent_endpoints`, executing a local-exec curl command with `gcloud auth print-access-token` to PUT/POST logical-to-dynamic endpoint URL mappings directly into Apigee Key Value Map `agent-routes`.
-
-### 2. Option B: Serverless Kong on Cloud Run (`services/kong/main.tf`)
-*   **Dynamic Configuration Compilation**: `local.kong_config` uses `templatefile()` to inject `var.agent_endpoints` into `templates/kong.yml.tpl`.
-*   **Secret Manager Storage**: Provisions `google_secret_manager_secret.kong_config` (`kong-config-{env}`) with automatic replication, storing the compiled YAML in `google_secret_manager_secret_version.kong_config`.
-*   **Service Identity & OIDC Authorization**: Creates `google_service_account.kong_sa` (`kong-gateway-sa-{env}`), granted `roles/aiplatform.user` on `var.project_id` and `roles/secretmanager.secretAccessor` on the config secret. *(Note: includes an import block for pre-existing developer identities)*.
-*   **Cloud Run DB-less Container**: Deploys `google_cloud_run_v2_service.kong_gateway` (`kong-gateway-{env}`) on port `8000` with `INGRESS_TRAFFIC_INTERNAL_ONLY`. Injects environment variables `KONG_DATABASE = off` and `KONG_DECLARATIVE_CONFIG = /etc/kong/kong.yml`, mounting the Secret Manager config volume at `/etc/kong`.
-*   **Direct VPC Egress**: Configures `vpc_access` with `egress = "ALL_TRAFFIC"` bound to `var.vpc_id` and `var.subnet_id`.
-
-### 3. Option C: Direct ILB & Routing Broker (`services/ilb/main.tf`)
-*   **Routing Broker Container (`google_cloud_run_v2_service.routing_broker`)**: Deploys `routing-broker-{env}` running `var.routing_broker_image` under `google_service_account.broker_sa` (granted `roles/aiplatform.user`). Injects `AGENT_ENDPOINTS_JSON = jsonencode(var.agent_endpoints)` and `LOG_LEVEL = info`, with Direct VPC Egress (`ALL_TRAFFIC`).
-*   **Serverless NEG (`google_compute_region_network_endpoint_group.broker_neg`)**: Provisions a `SERVERLESS` network endpoint group pointing to the routing broker service.
-*   **Managed Backend Service (`google_compute_region_backend_service.broker_backend`)**: Deploys an `INTERNAL_MANAGED` HTTP backend service attaching the Serverless NEG.
-*   **Regional URL Map (`google_compute_region_url_map.ilb_url_map`)**: Configures host rule `*.esmeralda.internal` and default path matcher `all-agents` routing to the backend service.
-*   **HTTP Proxy & Forwarding Rule**: Provisions `google_compute_region_target_http_proxy.ilb_proxy` and `google_compute_forwarding_rule.ilb_forwarding_rule` on TCP port `80` inside `var.vpc_id` and `var.subnet_id`.
 
 ---
 
-### File Inventory & Blueprints
+## 🏗️ Technical Specifications & Blueprints
 
-```text
-infrastructure/modules/4-workloads/services/
-├── apigee/                 # Apigee X organization, env groups, instances, KVM sync triggers
-├── kong/                   # Kong Cloud Run service, Secret Manager YAML store, SA OIDC bindings
-└── ilb/                    # ILB forwarding rule, URL map, Serverless NEG, Routing Broker container
+### 1. Option A: Apigee X Enterprise Gateway (`gateways/apigee/`)
+* **Organization & Environment:** Provisions `google_apigee_organization` bound to `var.vpc_id`, an environment (`var.environment`), and an Environment Group registering `*.esmeralda.internal`.
+* **Runtime Plane:** Deploys `google_apigee_instance` with peering range `10.12.0.0/22`.
+* **Dynamic Route KVM:** The `null_resource.populate_apigee_kvm` step iterates over `var.agent_endpoints`, populating Apigee Key-Value Maps with logical-to-dynamic target URLs.
+* **Proxy Policies:** `KVM-Lookup.xml` extracts the subdomain and `Generate-Bearer-Token.xml` injects the GCP OAuth2 Bearer token.
+
+---
+
+### 2. Option B: Lightweight Kong Gateway on Cloud Run (`gateways/kong/`)
+* **Serverless DB-less Mode:** Runs the standard `kong:3.4` container on Cloud Run in `prj-esmeralda-gateway` with `KONG_DATABASE=off`.
+* **Dynamic Declarative Config:** Compiles `templates/kong.yml.tpl` inside Terraform and stores it in Secret Manager (`kong-config-{env}`).
+* **OIDC Injection Plugin:** Uses Kong's GCP SA Plugin to inject Google ID tokens into headers before routing across the Direct VPC Egress tunnel.
+
+---
+
+### 3. Option C: Direct Regional L7 ILB & Routing Broker (`gateways/ilb/`)
+* **L7 ILB Infrastructure:** Provisions `google_compute_forwarding_rule` on TCP port 80 and `google_compute_region_url_map` for `*.esmeralda.internal`.
+* **Routing Broker Proxy (`routing-broker`)**: Because GCP ILB cannot rewrite payloads or generate IAM tokens on the fly, a lightweight Python/FastAPI container runs on Cloud Run behind a Serverless NEG (`google_compute_region_network_endpoint_group`).
+* **Runtime Logic:** Intercepts `Host: {agent}.esmeralda.internal`, reads `AGENT_ENDPOINTS_JSON`, fetches `http://metadata.google.internal/.../identity?audience=...`, and proxies the request to Vertex AI.
+
+---
+
+## 🛠️ Verification & Runbook
+
+### Test Ingress Routing via Test VM
+```bash
+# SSH into the test jumpbox VM
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw root_project_id) --tunnel-through-iap
+
+# Inside VM: Test AgentCard discovery through the active gateway
+curl -s http://a2a-mortgage-agent.esmeralda.internal/v1/card | jq .
 ```

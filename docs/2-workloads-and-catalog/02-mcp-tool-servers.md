@@ -1,145 +1,121 @@
-# Standalone API Hub & Composable MCP Server Tools
+# 🔌 Stage 4 Workloads: Composable Model Context Protocol (MCP) Tool Servers
 
-## Standalone API Hub (`modules/4-workloads/apihub/`)
+Welcome to the technical deep-dive for **Stage 4 MCP Tool Servers & API Hub**.
 
-The API Hub governance catalog runs as an isolated adjacent workload within `prj-esmeralda-gateway`. It automatically catalogs enterprise APIs without interfering with active live traffic routing.
-
----
-
-## Composable MCP Server Tools (`modules/4-workloads/services/`)
-
-Shared enterprise backend utilities exposed via the Model Context Protocol (DMS, Email, Income Verification) reside in the `prj-esmeralda-mcps` tool project. To achieve complete modularity and operational flexibility, each Model Context Protocol (MCP) server from the `/tools_mcp/servers/` directory is isolated into a standalone sub-module under `/modules/4-workloads/services/`. This allows platform operators to independently update, patch, and redeploy specific tool services without affecting other workloads or gateways.
-
-Each server is deployed independently to Cloud Run under strict security controls:
-*   `no-allow-unauthenticated` status enforced.
-*   Outbound traffic mandated to flow 100% via Direct VPC Egress into the Shared VPC network.
-*   Explicit custom audiences configured targeting the stable network IP of the Ingress Gateway.
-*   Post-deployment triggers executing Python scripts to dynamically catalog tools inside Google Agent Registry.
-
-We define three self-contained sub-modules:
-1.  **Corporate Email Tool Server** (`services/corporate-email/`)
-2.  **Income Verification Tool Server** (`services/income-verification/`)
-3.  **Legacy DMS Tool Server** (`services/legacy-dms/`)
-
-To preserve the zero-trust security paradigm established in Stage 3, each MCP server is deployed to Cloud Run with `no-allow-unauthenticated` status, bound directly to the Shared VPC network via Direct VPC Egress, and protected by Cloud Run IAM invoker bindings. Furthermore, each module incorporates post-deployment registration blocks to dynamically catalog available tools in the GCP Agent Registry and API Hub:
-
-```mermaid
-graph TD
-    subgraph ClientLayer["Authorized Invokers"]
-        Root["sa-base-adk-agent<br/>(Root Orchestrator SA)"]
-        TestVM["sa-test-vm<br/>(Jumpbox SA)"]
-    end
-
-    subgraph SharedVPC["Shared VPC (prj-esmeralda-net-host)"]
-        ILB["Internal Load Balancer / Gateway<br/>(*.internal.gateway)"]
-        Egress["Direct VPC Egress Tunnel"]
-    end
-
-    subgraph MCPSProject["prj-esmeralda-mcps (Cloud Run Tool Servers)"]
-        Email["services/corporate-email<br/>(no-allow-unauthenticated)"]
-        Income["services/income-verification<br/>(no-allow-unauthenticated)"]
-        DMS["services/legacy-dms<br/>(no-allow-unauthenticated)"]
-    end
-
-    subgraph Cataloging["Governance Hub (prj-esmeralda-governance)"]
-        Registry["GCP Agent Registry / API Hub"]
-    end
-
-    Root & TestVM -->|1. OIDC Token with roles/run.invoker| ILB
-    ILB -->|2. Private Routing| Email & Income & DMS
-    Email & Income & DMS -.->|3. Direct VPC Egress| Egress
-    Email & Income & DMS -.->|4. Post-deploy Script Registration| Registry
-```
-
-```text
-infrastructure/modules/4-workloads/services/
-├── corporate-email/        # Corporate Email tool container on Cloud Run + Agent Registry script
-├── income-verification/    # Income Verification tool container + OTLP telemetry injection
-├── legacy-dms/             # Document Management System tool container + custom audiences
-├── repository/             # Unified Docker Artifact Registry repository (esmeralda-containers)
-└── test-vm/                # Private jumpbox VM with Shielded integrity & IAP SSH access
-```
+Stage 4 establishes the reusable corporate tool ecosystem. This guide details how enterprise data utilities (Legacy DMS, Income Verification, Corporate Email) are built with **FastMCP** and deployed as serverless Cloud Run microservices on Google Cloud.
 
 ---
 
-### 1. Corporate Email Server (`services/corporate-email/`)
+## 💡 The 60-Second Mental Model: Why Standalone MCP Servers?
 
-This module deploys the `corporate-email` tool server on Cloud Run. Step 3 of `apps/services/corporate-email/cloudbuild.yaml` dynamically registers the server into all spoke project registries (`labels.agent_platform=agent-spoke-project`) using version-controlled `tools.json` definitions (`send_email`, `read_email`) with `--mcp-server-spec-type=tool-spec` and `protocolBinding=jsonrpc` at `http://corporate-email.esmeralda.internal/mcp`.
+In conventional prototype agents, tool logic (e.g. `def verify_income()`) is written as Python helper functions embedded inside the agent repo. This causes major enterprise friction:
+1. **Coupled Release Cycles:** Fixing a bug in a SQL connector forces a full redeployment and re-evaluation (LLM-as-judge) of the AI Agent reasoning engine.
+2. **Monolithic Security Risk:** The AI agent needs broad database and API permissions, violating least privilege.
+3. **No Cross-Agent Sharing:** Other business unit agents cannot reuse the same tool without duplicating code.
 
----
-
-### 2. Income Verification Server (`services/income-verification/`)
-
-This module deploys the `income-verification` tool server. Step 3 of `apps/services/income-verification/cloudbuild.yaml` dynamically registers the server into all spoke project registries using version-controlled `tools.json` definitions (`verify_applicant`) with `--mcp-server-spec-type=tool-spec` and `protocolBinding=jsonrpc` at `http://income-verification.esmeralda.internal/mcp`.
-
----
-
-### 3. Legacy DMS Server (`services/legacy-dms/`)
-
-This module deploys the `legacy-dms` (Document Management System) tool server on Cloud Run. Step 3 of `apps/services/legacy-dms/cloudbuild.yaml` dynamically registers the server into all spoke project registries using version-controlled `tools.json` definitions (`search_documents`, `get_document`) with `--mcp-server-spec-type=tool-spec` and `protocolBinding=jsonrpc` at `http://legacy-dms.esmeralda.internal/mcp`.
+**Esmeralda packages each tool as a standalone Model Context Protocol (MCP) microservice on Cloud Run with its own dedicated Service Account, auto-scaling to zero when idle.**
 
 ---
 
-## Composed Inputs-Outputs Mapping Matrix
+## 🎭 Persona & Role Breakdown: Who Owns MCP Tools?
 
-To help operators configure their Terragrunt dependency blocks, this matrix maps the variable bindings across the gateway layer and the composable MCP tool servers:
-
-| MCP Sub-module | Input Source (`terragrunt.hcl`) | Authorized Invokers (`invoker_service_accounts`) | Regional Custom Audience Endpoint | Matches Route Path in ILB |
-| :--- | :--- | :--- | :--- | :--- |
-| **`corporate-email`** | Output of `prj-esmeralda-mcps` and `base-adk-agent` | `base-adk-agent-sa` email, `test-vm-sa` email | `http://email.internal.gateway/mcp` | `/email/*`, `/email/mcp` |
-| **`income-verification`** | Output of `prj-esmeralda-mcps` and `base-adk-agent` | `base-adk-agent-sa` email, `test-vm-sa` email | `http://income-verification.internal.gateway/mcp` | `/income-verification/*` |
-| **`legacy-dms`** | Output of `prj-esmeralda-mcps` and `base-adk-agent` | `base-adk-agent-sa` email, `test-vm-sa` email | `http://dms.internal.gateway/mcp` | `/dms/*`, `/dms/mcp` |
+| Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
+| :--- | :--- | :--- | :--- |
+| 🧑‍💻 **AppDev / Tools Engineer** | Building API connectors, wrapping enterprise systems in FastMCP, maintaining tool schemas (`tools.json`). | `apps/services/` (Python/FastMCP code), tool unit tests, `cloudbuild.yaml`. | Terraform infrastructure, Shared VPC subnets, KMS keyrings. |
+| 🛡️ **SecOps / Platform Engineer** | Governing tool authentication (`roles/run.invoker`), network ingress filters, and Agent Registry catalogs. | `infrastructure/modules/4-workloads/services/`, Cloud Run IAM policies, Direct VPC Egress. | Tool Python business logic, prompt engineering. |
+| 🤖 **AI Reasoning Engineer** | Discovering and invoking tools via JSON-RPC / MCP protocols. | Specifying tools in `agent.yaml` and ADK toolsets. | Tool hosting, backend system authentication. |
 
 ---
 
-## Exhaustive MCP Tools & Utility Services Implementation Breakdown
+## 🏛️ Architecture Decision Records (ADRs): The "Why"
 
-A code analysis of `infrastructure/modules/4-workloads/apihub/` and `infrastructure/modules/4-workloads/services/` reveals how Esmeralda provisions enterprise tool catalogs, container registries, and verification jumpboxes:
+### ADR-04.2: Standalone FastMCP Microservices vs. In-Process Python Tools
+* **Context:** Enterprise tools connect to heterogeneous backend systems (legacy mainframes, SaaS APIs, SQL databases) maintained by distinct teams.
+* **Decision:** Expose every utility as an HTTP/JSON-RPC **Model Context Protocol (MCP)** server on Cloud Run with `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` and `no-allow-unauthenticated`.
+* **Benefit:**
+  * **Scale-to-Zero FinOps:** Idle tools incur zero compute cost.
+  * **Language Agnostic:** Tools can be implemented in Python (FastMCP), Go, or TypeScript.
+  * **Zero Agent Redeployment:** Tool updates occur independently without restarting or re-deploying the AI Reasoning Engines.
+
+---
+
+## 🗺️ MCP Tool Server Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Gov["prj-esmeralda-gateway & prj-esmeralda-governance"]
-        Hub["API Hub Instance (apihub/main.tf)<br/>Catalog Governance & Search"]
-        Reg["GCP Agent Registry<br/>Dynamic Python Script Registration"]
+    subgraph Clients["Authorized Callers (Shared VPC)"]
+        RootAgent["Root Coordinator Agent<br/>(base-adk-agent)"]
+        A2AAgent["Mortgage Specialist Agent<br/>(a2a-agent)"]
+        TestVM["Test Jumpbox VM"]
     end
 
-    subgraph CICD["prj-esmeralda-cicd-artifacts"]
-        AR["Artifact Registry Docker Repo<br/>esmeralda-containers"]
+    subgraph Gateway["Private Ingress Layer"]
+        ILB["Internal Load Balancer<br/>*.esmeralda.internal"]
     end
 
-    subgraph Root["prj-esmeralda-root-agent"]
-        VM["Private Test Jumpbox VM<br/>e2-micro, Shielded, OS Login, Zero-External-IP"]
+    subgraph Tools["prj-esmeralda-mcps (Cloud Run Tool Servers)"]
+        DMS["legacy-dms (Port 8080)<br/>• search_documents<br/>• get_document"]
+        Income["income-verification (Port 8080)<br/>• verify_applicant"]
+        Email["corporate-email (Port 8080)<br/>• send_email<br/>• read_email"]
     end
 
-    subgraph Tools["prj-esmeralda-mcps (Cloud Run v2 Services)"]
-        Email["services/corporate-email (Port 8080)"]
-        Income["services/income-verification (Port 8080)"]
-        DMS["services/legacy-dms (Port 8080)"]
+    subgraph Catalog["Governance & Discovery"]
+        Registry["Google Agent Registry<br/>(Dynamic Tool Catalog)"]
     end
 
-    AR -->|Pulls Docker Images| Email & Income & DMS
-    Email & Income & DMS -->|1. Direct VPC Egress ALL_TRAFFIC| Root & Gov
-    Email & Income & DMS -->|2. OTLP Exporter| Telemetry["http://collector.telemetry.internal:4317"]
-    Email & Income & DMS -.->|3. register_mcp.py| Reg
-    VM -.->|IAP SSH & curl test| Email & Income & DMS
+    RootAgent & A2AAgent & TestVM -->|1. Private Request + OIDC Token| ILB
+    ILB -->|2. Route to Service| DMS & Income & Email
+    DMS & Income & Email -.->|3. Auto-Registration via Cloud Build| Registry
 ```
 
-### 1. Standalone API Hub (`4-workloads/apihub/main.tf`)
-*   **Service Identity Bootstrapping**: Deploys `google_project_service_identity.apihub_service_identity` (`apihub.googleapis.com`) using the `google-beta` provider.
-*   **Administrative Permissions**: Binds `roles/apihub.admin` and `roles/apihub.runtimeProjectServiceAgent` onto the API Hub service identity.
-*   **Host Registration & Instance**: Registers `google_apihub_host_project_registration.apihub_host_project` in `var.region`, and provisions `google_apihub_api_hub_instance.main` (`var.api_hub_instance_id`) with `disable_search = false`, `vertex_location = us`, and a 35-minute creation timeout.
+---
 
-### 2. Unified Container Registry (`4-workloads/services/repository/main.tf`)
-*   **Docker Repository**: Provisions `google_artifact_registry_repository.esmeralda_containers` in `var.region` inside the CI/CD project (`prj-esmeralda-cicd-artifacts`), configured with format `DOCKER`. This serves as the single source of truth for all built tool and reasoning engine container images.
+## 🏗️ Technical Implementation Breakdown (`apps/services/` & `modules/4-workloads/services/`)
 
-### 3. Private Test Jumpbox VM (`4-workloads/services/test-vm/main.tf`)
-*   **Zero-External-IP Compute Instance**: Deploys `google_compute_instance.test_vm` (`test-vm-{env}`) as an `e2-micro` VM in `var.zone` running `debian-cloud/debian-12`. Explicitly omits `access_config`, ensuring the VM has no public IP and is reachable exclusively via Google Identity-Aware Proxy (IAP) SSH.
-*   **Shielded & OS Login Security**: Runs under `var.service_account_email` (`test_vm_sa` from Stage 3) with full `cloud-platform` scopes. Enforces OS Login metadata (`enable-oslogin = TRUE`) and activates Shielded Instance features (`enable_secure_boot`, `enable_vtpm`, `enable_integrity_monitoring`).
+### 1. The 3 Standard Corporate Tool Microservices
 
-### 4. Composable MCP Tool Servers (`services/corporate-email`, `services/income-verification`, `services/legacy-dms`)
-Each tool server adheres to an identical, secure container architecture:
-*   **Cloud Run Service v2**: Deploys `google_cloud_run_v2_service` (`{service_name}-{env}`) on container port `8080` with ingress set to `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`, restricting traffic to private VPC callers and load balancers. *(Note: `corporate-email` and `legacy-dms` include import blocks for pre-existing dev services)*.
-*   **Custom Audiences for Gateway Routing**: Configures explicit OIDC token audience validation (`http://{service}.internal.gateway`, `https://{service}.internal.gateway`, `https://{service}.internal.gateway/mcp`), ensuring tokens generated by Ingress Gateways or Root Agents are cryptographically verified.
-*   **Telemetry Injection & Direct VPC Egress**: Injects environment variable `OTEL_EXPORTER_OTLP_ENDPOINT = http://collector.telemetry.internal:4317` and mounts `vpc_access` with `egress = "ALL_TRAFFIC"` bound to `var.network_id` and `var.subnet_id`.
-*   **IAM Invoker Lockdown**: Restricts `roles/run.invoker` (`google_cloud_run_v2_service_iam_binding.invokers`) exclusively to `var.invoker_service_accounts` (e.g., `base-adk-agent-sa` and `test-vm-sa`).
-*   **Automated Agent Registry Cataloging (`null_resource.mcp_registration`)**: Executes a local-exec provisioner triggering `python3 tools_mcp/register_mcp.py` to register the running server URL dynamically into the Google Cloud Agent Registry.
+| Tool Service Name | Directory Path | MCP Protocol URL | Key Operations Declared in `tools.json` |
+| :--- | :--- | :--- | :--- |
+| **`legacy-dms`** | `apps/services/legacy-dms/` | `http://legacy-dms.esmeralda.internal/mcp` | `search_documents`, `get_document` |
+| **`income-verification`** | `apps/services/income-verification/` | `http://income-verification.esmeralda.internal/mcp` | `verify_applicant` |
+| **`corporate-email`** | `apps/services/corporate-email/` | `http://corporate-email.esmeralda.internal/mcp` | `send_email`, `read_email` |
+
+---
+
+### 2. Cloud Run Service Configuration (`modules/4-workloads/services/`)
+* **Private Network Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` restricts access exclusively to VPC-internal callers.
+* **Direct VPC Egress:** Configured with `vpc_access { egress = "ALL_TRAFFIC" }` bound to `sb-esmeralda-core` for private database and API access.
+* **Custom Audience Validation:** Configures explicit audiences (`http://{service}.internal.gateway/mcp`) to ensure Google OIDC tokens are verified securely.
+* **IAM Least Privilege:** Only identities in `var.invoker_service_accounts` (e.g. `sa-esmeralda-root`, `sa-esmeralda-a2a`, `test-vm-sa`) are granted `roles/run.invoker`.
+
+---
+
+### 3. Automated Agent Registry CI/CD Cataloging
+During container compilation in `apps/services/{tool}/cloudbuild.yaml`, Cloud Build automatically registers tool definitions into the **Google Cloud Agent Registry**:
+```bash
+gcloud alpha agent-registry services create ${SERVICE_NAME} \
+    --project=${PROJECT_ID} \
+    --location=${REGION} \
+    --display-name="${DISPLAY_NAME}" \
+    --mcp-server-spec-type=tool-spec \
+    --tools-file=tools.json \
+    --url="http://${SERVICE_NAME}.esmeralda.internal/mcp"
+```
+
+---
+
+## 🛠️ Verification & Runbook
+
+### Test MCP Server Directly via Jumpbox VM
+```bash
+# SSH into the test jumpbox VM
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw root_project_id) --tunnel-through-iap
+
+# Inside VM: Test Legacy DMS search via FastMCP JSON-RPC
+TOKEN=$(gcloud auth print-identity-token --audiences="http://legacy-dms.internal.gateway/mcp")
+
+curl -s -X POST http://legacy-dms.esmeralda.internal/mcp \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "search_documents", "arguments": {"applicant_name": "Julian Sterling"}}, "id": 1}' | jq .
+```

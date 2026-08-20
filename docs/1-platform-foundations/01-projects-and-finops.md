@@ -1,123 +1,55 @@
-# Stage 1: Foundational Projects, Billing & APIs
+# 🏢 Stage 1: Foundational Projects, Billing & FinOps
 
-## Architectural Decisions & Design Rationale
+Welcome to the technical deep-dive for **Stage 1 (Projects, Billing & APIs)**.
 
-Stage 1 manages the isolated creation of multiple GCP projects and the activation of foundational service APIs under a governance structure fully compliant with Google Cloud enterprise Landing Zone standards.
+Stage 1 provisions and manages the isolated Google Cloud Landing Zone projects, activates essential service APIs, configures corporate billing account linkages, and bootstraps foundational Google-managed service identities.
 
-### Why Seven GCP Projects Instead of a Monolith?
+---
 
-Running all resources in a single, shared GCP project is a common pattern for prototypes, but it introduces three major governance failures in production enterprise platforms:
+## 💡 The 60-Second Mental Model: Why Stage 1 Exists
 
-1.  **The FinOps Attribution Blackout**: When multiple business units query Vertex AI Reasoning Engines, a single GCP project aggregates all API and computing costs onto one billing invoice. It is impossible to identify which team consumed how many input/output tokens. Esmeralda solves this by splitting workloads: client-facing orchestrators run in `prj-esmeralda-root-agent` (Business Unit Budget) while core reasoning models run in `prj-esmeralda-a2a` (Core AI Platform Budget). Labels (`env`, `cost-center`, `team`) applied at the project level flow natively into GCP Billing exports in BigQuery, enabling precise cost attribution.
-2.  **IAM Boundary Bleeding**: Developers building lightweight MCP tool connectors should not have access to platform security keys (KMS Keyrings) or central logging tables. A project boundary creates a rigid, cryptographically audited IAM wall. A developer in `prj-esmeralda-mcps` has zero visibility into the database assets inside `prj-esmeralda-a2a`.
-3.  **Quota Allocation Starvation**: Google Cloud enforces API rate limits (e.g., Vertex AI requests per minute) and resource limits (e.g., Cloud SQL CPU quotas) at the project level. A monolithic project means a runaway tool invocation loop in one application can consume the entire quota pool, starving and killing all other business unit agents. Project isolation ensures each workload operates within its own quota boundaries.
+In AI agent architectures, putting everything into a single GCP project causes three catastrophic production failures:
+1. **The FinOps Attribution Blackout:** Generative AI token costs (Gemini 3.7 Flash) get merged onto a single invoice, making it impossible to charge back costs to specific business units.
+2. **IAM Boundary Bleeding:** Application tool developers obtain accidental visibility into platform encryption keys (KMS) or central audit logs.
+3. **API Quota Starvation:** A runaway tool invocation loop in one agent consumes the entire project's Vertex AI quota, bringing down all enterprise agents simultaneously.
 
-### Enterprise Landing Zone Simulation (SoC)
+**Stage 1 establishes strict cryptographic and operational blast boundaries by partitioning the enterprise into 7 decoupled projects.**
 
-To mirror a real-world enterprise production environment, workloads are divided across **seven distinct projects**:
+---
 
-| Project Domain | Simulated Project ID | Role and Responsibility | Primary Hosted Resources |
+## 🎭 Persona & Role Breakdown: Who Owns Stage 1?
+
+| Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| **Network Host** | `prj-esmeralda-net-host` | Managed by NetOps. Controls network traffic routing and security. | Shared VPC, Subnets, Cloud DNS, Cloud NAT, Firewalls. |
-| **Traffic Ingress** | `prj-esmeralda-gateway` | Managed by PlatformOps. Controls enterprise API ingress. | Apigee X, Kong on Cloud Run, Internal Load Balancers. |
-| **CI/CD & Artifacts** | `prj-esmeralda-cicd-artifacts` | Managed by Platform Engineering. CI/CD pipelines and container image storage. | Cloud Build, Artifact Registry Docker repositories. |
-| **MCP Tools** | `prj-esmeralda-mcps` | Managed by AppDev team. Shared enterprise utility APIs. | Cloud Run (Corporate Email, Income Verifier, DMS). |
-| **Core AI Platform** | `prj-esmeralda-a2a` | Managed by Core AI team. Hosts reusable cross-domain agents. | Vertex AI Reasoning Engine (A2A), Cloud SQL PostgreSQL. |
-| **Business Unit Application** | `prj-esmeralda-root-agent` | Managed by Business Unit team. Client-facing user reasoning engines. | Vertex AI Reasoning Engine (Root), GCS Staging Buckets. |
-| **Governance Hub** | `prj-esmeralda-governance` | Managed by SecOps. Centralizes compliance and audit logs. | KMS Keyrings, Secrets, TLS Certificates, BigQuery Analytics, Log Sinks. |
+| 🧑‍💼 **FinOps / Cloud Treasury** | Enforcing budget thresholds, monitoring token cost-centers, auditing monthly agent chargebacks. | Project labels (`cost-center`, `team`, `env`), Cloud Billing exports, BigQuery billing datasets. | Agent prompts, Python code, MCP tool endpoints. |
+| 👷 **Platform / Landing Zone Lead** | Maintaining organizational compliance, project factories, and API activation policies. | `infrastructure/modules/1-projects/`, Terraform project resources, service agent lifecycle. | Application business logic, database SQL schemas. |
+| 🧑‍💻 **AI Application Developer** | Writing prompt graphs and building agent reasoning capabilities. | Pure Python logic in `apps/`. | Project creation, billing linkages, or GCP service API enablements. |
 
 ---
 
-### B. FinOps Challenges Solved
-1.  **Clean Generative AI Attribution**: Gemini API calls made by the mortgage assistant bill directly to `prj-esmeralda-root-agent`. Sub-process calls bill directly to `prj-esmeralda-a2a`.
-2.  **Ephemeral vs. Persistent Cost Separation**: The PostgreSQL database (continuous 24/7 billing) is isolated inside the AI platform project. Serverless MCP tool servers (Cloud Run) scale to zero when idle, eliminating ongoing compute costs.
-3.  **Zero Hidden Network Egress Costs**: All inter-service traffic flows internally over private Shared VPC IPs within the same region (`us-central1`), avoiding public NAT transit fees.
+## 🏛️ Architecture Decision Records (ADRs): The "Why"
+
+### ADR-01.1: Seven Specialized GCP Projects vs. Monolithic Landing Zone
+* **Context:** Enterprise organizations require strict separation of concerns between Network Engineers, Security Operations, Core AI Teams, and Line-of-Business (LOB) application developers.
+* **Decision:** Provision seven isolated GCP projects:
+  1. `prj-esmeralda-net-host`: Managed by **NetOps**. Owns Shared VPC, routing, Cloud NAT, and Private DNS.
+  2. `prj-esmeralda-gateway`: Managed by **PlatformOps**. Owns API ingress (Apigee / Kong / ILB).
+  3. `prj-esmeralda-cicd-artifacts`: Managed by **Platform Engineering**. Owns Artifact Registry and Cloud Build pipelines.
+  4. `prj-esmeralda-mcps`: Managed by **AppDev Tools Team**. Hosts reusable serverless Model Context Protocol (MCP) microservices.
+  5. `prj-esmeralda-a2a`: Managed by **Core AI Team**. Hosts reusable specialist reasoning engines and private Cloud SQL databases.
+  6. `prj-esmeralda-root-agent`: Managed by **Business Unit Team**. Hosts customer-facing orchestrator agents.
+  7. `prj-esmeralda-governance`: Managed by **SecOps**. Centralizes Cloud KMS CMEK keys, secrets, and telemetry audit sinks.
+* **Trade-Offs:** Adds cross-project IAM complexity (managed declaratively via Terragrunt) in exchange for absolute security isolation, 100% granular billing attribution, and independent quota pools.
 
 ---
 
-## Detailed Implementation Specifications & HCL Blueprints
-
-This module manages the automated provisioning of isolated GCP service projects, links them securely to the corporate billing account, and activates standard APIs natively. Under this design, the module handles **up to seven distinct projects**, reflecting a standard enterprise landing zone.
-
-#### B. The FinOps Challenge: Cost Attribution & Billing Isolation
-Deploying agentic pipelines across multiple distinct GCP projects solves major enterprise pain points but introduces key FinOps and tracking challenges. Our multi-project structure solves these as follows:
-
-```mermaid
-graph TD
-    %% FinOps visualization
-    subgraph Billing["GCP Billing Account (Central Treasury)"]
-        Export["Cloud Billing BigQuery Export"]
-    end
-
-    subgraph "prj-esmeralda-net-host (NetOps Budget)"
-        C0["Shared VPC & Network Egress Costs"]
-        L0["Label: cost-center=netops-core"]
-    end
-
-    subgraph "prj-esmeralda-gateway (PlatformOps Budget)"
-        C_GW["API Gateway Appliance / ILB Costs"]
-        L_GW["Label: cost-center=platformops-ingress"]
-    end
-
-    subgraph "prj-esmeralda-cicd-artifacts (Platform Eng Budget)"
-        C_CI["Cloud Build & Artifact Registry Storage"]
-        L_CI["Label: cost-center=platform-engineering"]
-    end
-
-    subgraph "prj-esmeralda-mcps (AppDev Tools Budget)"
-        C1["Cloud Run Compute Costs"]
-        L1["Label: cost-center=appdev-tools"]
-    end
-
-    subgraph "prj-esmeralda-a2a (Core AI Platform Budget)"
-        C2["Vertex AI Model API Calls"]
-        C3["Cloud SQL DB (Continuous Run)"]
-        L2["Label: cost-center=core-ai-platform"]
-    end
-
-    subgraph "prj-esmeralda-root-agent (Business Unit Budget)"
-        C4["Vertex AI Orchestrator API Calls"]
-        L3["Label: cost-center=bu-mortgage"]
-    end
-
-    subgraph "prj-esmeralda-governance (SecOps Budget)"
-        C_GOV["KMS Key Rings & BigQuery Telemetry Storage"]
-        L_GOV["Label: cost-center=secops-governance"]
-    end
-
-    C0 & L0 -. Billing Record .-> Export
-    C_GW & L_GW -. Billing Record .-> Export
-    C_CI & L_CI -. Billing Record .-> Export
-    C1 & L1 -. Billing Record .-> Export
-    C2 & C3 & L2 -. Billing Record .-> Export
-    C4 & L3 -. Billing Record .-> Export
-    C_GOV & L_GOV -. Billing Record .-> Export
-```
-
-##### 1. Vertex AI Model API Billing Attribution
-When multiple teams call Gemini via Vertex AI, a monolithic project makes it impossible to distinguish which team consumed how many input/output tokens. By splitting workloads:
-*   Calls to Gemini made by the Root Orchestrator are charged directly to `prj-esmeralda-root-agent` (Business Unit Budget).
-*   Calls to Gemini made by the A2A Agent during sub-task execution are charged to `prj-esmeralda-a2a-agents` (Core AI Budget).
-*   *Implementation*: Resource labels (`env=dev`, `cost-center=...`, `team=...`) are systematically applied at the project level and resource level, flowing directly into the **GCP Billing Export to BigQuery** for clean dashboards.
-
-##### 2. Persistent vs. Ephemeral Resource Cost Allocation
-*   **Cloud SQL Instance**: Run as a shared state machine for the A2A agent, running 24/7. This represents a fixed cost that is isolated inside the Core AI Platform budget (`prj-esmeralda-a2a-agents`) and is not subsidized by the Business Unit team.
-*   **Cloud Run (MCP Tool Servers)**: Run serverless, scaling to zero when there are no requests. This ensures that the AppDev team only incurs compute costs when tools are actively invoked, preventing resource wasting.
-
-##### 3. Cross-Project Network Transit Cost Optimization
-Data transferring across VPC subnets and project boundaries can incur inter-zone egress fees.
-*   To address this, all projects are systematically locked to a single region (`us-central1`) and use Shared VPC Private IP communication, eliminating public internet NAT gateway egress charges for inter-agent communication.
-
----
-
-#### C. The BYOInfra (Brownfield) Integration Architecture
-In real enterprise deployments, customers will **never** allow a tool to provision a new Shared VPC Host Project (`net_host`) or change their centralized Gateway Ingress Project (`gateway`). 
-
-Esmeralda elegantly handles this by using a dynamic **BYOInfra Fallback Architecture**:
+### ADR-01.2: BYOInfra (Brownfield Fallback) Architecture
+* **Context:** Large enterprises often already have pre-existing Shared VPC Host projects (`net_host`) or centralized Ingress Gateways (`gateway`) and forbid automated tools from recreating them.
+* **Decision:** Implement conditional ternary creation logic (`byo_net_host_project`, `byo_gateway_project`, `byo_governance_project`, `byo_cicd_project`) in `env.yaml`.
+* **Mechanism:** If `byo_* = true`, Stage 1 bypasses project creation and API enablement for that specific project, transparently returning the customer's existing project ID to downstream stages.
 
 ```mermaid
 flowchart TD
-    %% Decoupling logic
     subgraph Inputs["Terragrunt Input Parameters (env.yaml)"]
         BYO_Net["byo_net_host_project = true"]
         BYO_Gwy["byo_gateway_project = true"]
@@ -135,117 +67,99 @@ flowchart TD
         Check_Gwy -- "True (BYO)" --> Skip_Gwy["Bypass Creation <br/> Return existing_gateway_project"]
         Check_Gwy -- "False" --> Create_Gwy["Create prj-esmeralda-gateway from scratch"]
         
-        Create_MCPS["Create prj-esmeralda-mcps <br/> (Always)"]
-        Create_A2A["Create prj-esmeralda-a2a-agents <br/> (Always)"]
-        Create_Root["Create prj-esmeralda-root-agent <br/> (Always)"]
+        Create_MCPS["Create prj-esmeralda-mcps (Always)"]
+        Create_A2A["Create prj-esmeralda-a2a (Always)"]
+        Create_Root["Create prj-esmeralda-root-agent (Always)"]
     end
 
     Inputs --> Check_Net
     Inputs --> Check_Gwy
 ```
 
-*   **Conditional Project Seed**: In `main.tf`, `google_project.net_host` and `google_project.gateway` use a `count` conditional (`count = var.byo_net_host_project ? 0 : 1`).
-*   **API Enablement Isolation**: Service API enablement is also conditional. If `byo_net_host_project` is true, Esmeralda skips enabling APIs in that project to prevent permission conflicts with corporate security policies (which restrict IAM permissions to create/enable APIs on shared host projects).
-*   **Dynamic Outputs Mapping**: Regardless of whether a project is created from scratch or provided as pre-existing, `outputs.tf` resolves the correct active project IDs, ensuring downstream modules (networking, security, and workloads) consume them transparently.
-
 ---
 
-### D. Exhaustive Resource & Identity Provisioning Breakdown
+## 💰 FinOps Cost Attribution Architecture
 
-A granular inspection of `infrastructure/modules/1-projects/` reveals exactly how Esmeralda orchestrates project creation, API enablements, and service identities:
+By partitioning resources into distinct projects, costs flow automatically into Google Cloud Billing export tables in BigQuery with zero ambiguity:
 
 ```mermaid
 flowchart TD
-    subgraph Inputs["Stage 1 Inputs (variables.tf)"]
-        Prefix["project_suffix (2 hex bytes)"]
-        BYO["BYO Toggles & Existing IDs"]
+    subgraph Treasury["Central Cloud Treasury"]
+        Export["Cloud Billing BigQuery Export"]
     end
 
-    subgraph Projects["7 Enterprise Landing Zone Projects"]
-        Cond["4 Conditional Projects<br/>(net_host, gateway, cicd, governance)"]
-        Uncond["3 Unconditional Workloads<br/>(mcps, a2a, root_agent)"]
+    subgraph NetOps["NetOps Budget (prj-esmeralda-net-host)"]
+        C0["Shared VPC & Cloud NAT Egress<br/>Label: cost-center=netops-core"]
     end
 
-    subgraph APIs["Service API Enablements"]
-        APIList["Least-Privilege APIs<br/>(aiplatform, run, sqladmin, secretmanager, etc.)"]
+    subgraph PlatformOps["PlatformOps Budget (prj-esmeralda-gateway)"]
+        C_GW["Ingress Gateway Appliances & ILB<br/>Label: cost-center=platformops-ingress"]
     end
 
-    subgraph Sleep["Propagation Buffer"]
-        Delay["time_sleep.api_propagation<br/>(30 Seconds Convergence Delay)"]
+    subgraph AppDev["Tools Budget (prj-esmeralda-mcps)"]
+        C1["Cloud Run Tool Servers (Scale-to-Zero)<br/>Label: cost-center=appdev-tools"]
     end
 
-    subgraph Identities["9 Bootstrapped Service Identities"]
-        SA_Build["cicd_build (Cloud Build)"]
-        SA_Run["mcps_run, gateway_run, a2a_run, root_run"]
-        SA_Vertex["a2a_vertex, root_vertex"]
-        SA_Data["a2a_sql, governance_secrets"]
+    subgraph CoreAI["Core AI Platform Budget (prj-esmeralda-a2a)"]
+        C2["Specialist Reasoning Engine Tokens<br/>Cloud SQL Postgres 24/7 Instance<br/>Label: cost-center=core-ai-platform"]
     end
 
-    Inputs -->|Resolve IDs & Labels| Projects
-    Projects -->|for_each conditional enablement| APIs
-    APIs -->|depends_on| Sleep
-    Sleep -->|Request Google-Managed Robots| Identities
+    subgraph BU["Business Unit Budget (prj-esmeralda-root-agent)"]
+        C3["Root Coordinator Gemini 3.7 Tokens<br/>Label: cost-center=bu-mortgage"]
+    end
+
+    C0 & C_GW & C1 & C2 & C3 -->|Automatic Billing Telemetry| Export
 ```
 
-#### 1. Dynamic Project ID & Label Resolution
-*   **Hex Suffix**: A 2-byte random hex string (`random_id.project_suffix`) ensures global project ID uniqueness across Google Cloud.
-*   **ID Resolution**: For conditional projects (`net_host`, `gateway`, `governance`, `cicd`), ternary lookups (`var.byo_* ? var.existing_* : "..."`) dynamically select either the existing customer ID or generate a new one using `var.project_prefix`.
-*   **Project Resource Names**: Each `google_project` resource sets `name = local.<project>_id` to ensure display names match project IDs cleanly without spaces or arbitrary strings.
-*   **Cost & FinOps Labels**: Every project receives systematic attribution metadata: `"env" = var.environment` and `"managed-by" = "terragrunt-esmeralda"`, merged with project-specific `cost-center` and `team` tags.
-
-#### 2. Four Conditional Infrastructure & Governance Projects
-Created with `count = var.byo_* ? 0 : 1` to respect enterprise brownfield environments:
-1.  **`google_project.net_host`**: Tagged with `cost-center = networking-infrastructure`, `team = netops`.
-2.  **`google_project.gateway`**: Tagged with `cost-center = ingress-gateways`, `team = platformops`.
-3.  **`google_project.cicd`**: Tagged with `cost-center = shared-cicd-and-artifacts`, `team = platform-engineering`.
-4.  **`google_project.governance`**: Tagged with `cost-center = central-governance-and-telemetry`, `team = security-and-platformops`.
-
-#### 3. Three Unconditional Workload Projects
-Always created from scratch by Esmeralda for runtime isolation:
-1.  **`google_project.mcps`**: Tagged with `cost-center = central-developer-tools`, `team = appdev-tools`.
-2.  **`google_project.a2a`**: Tagged with `cost-center = enterprise-ai-platform`, `team = core-ai-agents`.
-3.  **`google_project.root_agent`**: Tagged with `cost-center = lob-business-solutions`, `team = lob-root-agent`.
-
-#### 4. Service API Activation Matrix (`google_project_service`)
-Each project receives a precise, least-privilege list of Google Cloud service APIs. Conditional projects only enable APIs if created by Esmeralda (`for_each = var.byo_* ? [] : toset(...)`):
-
-| Project | Enabled Service APIs |
-| :--- | :--- |
-| **`net_host`** | `compute`, `dns`, `servicenetworking`, `networksecurity`, `networkservices`, `certificatemanager`, `logging` |
-| **`gateway`** | `compute`, `apigee`, `certificatemanager`, `logging`, `secretmanager`, `run`, `iam` |
-| **`cicd`** | `compute`, `artifactregistry`, `cloudbuild`, `logging`, `storage`, `secretmanager` |
-| **`mcps`** | `compute`, `run`, `artifactregistry`, `secretmanager`, `logging`, `cloudbuild` |
-| **`a2a`** | `compute`, `aiplatform`, `sqladmin`, `storage`, `secretmanager`, `run` *(for DB bootstrap job)*, `artifactregistry`, `logging`, `servicenetworking` |
-| **`root_agent`** | `compute`, `aiplatform`, `storage`, `run`, `artifactregistry`, `logging` |
-| **`governance`** | `bigquery`, `logging`, `clouderrorreporting`, `cloudtrace`, `monitoring`, `cloudkms`, `secretmanager` |
-
-#### 5. Propagation Buffer & Service Identity Bootstrapping
-To avoid race conditions where IAM role bindings fail because Google-managed service identities do not yet exist in newly enabled APIs, Esmeralda implements a sequential bootstrap:
-*   **`time_sleep.api_propagation`**: Enforces a 30-second delay after all `google_project_service` resources complete, allowing GCP metadata servers to converge.
-*   **Nine Google-Managed Service Identities (`google_project_service_identity`)**: Explicitly requested and created across target projects:
-    1.  **`cicd_build`**: `cloudbuild.googleapis.com` in `cicd`.
-    2.  **`mcps_run`**: `run.googleapis.com` in `mcps`.
-    3.  **`gateway_run`**: `run.googleapis.com` in `gateway`.
-    4.  **`a2a_run`**: `run.googleapis.com` in `a2a`.
-    5.  **`a2a_vertex`**: `aiplatform.googleapis.com` in `a2a`.
-    6.  **`a2a_sql`**: `sqladmin.googleapis.com` in `a2a`.
-    7.  **`root_vertex`**: `aiplatform.googleapis.com` in `root_agent`.
-    8.  **`root_run`**: `run.googleapis.com` in `root_agent`.
-    9.  **`governance_secrets`**: `secretmanager.googleapis.com` in `governance` *(conditional on BYO, fallback via data source)*.
-
-#### 6. Module Outputs (`outputs.tf`)
-The module exports precisely 17 values: the 7 active project IDs (`net_host_project_id`, `gateway_project_id`, `cicd_project_id`, `mcps_project_id`, `a2a_project_id`, `root_project_id`, `governance_project_id`), the random suffix (`project_suffix`), and the exact email addresses for all 9 bootstrapped service identities (`cicd_build_service_agent`, `mcps_run_service_agent`, `gateway_run_service_agent`, `a2a_run_service_agent`, `a2a_vertex_service_agent`, `root_vertex_service_agent`, `root_run_service_agent`, `a2a_sql_service_agent`, `governance_secrets_service_agent`).
+### Key FinOps Guarantees:
+1. **Serverless vs. Persistent Segregation:** The continuous 24/7 cost of Cloud SQL is isolated inside the Core AI Platform budget (`prj-esmeralda-a2a`), while serverless MCP tools (`prj-esmeralda-mcps`) scale to zero when idle.
+2. **Zero Hidden Network Egress:** All inter-agent and inter-tool traffic flows over internal Shared VPC private IPs within `us-central1`, eliminating public NAT transit charges.
 
 ---
 
-### E. File Inventory & Blueprints
+## 🏗️ Technical Implementation Breakdown (`modules/1-projects/`)
 
-```text
-infrastructure/modules/1-projects/
-├── versions.tf          # Mandates HashiCorp Google provider bounds (>= 5.0)
-├── variables.tf         # Inputs for billing, organization folders, prefix, and BYO parameters
-├── main.tf              # Implements projects, API enablement, billing bindings, and labels
-└── outputs.tf           # Exposes project IDs, numbers, and service identities
+### 1. Service API Enablement Matrix (`google_project_service`)
+Each project receives the exact, least-privilege list of Google APIs required for its operational domain:
+
+| Project | Enabled Google Cloud Service APIs |
+| :--- | :--- |
+| **`net_host`** | `compute.googleapis.com`, `dns.googleapis.com`, `servicenetworking.googleapis.com`, `networksecurity.googleapis.com`, `networkservices.googleapis.com`, `certificatemanager.googleapis.com`, `logging.googleapis.com` |
+| **`gateway`** | `compute.googleapis.com`, `apigee.googleapis.com`, `certificatemanager.googleapis.com`, `logging.googleapis.com`, `secretmanager.googleapis.com`, `run.googleapis.com`, `iam.googleapis.com` |
+| **`cicd`** | `compute.googleapis.com`, `artifactregistry.googleapis.com`, `cloudbuild.googleapis.com`, `logging.googleapis.com`, `storage.googleapis.com`, `secretmanager.googleapis.com` |
+| **`mcps`** | `compute.googleapis.com`, `run.googleapis.com`, `artifactregistry.googleapis.com`, `secretmanager.googleapis.com`, `logging.googleapis.com`, `cloudbuild.googleapis.com` |
+| **`a2a`** | `compute.googleapis.com`, `aiplatform.googleapis.com`, `sqladmin.googleapis.com`, `storage.googleapis.com`, `secretmanager.googleapis.com`, `run.googleapis.com`, `artifactregistry.googleapis.com`, `logging.googleapis.com`, `servicenetworking.googleapis.com` |
+| **`root_agent`** | `compute.googleapis.com`, `aiplatform.googleapis.com`, `storage.googleapis.com`, `run.googleapis.com`, `artifactregistry.googleapis.com`, `logging.googleapis.com` |
+| **`governance`** | `bigquery.googleapis.com`, `logging.googleapis.com`, `clouderrorreporting.googleapis.com`, `cloudtrace.googleapis.com`, `monitoring.googleapis.com`, `cloudkms.googleapis.com`, `secretmanager.googleapis.com`, `agentregistry.googleapis.com`, `networkservices.googleapis.com` |
+
+---
+
+### 2. Service Identity Bootstrapping (`google_project_service_identity`)
+To prevent IAM race conditions where downstream stages attempt to grant roles to service agents that do not yet exist, Stage 1 explicitly bootstraps **nine Google-managed service identities**:
+
+1. `cicd_build`: Cloud Build SA in `prj-esmeralda-cicd-artifacts`
+2. `mcps_run`: Cloud Run SA in `prj-esmeralda-mcps`
+3. `gateway_run`: Cloud Run SA in `prj-esmeralda-gateway`
+4. `a2a_run`: Cloud Run SA in `prj-esmeralda-a2a`
+5. `a2a_vertex`: Vertex AI SA in `prj-esmeralda-a2a`
+6. `a2a_sql`: Cloud SQL SA in `prj-esmeralda-a2a`
+7. `root_vertex`: Vertex AI SA in `prj-esmeralda-root-agent`
+8. `root_run`: Cloud Run SA in `prj-esmeralda-root-agent`
+9. `governance_secrets`: Secret Manager SA in `prj-esmeralda-governance`
+
+---
+
+## 🛠️ Verification & Runbook
+
+### Inspect Provisioned Projects
+```bash
+# List all Esmeralda projects in current environment
+gcloud projects list --filter="name:esm-dev-*" --format="table(projectId, projectNumber, name)"
 ```
 
-*(With this, any client's NetOps/PlatformOps teams can hand over pre-configured net_host and gateway projects, and Esmeralda will automatically provision and deploy the isolated workload projects and attach them securely to their Shared VPC.)*
+### Validate Billing Linkage & Cost Labels
+```bash
+# Inspect billing account and cost labels on the A2A project
+gcloud beta billing projects describe $(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw a2a_project_id)
+```
+ to their Shared VPC.)*
