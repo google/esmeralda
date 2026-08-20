@@ -83,7 +83,7 @@ Dataset `esmeralda_telemetry_logs_dev` in project `esmeralda-governance-dev` hos
 ### Analytical Views
 
 #### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
-Calculates monthly agent cost breakdown and context caching savings based on Gemini 2.5 SKU pricing:
+Calculates monthly agent cost breakdown and context caching savings based on Gemini 3.7 SKU pricing:
 * **Uncached Prompt Tokens**: `$0.075` per 1M tokens
 * **Cached Prompt Tokens**: `$0.01875` per 1M tokens (**75% cost reduction**)
 * **Response & Reasoning Tokens**: `$0.30` per 1M tokens
@@ -119,7 +119,7 @@ Filters audit logs for security critical methods:
 * **Widgets**:
   1. **Total LLM Token Consumption Volume over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/realtime_token_consumption' | align delta(1m) | sum`)
   2. **Prompt Cache Hit Token Savings over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/cached_tokens' | align delta(1m) | sum`)
-  3. **Gemini 2.5 Reasoning (Thoughts) Tokens over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/thoughts_tokens' | align delta(1m) | sum`)
+  3. **Gemini 3.7 Reasoning (Thoughts) Tokens over Time** (MQL Line Chart: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/thoughts_tokens' | align delta(1m) | sum`)
   4. **MCP Tool Executions Count over Time** (Line Chart: `logging.googleapis.com/user/genai/mcp_tool_execution_count`)
   5. **P99 Token Consumption Spike (Runaway Loop Detector)** (Line Chart: `ALIGN_PERCENTILE_99`)
   6. **MCP Execution Frequency Breakdown by Tool Name** (Bar Chart grouped by `metric.label.tool_name`)
@@ -146,7 +146,38 @@ Filters audit logs for security critical methods:
 * **Ingress Gateway Availability SLO**: 99.9% success rate target over a 30-day rolling window.
 * **Ingress Gateway Latency SLO**: 95% of HTTP requests served under 1500ms target over a 30-day rolling window.
 
-### Cloud Data Loss Prevention (DLP) PII Template
+### Cloud Data Loss Prevention (DLP) & Model Armor PII Template
 * **Template ID**: `projects/esmeralda-governance-dev/locations/global/inspectTemplates/1234567890123456789`
 * **Inspected infoTypes**: `EMAIL_ADDRESS`, `CREDIT_CARD_NUMBER`, `US_SOCIAL_SECURITY_NUMBER`, `PHONE_NUMBER`.
 * **Likelihood Threshold**: `POSSIBLE`.
+
+---
+
+## 5. Central Agent Gateway v2 & Model Armor Guardrails (`modules/6_agent_gateway`)
+
+To guarantee zero-trust egress and prevent data exfiltration, all outbound reasoning engine traffic is intercepted by the **Central Agent Gateway** in `prj-esmeralda-governance`:
+
+```mermaid
+flowchart LR
+    RE["Vertex AI Reasoning Engine<br/>(identityType: AGENT_IDENTITY)"]
+    AGW["Central Agent Gateway<br/>(AGENT_TO_ANYWHERE)"]
+    MA["Model Armor Inspection<br/>(PII & Injection Sanitization)"]
+    BQ["BigQuery FinOps Sinks<br/>(Real-Time Token Usage)"]
+    Gemini["Foundation Model<br/>(Gemini 3.7 Flash)"]
+
+    RE -->|1. mTLS with SPIFFE Certificate| AGW
+    AGW -->|2. Inspect Content| MA
+    AGW -->|3. Emit Telemetry| BQ
+    AGW -->|4. Forward Authorized Request| Gemini
+```
+
+### Key Gateway Controls & Security Features:
+1. **SPIFFE Workload Identity Verification (`roles/iap.egressor`)**:
+   * The Agent Engine sandbox kernel negotiates an mTLS session presenting its cryptographic container identity (`principalSet://agents.global.org-${ORG_ID}.system.id.goog/*`).
+   * The gateway evaluates IAP access policies before permitting egress to any endpoint registered in Google Agent Registry.
+2. **Model Armor Guardrails**:
+   * Automatically sanitizes sensitive customer data (PII) before prompts reach external models.
+   * Intercepts and neutralizes prompt injection and jailbreak payloads in real time.
+3. **Deterministic Token Auditing**:
+   * Emits structured audit logs directly to Cloud Logging and BigQuery for turn-by-turn FinOps cost attribution without requiring code changes in agent logic.
+
