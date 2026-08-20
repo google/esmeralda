@@ -1,19 +1,35 @@
-# AgentOps, Lifecycle & Platform Governance
+# 📊 AgentOps, Lifecycle & Platform Governance
 
-To maintain a scalable, secure, and resilient enterprise AI agent platform, Esmeralda enforces an opinionated **AgentOps** and **Software Development Lifecycle (SDLC)** strategy. Rather than consolidating the entire system into a monolithic codebase, Esmeralda models the platform as a collection of decoupled, loosely-coupled microservices and reasoning engines. 
+To maintain a scalable, secure, and resilient enterprise AI agent platform, Esmeralda enforces an opinionated **AgentOps** and **Software Development Lifecycle (SDLC)** strategy.
 
-This guide details the repository strategy, cross-team coordination workflows, automated CI/CD container promotion pipelines, operational governance rules, [Test Account Provisioning on Spanner](02-creating-test-accounts-on-spanner.md), and [Centralized Observability & Metrics Dashboards](03-centralized-monitoring-and-dashboards.md).
+---
+
+## 🏛️ Architecture Decision Records (ADRs): The "Why" Behind Governance
+
+### 1. ADR-07: Why Central Agent Gateway (AGENT_TO_ANYWHERE) + SPIFFE Identity Over Direct Public NAT Egress?
+* **The Problem:** Allowing AI agents to directly access external Foundation Models or public endpoints via standard Cloud NAT creates critical enterprise vulnerabilities:
+  * **Prompt Injection & Data Exfiltration:** Malicious user inputs can hijack agent execution and exfiltrate customer databases to untrusted third-party servers.
+  * **PII Leaks:** Unsanitized prompts containing Social Security Numbers, credit cards, or passwords leak into external model providers.
+  * **Uncontrolled Token Spend:** Finance teams have zero centralized visibility into per-request token consumption or rogue runaway agent loops.
+* **The Decision:** Deploy the **Central Agent Gateway** in `prj-esmeralda-governance` with **Model Armor** and **Cloud IAP mTLS SPIFFE workload authentication**.
+* **The Benefit:**
+  1. **Zero-Trust SPIFFE Workload Authentication:** Every Reasoning Engine proves its cryptographic identity via mTLS before the gateway permits any outbound request (`roles/iap.egressor`).
+  2. **Automated Content Sanitization:** Model Armor automatically inspects and redacts PII and blocks prompt injections before payloads reach Gemini.
+  3. **Granular FinOps Sinks:** Per-request token consumption events are streamed to BigQuery views (`vw_monthly_agent_chargeback`) for real-time cost attribution and runaway loop alerting.
+
+---
+
+### 2. ADR-08: Why Decoupled Multi-Repository SDLC for Enterprise Production?
+* **The Problem:** Monolithic codebases with multiple collaborating teams create severe operational friction:
+  * **Release Coupling:** Updating a minor corporate email tool forces a recalculation and test cycle of all downstream reasoning engines.
+  * **IAM Privilege Bleeding:** Tool developers should not have permission to modify platform KMS keys or Shared VPC subnets.
+* **The Decision:** Structure production development across **three decoupled repository classes** (Platform IaC, MCP Tool Microservices, and AI Reasoning Engines) bound dynamically via **Artifact Registry immutable SHA256 image digests**.
 
 ---
 
 ## The Decoupled Multi-Repository Strategy
 
-While the Esmeralda blueprint is presented as a centralized codebase for easy distribution, running a production-grade agent platform with multiple teams inside a single monorepo introduces significant operational bottlenecks:
-*   **Release Coupling**: Updating a single helper tool forces a rebuild or recalculation of downstream AI agent tests, leading to deployment delays.
-*   **IAM Boundary Bleeding**: Developers building lightweight tool connectors should not have access to core project security keys, billing configurations, or Shared VPC routing modules.
-*   **Audit Trail Confusion**: In strict compliance environments, changes to networking or database encryption must be segregated from changes to agent prompts or prompt engineering.
-
-To solve this, Esmeralda mandates a **Decoupled Multi-Repository Strategy**:
+While the Esmeralda blueprint is presented as a centralized codebase for easy distribution, running a production-grade agent platform with multiple teams inside a single monorepo introduces operational bottlenecks. Esmeralda mandates a **Decoupled Multi-Repository Strategy**:
 
 ```mermaid
 flowchart TD
@@ -48,47 +64,18 @@ flowchart TD
     TG -->|Deploy Infrastructure & Workload Specs| Run_Email & Run_Income & Run_A2A & Run_Root
 ```
 
-### 1. Platform Infrastructure Repository (`platform-infra-iac.git`)
-*   **Owners**: Platform Engineers, NetOps, and SecOps.
-*   **Contents**: Standard Terragrunt modules (`modules/1-projects`, `modules/2-networking`, `modules/3-security`, and Stage 4 workload scaffolding) along with live environment orchestrators (`live/dev/`, `live/prod/`).
-*   **Deployment**: Merges trigger automated Terragrunt runs, modifying projects, subnets, firewall rules, and IAM bindings.
-
-### 2. Composable MCP Tool Repositories (e.g., `mcp-corporate-email.git`)
-*   **Owners**: AppDev Tools Team.
-*   **Contents**: Python or Go MCP server code, Dockerfiles, and tool test suites.
-*   **Deployment**: Merges build a container image, push it to Artifact Registry in `prj-esmeralda-cicd-artifacts`, and optionally update the target image tag in the platform IaC repository.
-
-### 3. AI Agent Reasoning Engine Repositories (e.g., `agent-mortgage-assistant.git`)
-*   **Owners**: Core AI Platform Team or Business Unit Teams.
-*   **Contents**: Python ADK agent scripts, `agent.yaml` specifications, prompt templates, and evaluation datasets (evalsets).
-*   **Deployment**: Merges run evaluations (using LLM-as-a-judge), compile the ADK runtime environment, upload staging dependencies to GCS, and deploy the new Vertex AI Reasoning Engine ID.
-
----
-
-### Repository Comparison Matrix
-
-The following matrix contrasts the operational boundaries, permissions, and build outputs of the three repository classes:
-
-| Repository Class | Primary Contributors | IAM Writing Bounds | CI Validation & Triggers | Release Artifact & Versioning Pattern |
-| :--- | :--- | :--- | :--- | :--- |
-| **`platform-infra-iac.git`** | Platform Engineers, NetOps, SecOps | Cloud Build Service Account (restricted to project provisioning roles) | Terragrunt dry-runs on pull requests; automated `apply` on main branch merge | Infrastructure state; versioned via Git release tags (e.g. `v1.2.0`) |
-| **`mcp-{tool-name}.git`** | AppDev Tools Team, Backend Integrators | Container Builder Service Account (restricted to `prj-esmeralda-cicd-artifacts`) | Docker build and vulnerability scan on push; integration test against mock DBs | Docker Container Image; tagged with git commit SHA and registered in AR |
-| **`agent-{agent-name}.git`** | AI Engineers, Prompt Engineers, BU Devs | Vertex AI Stager Service Account (restricted to agent GCS and Vertex APIs) | Run LLM-as-a-judge quality evaluations; syntax checking on `agent.yaml` | Vertex AI Reasoning Engine ID; pinned via immutable Artifact Registry SHA256 digest |
-
----
-
 ### Directory-to-Repository Migration Map
 
 When migrating from this monorepo developer blueprint to a production-ready decoupled multi-repository architecture, map files and folders as follows:
 
 | Blueprint Folder (Monorepo) | Target Production Git Repository | Deployment Endpoint |
 | :--- | :--- | :--- |
-| `infrastructure/modules/1-projects/`<br/>`infrastructure/modules/2-networking/`<br/>`infrastructure/modules/3-security/`<br/>`infrastructure/live/` | **`platform-infra-iac.git`** | GCP Projects, VPCs, KMS Keys, IAM Policies, and Terragrunt orchestrations |
-| `tools_mcp/servers/corporate-email/` | **`mcp-corporate-email.git`** | Cloud Run Service: `corporate-email-{env}` in `prj-esmeralda-mcps` |
-| `tools_mcp/servers/income-verification/` | **`mcp-income-verification.git`** | Cloud Run Service: `income-verification-{env}` in `prj-esmeralda-mcps` |
-| `tools_mcp/servers/legacy-dms/` | **`mcp-legacy-dms.git`** | Cloud Run Service: `legacy-dms-{env}` in `prj-esmeralda-mcps` |
-| `app/a2a-agent/` | **`agent-mortgage-assistant.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-a2a` |
-| `app/base-adk-agent/` | **`agent-root-orchestrator.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-root-agent` |
+| `infrastructure/modules/1-projects/`<br/>`infrastructure/modules/2-networking/`<br/>`infrastructure/modules/3-security/`<br/>`infrastructure/modules/4-workloads/`<br/>`infrastructure/modules/5-governance/`<br/>`infrastructure/live/` | **`platform-infra-iac.git`** | GCP Projects, VPCs, KMS Keys, IAM Policies, and Terragrunt orchestrations |
+| `apps/services/corporate-email/` | **`mcp-corporate-email.git`** | Cloud Run Service: `corporate-email-{env}` in `prj-esmeralda-mcps` |
+| `apps/services/income-verification/` | **`mcp-income-verification.git`** | Cloud Run Service: `income-verification-{env}` in `prj-esmeralda-mcps` |
+| `apps/services/legacy-dms/` | **`mcp-legacy-dms.git`** | Cloud Run Service: `legacy-dms-{env}` in `prj-esmeralda-mcps` |
+| `apps/agents/a2a-agent/` | **`agent-mortgage-assistant.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-a2a` |
+| `apps/agents/base-adk-agent/` | **`agent-root-orchestrator.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-root-agent` |
 
 ---
 
