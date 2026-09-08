@@ -10,40 +10,46 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}']
 
-  # Step 3: Register/Sync A2A Agent Endpoint across all agent-spoke projects matching _ENV
+  # Step 3: Register/Sync A2A Agent Card in Central Governance Agent Registry
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        set -e
         pip install pyyaml --quiet --break-system-packages
         CARD_JSON=$(python3 -c "import yaml, json; data=yaml.safe_load(open('agent.yaml'))['agent_card']; print(json.dumps({'name': data['name'], 'description': data['description'], 'version': data['version'], 'capabilities': data.get('capabilities', {}), 'defaultInputModes': data.get('default_input_modes', ['text/plain']), 'defaultOutputModes': data.get('default_output_modes', ['application/json']), 'supportedInterfaces': [{'url': i['url'], 'protocolBinding': i['protocol_binding'], 'protocolVersion': i.get('protocol_version', '0.3')} for i in data.get('supported_interfaces', [])], 'skills': data.get('skills', [])}))")
-        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project AND labels.env=${_ENV} AND name:${_PROJECT_PREFIX}*" --format="value(projectId)")
-        echo "Cloud Build discovered spoke projects for environment ${_ENV} (prefix ${_PROJECT_PREFIX}): $$SPOKE_PROJECTS"
-        for PROJ in $$SPOKE_PROJECTS; do
-          echo "Syncing a2a-mortgage-agent in project $$PROJ..."
-          gcloud alpha agent-registry services create a2a-mortgage-agent \
-            --project=$$PROJ \
-            --location=${_REGION} \
-            --display-name="a2a-mortgage-agent" \
-            --description="A2A Agent providing domain mortgage processing capabilities" \
-            --agent-spec-type=a2a-agent-card \
-            --agent-spec-content="$$CARD_JSON" || \
-          gcloud alpha agent-registry services update a2a-mortgage-agent \
-            --project=$$PROJ \
-            --location=${_REGION} \
-            --display-name="a2a-mortgage-agent" \
-            --description="A2A Agent providing domain mortgage processing capabilities" \
-            --agent-spec-type=a2a-agent-card \
-            --agent-spec-content="$$CARD_JSON"
-        done
+        
+        if [ -n "${_GOVERNANCE_PROJECT_ID}" ]; then
+          GOV_PROJECT="${_GOVERNANCE_PROJECT_ID}"
+        else
+          GOV_PROJECT=$$(gcloud secrets versions access latest --secret="secret-esmeralda-governance-id-${_ENV}" --project="${_CICD_PROJECT_ID}")
+        fi
+        echo "Syncing a2a-mortgage-agent in Central Governance Project $$GOV_PROJECT..."
+
+        gcloud agent-registry services create a2a-mortgage-agent \
+          --project="$$GOV_PROJECT" \
+          --location="${_REGION}" \
+          --display-name="a2a-mortgage-agent" \
+          --description="A2A Agent providing domain mortgage processing capabilities" \
+          --agent-spec-type=a2a-agent-card \
+          --agent-spec-content="$$CARD_JSON" || \
+        gcloud agent-registry services update a2a-mortgage-agent \
+          --project="$$GOV_PROJECT" \
+          --location="${_REGION}" \
+          --display-name="a2a-mortgage-agent" \
+          --description="A2A Agent providing domain mortgage processing capabilities" \
+          --agent-spec-type=a2a-agent-card \
+          --agent-spec-content="$$CARD_JSON"
 
 substitutions:
   _REGION: 'us-central1'
   _CICD_PROJECT_ID: ''
+  _GOVERNANCE_PROJECT_ID: ''
   _TAG: 'latest'
   _ENV: 'dev'
   _PROJECT_PREFIX: 'esm-dev'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  substitution_option: 'ALLOW_LOOSE'

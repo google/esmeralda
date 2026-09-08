@@ -235,7 +235,10 @@ deploy-services: ## Step 4.2: Deploy Cloud Run services (corporate-email, income
 	@cd $(LIVE_DIR)/stage-4-workloads/services && terragrunt --non-interactive run --all apply
 	@echo "✅ Cloud Run Services deployed!"
 
-deploy-mcps: deploy-services ## Alias for backwards compatibility
+deploy-agent-gateway: ## Step 4.2b: Deploy Central Agent Gateway (AGENT_TO_ANYWHERE) in Governance project
+	@echo "🌐 Deploying Central Agent Gateway..."
+	@cd $(LIVE_DIR)/stage-4-workloads/gateways/agent-gateway && terragrunt --non-interactive apply -auto-approve
+	@echo "✅ Central Agent Gateway deployed!"
 
 deploy-gateway: ## Step 4.3: Deploy Kong API Gateway individually
 	@echo "🚀 Deploying Kong API Gateway..."

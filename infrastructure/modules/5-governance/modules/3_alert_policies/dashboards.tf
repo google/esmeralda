@@ -147,7 +147,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
         }
       },
       {
-        "title": "Gemini 2.5 Reasoning (Thoughts) Tokens over Time",
+        "title": "Gemini 3.7 Reasoning (Thoughts) Tokens over Time",
         "xyChart": {
           "dataSets": [
             {

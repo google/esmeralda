@@ -83,7 +83,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
             )
             user_id = getattr(model_context, "user_id", "anonymous") if not hasattr(getattr(model_context, "user_id", None), "_mock_name") else "anonymous"
             execution_path = getattr(model_context, "execution_path", f"{self.agent_name}@1") if not hasattr(getattr(model_context, "execution_path", None), "_mock_name") else f"{self.agent_name}@1"
-            model_name = getattr(model_context, "model_name", "gemini-2.5-flash") if not hasattr(getattr(model_context, "model_name", None), "_mock_name") else "gemini-2.5-flash"
+            model_name = getattr(model_context, "model_name", "gemini-3.7-flash") if not hasattr(getattr(model_context, "model_name", None), "_mock_name") else "gemini-3.7-flash"
             finish_reason = getattr(model_response, "finish_reason", "STOP") if not hasattr(getattr(model_response, "finish_reason", None), "_mock_name") else "STOP"
 
             telemetry.emit_token_consumption(

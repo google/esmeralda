@@ -37,9 +37,15 @@ env:
   # --- Agent Engine Trace Provider ---
   GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
   OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
-  ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS: false
+  MODEL_NAME: "gemini-3.7-flash"
 
-  MODEL_NAME: "gemini-2.5-flash"
+  # --- Central Agent Gateway & SPIFFE Identity ---
+  GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"
+  SECRET_NAME: "agw-root-ca-cert"
+  GRPC_IPV6_PREFER: "0"
+  GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
+  GOOGLE_API_USE_MTLS_ENDPOINT: "never"
+  GOOGLE_GENAI_USE_VERTEXAI: "True"
 
 labels:
   author: "your-name"

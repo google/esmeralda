@@ -34,6 +34,7 @@ dependencies = [
     "google-genai",
     "sqlalchemy",
     "pyarrow",
+    "google-cloud-secret-manager",
 ]
 
 [project.optional-dependencies]
