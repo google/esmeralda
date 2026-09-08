@@ -19,6 +19,10 @@ dependency "security" {
   config_path = "../../../stage-3-security"
 }
 
+dependency "governance" {
+  config_path = "../../../stage-5-governance"
+}
+
 dependency "a2a_agent" {
   config_path = "../a2a-agent"
 }
@@ -33,12 +37,10 @@ inputs = {
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.root_agent_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
+  agent_gateway_id      = dependency.governance.outputs.agent_gateway_id
 
   # BYOC Container Image URI
   agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:latest"
-
-
-
 
   vpc_id                = dependency.networking.outputs.network_id
   subnet_id             = dependency.networking.outputs.subnet_id

@@ -63,3 +63,23 @@ output "next_steps" {
   value       = var.enable_analytics_views ? "All FinOps BigQuery views and monitoring dashboards are active." : "BigQuery sinks are active. Run agent verification tests to stream initial logs, then enable views via: make deploy-governance-views ENV=${var.environment}"
   description = "Recommended next steps for governance and analytics"
 }
+
+output "agent_gateway_id" {
+  value       = module.agent_gateway.agent_gateway_id
+  description = "The fully qualified resource ID of the Central Agent Gateway."
+}
+
+output "agent_gateway_name" {
+  value       = module.agent_gateway.agent_gateway_name
+  description = "The name of the Central Agent Gateway."
+}
+
+output "ca_cert_secret_id" {
+  value       = module.agent_gateway.ca_cert_secret_id
+  description = "Secret Manager secret ID containing the Gateway CA root certificate."
+}
+
+output "ca_cert_secret_name" {
+  value       = module.agent_gateway.ca_cert_secret_name
+  description = "Secret Manager secret resource name."
+}

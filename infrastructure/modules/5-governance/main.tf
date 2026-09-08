@@ -67,6 +67,22 @@ module "model_armor" {
   governance_project_id = var.governance_project_id
 }
 
+# 7. Submodule 6: Central Agent Gateway & Registry (August 2026 Release)
+module "agent_gateway" {
+  source                    = "./modules/6_agent_gateway"
+  environment               = var.environment
+  governance_project_id     = var.governance_project_id
+  region                    = var.region
+  subnet_self_link          = var.subnet_self_link
+  net_host_project_id       = var.net_host_project_id
+  vpc_name                  = var.vpc_name
+  model_armor_template_name = module.model_armor.prompt_template_name
+  agent_invoker_sa_emails   = var.agent_invoker_sa_emails
+  agent_project_ids         = var.agent_project_ids
+  enable_agent_gateway      = var.enable_agent_gateway
+}
+
+
 # ------------------------------------------------------------------------------
 # TERRAFORM MOVED BLOCKS (Refactoring root resources into submodules)
 # ------------------------------------------------------------------------------

@@ -187,7 +187,7 @@ resource "google_compute_firewall" "psc_interface_allow" {
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "80", "443"]
+    ports    = ["22", "80", "443", "8080", "8888", "3128"]
   }
   allow {
     protocol = "icmp"
@@ -378,3 +378,7 @@ module "psc_interface_dns_zone" {
     "A swp" = { records = ["10.0.1.100"] }
   }
 }
+
+
+
+

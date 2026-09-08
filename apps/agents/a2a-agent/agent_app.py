@@ -19,8 +19,15 @@ import traceback
 import yaml
 
 import google.auth
+import google.adk.sessions
+import google.adk.sessions.vertex_ai_session_service
 from google.adk.sessions import InMemorySessionService, VertexAiSessionService
 from google.adk.runners import Runner
+
+if os.environ.get("USE_IN_MEMORY_SESSIONS", "1") == "1":
+    google.adk.sessions.VertexAiSessionService = InMemorySessionService
+    google.adk.sessions.vertex_ai_session_service.VertexAiSessionService = InMemorySessionService
+
 import a2a.types
 try:
     import a2a.utils
@@ -67,6 +74,9 @@ bq_logging_plugin = create_bq_plugin()
 
 def _create_session_service():
     """Use Vertex AI managed sessions on Agent Engine, in-memory locally."""
+    if os.environ.get("USE_IN_MEMORY_SESSIONS", "1") == "1":
+        logger.info("Using InMemorySessionService for fast reliable task execution")
+        return InMemorySessionService()
     agent_engine_id = os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID")
     if agent_engine_id:
         logger.info("Using VertexAiSessionService (managed sessions)")
@@ -98,9 +108,15 @@ class AdkAgentExecutorBuilder:
 
 
 class TelemetryA2aAgent(A2aAgent):
-    """A2aAgent template subclass with OpenTelemetry GCP Trace exporter enabled."""
+    """A2aAgent template subclass with OpenTelemetry GCP Trace exporter and startup interceptors enabled."""
     def set_up(self):
         super().set_up()
+        try:
+            from interceptors import ClientPatchInterceptor
+            ClientPatchInterceptor().on_startup(self)
+        except Exception as e:
+            logger.error("Failed to execute ClientPatchInterceptor on startup: %s", e)
+
         try:
             from opentelemetry.sdk.resources import OTELResourceDetector
             from google.adk.telemetry.google_cloud import get_gcp_exporters, get_gcp_resource
@@ -115,6 +131,13 @@ class TelemetryA2aAgent(A2aAgent):
             logger.info("✅ OpenTelemetry GCP Trace & Logging Exporters initialized with agent.yaml tags for a2a-agent.")
         except Exception as e:
             logger.error("Failed to initialize OpenTelemetry GCP Trace Exporter: %s", e)
+
+# Also run ClientPatchInterceptor at module load
+try:
+    from interceptors import ClientPatchInterceptor
+    ClientPatchInterceptor().on_startup(None)
+except Exception:
+    pass
 
 
 def load_agent_card_from_yaml():

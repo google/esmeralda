@@ -163,7 +163,7 @@ resource "google_logging_metric" "thoughts_tokens_counter" {
   name        = "genai/thoughts_tokens"
   project     = each.value
   filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.thoughts_tokens > 0"
-  description = "Real-time metric for Gemini 2.5 internal reasoning/thoughts tokens"
+  description = "Real-time metric for Gemini 3.7 internal reasoning/thoughts tokens"
 
   metric_descriptor {
     metric_kind = "DELTA"

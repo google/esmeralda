@@ -28,6 +28,7 @@ dependencies = [
     "fsspec[gcs]",
     "httpx",
     "a2a-sdk>=0.3.26,<1.0.0",
+    "google-cloud-secret-manager",
 ]
 
 [project.optional-dependencies]

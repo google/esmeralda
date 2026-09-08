@@ -19,6 +19,10 @@ dependency "security" {
   config_path = "../../../stage-3-security"
 }
 
+dependency "governance" {
+  config_path = "../../../stage-5-governance"
+}
+
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
 }
@@ -33,6 +37,7 @@ inputs = {
   vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
+  agent_gateway_id      = dependency.governance.outputs.agent_gateway_id
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,

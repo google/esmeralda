@@ -105,3 +105,9 @@ variable "mcp_invoker_sa_email" {
   default     = ""
 }
 
+variable "agent_gateway_id" {
+  description = "The resource ID of the Central Agent Gateway in Governance project (AGENT_TO_ANYWHERE)"
+  type        = string
+  default     = ""
+}
+

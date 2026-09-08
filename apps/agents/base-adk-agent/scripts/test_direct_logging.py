@@ -25,7 +25,7 @@ async def test():
         "turn_index": 1,
         "trace_id": "0123456789abcdef0123456789abcdef",
         "span_id": "0123456789abcdef",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.7-flash",
         "tokens": {
             "prompt_tokens": 100,
             "completion_tokens": 50,

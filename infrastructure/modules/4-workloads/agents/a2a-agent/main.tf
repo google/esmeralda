@@ -434,15 +434,24 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 
 
 
+      dynamic "agent_gateway_config" {
+        for_each = var.agent_gateway_id != "" ? [1] : []
+        content {
+          agent_to_anywhere_config {
+            agent_gateway = var.agent_gateway_id
+          }
+        }
+      }
+
       dynamic "psc_interface_config" {
-        for_each = var.enable_psc_network ? [1] : []
+        for_each = var.enable_psc_network && var.agent_gateway_id == "" ? [1] : []
         content {
           network_attachment = google_compute_network_attachment.psc_attachment[0].id
 
           dynamic "dns_peering_configs" {
-            for_each = var.net_host_project_id != "" && var.vpc_name != "" ? [1] : []
+            for_each = var.net_host_project_id != "" && var.vpc_name != "" ? ["esmeralda.internal.", "googleapis.com."] : []
             content {
-              domain         = "esmeralda.internal."
+              domain         = dns_peering_configs.value
               target_project = var.net_host_project_id
               target_network = var.vpc_name
             }
@@ -458,4 +467,55 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
     ]
   }
 }
+
+# -----------------------------------------------------------------------------
+# 5. AGENT REGISTRY CORE GOOGLE APIS & SERVICES
+# -----------------------------------------------------------------------------
+
+resource "google_agent_registry_service" "core_gapi_services" {
+  provider     = google-beta
+  project      = var.project_id
+  location     = var.region
+  service_id   = "core-gapi-services"
+  display_name = "gapi.core.services"
+  description  = "Core Google APIs and services required for Vertex AI Agent Engine and ADK runtime"
+
+  endpoint_spec {
+    type = "NO_SPEC"
+  }
+
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://telemetry.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://telemetry.mtls.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://${var.region}-aiplatform.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://${var.region}-aiplatform.mtls.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://cloudresourcemanager.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://iamcredentials.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://iamcredentials.mtls.googleapis.com"
+  }
+  interfaces {
+    protocol_binding = "JSONRPC"
+    url              = "https://agentregistry.googleapis.com"
+  }
+}
+
 
