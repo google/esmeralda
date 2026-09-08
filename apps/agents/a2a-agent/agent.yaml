@@ -41,7 +41,17 @@ env:
   DMS_MCP_URL: "http://legacy-dms.esmeralda.internal/mcp"
   INCOME_VERIFICATION_URL: "http://income-verification.esmeralda.internal/mcp"
   EMAIL_MCP_URL: "http://corporate-email.esmeralda.internal/mcp"
-  MODEL_NAME: "gemini-2.5-flash"
+  MODEL_NAME: "gemini-3.7-flash"
+
+  # --- Central Agent Gateway & SPIFFE Identity ---
+  GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"
+  SECRET_NAME: "agw-root-ca-cert"
+  GRPC_IPV6_PREFER: "0"
+  GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
+  GOOGLE_API_USE_MTLS_ENDPOINT: "never"
+  GOOGLE_GENAI_USE_VERTEXAI: "True"
+  USE_IN_MEMORY_SESSIONS: "1"
+  NO_PROXY: "169.254.169.254,metadata.google.internal,esmeralda.internal,.esmeralda.internal"
 
 labels:
   author: "your-name"
@@ -54,6 +64,7 @@ agent_card:
   description: "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities."
   version: "1.0.0"
   url: "http://a2a-mortgage-agent.esmeralda.internal"
+  preferred_transport: "HTTP+JSON"
   capabilities:
     streaming: false
     extensions:
@@ -66,7 +77,7 @@ agent_card:
     - "application/json"
   supported_interfaces:
     - url: "http://a2a-mortgage-agent.esmeralda.internal"
-      protocol_binding: "HTTP_JSON"
+      protocol_binding: "HTTP+JSON"
       protocol_version: "0.3"
   skills:
     - id: "document-search"

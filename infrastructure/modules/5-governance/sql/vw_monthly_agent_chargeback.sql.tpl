@@ -1,10 +1,10 @@
 -- FinOps Monthly Agent Chargeback & TCO Summary SQL View
--- Connects BigQuery telemetry events to Gemini 2.5 SKU pricing models
+-- Connects BigQuery telemetry events to Gemini 3.7 SKU pricing models
 WITH combined_token_events AS (
   SELECT
     timestamp,
     agent_id,
-    COALESCE(JSON_VALUE(payload, '$.model'), 'gemini-2.5-flash') AS model,
+    COALESCE(JSON_VALUE(payload, '$.model'), 'gemini-3.7-flash') AS model,
     STRUCT(
       CAST(JSON_VALUE(payload, '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
       CAST(JSON_VALUE(payload, '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
@@ -33,7 +33,7 @@ raw_token_metrics AS (
   SELECT
     TIMESTAMP_TRUNC(timestamp, MONTH) AS billing_month,
     agent_id,
-    COALESCE(model, 'gemini-2.5-flash') AS model,
+    COALESCE(model, 'gemini-3.7-flash') AS model,
     COUNT(1) AS total_requests,
     SUM(tokens.total_tokens) AS total_tokens,
     SUM(tokens.prompt_tokens - COALESCE(tokens.cached_tokens, 0)) AS uncached_prompt_tokens,
@@ -54,7 +54,7 @@ SELECT
   uncached_prompt_tokens,
   cached_prompt_tokens,
   SAFE_DIVIDE(cached_prompt_tokens, (uncached_prompt_tokens + cached_prompt_tokens)) * 100 AS cache_hit_ratio_pct,
-  -- Cost Calculations based on Gemini 2.5 Flash Tier ($0.075 / 1M uncached prompt, $0.01875 / 1M cached prompt, $0.30 / 1M response)
+  -- Cost Calculations based on Gemini 3.7 Flash Tier ($0.075 / 1M uncached prompt, $0.01875 / 1M cached prompt, $0.30 / 1M response)
   (uncached_prompt_tokens / 1000000.0) * 0.075 AS est_uncached_prompt_cost_usd,
   (cached_prompt_tokens / 1000000.0) * 0.01875 AS est_cached_prompt_cost_usd,
   (response_tokens / 1000000.0) * 0.30 AS est_response_cost_usd,

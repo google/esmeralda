@@ -6,7 +6,7 @@ SELECT
   SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.user_id') AS STRING) AS user_id,
   COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
   SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.execution_path') AS STRING) AS execution_path,
-  COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.model') AS STRING), 'gemini-2.5-flash') AS model,
+  COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.model') AS STRING), 'gemini-3.7-flash') AS model,
   STRUCT(
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.tokens.prompt_tokens') AS INT64), 150) AS prompt_tokens,
     COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.tokens.completion_tokens') AS INT64), 85) AS completion_tokens,

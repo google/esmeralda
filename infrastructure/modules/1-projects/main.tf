@@ -149,7 +149,12 @@ locals {
     "pubsub.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "looker.googleapis.com",
-    "modelarmor.googleapis.com"
+    "modelarmor.googleapis.com",
+    "networkservices.googleapis.com",
+    "agentregistry.googleapis.com",
+    "iap.googleapis.com",
+    "compute.googleapis.com",
+    "networksecurity.googleapis.com"
   ]
 }
 

@@ -127,6 +127,28 @@ locals {
   resolved_db_password_secret_id = var.byo_security ? var.existing_db_password_secret_id : try(google_secret_manager_secret.db_password[0].id, "")
 }
 
+# Two-Vault Pointer Secret in CI/CD project pointing to Governance project ID
+resource "google_secret_manager_secret" "gov_project_id" {
+  secret_id = "secret-esmeralda-governance-id-${var.environment}"
+  project   = var.cicd_project_id
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "gov_project_id" {
+  secret      = google_secret_manager_secret.gov_project_id.id
+  secret_data = var.governance_project_id
+}
+
+resource "google_secret_manager_secret_iam_member" "cicd_builder_gov_secret" {
+  project   = var.cicd_project_id
+  secret_id = google_secret_manager_secret.gov_project_id.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${local.builder_sa_email}"
+}
+
 # ====================================================================
 # 3. LEAST-PRIVILEGE WORKLOAD SERVICE ACCOUNTS & IAM ROLE BINDINGS
 # ====================================================================
@@ -183,6 +205,7 @@ resource "google_project_iam_member" "cicd_builder_agent_registry" {
     var.mcps_project_id,
     var.a2a_project_id,
     var.root_project_id,
+    var.governance_project_id,
   ])
   project = each.key
   role    = "roles/agentregistry.admin"
@@ -194,11 +217,22 @@ resource "google_project_iam_member" "cicd_builder_browser" {
     var.mcps_project_id,
     var.a2a_project_id,
     var.root_project_id,
+    var.governance_project_id,
   ])
   project = each.key
   role    = "roles/browser"
   member  = "serviceAccount:${local.builder_sa_email}"
 }
+
+# Provision the Google-managed Agent Platform Service Identity in Governance project
+resource "google_project_service_identity" "agentplatform_sa" {
+  provider = google-beta
+  project  = var.governance_project_id
+  service  = "networkservices.googleapis.com"
+}
+
+
+
 
 
 # --------------------------------------------------------------------
@@ -367,6 +401,21 @@ resource "google_project_iam_member" "root_re_to_a2a_project_access" {
   role    = each.key
   member  = "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com"
 }
+
+# Cross-Project Agent Gateway binding permissions (August 2026 Release)
+# Authorizes Vertex AI Service Agents in Agent Runtime spoke projects to bind to Central Agent Gateway
+resource "google_project_iam_member" "runtime_to_agw_viewer" {
+  for_each = toset([
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+    "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
+  ])
+  project = var.governance_project_id
+  role    = "roles/networkservices.viewer"
+  member  = each.value
+}
+
 
 
 

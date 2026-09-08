@@ -10,40 +10,45 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/income-verification-api:${_TAG}']
 
-  # Step 3: Discover agent spoke projects matching _ENV and register/sync endpoint with tool-spec
+  # Step 3: Register / Sync MCP service in Central Governance Agent Registry
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        SPOKE_PROJECTS=$$(gcloud projects list --filter="labels.agent_platform=agent-spoke-project AND labels.env=${_ENV} AND name:${_PROJECT_PREFIX}*" --format="value(projectId)")
-        echo "Cloud Build discovered spoke projects for environment ${_ENV} (prefix ${_PROJECT_PREFIX}): $$SPOKE_PROJECTS"
-        for PROJ in $$SPOKE_PROJECTS; do
-          echo "Syncing income-verification in project $$PROJ..."
-          gcloud alpha agent-registry services create income-verification \
-            --project=$$PROJ \
-            --location=${_REGION} \
-            --display-name="income-verification" \
-            --description="FastMCP service providing applicant employment and income verification tools" \
-            --interfaces="url=http://income-verification.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
-            --mcp-server-spec-type=tool-spec \
-            --mcp-server-spec-content=tools.json || \
-          gcloud alpha agent-registry services update income-verification \
-            --project=$$PROJ \
-            --location=${_REGION} \
-            --display-name="income-verification" \
-            --description="FastMCP service providing applicant employment and income verification tools" \
-            --interfaces="url=http://income-verification.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
-            --mcp-server-spec-type=tool-spec \
-            --mcp-server-spec-content=tools.json
-        done
+        set -e
+        if [ -n "${_GOVERNANCE_PROJECT_ID}" ]; then
+          GOV_PROJECT="${_GOVERNANCE_PROJECT_ID}"
+        else
+          GOV_PROJECT=$$(gcloud secrets versions access latest --secret="secret-esmeralda-governance-id-${_ENV}" --project="${_CICD_PROJECT_ID}")
+        fi
+        echo "Syncing income-verification in Central Governance Project $$GOV_PROJECT..."
+
+        gcloud agent-registry services create income-verification \
+          --project="$$GOV_PROJECT" \
+          --location="${_REGION}" \
+          --display-name="income-verification" \
+          --description="FastMCP service providing applicant employment and income verification tools" \
+          --interfaces="url=http://income-verification.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+          --mcp-server-spec-type=tool-spec \
+          --mcp-server-spec-content=tools.json || \
+        gcloud agent-registry services update income-verification \
+          --project="$$GOV_PROJECT" \
+          --location="${_REGION}" \
+          --display-name="income-verification" \
+          --description="FastMCP service providing applicant employment and income verification tools" \
+          --interfaces="url=http://income-verification.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+          --mcp-server-spec-type=tool-spec \
+          --mcp-server-spec-content=tools.json
 
 substitutions:
   _REGION: 'us-central1'
   _CICD_PROJECT_ID: ''
+  _GOVERNANCE_PROJECT_ID: ''
   _TAG: 'latest'
   _ENV: 'dev'
   _PROJECT_PREFIX: 'esm-dev'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  substitution_option: 'ALLOW_LOOSE'

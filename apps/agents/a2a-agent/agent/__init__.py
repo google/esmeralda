@@ -13,3 +13,15 @@
 # limitations under the License.
 
 USER_AUTH_TOKEN_KEY = "user_auth_token"
+
+# Enable proxy trust in async clients (aiohttp) for Agent Gateway routing
+try:
+    import aiohttp
+    _orig_aiohttp_init = aiohttp.ClientSession.__init__
+    def _patched_aiohttp_init(self, *args, **kwargs):
+        if "trust_env" not in kwargs:
+            kwargs["trust_env"] = True
+        _orig_aiohttp_init(self, *args, **kwargs)
+    aiohttp.ClientSession.__init__ = _patched_aiohttp_init
+except ImportError:
+    pass

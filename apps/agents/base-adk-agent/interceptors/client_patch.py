@@ -28,6 +28,60 @@ class ClientPatchInterceptor(BaseInterceptor):
 
     def on_startup(self, app: Any) -> None:
         try:
+            psc_gapis_ip = os.environ.get("GOOGLE_APIS_PSC_IP")
+
+            if psc_gapis_ip:
+                # 1. Socket resolution patch
+                import socket
+                _orig_getaddrinfo = socket.getaddrinfo
+
+                def _custom_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+                    if family == 0 or family == socket.AF_UNSPEC:
+                        family = socket.AF_INET
+                    if isinstance(host, str) and (host.endswith(".googleapis.com") or host == "googleapis.com"):
+                        host = psc_gapis_ip
+                    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+                socket.getaddrinfo = _custom_getaddrinfo
+
+                # 2. Asyncio resolution patch
+                try:
+                    import asyncio.base_events
+                    _orig_asyncio_getaddrinfo = asyncio.base_events.BaseEventLoop.getaddrinfo
+
+                    async def _custom_asyncio_getaddrinfo(self, host, port, *args, **kwargs):
+                        if isinstance(host, str) and (host.endswith(".googleapis.com") or host == "googleapis.com"):
+                            host = psc_gapis_ip
+                        return await _orig_asyncio_getaddrinfo(self, host, port, *args, **kwargs)
+
+                    asyncio.base_events.BaseEventLoop.getaddrinfo = _custom_asyncio_getaddrinfo
+                except Exception:
+                    pass
+
+                # 3. aiohttp connector resolve_host patch
+                try:
+                    import aiohttp.connector
+                    _orig_resolve_host = aiohttp.connector.TCPConnector._resolve_host
+
+                    async def _custom_resolve_host(self, host, port, traces=None):
+                        if isinstance(host, str) and (host.endswith(".googleapis.com") or host == "googleapis.com"):
+                            return [
+                                {
+                                    "hostname": host,
+                                    "host": psc_gapis_ip,
+                                    "port": port,
+                                    "family": socket.AF_INET,
+                                    "proto": 6,
+                                    "flags": 0,
+                                }
+                            ]
+                        return await _orig_resolve_host(self, host, port, traces)
+
+                    aiohttp.connector.TCPConnector._resolve_host = _custom_resolve_host
+                except Exception:
+                    pass
+
+            # 4. google.genai.Client location & project defaulting
             from google.genai import Client as GenAIClient
             original_client_init = GenAIClient.__init__
 
@@ -40,6 +94,6 @@ class ClientPatchInterceptor(BaseInterceptor):
                 original_client_init(self, *args, **kwargs)
 
             GenAIClient.__init__ = patched_client_init
-            logger.info("✅ Successfully monkeypatched google.genai.Client to respect MODEL_LOCATION=global.")
+            logger.info("✅ Successfully applied PSC routing and google.genai.Client patches on startup.")
         except Exception as e:
-            logger.error(f"Failed to patch google.genai.Client: {e}")
+            logger.error(f"Failed to patch clients in ClientPatchInterceptor: {e}")

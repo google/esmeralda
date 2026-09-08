@@ -26,7 +26,7 @@ def verify_otel_span_correlation():
             "trace_id": trace_id,
             "span_id": span_id,
             "agent_id": "root_orchestrator",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3.7-flash",
             "tokens": {"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200}
         }
         logger.info(json.dumps(payload))

@@ -21,7 +21,7 @@ telemetry_plugin = EsmeraldaTelemetryPlugin()
 
 root_agent = Agent(
     name=os.getenv("AGENT_NAME", "root_agent"),
-    model=os.getenv("MODEL_NAME", "gemini-2.5-flash"),
+    model=os.getenv("MODEL_NAME", "gemini-3.7-flash"),
     instruction="You are a mortgage underwriting assistant coordinator. "
                 "Delegate all document search, income verification, and email "
                 "operations to the mortgage_tools_agent.",

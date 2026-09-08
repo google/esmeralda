@@ -44,7 +44,7 @@ class TelemetryEmitter:
         session_id: Optional[str] = None,
         user_id: str = "anonymous",
         execution_path: Optional[str] = None,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.7-flash",
         prompt_tokens: int = 150,
         completion_tokens: int = 85,
         thoughts_tokens: int = 20,

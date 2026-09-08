@@ -16,7 +16,7 @@ def simulate_runaway_loop_breach():
         "execution_path": "root_agent@1/mortgage_tools_agent@1",
         "session_id": "chaos_test_session_999",
         "user_id": "chaos_tester@google.com",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.7-flash",
         "tokens": {
             "prompt_tokens": 45000,
             "completion_tokens": 5000,
