@@ -2,6 +2,8 @@
 
 To maintain a scalable, secure, and resilient enterprise AI agent platform, Esmeralda enforces an opinionated **AgentOps** and **Software Development Lifecycle (SDLC)** strategy.
 
+> 📖 **Featured Deep-Dive Guide:** For an in-depth, zero-assumptions technical explanation of how Agent Gateway intercepts, inspects, and authorizes agent traffic, read **[01. Central Agent Gateway: The Deep-Dive Architectural Guide](./01-central-agent-gateway.md)**.
+
 ---
 
 ## 🏛️ Architecture Decision Records (ADRs): The "Why" Behind Governance

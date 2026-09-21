@@ -19,14 +19,12 @@ import traceback
 import yaml
 
 import google.auth
-import google.adk.sessions
-import google.adk.sessions.vertex_ai_session_service
+from google.adk import sessions as adk_sessions
 from google.adk.sessions import InMemorySessionService, VertexAiSessionService
 from google.adk.runners import Runner
 
 if os.environ.get("USE_IN_MEMORY_SESSIONS", "1") == "1":
-    google.adk.sessions.VertexAiSessionService = InMemorySessionService
-    google.adk.sessions.vertex_ai_session_service.VertexAiSessionService = InMemorySessionService
+    adk_sessions.VertexAiSessionService = InMemorySessionService
 
 import a2a.types
 try:

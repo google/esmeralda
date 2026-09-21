@@ -22,7 +22,7 @@
 <div align="center">
 
 > *"O que está embaixo é como o que está no alto, e o que está no alto é como o que está embaixo."*  
-> — **A Tábua de Esmeralda** (Hermes Trismegisto)
+> — **A Tábua de Esmeralda** (Hermes Trismegisto/Jorge Ben Jor)
 
 </div>
 

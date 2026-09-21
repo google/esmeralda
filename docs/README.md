@@ -9,7 +9,7 @@ If you are new to the project, this guide will give you a **crystal-clear unders
 ## 💡 The 60-Second Mental Model: What is Esmeralda?
 
 > *"O que está embaixo é como o que está no alto, e o que está no alto é como o que está embaixo."*  
-> — **A Tábua de Esmeralda** (Hermes Trismegisto)
+> — **A Tábua de Esmeralda** (Hermes Trismegisto/Jorge Ben Jor)
 
 In most enterprises, AI Agent prototypes remain stuck in notebooks or local scripts because **taking agents to production is an infrastructure, security, and governance challenge**, not just a prompt engineering challenge.
 
@@ -118,6 +118,6 @@ Deep-dive into specific areas of the platform:
 | :--- | :--- | :--- |
 | 🏢 **[1. Platform Foundations](./1-platform-foundations/README.md)** | Core cloud landing zone and infrastructure specs. | [Projects & APIs](./1-platform-foundations/01-projects-and-finops.md), [Shared VPC Networking](./1-platform-foundations/02-private-networking.md), [Security, CMEK & IAM](./1-platform-foundations/03-security-iam-and-telemetry.md). |
 | 🤖 **[2. Workloads & Catalog](./2-workloads-and-catalog/README.md)** | Runtimes, microservices, and AI engines. | [Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md), [MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md), [Reasoning Engines & Database](./2-workloads-and-catalog/03-ai-agents-and-database.md). |
-| 📊 **[3. AgentOps & Governance](./3-agentops-and-lifecycle/README.md)** | Enterprise governance, security, and observability. | [Centralized Monitoring & FinOps Dashboards](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md), Multi-repo SDLC, FinOps chargebacks. |
+| 📊 **[3. AgentOps & Governance](./3-agentops-and-lifecycle/README.md)** | Enterprise governance, security, and observability. | [Central Agent Gateway](./3-agentops-and-lifecycle/01-central-agent-gateway.md), [Centralized Monitoring & FinOps Dashboards](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md), Multi-repo SDLC, FinOps chargebacks. |
 | 🤝 **[Contributing Guidelines](./contributing.md)** | Contribution standards and testing guidelines. | Git conventions, PR requirements, test coverage expectations. |
 | 📜 **[Code of Conduct](./code-of-conduct.md)** | Community engagement standards. | Respect, inclusivity, and community ethics. |

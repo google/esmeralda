@@ -4,11 +4,20 @@
 steps:
   # Step 1: Build Docker Container
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}', '.']
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest'
+      - '.'
 
   # Step 2: Push Docker Image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest']
 
   # Step 3: Register/Sync A2A Agent Card in Central Governance Agent Registry
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
