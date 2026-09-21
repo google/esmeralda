@@ -42,6 +42,9 @@ env:
   INCOME_VERIFICATION_URL: "http://income-verification.esmeralda.internal/mcp"
   EMAIL_MCP_URL: "http://corporate-email.esmeralda.internal/mcp"
   MODEL_NAME: "gemini-3.7-flash"
+  MODEL_LOCATION: "us-central1"
+  GOOGLE_CLOUD_LOCATION: "us-central1"
+  GOOGLE_APIS_PSC_IP: "240.0.0.2"
 
   # --- Central Agent Gateway & SPIFFE Identity ---
   GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"

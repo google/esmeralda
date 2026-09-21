@@ -20,6 +20,15 @@ data "google_project" "governance" {
   project_id = var.governance_project_id
 }
 
+# 0. Enable Vertex AI Platform API in Governance Project (required for Agent Gateway console)
+resource "google_project_service" "aiplatform" {
+  count                      = var.enable_agent_gateway ? 1 : 0
+  project                    = var.governance_project_id
+  service                    = "aiplatform.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+}
+
 # 1. Dedicated PSC Network Attachment in Governance Project referencing Shared VPC Subnet
 resource "google_compute_network_attachment" "agent_gateway" {
   count                 = var.enable_agent_gateway && var.subnet_self_link != "" ? 1 : 0
@@ -70,7 +79,44 @@ resource "google_network_services_agent_gateway" "egress_gateway" {
   depends_on = [google_project_iam_member.agent_gateway_dns_peer]
 }
 
-# 3. Model Armor Authorization Extension (CONTENT_AUTHZ) - Optional
+# 3. IAP Authorization Extension (REQUEST_AUTHZ)
+resource "google_network_services_authz_extension" "iap_authz" {
+  count     = var.enable_agent_gateway && var.subnet_self_link != "" ? 1 : 0
+  provider  = google-beta
+  project   = var.governance_project_id
+  location  = var.region
+  name      = "agw-iap-authz-${var.environment}"
+  service   = "iap.googleapis.com"
+  timeout   = "3s"
+  fail_open = false
+
+  metadata = {
+    iapPolicyVersion = "V1"
+  }
+}
+
+# 4. IAP Network Security Authorization Policy (REQUEST_AUTHZ)
+resource "google_network_security_authz_policy" "iap_policy" {
+  count          = var.enable_agent_gateway && var.subnet_self_link != "" ? 1 : 0
+  provider       = google-beta
+  project        = var.governance_project_id
+  location       = var.region
+  name           = "agw-iap-policy-${var.environment}"
+  policy_profile = "REQUEST_AUTHZ"
+  action         = "CUSTOM"
+
+  target {
+    resources = [google_network_services_agent_gateway.egress_gateway[0].id]
+  }
+
+  custom_provider {
+    authz_extension {
+      resources = [google_network_services_authz_extension.iap_authz[0].id]
+    }
+  }
+}
+
+# 5. Model Armor Authorization Extension (CONTENT_AUTHZ) - Optional
 resource "google_network_services_authz_extension" "model_armor_content_authz" {
   count     = 0
   provider  = google-beta
