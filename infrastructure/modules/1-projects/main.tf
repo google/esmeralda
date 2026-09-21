@@ -154,7 +154,8 @@ locals {
     "agentregistry.googleapis.com",
     "iap.googleapis.com",
     "compute.googleapis.com",
-    "networksecurity.googleapis.com"
+    "networksecurity.googleapis.com",
+    "aiplatform.googleapis.com"
   ]
 }
 
