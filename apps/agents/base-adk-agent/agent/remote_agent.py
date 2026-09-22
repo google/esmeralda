@@ -65,9 +65,10 @@ def _get_id_token(audience: str) -> str:
 
 async def _add_auth_header(request):
     """Inject OIDC ID token for Cloud Run Kong Gateway or access token."""
+    request.headers["X-API-Key"] = "root-agent"
     url = str(request.url)
     if "esmeralda.internal" in url:
-        audience = "http://a2a-mortgage-agent.esmeralda.internal"
+        audience = "https://a2a-mortgage-agent.esmeralda.internal"
         id_token = await asyncio.to_thread(_get_id_token, audience)
         if id_token:
             request.headers["Authorization"] = f"Bearer {id_token}"

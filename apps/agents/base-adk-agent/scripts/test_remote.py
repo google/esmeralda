@@ -50,9 +50,9 @@ def get_gcp_access_token() -> str:
         raise RuntimeError("No valid GCP credentials found.")
 
 async def main(user_input: str):
-    PROJECT_ID = os.getenv("ROOT_AGENT_PROJECT_ID", "esmeralda-root-agent-dev")
+    PROJECT_ID = os.getenv("ROOT_AGENT_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", os.getenv("PROJECT_ID", "esm-dev-root-agent-00b1")))
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    RESOURCE_ID = os.getenv("ROOT_REASONING_ENGINE_ID", "1234567890123456789")
+    RESOURCE_ID = os.getenv("ROOT_REASONING_ENGINE_ID", os.getenv("REASONING_ENGINE_ID", "5380914798579941376"))
     
     base_url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
     stream_url = f"{base_url}:streamQuery?alt=sse"

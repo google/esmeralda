@@ -29,7 +29,7 @@ steps:
           --location="${_REGION}" \
           --display-name="legacy-dms" \
           --description="FastMCP service providing legacy document management and retrieval tools" \
-          --interfaces="url=http://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+          --interfaces="url=https://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
           --mcp-server-spec-type=tool-spec \
           --mcp-server-spec-content=tools.json || \
         gcloud agent-registry services update legacy-dms \
@@ -37,7 +37,7 @@ steps:
           --location="${_REGION}" \
           --display-name="legacy-dms" \
           --description="FastMCP service providing legacy document management and retrieval tools" \
-          --interfaces="url=http://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+          --interfaces="url=https://legacy-dms.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
           --mcp-server-spec-type=tool-spec \
           --mcp-server-spec-content=tools.json
 

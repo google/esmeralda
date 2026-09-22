@@ -29,7 +29,7 @@ steps:
           --location="${_REGION}" \
           --display-name="corporate-email" \
           --description="FastMCP service providing internal email verification tools" \
-          --interfaces="url=http://corporate-email.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+          --interfaces="url=https://corporate-email.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
           --mcp-server-spec-type=tool-spec \
           --mcp-server-spec-content=tools.json || \
         gcloud agent-registry services update corporate-email \
@@ -37,7 +37,7 @@ steps:
           --location="${_REGION}" \
           --display-name="corporate-email" \
           --description="FastMCP service providing internal email verification tools" \
-          --interfaces="url=http://corporate-email.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
+          --interfaces="url=https://corporate-email.esmeralda.internal/mcp,protocolBinding=jsonrpc" \
           --mcp-server-spec-type=tool-spec \
           --mcp-server-spec-content=tools.json
 

@@ -7,3 +7,9 @@ output "gateway_agent_ingress_host" {
   description = "The base private DNS zone managed by Kong"
   value       = "esmeralda.internal"
 }
+
+output "internal_root_ca_pem" {
+  description = "The PEM-encoded Root CA certificate signing *.esmeralda.internal"
+  value       = tls_self_signed_cert.esmeralda_ca_cert.cert_pem
+}
+
