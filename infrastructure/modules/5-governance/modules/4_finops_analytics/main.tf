@@ -67,6 +67,10 @@ resource "google_bigquery_table" "cloudaudit_activity" {
   }
 ]
 EOF
+
+  lifecycle {
+    ignore_changes = [schema]
+  }
 }
 
 # Monthly Agent Chargeback View

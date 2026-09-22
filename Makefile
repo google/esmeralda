@@ -149,6 +149,26 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 	disown -a 2>/dev/null || true; \
 	exit $$status
 
+test-root-remote: ## Run remote Root Coordinator integration test against Vertex AI Reasoning Engine
+	@echo "👑 Running Root Agent remote integration test on Vertex AI..."
+	@export PATH="/usr/local/google/home/afonsomenegola/.terraform/bin:/usr/local/google/home/afonsomenegola/.terragrunt/bin:$$PATH"; \
+	export ROOT_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw root_project_id 2>/dev/null || echo ""); \
+	ROOT_PROJ=$${ROOT_PROJ:-esm-dev-root-agent-00b1}; \
+	export ROOT_ID=$$(cd $(LIVE_DIR)/stage-4-workloads/agents/base-adk-agent && terragrunt output -raw engine_id 2>/dev/null | awk -F'/' '{print $$NF}'); \
+	ROOT_ID=$${ROOT_ID:-5380914798579941376}; \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	ROOT_AGENT_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" uv run --package mortgage-agent python apps/agents/base-adk-agent/scripts/test_remote.py "$(QUERY)"
+
+test-a2a-remote: ## Run remote A2A Specialist integration test against Vertex AI Reasoning Engine
+	@echo "🤖 Running A2A Agent remote integration test on Vertex AI..."
+	@export PATH="/usr/local/google/home/afonsomenegola/.terraform/bin:/usr/local/google/home/afonsomenegola/.terragrunt/bin:$$PATH"; \
+	export A2A_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw a2a_project_id 2>/dev/null || echo ""); \
+	A2A_PROJ=$${A2A_PROJ:-esm-dev-a2a-00b1}; \
+	export A2A_ID=$$(cd $(LIVE_DIR)/stage-4-workloads/agents/a2a-agent && terragrunt output -raw engine_id 2>/dev/null | awk -F'/' '{print $$NF}'); \
+	A2A_ID=$${A2A_ID:-3701459165663723520}; \
+	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	GOOGLE_CLOUD_PROJECT="$$A2A_PROJ" REASONING_ENGINE_ID="$$A2A_ID" GOOGLE_CLOUD_LOCATION="$$REGION" uv run --package a2a-mortgage-agent python apps/agents/a2a-agent/scripts/test_remote.py "$(QUERY)"
+
 deploy-projects: ## Deploy Stage 1: Projects via Terragrunt for $(ENV)
 	@echo "🏗️  Deploying Stage 1: Projects for $(ENV)..."
 	@cd $(LIVE_DIR)/stage-1-projects && terragrunt --non-interactive apply -auto-approve
@@ -175,8 +195,9 @@ build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
 	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
 	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
 	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
+	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
 	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/base-adk-agent --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/root-agent:$(TAG)
+	gcloud builds submit apps/agents/base-adk-agent --config=apps/agents/base-adk-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
 
 build-agents: test-all deploy-repo ## Build all BYOC agent containers concurrently via make -j2
 	@echo "🏗️  Building all BYOC agent containers concurrently..."

@@ -1,3 +1,21 @@
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 5.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = ">= 5.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = ">= 4.0"
+    }
+  }
+}
+
 # Compile the declarative kong.yml file dynamically based on agent_endpoints
 locals {
   kong_config = templatefile("${path.module}/templates/kong.yml.tpl", {
@@ -181,24 +199,113 @@ resource "google_compute_region_url_map" "kong_url_map" {
   default_service = google_compute_region_backend_service.kong_backend.id
 }
 
-# 4. Target HTTP Proxy and Internal Forwarding Rule
-resource "google_compute_region_target_http_proxy" "kong_proxy" {
-  name    = "ilb-kong-proxy-${var.environment}"
-  project = var.project_id
-  region  = var.region
-  url_map = google_compute_region_url_map.kong_url_map.id
+# 4. Internal Root CA and Wildcard TLS Certificate for *.esmeralda.internal
+resource "tls_private_key" "esmeralda_ca_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
 }
 
+resource "tls_self_signed_cert" "esmeralda_ca_cert" {
+  private_key_pem   = tls_private_key.esmeralda_ca_key.private_key_pem
+  is_ca_certificate = true
+
+  subject {
+    common_name  = "Esmeralda Internal Root CA"
+    organization = "Esmeralda Internal"
+  }
+
+  validity_period_hours = 87600 # 10 years
+
+  allowed_uses = [
+    "cert_signing",
+    "crl_signing",
+    "digital_signature",
+    "key_encipherment",
+  ]
+}
+
+resource "google_secret_manager_secret" "esmeralda_internal_ca" {
+  secret_id = "esmeralda-internal-root-ca-${var.environment}"
+  project   = var.project_id
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "esmeralda_internal_ca" {
+  secret      = google_secret_manager_secret.esmeralda_internal_ca.id
+  secret_data = tls_self_signed_cert.esmeralda_ca_cert.cert_pem
+}
+
+resource "tls_private_key" "kong_ilb_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_cert_request" "kong_ilb_csr" {
+  private_key_pem = tls_private_key.kong_ilb_key.private_key_pem
+
+  subject {
+    common_name  = "*.esmeralda.internal"
+    organization = "Esmeralda Dev"
+  }
+
+  dns_names = [
+    "*.esmeralda.internal",
+    "esmeralda.internal",
+    "legacy-dms.esmeralda.internal",
+    "income-verification.esmeralda.internal",
+    "corporate-email.esmeralda.internal",
+    "a2a-mortgage-agent.esmeralda.internal",
+    "root-agent.esmeralda.internal",
+  ]
+}
+
+resource "tls_locally_signed_cert" "kong_ilb_cert" {
+  cert_request_pem   = tls_cert_request.kong_ilb_csr.cert_request_pem
+  ca_private_key_pem = tls_private_key.esmeralda_ca_key.private_key_pem
+  ca_cert_pem        = tls_self_signed_cert.esmeralda_ca_cert.cert_pem
+
+  validity_period_hours = 8760 # 1 year (complies with Chromium <= 398 days check)
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+resource "google_compute_region_ssl_certificate" "kong_ilb_cert" {
+  name_prefix = "cert-kong-ilb-"
+  project     = var.project_id
+  region      = var.region
+  private_key = tls_private_key.kong_ilb_key.private_key_pem
+  certificate = "${tls_locally_signed_cert.kong_ilb_cert.cert_pem}${tls_self_signed_cert.esmeralda_ca_cert.cert_pem}"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_region_target_https_proxy" "kong_https_proxy" {
+  name             = "ilb-kong-https-proxy-${var.environment}"
+  project          = var.project_id
+  region           = var.region
+  url_map          = google_compute_region_url_map.kong_url_map.id
+  ssl_certificates = [google_compute_region_ssl_certificate.kong_ilb_cert.id]
+}
+
+# Regional Internal Forwarding Rule for HTTPS (port 443)
 resource "google_compute_forwarding_rule" "kong_forwarding_rule" {
   name                  = "ilb-kong-rule-${var.environment}"
   project               = var.project_id
   region                = var.region
   ip_protocol           = "TCP"
-  port_range            = "80"
+  port_range            = "443"
   load_balancing_scheme = "INTERNAL_MANAGED"
   network               = var.vpc_id
   subnetwork            = var.subnet_id
-  target                = google_compute_region_target_http_proxy.kong_proxy.id
+  target                = google_compute_region_target_https_proxy.kong_https_proxy.id
 }
 
 # 5. Cloud DNS A Records in Shared VPC Private Zone mapping esmeralda.internal to ILB VIP

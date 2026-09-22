@@ -84,3 +84,4 @@ variable "memory_limit" {
   default     = "512Mi"
 }
 
+

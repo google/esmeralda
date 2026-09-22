@@ -38,14 +38,18 @@ env:
   GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
   OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
   MODEL_NAME: "gemini-3.7-flash"
+  MODEL_LOCATION: "global"
+  GOOGLE_CLOUD_LOCATION: "us-central1"
+  A2A_AGENT_URL: "https://a2a-mortgage-agent.esmeralda.internal"
 
   # --- Central Agent Gateway & SPIFFE Identity ---
   GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"
-  SECRET_NAME: "agw-root-ca-cert"
+  SECRET_NAME: "agw-root-ca-cert-dev"
   GRPC_IPV6_PREFER: "0"
   GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
   GOOGLE_API_USE_MTLS_ENDPOINT: "never"
   GOOGLE_GENAI_USE_VERTEXAI: "True"
+  NO_PROXY: "169.254.169.254,metadata.google.internal"
 
 labels:
   author: "your-name"

@@ -1,0 +1,31 @@
+# apps/agents/base-adk-agent/cloudbuild.yaml
+# Cloud Build pipeline for Root Coordinator Agent container build & push to Artifact Registry
+
+steps:
+  # Step 1: Build Docker Container
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/root-agent:${_TAG}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/root-agent:latest'
+      - '.'
+
+  # Step 2: Push Docker Image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/root-agent:${_TAG}']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/root-agent:latest']
+
+substitutions:
+  _REGION: 'us-central1'
+  _CICD_PROJECT_ID: ''
+  _TAG: 'latest'
+  _ENV: 'dev'
+  _PROJECT_PREFIX: 'esm-dev'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitution_option: 'ALLOW_LOOSE'
