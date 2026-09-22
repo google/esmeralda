@@ -76,3 +76,17 @@ variable "enable_agent_gateway" {
   description = "Toggle to deploy the Central Agent Gateway in Governance"
 }
 
+variable "internal_root_ca_pem" {
+  type        = string
+  default     = ""
+  description = "PEM-encoded Root CA certificate for internal *.esmeralda.internal endpoints"
+}
+
+variable "gateway_project_id" {
+  type        = string
+  default     = ""
+  description = "The GCP Project ID of the Kong API Gateway project"
+}
+
+
+

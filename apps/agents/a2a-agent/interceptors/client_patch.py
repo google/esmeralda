@@ -81,19 +81,50 @@ class ClientPatchInterceptor(BaseInterceptor):
                 except Exception:
                     pass
 
-            # 4. google.genai.Client location & project defaulting
+            # 4. google.genai.Client location defaulting (MODEL_LOCATION)
             from google.genai import Client as GenAIClient
             original_client_init = GenAIClient.__init__
 
             def patched_client_init(self, *args, **kwargs):
-                if "location" not in kwargs or kwargs["location"] is None:
-                    kwargs["location"] = os.environ.get("MODEL_LOCATION", "global")
-                if "project" not in kwargs or kwargs["project"] is None:
-                    if "GOOGLE_CLOUD_PROJECT" in os.environ:
-                        kwargs["project"] = os.environ["GOOGLE_CLOUD_PROJECT"]
+                model_loc = os.environ.get("MODEL_LOCATION")
+                if model_loc:
+                    kwargs["location"] = model_loc
+                elif "location" not in kwargs or kwargs["location"] is None:
+                    kwargs["location"] = "global"
                 original_client_init(self, *args, **kwargs)
 
             GenAIClient.__init__ = patched_client_init
-            logger.info("✅ Successfully applied PSC routing and google.genai.Client patches on startup.")
+
+            # 5. httpx.AsyncClient logging for 4xx/5xx responses
+            try:
+                import httpx
+                _orig_async_send = httpx.AsyncClient.send
+
+                async def _logging_async_send(self, request, *args, **kwargs):
+                    resp = await _orig_async_send(self, request, *args, **kwargs)
+                    if resp.status_code >= 400:
+                        try:
+                            content_bytes = await resp.aread()
+                            body = content_bytes.decode(errors="replace")
+                        except Exception as read_exc:
+                            try:
+                                body = resp.text
+                            except Exception:
+                                body = f"<read error: {read_exc}>"
+                        resp_headers = dict(resp.headers)
+                        req_headers = dict(request.headers)
+                        logger.error(
+                            f"❌ [HTTP ERROR] {request.method} {request.url} -> Status {resp.status_code}\n"
+                            f"   Response Headers: {resp_headers}\n"
+                            f"   Request Headers: {req_headers}\n"
+                            f"   Body: {body}"
+                        )
+                    return resp
+
+                httpx.AsyncClient.send = _logging_async_send
+            except Exception as patch_err:
+                logger.warning(f"Could not patch httpx.AsyncClient: {patch_err}")
+
+            logger.info("✅ Successfully applied PSC routing, google.genai.Client, and HTTP error logger patches on startup.")
         except Exception as e:
             logger.error(f"Failed to patch clients in ClientPatchInterceptor: {e}")

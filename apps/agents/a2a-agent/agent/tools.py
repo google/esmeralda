@@ -32,7 +32,7 @@ if os.environ.get("DISABLE_SSL_VERIFICATION") == "true":
     ssl._create_default_https_context = ssl._create_unverified_context
     logger.warning("SSL certificate verification has been disabled via environment variable.")
 
-DEFAULT_GATEWAY_AUDIENCE = "http://esmeralda.internal"
+DEFAULT_GATEWAY_AUDIENCE = "https://esmeralda.internal"
 
 
 def _get_oidc_token(audience: str) -> str:
@@ -71,11 +71,15 @@ def _get_oidc_token(audience: str) -> str:
 
 def _make_header_provider(mcp_url: str):
     """Factory that returns a header_provider for a given MCP server URL."""
-    audience = DEFAULT_GATEWAY_AUDIENCE if "esmeralda.internal" in mcp_url else mcp_url.replace("/mcp", "")
+    audience = mcp_url.replace("/mcp", "")
 
     def header_provider(context):
         """Provides service-to-service ID token and forwards user auth token."""
-        headers = {}
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            "X-API-Key": "a2a-mortgage-agent",
+        }
         # Bypass OIDC token generation if running against local servers or in local mode
         if "localhost" in mcp_url or "127.0.0.1" in mcp_url or os.getenv("LOCAL_MODE") == "true":
             logger.info("Bypassing OIDC token generation for local MCP server: %s", mcp_url)
@@ -97,6 +101,12 @@ def _make_header_provider(mcp_url: str):
     return header_provider
 
 
+_DEFAULT_MCP_HEADERS = {
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+    "X-API-Key": "a2a-mortgage-agent",
+}
+
 dms_url = os.getenv("DMS_MCP_URL", "")
 income_url = os.getenv("INCOME_VERIFICATION_URL", "")
 email_url = os.getenv("EMAIL_MCP_URL", "")
@@ -104,26 +114,32 @@ email_url = os.getenv("EMAIL_MCP_URL", "")
 dms_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
         url=dms_url,
+        headers=_DEFAULT_MCP_HEADERS,
         timeout=30.0,
         sse_read_timeout=300.0,
     ),
     header_provider=_make_header_provider(dms_url),
+    tool_name_prefix="dms",
 )
 
 income_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
         url=income_url,
+        headers=_DEFAULT_MCP_HEADERS,
         timeout=30.0,
         sse_read_timeout=300.0,
     ),
     header_provider=_make_header_provider(income_url),
+    tool_name_prefix="income",
 )
 
 email_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
         url=email_url,
+        headers=_DEFAULT_MCP_HEADERS,
         timeout=30.0,
         sse_read_timeout=300.0,
     ),
     header_provider=_make_header_provider(email_url),
+    tool_name_prefix="email",
 )

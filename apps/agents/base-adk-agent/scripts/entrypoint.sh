@@ -1,17 +1,41 @@
 #!/bin/bash
 set -e
 
-SECRET_NAME="${SECRET_NAME:-projects/esm-dev-governance-00b1/secrets/agw-root-ca-cert-dev}"
+SECRET_NAME="${SECRET_NAME:-agw-root-ca-cert-dev}"
 
-if [ -n "$SECRET_NAME" ]; then
+echo "🔒 Platform Trust Manager: Verifying Agent Gateway Root CA..."
+
+# 1. First check if Root CA is already installed at build time (official BYOC path)
+python3 -c "
+import glob, os, certifi
+certifi_path = certifi.where()
+certifi_data = open(certifi_path).read() if os.path.exists(certifi_path) else ''
+installed = False
+
+for crt in glob.glob('/usr/local/share/ca-certificates/agw*.crt') + ['/app/certs/agw-gateway.crt']:
+    if os.path.exists(crt):
+        cert_data = open(crt).read()
+        if cert_data not in certifi_data:
+            with open(certifi_path, 'a') as cf:
+                cf.write('\n# Agent Gateway Root CA\n' + cert_data + '\n')
+            print(f'✅ Injected {crt} into certifi ({certifi_path})')
+        installed = True
+
+if installed:
+    print('✅ Agent Gateway Root CA verified in trust store.')
+    exit(0)
+exit(1)
+" && HAS_BUILTIN_CERT=1 || HAS_BUILTIN_CERT=0
+
+# 2. If not pre-installed, fallback to Secret Manager
+if [ "$HAS_BUILTIN_CERT" -eq 0 ] && [ -n "$SECRET_NAME" ]; then
     echo "🔒 Platform Trust Manager: Resolving Root CA bundle from Secret Manager ($SECRET_NAME)..."
     python3 -c "
 import os, json, base64, ssl, urllib.request
 
 try:
-    secret_name = os.environ.get('SECRET_NAME', 'projects/esm-dev-governance-00b1/secrets/agw-root-ca-cert-dev')
+    secret_name = os.environ.get('SECRET_NAME', 'agw-root-ca-cert-dev')
     
-    # Direct bootstrap fetch bypassing local proxy for initial secret access
     no_proxy_handler = urllib.request.ProxyHandler({})
     opener = urllib.request.build_opener(no_proxy_handler)
     
@@ -37,16 +61,11 @@ try:
     os.chmod(cert_file, 0o644)
     os.system('update-ca-certificates')
 
-    # Also inject directly into Python certifi bundle
-    try:
-        import certifi
-        certifi_path = certifi.where()
-        with open(certifi_path, 'a') as cf:
-            cf.write('\n# Agent Gateway Root CA\n' + cert_data + '\n')
-        print(f'✅ Injected Agent Gateway Root CA into certifi ({certifi_path})')
-    except Exception as ce:
-        print(f'⚠️ Warning: Could not inject into certifi: {ce}')
-
+    import certifi
+    certifi_path = certifi.where()
+    with open(certifi_path, 'a') as cf:
+        cf.write('\n# Agent Gateway Root CA\n' + cert_data + '\n')
+    print(f'✅ Injected Agent Gateway Root CA into certifi ({certifi_path})')
     print('✅ Successfully injected Agent Gateway Root CA bundle into system trust store.')
 except Exception as e:
     print(f'⚠️ Warning: Could not fetch CA cert from Secret Manager: {e}')

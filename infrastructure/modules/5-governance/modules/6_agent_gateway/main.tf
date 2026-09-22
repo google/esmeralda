@@ -20,11 +20,19 @@ data "google_project" "governance" {
   project_id = var.governance_project_id
 }
 
-# 0. Enable Vertex AI Platform API in Governance Project (required for Agent Gateway console)
+# 0. Enable Vertex AI Platform & Certificate Manager APIs in Governance Project
 resource "google_project_service" "aiplatform" {
   count                      = var.enable_agent_gateway ? 1 : 0
   project                    = var.governance_project_id
   service                    = "aiplatform.googleapis.com"
+  disable_on_destroy         = false
+  disable_dependent_services = false
+}
+
+resource "google_project_service" "certificatemanager" {
+  count                      = var.enable_agent_gateway ? 1 : 0
+  project                    = var.governance_project_id
+  service                    = "certificatemanager.googleapis.com"
   disable_on_destroy         = false
   disable_dependent_services = false
 }
@@ -74,6 +82,10 @@ resource "google_network_services_agent_gateway" "egress_gateway" {
       target_project = var.net_host_project_id
       target_network = startswith(var.vpc_name, "projects/") ? var.vpc_name : "projects/${var.net_host_project_id}/global/networks/${var.vpc_name}"
     }
+  }
+
+  lifecycle {
+    ignore_changes = [network_config]
   }
 
   depends_on = [google_project_iam_member.agent_gateway_dns_peer]
@@ -180,6 +192,8 @@ locals {
     agentregistry          = "Agent Registry"
     iap                    = "Identity-Aware Proxy"
     iamcredentials         = "IAM Credentials"
+    bigquery               = "BigQuery"
+    bigquerystorage        = "BigQuery Storage"
   }
 
   system_endpoints = var.enable_agent_gateway ? merge([
@@ -204,6 +218,14 @@ locals {
         display_name = "${name} Regional REP"
         url          = "https://${id}.${var.region}.rep.googleapis.com"
       }
+      "us-${id}" = {
+        display_name = "${name} US Multi-Region"
+        url          = "https://us-${id}.googleapis.com"
+      }
+      "us-${id}-mtls" = {
+        display_name = "${name} US Multi-Region mTLS"
+        url          = "https://us-${id}.mtls.googleapis.com"
+      }
     }
   ]...) : {}
 }
@@ -218,7 +240,7 @@ resource "google_agent_registry_service" "system_endpoints" {
 
   interfaces {
     url              = each.value.url
-    protocol_binding = "HTTP_JSON"
+    protocol_binding = can(regex("bigquerystorage", each.key)) ? "GRPC" : "HTTP_JSON"
   }
 
   endpoint_spec {
@@ -227,6 +249,18 @@ resource "google_agent_registry_service" "system_endpoints" {
 }
 
 # 6. Central Gateway CA Root Certificate saved to Secret Manager
+data "google_secret_manager_secret_version" "internal_root_ca" {
+  count   = var.enable_agent_gateway && var.gateway_project_id != "" ? 1 : 0
+  project = var.gateway_project_id
+  secret  = "esmeralda-internal-root-ca-${var.environment}"
+}
+
+locals {
+  resolved_internal_root_ca_pem = var.internal_root_ca_pem != "" ? var.internal_root_ca_pem : (
+    length(data.google_secret_manager_secret_version.internal_root_ca) > 0 ? data.google_secret_manager_secret_version.internal_root_ca[0].secret_data : ""
+  )
+}
+
 resource "google_secret_manager_secret" "agw_ca_cert" {
   count     = var.enable_agent_gateway ? 1 : 0
   project   = var.governance_project_id
@@ -240,7 +274,10 @@ resource "google_secret_manager_secret" "agw_ca_cert" {
 resource "google_secret_manager_secret_version" "agw_ca_cert_latest" {
   count       = var.enable_agent_gateway && length(google_network_services_agent_gateway.egress_gateway) > 0 ? 1 : 0
   secret      = google_secret_manager_secret.agw_ca_cert[0].id
-  secret_data = join("\n\n", google_network_services_agent_gateway.egress_gateway[0].agent_gateway_card[0].root_certificates)
+  secret_data = join("\n\n", compact(concat(
+    google_network_services_agent_gateway.egress_gateway[0].agent_gateway_card[0].root_certificates,
+    [local.resolved_internal_root_ca_pem]
+  )))
 }
 
 # 7. Grant Secret Accessor to Agent Service Accounts and Principals
@@ -284,7 +321,7 @@ resource "null_resource" "grant_iap_egress" {
   triggers = {
     services_hash = md5(jsonencode(local.system_endpoints))
     members_hash  = md5(jsonencode(local.cleaned_iap_members))
-    version       = "4"
+    version       = "5"
   }
 
   provisioner "local-exec" {
@@ -309,24 +346,177 @@ EOF
         --region=${var.region} \
         --quiet
 
-      echo "  -> Discovering endpoints in Agent Registry..."
+      echo "  -> Discovering MCP servers in Agent Registry..."
       TOKEN="$(gcloud auth print-access-token)"
-      ENDPOINTS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/endpoints")
+      MCPS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/mcpServers")
 
-      for ENDPOINT_ID in $(echo "$ENDPOINTS_JSON" | jq -r '.endpoints[]?.name | split("/") | last'); do
-        if [ "$ENDPOINT_ID" != "null" ] && [ -n "$ENDPOINT_ID" ]; then
-          echo "  -> Setting IAP egress policy on endpoint: $ENDPOINT_ID..."
+      for MCP_ID in $(echo "$MCPS_JSON" | jq -r '.mcpServers[]?.name | split("/") | last'); do
+        if [ "$MCP_ID" != "null" ] && [ -n "$MCP_ID" ]; then
+          echo "  -> Setting IAP egress policy on mcp-server: $MCP_ID..."
           gcloud iap web set-iam-policy /tmp/agent_registry_iap_policy.json \
             --project=${var.governance_project_id} \
             --resource-type=agent-registry \
-            --endpoint="$ENDPOINT_ID" \
+            --mcp-server="$MCP_ID" \
+            --region=${var.region} \
+            --quiet
+        fi
+      done
+
+      echo "  -> Discovering A2A agents in Agent Registry..."
+      AGENTS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/agents")
+
+      for AGENT_ID in $(echo "$AGENTS_JSON" | jq -r '.agents[]?.name | split("/") | last'); do
+        if [ "$AGENT_ID" != "null" ] && [ -n "$AGENT_ID" ]; then
+          echo "  -> Setting IAP egress policy on agent: $AGENT_ID..."
+          gcloud iap web set-iam-policy /tmp/agent_registry_iap_policy.json \
+            --project=${var.governance_project_id} \
+            --resource-type=agent-registry \
+            --agent="$AGENT_ID" \
             --region=${var.region} \
             --quiet
         fi
       done
 
       rm -f /tmp/agent_registry_iap_policy.json
-      echo "✅ Central Agent Gateway IAP egress policies applied successfully across all endpoints."
+      echo "✅ Central Agent Gateway IAP egress policies applied successfully across all endpoints, MCP servers, and agents."
     EOT
   }
 }
+
+# 9. Certificate Manager TrustConfig and AgentConnectivityTemplate for Internal Root CA (*.esmeralda.internal)
+resource "google_certificate_manager_trust_config" "internal_trust_config" {
+  count       = var.enable_agent_gateway && local.resolved_internal_root_ca_pem != "" ? 1 : 0
+  project     = var.governance_project_id
+  location    = var.region
+  name        = "esmeralda-internal-trust-${var.environment}"
+  description = "TrustConfig for *.esmeralda.internal private endpoints"
+
+  trust_stores {
+    trust_anchors {
+      pem_certificate = local.resolved_internal_root_ca_pem
+    }
+  }
+
+  depends_on = [google_project_service.certificatemanager]
+}
+
+resource "null_resource" "configure_egress_trust_config" {
+  count      = var.enable_agent_gateway && local.resolved_internal_root_ca_pem != "" && length(google_network_services_agent_gateway.egress_gateway) > 0 ? 1 : 0
+  depends_on = [
+    google_network_services_agent_gateway.egress_gateway,
+    google_certificate_manager_trust_config.internal_trust_config
+  ]
+
+  triggers = {
+    gateway_id       = google_network_services_agent_gateway.egress_gateway[0].id
+    trust_config_id  = google_certificate_manager_trust_config.internal_trust_config[0].id
+    root_ca_pem_md5  = md5(local.resolved_internal_root_ca_pem)
+    version          = "5"
+  }
+
+  provisioner "local-exec" {
+    command = <<EOT
+      set -e
+      echo "🔐 Creating/Updating AgentConnectivityTemplate with Certificate Manager TrustConfig..."
+      TOKEN="$(gcloud auth print-access-token)"
+      ACT_ID="esmeralda-act-${var.environment}"
+      ACT_FULL_NAME="projects/${var.governance_project_id}/locations/${var.region}/agentConnectivityTemplates/$ACT_ID"
+      ACT_NUM_NAME="projects/${data.google_project.governance.number}/locations/${var.region}/agentConnectivityTemplates/$ACT_ID"
+
+      cat << 'EOF' > /tmp/agw_act_payload.json
+{
+  "egressNetworkConfig": {
+    "networkAttachment": "${google_compute_network_attachment.agent_gateway[0].id}",
+    "dnsPeeringConfig": {
+      "domain": "esmeralda.internal.",
+      "targetNetwork": "${startswith(var.vpc_name, "projects/") ? var.vpc_name : "projects/${var.net_host_project_id}/global/networks/${var.vpc_name}"}"
+    },
+    "tlsConfig": {
+      "trustConfig": "projects/${var.governance_project_id}/locations/${var.region}/trustConfigs/${google_certificate_manager_trust_config.internal_trust_config[0].name}",
+      "additionalRoots": "PUBLICLY_TRUSTED_ROOTS"
+    }
+  }
+}
+EOF
+
+      # Check if ACT already exists
+      EXISTING_ACT=$(curl -s -H "Authorization: Bearer $TOKEN" "https://networkservices.googleapis.com/v1/$ACT_FULL_NAME" | jq -r '.name // empty')
+      if [ -z "$EXISTING_ACT" ]; then
+        echo "  -> Creating new AgentConnectivityTemplate ($ACT_ID)..."
+        ACT_RESP=$(curl -s -X POST \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d @/tmp/agw_act_payload.json \
+          "https://networkservices.googleapis.com/v1/projects/${var.governance_project_id}/locations/${var.region}/agentConnectivityTemplates?agentConnectivityTemplateId=$ACT_ID")
+      else
+        echo "  -> Updating existing AgentConnectivityTemplate ($ACT_ID)..."
+        ACT_RESP=$(curl -s -X PATCH \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d @/tmp/agw_act_payload.json \
+          "https://networkservices.googleapis.com/v1/$ACT_FULL_NAME?updateMask=egressNetworkConfig.tlsConfig,egressNetworkConfig.dnsPeeringConfig")
+      fi
+      rm -f /tmp/agw_act_payload.json
+
+      ACT_OP=$(echo "$ACT_RESP" | jq -r '.name // empty')
+      if [ -n "$ACT_OP" ]; then
+        echo "  -> Waiting for ACT operation $ACT_OP..."
+        for i in {1..60}; do
+          OP_STATUS=$(curl -s -H "Authorization: Bearer $TOKEN" "https://networkservices.googleapis.com/v1/$ACT_OP")
+          DONE=$(echo "$OP_STATUS" | jq -r '.done // false')
+          if [ "$DONE" = "true" ]; then
+            ERR=$(echo "$OP_STATUS" | jq -r '.error // empty')
+            if [ -n "$ERR" ] && [ "$ERR" != "null" ]; then
+              echo "❌ ACT Operation failed: $ERR"
+              exit 1
+            fi
+            echo "  -> ACT ready!"
+            break
+          fi
+          sleep 3
+        done
+      else
+        echo "❌ Failed to create/update ACT: $ACT_RESP"
+        exit 1
+      fi
+
+      echo "🔗 Binding AgentConnectivityTemplate ($ACT_NUM_NAME) to AgentGateway..."
+      cat << EOF > /tmp/agw_bind_act.json
+{
+  "agentConnectivityTemplate": "$ACT_NUM_NAME"
+}
+EOF
+
+      RESP=$(curl -s -X PATCH \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d @/tmp/agw_bind_act.json \
+        "https://networkservices.googleapis.com/v1/projects/${var.governance_project_id}/locations/${var.region}/agentGateways/${google_network_services_agent_gateway.egress_gateway[0].name}?updateMask=agentConnectivityTemplate,networkConfig")
+      rm -f /tmp/agw_bind_act.json
+
+      OP_NAME=$(echo "$RESP" | jq -r '.name // empty')
+      if [ -n "$OP_NAME" ]; then
+        echo "  -> Waiting for AgentGateway update operation $OP_NAME to complete..."
+        for i in {1..60}; do
+          OP_STATUS=$(curl -s -H "Authorization: Bearer $TOKEN" "https://networkservices.googleapis.com/v1/$OP_NAME")
+          DONE=$(echo "$OP_STATUS" | jq -r '.done // false')
+          if [ "$DONE" = "true" ]; then
+            ERR=$(echo "$OP_STATUS" | jq -r '.error // empty')
+            if [ -n "$ERR" ] && [ "$ERR" != "null" ]; then
+              echo "❌ AgentGateway Operation failed: $ERR"
+              exit 1
+            fi
+            echo "✅ Agent Gateway Egress TrustConfig & AgentConnectivityTemplate bound successfully!"
+            break
+          fi
+          sleep 5
+        done
+      else
+        echo "❌ Failed to initiate AgentGateway update: $RESP"
+        exit 1
+      fi
+    EOT
+  }
+}
+
+

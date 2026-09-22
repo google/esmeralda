@@ -27,6 +27,7 @@ dependency "security" {
 inputs = {
   environment                  = local.env_vars.locals.environment
   governance_project_id        = dependency.projects.outputs.governance_project_id
+  gateway_project_id           = dependency.projects.outputs.gateway_project_id
   region                       = local.env_vars.locals.region
   spoke_project_ids            = [
     dependency.projects.outputs.net_host_project_id,

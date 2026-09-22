@@ -51,7 +51,7 @@ inputs = {
 
   # Inject downstream endpoints
   gateway_mcp_url       = ""
-  a2a_agent_url         = "http://a2a-mortgage-agent.esmeralda.internal"
+  a2a_agent_url         = "https://a2a-mortgage-agent.esmeralda.internal"
 
   # Path to application YAML configuration
   agent_config_path     = "${get_repo_root()}/apps/agents/base-adk-agent/agent.yaml"

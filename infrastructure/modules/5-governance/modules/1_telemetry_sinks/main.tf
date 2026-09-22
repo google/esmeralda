@@ -73,3 +73,14 @@ resource "google_storage_bucket_iam_member" "gcs_sink_writers" {
   role     = "roles/storage.objectCreator"
   member   = each.value.writer_identity
 }
+
+# ------------------------------------------------------------------------------
+# DEFAULT LOGGING BUCKET OBSERVABILITY ANALYTICS (Required for Agent Gateway dashboards)
+# ------------------------------------------------------------------------------
+resource "google_logging_project_bucket_config" "default_analytics" {
+  project          = var.governance_project_id
+  location         = "global"
+  bucket_id        = "_Default"
+  enable_analytics = true
+}
+

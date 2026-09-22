@@ -86,8 +86,11 @@ class ClientPatchInterceptor(BaseInterceptor):
             original_client_init = GenAIClient.__init__
 
             def patched_client_init(self, *args, **kwargs):
-                if "location" not in kwargs or kwargs["location"] is None:
-                    kwargs["location"] = os.environ.get("MODEL_LOCATION", "global")
+                model_loc = os.environ.get("MODEL_LOCATION")
+                if model_loc:
+                    kwargs["location"] = model_loc
+                elif "location" not in kwargs or kwargs["location"] is None:
+                    kwargs["location"] = "global"
                 if "project" not in kwargs or kwargs["project"] is None:
                     if "GOOGLE_CLOUD_PROJECT" in os.environ:
                         kwargs["project"] = os.environ["GOOGLE_CLOUD_PROJECT"]
