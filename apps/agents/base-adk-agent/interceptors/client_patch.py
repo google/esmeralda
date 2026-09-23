@@ -81,12 +81,12 @@ class ClientPatchInterceptor(BaseInterceptor):
                 except Exception:
                     pass
 
-            # 4. google.genai.Client location & project defaulting
+            # 4. google.genai.Client location & project defaulting (MODEL_LOCATION)
             from google.genai import Client as GenAIClient
             original_client_init = GenAIClient.__init__
 
             def patched_client_init(self, *args, **kwargs):
-                model_loc = os.environ.get("MODEL_LOCATION")
+                model_loc = os.environ.get("MODEL_LOCATION", "global")
                 if model_loc:
                     kwargs["location"] = model_loc
                 elif "location" not in kwargs or kwargs["location"] is None:
@@ -97,6 +97,36 @@ class ClientPatchInterceptor(BaseInterceptor):
                 original_client_init(self, *args, **kwargs)
 
             GenAIClient.__init__ = patched_client_init
-            logger.info("✅ Successfully applied PSC routing and google.genai.Client patches on startup.")
+
+            # 5. httpx.AsyncClient CA bundle & Google API direct bypass
+            try:
+                import httpx
+                import ssl
+                import certifi
+
+                combined_ca_path = "/tmp/combined_agw_ca.pem"
+                if not os.path.exists(combined_ca_path):
+                    with open(combined_ca_path, "w") as out_f:
+                        if os.path.exists(certifi.where()):
+                            out_f.write(open(certifi.where()).read() + "\n")
+                        for extra_ca in ["/usr/local/share/ca-certificates/agw-gateway.crt", "/etc/ssl/certs/ca-certificates.crt"]:
+                            if os.path.exists(extra_ca):
+                                out_f.write(open(extra_ca).read() + "\n")
+
+                os.environ["SSL_CERT_FILE"] = combined_ca_path
+                os.environ["REQUESTS_CA_BUNDLE"] = combined_ca_path
+
+                _orig_async_client_init = httpx.AsyncClient.__init__
+                if not getattr(_orig_async_client_init, "_agw_patched", False):
+                    def _patched_async_client_init(self, *args, **kwargs):
+                        if "verify" not in kwargs or kwargs["verify"] is True:
+                            kwargs["verify"] = ssl.create_default_context(cafile=combined_ca_path)
+                        _orig_async_client_init(self, *args, **kwargs)
+                    _patched_async_client_init._agw_patched = True
+                    httpx.AsyncClient.__init__ = _patched_async_client_init
+            except Exception as he:
+                logger.warning(f"Failed to patch httpx.AsyncClient: {he}")
+
+            logger.info("✅ Successfully applied PSC routing, MODEL_LOCATION=global, and httpx CA patches on startup.")
         except Exception as e:
             logger.error(f"Failed to patch clients in ClientPatchInterceptor: {e}")

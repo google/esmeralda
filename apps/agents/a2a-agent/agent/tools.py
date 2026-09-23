@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import ssl
+import urllib.parse
 import urllib.request
 
 import google.auth
@@ -71,7 +72,8 @@ def _get_oidc_token(audience: str) -> str:
 
 def _make_header_provider(mcp_url: str):
     """Factory that returns a header_provider for a given MCP server URL."""
-    audience = mcp_url.replace("/mcp", "")
+    parsed = urllib.parse.urlsplit(mcp_url)
+    audience = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else mcp_url.replace("/mcp", "")
 
     def header_provider(context):
         """Provides service-to-service ID token and forwards user auth token."""
@@ -107,9 +109,9 @@ _DEFAULT_MCP_HEADERS = {
     "X-API-Key": "a2a-mortgage-agent",
 }
 
-dms_url = os.getenv("DMS_MCP_URL", "")
-income_url = os.getenv("INCOME_VERIFICATION_URL", "")
-email_url = os.getenv("EMAIL_MCP_URL", "")
+dms_url = os.environ.get("LEGACY_DMS_MCP_URL") or os.environ.get("DMS_MCP_URL", "https://legacy-dms.esmeralda.internal/mcp")
+income_url = os.environ.get("INCOME_VERIFICATION_MCP_URL") or os.environ.get("INCOME_VERIFICATION_URL", "https://income-verification.esmeralda.internal/mcp")
+email_url = os.environ.get("CORPORATE_EMAIL_MCP_URL") or os.environ.get("EMAIL_MCP_URL", "https://corporate-email.esmeralda.internal/mcp")
 
 dms_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(

@@ -38,6 +38,7 @@ inputs = {
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
   agent_gateway_id      = dependency.governance.outputs.agent_gateway_id
+  gateway_project_id    = dependency.projects.outputs.gateway_project_id
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,

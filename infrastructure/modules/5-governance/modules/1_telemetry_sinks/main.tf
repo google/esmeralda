@@ -75,12 +75,44 @@ resource "google_storage_bucket_iam_member" "gcs_sink_writers" {
 }
 
 # ------------------------------------------------------------------------------
-# DEFAULT LOGGING BUCKET OBSERVABILITY ANALYTICS (Required for Agent Gateway dashboards)
+# DEFAULT LOGGING BUCKET OBSERVABILITY ANALYTICS & AUDIT LOGS (Required for Agent Gateway dashboards)
 # ------------------------------------------------------------------------------
 resource "google_logging_project_bucket_config" "default_analytics" {
   project          = var.governance_project_id
   location         = "global"
   bucket_id        = "_Default"
   enable_analytics = true
+}
+
+resource "google_logging_project_bucket_config" "spoke_default_analytics" {
+  for_each         = local.monitored_projects
+  project          = each.value
+  location         = "global"
+  bucket_id        = "_Default"
+  enable_analytics = true
+}
+
+resource "google_logging_linked_dataset" "default_logs_linked_dataset" {
+  link_id     = "default_logs_analytics"
+  bucket      = google_logging_project_bucket_config.default_analytics.id
+  parent      = "projects/${var.governance_project_id}"
+  location    = "global"
+  description = "Linked BigQuery dataset for _Default bucket Observability Analytics"
+}
+
+resource "google_project_iam_audit_config" "agent_gateway_observability_audit" {
+  for_each = toset(["iap.googleapis.com", "networkservices.googleapis.com", "agentregistry.googleapis.com"])
+  project  = var.governance_project_id
+  service  = each.value
+
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
 }
 

@@ -24,7 +24,7 @@ from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 
 logger = logging.getLogger(__name__)
 
-A2A_AGENT_URL = os.getenv("A2A_AGENT_URL")
+A2A_AGENT_URL = os.getenv("A2A_AGENT_URL", "https://a2a-mortgage-agent.esmeralda.internal")
 
 # Must match a2a-agent/agent.USER_AUTH_TOKEN_KEY
 USER_AUTH_TOKEN_KEY = "user_auth_token"
@@ -67,8 +67,8 @@ async def _add_auth_header(request):
     """Inject OIDC ID token for Cloud Run Kong Gateway or access token."""
     request.headers["X-API-Key"] = "root-agent"
     url = str(request.url)
-    if "esmeralda.internal" in url:
-        audience = "https://a2a-mortgage-agent.esmeralda.internal"
+    if "esmeralda.internal" in url or ".run.app" in url:
+        audience = f"{request.url.scheme}://{request.url.host}" if ".run.app" in url else "https://a2a-mortgage-agent.esmeralda.internal"
         id_token = await asyncio.to_thread(_get_id_token, audience)
         if id_token:
             request.headers["Authorization"] = f"Bearer {id_token}"
@@ -141,8 +141,13 @@ class CustomRemoteA2aAgent(RemoteA2aAgent):
     reconstructing the unpickleable httpx client, and allows internal http:// VPC targets.
     """
     def _validate_card_rpc_targets(self, agent_card: Any) -> None:
-        """Bypass strict HTTPS requirement for internal VPC endpoints (*.esmeralda.internal)."""
-        pass
+        """Pin A2A RPC target URL to the configured Gateway URL (A2A_AGENT_URL)."""
+        if A2A_AGENT_URL and hasattr(agent_card, "url"):
+            agent_card.url = A2A_AGENT_URL
+            if getattr(agent_card, "additional_interfaces", None):
+                for iface in agent_card.additional_interfaces:
+                    if hasattr(iface, "url"):
+                        iface.url = A2A_AGENT_URL
 
     def __getstate__(self):
         state = self.__dict__.copy()
