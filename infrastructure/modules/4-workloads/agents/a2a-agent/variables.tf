@@ -122,3 +122,9 @@ variable "agent_gateway_id" {
   default     = ""
 }
 
+variable "gateway_project_id" {
+  description = "The GCP project ID of the Kong API Gateway project for dynamic .run.app URL injection"
+  type        = string
+  default     = ""
+}
+

@@ -16,6 +16,12 @@ import os
 
 import google.auth
 
+try:
+    from interceptors import ClientPatchInterceptor
+    ClientPatchInterceptor().on_startup(None)
+except Exception:
+    pass
+
 from .agent import root_agent  # noqa: F401
 
 try:

@@ -180,8 +180,15 @@ resource "google_project_iam_member" "agentgateway_model_armor" {
   member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
 }
 
-# 5. Declarative System Google API Endpoints registered in Central Agent Registry
+data "google_project" "gateway" {
+  count      = var.gateway_project_id != "" ? 1 : 0
+  project_id = var.gateway_project_id
+}
+
+# 5. Declarative System Google API & Kong Gateway Endpoints registered in Central Agent Registry
 locals {
+  kong_run_base_url = length(data.google_project.gateway) > 0 ? "https://kong-gateway-${var.environment}-${data.google_project.gateway[0].number}.${var.region}.run.app" : ""
+
   google_apis = {
     aiplatform             = "Vertex AI Platform"
     modelarmor             = "Model Armor"
@@ -196,7 +203,30 @@ locals {
     bigquerystorage        = "BigQuery Storage"
   }
 
-  system_endpoints = var.enable_agent_gateway ? merge([
+  kong_endpoints = var.enable_agent_gateway && local.kong_run_base_url != "" ? {
+    "kong-gateway-run" = {
+      display_name = "Kong API Gateway Cloud Run"
+      url          = local.kong_run_base_url
+    }
+    "legacy-dms-kong-run" = {
+      display_name = "Legacy DMS via Kong Cloud Run"
+      url          = "${local.kong_run_base_url}/legacy-dms/mcp"
+    }
+    "income-verification-kong-run" = {
+      display_name = "Income Verification via Kong Cloud Run"
+      url          = "${local.kong_run_base_url}/income-verification/mcp"
+    }
+    "corporate-email-kong-run" = {
+      display_name = "Corporate Email via Kong Cloud Run"
+      url          = "${local.kong_run_base_url}/corporate-email/mcp"
+    }
+    "a2a-mortgage-agent-kong-run" = {
+      display_name = "A2A Mortgage Agent via Kong Cloud Run"
+      url          = "${local.kong_run_base_url}/a2a-mortgage-agent"
+    }
+  } : {}
+
+  system_endpoints = var.enable_agent_gateway ? merge(concat([
     for id, name in local.google_apis : {
       (length(id) >= 4 ? id : "${id}-endpoint") = {
         display_name = name
@@ -227,7 +257,7 @@ locals {
         url          = "https://us-${id}.mtls.googleapis.com"
       }
     }
-  ]...) : {}
+  ], [local.kong_endpoints])...) : {}
 }
 
 resource "google_agent_registry_service" "system_endpoints" {
@@ -321,7 +351,8 @@ resource "null_resource" "grant_iap_egress" {
   triggers = {
     services_hash = md5(jsonencode(local.system_endpoints))
     members_hash  = md5(jsonencode(local.cleaned_iap_members))
-    version       = "5"
+    kong_url      = local.kong_run_base_url
+    version       = "6"
   }
 
   provisioner "local-exec" {
@@ -348,6 +379,19 @@ EOF
 
       echo "  -> Discovering MCP servers in Agent Registry..."
       TOKEN="$(gcloud auth print-access-token)"
+      KONG_BASE="${local.kong_run_base_url}"
+
+      if [ -n "$KONG_BASE" ]; then
+        for SVC_NAME in legacy-dms income-verification corporate-email; do
+          echo "  -> Synchronizing Agent Registry service ($SVC_NAME-mcp-service) with $KONG_BASE/$SVC_NAME/mcp..."
+          curl -s -X PATCH \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"interfaces\": [{\"url\": \"$KONG_BASE/$SVC_NAME/mcp\", \"protocolBinding\": \"HTTP_JSON\"}]}" \
+            "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/services/$SVC_NAME-mcp-service?updateMask=interfaces" > /dev/null || true
+        done
+      fi
+
       MCPS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/mcpServers")
 
       for MCP_ID in $(echo "$MCPS_JSON" | jq -r '.mcpServers[]?.name | split("/") | last'); do

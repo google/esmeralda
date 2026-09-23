@@ -191,7 +191,9 @@ def load_agent_card_from_yaml():
                 "supports_authenticated_extended_card": card_data.get("supports_authenticated_extended_card", True),
                 "skills": skills,
             })
-    if "url" in card_data:
+    if os.environ.get("A2A_AGENT_URL"):
+        card_kwargs["url"] = os.environ["A2A_AGENT_URL"]
+    elif "url" in card_data:
         card_kwargs["url"] = card_data["url"]
     if "preferred_transport" in card_data:
         card_kwargs["preferred_transport"] = card_data["preferred_transport"]
