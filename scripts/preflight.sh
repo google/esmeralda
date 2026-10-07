@@ -1,5 +1,5 @@
 #!/bin/bash
-# preflight.sh
+# scripts/preflight.sh
 set -euo pipefail
 
 # Colors for premium CLI aesthetics
