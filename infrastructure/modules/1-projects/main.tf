@@ -11,7 +11,6 @@ locals {
   net_host_id   = var.byo_net_host_project ? var.existing_net_host_project : "${var.project_prefix}-net-host-${local.suffix}"
   gateway_id    = var.byo_gateway_project ? var.existing_gateway_project : "${var.project_prefix}-gateway-${local.suffix}"
   governance_id = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
-  cicd_id       = var.byo_cicd_project ? var.existing_cicd_project : "${var.project_prefix}-cicd-artifacts-${local.suffix}"
   mcps_id       = "${var.project_prefix}-mcps-${local.suffix}"
   a2a_id        = "${var.project_prefix}-a2a-${local.suffix}"
   root_agent_id = "${var.project_prefix}-root-agent-${local.suffix}"
@@ -42,16 +41,6 @@ locals {
     "secretmanager.googleapis.com",
     "run.googleapis.com",
     "iam.googleapis.com"
-  ]
-
-  cicd_apis = [
-    "cloudresourcemanager.googleapis.com",
-    "compute.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "cloudbuild.googleapis.com",
-    "logging.googleapis.com",
-    "storage.googleapis.com",
-    "secretmanager.googleapis.com"
   ]
 
   mcps_apis = [
@@ -197,24 +186,6 @@ resource "google_project" "gateway" {
   })
 }
 
-# Central CI/CD & Artifacts Project: Conditional creation
-resource "google_project" "cicd" {
-  count      = var.byo_cicd_project ? 0 : 1
-  name       = local.cicd_id
-  project_id = local.cicd_id
-
-  folder_id           = var.folder_id != "" ? var.folder_id : null
-  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account     = var.billing_account
-  auto_create_network = true
-  deletion_policy     = "DELETE"
-
-  labels = merge(local.common_labels, {
-    "cost-center" = "shared-cicd-and-artifacts"
-    "team"        = "platform-engineering"
-  })
-}
-
 # Central Tools Project: ALWAYS created by Esmeralda from scratch
 resource "google_project" "mcps" {
   name                = local.mcps_id
@@ -297,7 +268,6 @@ resource "null_resource" "serviceusage_bootstrap" {
   depends_on = [
     google_project.net_host,
     google_project.gateway,
-    google_project.cicd,
     google_project.mcps,
     google_project.a2a,
     google_project.root_agent,
@@ -307,8 +277,8 @@ resource "null_resource" "serviceusage_bootstrap" {
   provisioner "local-exec" {
     command = <<EOT
       echo "🚀 Activating serviceusage.googleapis.com directly via gcloud POST on newly created projects..."
-      for p in ${local.net_host_id} ${local.gateway_id} ${local.cicd_id} ${local.mcps_id} ${local.a2a_id} ${local.root_agent_id} ${local.governance_id}; do
-        if [ -n "$p" ] && [ "$p" != "null" ] && [ "$p" != "esmeralda-cicd-artifacts-3a3d" ]; then
+      for p in ${local.net_host_id} ${local.gateway_id} ${local.mcps_id} ${local.a2a_id} ${local.root_agent_id} ${local.governance_id}; do
+        if [ -n "$p" ] && [ "$p" != "null" ]; then
           echo "  -> Enabling serviceusage & cloudresourcemanager on $p..."
           gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com --project="$p" || true
         fi
@@ -338,17 +308,6 @@ resource "google_project_service" "gateway" {
   disable_dependent_services = false
 
   depends_on = [google_project.gateway, null_resource.serviceusage_bootstrap]
-}
-
-# Enable CI/CD & Artifacts APIs
-resource "google_project_service" "cicd" {
-  for_each                   = var.byo_cicd_project ? [] : toset(local.cicd_apis)
-  project                    = local.cicd_id
-  service                    = each.key
-  disable_on_destroy         = false
-  disable_dependent_services = false
-
-  depends_on = [google_project.cicd, null_resource.serviceusage_bootstrap]
 }
 
 # Enable Central Tools APIs
@@ -407,7 +366,6 @@ resource "time_sleep" "api_propagation" {
   depends_on = [
     google_project_service.net_host,
     google_project_service.gateway,
-    google_project_service.cicd,
     google_project_service.mcps,
     google_project_service.a2a,
     google_project_service.root_agent,
@@ -419,15 +377,6 @@ resource "time_sleep" "api_propagation" {
 data "google_project" "governance" {
   count      = var.byo_governance_project ? 1 : 0
   project_id = var.existing_governance_project
-}
-
-# Force provision Cloud Build Service Agent in CI/CD project
-resource "google_project_service_identity" "cicd_build" {
-  provider = google-beta
-  project  = local.cicd_id
-  service  = "cloudbuild.googleapis.com"
-
-  depends_on = [time_sleep.api_propagation]
 }
 
 # Force provision Cloud Run Service Agent in MCP central tools project
@@ -505,4 +454,11 @@ resource "google_project_service_identity" "governance_secrets" {
   depends_on = [time_sleep.api_propagation]
 }
 
-
+# The CI/CD project and its Cloud Build service agent moved to the shared layer 0
+# (live/shared/stage-0-cicd). Forget the old identity without calling the API.
+removed {
+  from = google_project_service_identity.cicd_build
+  lifecycle {
+    destroy = false
+  }
+}

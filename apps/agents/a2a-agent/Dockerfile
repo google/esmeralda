@@ -10,13 +10,9 @@ RUN apt-get update -qqy && apt-get install -qqy --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install root certificates according to official GCP BYOC Agent Gateway specification
-ARG AGENT_GATEWAY_ROOT_CERTIFICATES
-RUN if [ -n "$AGENT_GATEWAY_ROOT_CERTIFICATES" ]; then \
-      echo "Installing Agent Gateway root certificates from build arg..."; \
-      printf "%b" "$AGENT_GATEWAY_ROOT_CERTIFICATES" | awk 'BEGIN {c=0} /BEGIN CERTIFICATE/ {c++} c > 0 { print > "/usr/local/share/ca-certificates/agw-" c ".crt" }'; \
-      update-ca-certificates; \
-    fi
+# No env-specific certificates are baked in: the Agent Gateway root CA bundle is injected at
+# deploy time (AGENT_GATEWAY_ROOT_CERTIFICATES) and installed by /entrypoint.sh, so the same
+# image digest can be promoted from dev to prd.
 
 # Copy packaging manifests first for layer caching
 COPY pyproject.toml .
@@ -26,8 +22,7 @@ RUN pip install --no-cache-dir .
 
 # Copy agent application files and entrypoint
 COPY . .
-RUN python3 -c "import certifi, glob; [open(certifi.where(), 'a').write('\n# Agent Gateway Root CA\n' + open(f).read()) for f in glob.glob('/usr/local/share/ca-certificates/agw*.crt')]" && \
-    chmod +x /app/scripts/entrypoint.sh && cp /app/scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /app/scripts/entrypoint.sh && cp /app/scripts/entrypoint.sh /entrypoint.sh
 
 # Expose standard container port & Root CA Trust Environment Paths
 ENV PORT=8080

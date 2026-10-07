@@ -18,9 +18,26 @@ SHELL := /bin/bash
 
 ENV ?= dev
 LIVE_DIR = infrastructure/live/$(ENV)
-TAG ?= $(ENV)-latest
+CICD_DIR = infrastructure/live/shared/stage-0-cicd
 
-.PHONY: help bootstrap test run-mcp-local test-a2a-local test-root-local deploy-foundations deploy-projects deploy-networking deploy-security build-agents deploy-workloads build-service-circuit-breaker deploy-governance deploy-all test-governance-chaos clean preflight
+# Image builds (env-neutral, shared dev repository)
+BUILD_TAG ?= dev-latest
+GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+
+# Promotion (make promote TAG=vX.Y.Z [SOURCE_TAG=...])
+TAG ?=
+SOURCE_TAG ?= dev-latest
+
+# Terraform / Terragrunt from the standard per-user install locations, if present
+export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
+
+.PHONY: help bootstrap test test-all test-agents test-terraform run-mcp-local test-a2a-local test-root-local \
+	test-a2a-remote test-root-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
+	deploy-foundations deploy-governance deploy-governance-views build-agent-a2a build-agent-root build-agents \
+	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
+	build-service-circuit-breaker build-services build-images deploy-workloads deploy-services deploy-agent-a2a \
+	deploy-agent-root deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
+	promote-patch promote-minor promote test-governance-chaos load-test-root-agent clean preflight
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -46,7 +63,10 @@ test-agents: ## Fast execution for agent unit tests only
 
 test-terraform: ## Run syntax validation for all Terraform modules
 	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
-	@find infrastructure/modules -maxdepth 2 -name "main.tf" -execdir sh -c 'terraform init -backend=false -input=false >/dev/null 2>&1 && terraform validate' \;
+	@set -e; for d in $$(find infrastructure/modules -name main.tf -not -path '*/.terraform/*' -exec dirname {} \; | sort); do \
+		echo "→ $$d"; \
+		(cd $$d && terraform init -upgrade -backend=false -input=false >/dev/null && terraform validate -no-color); \
+	done
 	@echo "✅ Terraform validation passed!"
 
 test-all: test test-terraform ## Run all Python unit tests and Terraform validation
@@ -149,173 +169,189 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 	disown -a 2>/dev/null || true; \
 	exit $$status
 
+# ==============================================================================
+# Remote integration tests (resolve project + engine IDs from Terragrunt outputs)
+# ==============================================================================
+
 test-root-remote: ## Run remote Root Coordinator integration test against Vertex AI Reasoning Engine
-	@echo "👑 Running Root Agent remote integration test on Vertex AI..."
-	@export PATH="/usr/local/google/home/afonsomenegola/.terraform/bin:/usr/local/google/home/afonsomenegola/.terragrunt/bin:$$PATH"; \
-	export ROOT_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw root_project_id 2>/dev/null || echo ""); \
-	ROOT_PROJ=$${ROOT_PROJ:-esm-dev-root-agent-00b1}; \
-	export ROOT_ID=$$(cd $(LIVE_DIR)/stage-4-workloads/agents/base-adk-agent && terragrunt output -raw engine_id 2>/dev/null | awk -F'/' '{print $$NF}'); \
-	ROOT_ID=$${ROOT_ID:-5380914798579941376}; \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	ROOT_AGENT_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" uv run --package mortgage-agent python apps/agents/base-adk-agent/scripts/test_remote.py "$(QUERY)"
+	@echo "👑 Running Root Agent remote integration test on Vertex AI ($(ENV))..."
+	@ROOT_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw root_project_id) && \
+	ROOT_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/base-adk-agent && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
+	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
+	ROOT_AGENT_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
+	uv run --package mortgage-agent python apps/agents/base-adk-agent/scripts/test_remote.py "$(QUERY)"
 
 test-a2a-remote: ## Run remote A2A Specialist integration test against Vertex AI Reasoning Engine
-	@echo "🤖 Running A2A Agent remote integration test on Vertex AI..."
-	@export PATH="/usr/local/google/home/afonsomenegola/.terraform/bin:/usr/local/google/home/afonsomenegola/.terragrunt/bin:$$PATH"; \
-	export A2A_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw a2a_project_id 2>/dev/null || echo ""); \
-	A2A_PROJ=$${A2A_PROJ:-esm-dev-a2a-00b1}; \
-	export A2A_ID=$$(cd $(LIVE_DIR)/stage-4-workloads/agents/a2a-agent && terragrunt output -raw engine_id 2>/dev/null | awk -F'/' '{print $$NF}'); \
-	A2A_ID=$${A2A_ID:-3701459165663723520}; \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	GOOGLE_CLOUD_PROJECT="$$A2A_PROJ" REASONING_ENGINE_ID="$$A2A_ID" GOOGLE_CLOUD_LOCATION="$$REGION" uv run --package a2a-mortgage-agent python apps/agents/a2a-agent/scripts/test_remote.py "$(QUERY)"
+	@echo "🤖 Running A2A Agent remote integration test on Vertex AI ($(ENV))..."
+	@A2A_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw a2a_project_id) && \
+	A2A_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/a2a-agent && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
+	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
+	GOOGLE_CLOUD_PROJECT="$$A2A_PROJ" REASONING_ENGINE_ID="$$A2A_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
+	uv run --package a2a-mortgage-agent python apps/agents/a2a-agent/scripts/test_remote.py "$(QUERY)"
 
-deploy-projects: ## Deploy Stage 1: Projects via Terragrunt for $(ENV)
-	@echo "🏗️  Deploying Stage 1: Projects for $(ENV)..."
+test-e2e: ## End-to-end check of a deployed env: A2A agent, then Root -> A2A (fails on any error)
+	@$(MAKE) --no-print-directory test-a2a-remote ENV=$(ENV)
+	@$(MAKE) --no-print-directory test-root-remote ENV=$(ENV)
+	@echo "✅ End-to-end tests passed for $(ENV)!"
+
+# ==============================================================================
+# Layer 0: shared CI/CD (env-independent; one project, dev + release repositories)
+# ==============================================================================
+
+deploy-cicd: ## Deploy Layer 0: shared CI/CD project, dev + release Artifact Registry repos, builder/promoter SAs
+	@echo "🏗️  Deploying Layer 0: shared CI/CD..."
+	@cd $(CICD_DIR) && terragrunt --non-interactive apply -auto-approve
+
+# ==============================================================================
+# Layers 1-3: foundations (projects, networking, security + internal PKI)
+# ==============================================================================
+
+deploy-projects: ## Deploy Layer 1: Projects via Terragrunt for $(ENV)
+	@echo "🏗️  Deploying Layer 1: Projects for $(ENV)..."
 	@cd $(LIVE_DIR)/stage-1-projects && terragrunt --non-interactive apply -auto-approve
 
-deploy-networking: ## Deploy Stage 2: Networking via Terragrunt for $(ENV)
-	@echo "🏗️  Deploying Stage 2: Networking for $(ENV)..."
+deploy-networking: ## Deploy Layer 2: Networking via Terragrunt for $(ENV)
+	@echo "🏗️  Deploying Layer 2: Networking for $(ENV)..."
 	@cd $(LIVE_DIR)/stage-2-networking && terragrunt --non-interactive apply -auto-approve
 
-deploy-security: ## Deploy Stage 3: Security via Terragrunt for $(ENV)
-	@echo "🏗️  Deploying Stage 3: Security for $(ENV)..."
+deploy-security: ## Deploy Layer 3: Security + internal Root CA via Terragrunt for $(ENV)
+	@echo "🏗️  Deploying Layer 3: Security for $(ENV)..."
 	@cd $(LIVE_DIR)/stage-3-security && terragrunt --non-interactive apply -auto-approve
 
-deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy core foundations (Projects, Networking, Security) collectively via Terragrunt
+deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy Layers 1-3 (Projects, Networking, Security)
 
-build-agent-a2a: deploy-repo ## Build and push BYOC A2A Agent container
-	@echo "🏗️  Building and pushing A2A Agent container via Cloud Build..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/a2a-agent --config=apps/agents/a2a-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
+# ==============================================================================
+# Layer 4: governance (Agent Gateway + ACT + IAP, Agent Registry, Model Armor, telemetry)
+# ==============================================================================
 
-build-agent-root: deploy-repo ## Build and push BYOC Root Agent container
-	@echo "🏗️  Building and pushing Root Agent container via Cloud Build..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/agents/base-adk-agent --config=apps/agents/base-adk-agent/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
+deploy-governance: ## Deploy Layer 4: Governance, Agent Gateway, Observability & Alerts for $(ENV)
+	@echo "🏛️  Deploying Layer 4: Governance for $(ENV)..."
+	@cd $(LIVE_DIR)/stage-4-governance && terragrunt --non-interactive apply -auto-approve
 
-build-agents: test-all deploy-repo ## Build all BYOC agent containers concurrently via make -j2
-	@echo "🏗️  Building all BYOC agent containers concurrently..."
-	@$(MAKE) -j2 build-agent-a2a build-agent-root
-	@echo "✅ All agent containers successfully built and pushed!"
-
-deploy-repo: ## Step 4.1: Deploy Artifact Registry Docker repository in CI/CD project
-	@echo "📦 Provisioning Artifact Registry repository in Stage 4..."
-	@cd $(LIVE_DIR)/stage-4-workloads/services/repository && terragrunt apply -- -auto-approve
-	@echo "✅ Artifact Registry repository provisioned successfully!"
-
-deploy-mcp-repo: deploy-repo ## Alias for backwards compatibility
-
-build-service-income-verification: deploy-repo ## Build and push Income Verification API service container
-	@echo "🏗️  Building and pushing Income Verification service container..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/income-verification --config=apps/services/income-verification/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
-
-build-service-corporate-email: deploy-repo ## Build and push Corporate Email service container
-	@echo "🏗️  Building and pushing Corporate Email service container..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/corporate-email --config=apps/services/corporate-email/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
-
-build-service-legacy-dms: deploy-repo ## Build and push Legacy DMS service container
-	@echo "🏗️  Building and pushing Legacy DMS service container..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export PREFIX=$$(awk -F'"' '/project_prefix[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/legacy-dms --config=apps/services/legacy-dms/cloudbuild.yaml --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --substitutions=_REGION=$$REGION,_CICD_PROJECT_ID=$$CICD_PROJ,_TAG=$(TAG),_ENV=$(ENV),_PROJECT_PREFIX=$$PREFIX
-
-build-service-kong: deploy-repo ## Build and push custom Kong Gateway container
-	@echo "🏗️  Building and pushing Kong Gateway service container..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/kong --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/kong-gateway:$(TAG)
-
-build-services: deploy-repo ## Build all Cloud Run service containers concurrently via make -j5
-	@echo "🏗️  Building all Cloud Run service containers concurrently..."
-	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong
-	@echo "✅ All service containers successfully built and pushed!"
-
-
-
-build-mcp-servers: build-services ## Alias for backwards compatibility
-
-deploy-services: ## Step 4.2: Deploy Cloud Run services (corporate-email, income-verification, legacy-dms, kong)
-	@echo "🚀 Deploying Cloud Run Services..."
-	@cd $(LIVE_DIR)/stage-4-workloads/services && terragrunt --non-interactive run --all apply
-	@echo "✅ Cloud Run Services deployed!"
-
-deploy-agent-gateway: ## Step 4.2b: Deploy Central Agent Gateway (AGENT_TO_ANYWHERE) in Governance project
-	@echo "🌐 Deploying Central Agent Gateway..."
-	@cd $(LIVE_DIR)/stage-4-workloads/gateways/agent-gateway && terragrunt --non-interactive apply -auto-approve
-	@echo "✅ Central Agent Gateway deployed!"
-
-deploy-gateway: ## Step 4.3: Deploy Kong API Gateway individually
-	@echo "🚀 Deploying Kong API Gateway..."
-	@cd $(LIVE_DIR)/stage-4-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
-	@echo "✅ Gateway deployed!"
-
-deploy-agent-a2a: ## Step 4.4: Deploy A2A Mortgage Specialist Reasoning Engine
-	@echo "🚀 Deploying A2A Reasoning Engine Agent..."
-	@cd $(LIVE_DIR)/stage-4-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
-	@echo "✅ A2A Agent deployed!"
-
-deploy-agent-root: ## Step 4.5: Deploy LOB Root Coordinator Reasoning Engine
-	@echo "🚀 Deploying Root Coordinator Reasoning Engine Agent..."
-	@cd $(LIVE_DIR)/stage-4-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
-	@echo "✅ Root Coordinator deployed!"
-
-deploy-agents: deploy-agent-a2a deploy-agent-root ## Deploy all Reasoning Engine agents (A2A Agent & Root Coordinator)
-	@echo "✨ All agents deployed successfully!"
-
-deploy-workloads-step-by-step: ## Deploy all Stage 4 workloads using native Terragrunt dependency DAG graph
-	@echo "🚀 Deploying Stage 4 workloads with native Terragrunt DAG..."
-	@cd $(LIVE_DIR)/stage-4-workloads && terragrunt --non-interactive run --all apply
-	@echo "✨ All Stage 4 workloads deployed successfully!"
-
-deploy-workloads: build-services deploy-services build-agents deploy-agents ## Full automated build and deploy of Stage 4 (build services -> deploy services -> build agents -> deploy agents)
-
-build-service-circuit-breaker: deploy-repo ## Build and push Circuit Breaker service container
-	@echo "🏗️  Building and pushing Circuit Breaker service container..."
-	@export CICD_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cicd_project_id 2>/dev/null || gcloud config get-value project); \
-	export REGION=$$(awk -F'"' '/region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml); \
-	export BUILDER_SA=$$(cd $(LIVE_DIR)/stage-3-security && terragrunt output -raw cicd_builder_sa_email 2>/dev/null || echo "sa-esmeralda-builder-dev@$$CICD_PROJ.iam.gserviceaccount.com"); \
-	gcloud builds submit apps/services/circuit-breaker --project=$$CICD_PROJ --service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag=$$REGION-docker.pkg.dev/$$CICD_PROJ/esmeralda-containers/circuit-breaker:latest
-
-deploy-governance: ## Deploy Stage 5: Governance, Observability & Alerts via Terragrunt
-	@echo "🏛️  Deploying Stage 5: Governance & Observability Stack..."
-	@cd $(LIVE_DIR)/stage-5-governance && terragrunt --non-interactive apply -auto-approve
-	@echo "✨ Stage 5 Governance Stack deployed successfully!"
-
-deploy-governance-views: ## Deploy Stage 5 BigQuery FinOps & Telemetry SQL Views (after agent testing generates logs)
+deploy-governance-views: ## Deploy Layer 4 BigQuery FinOps & Telemetry SQL Views (after agent traffic generated logs)
 	@echo "📊 Deploying BigQuery FinOps & Telemetry SQL Views for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-5-governance && terragrunt --non-interactive apply -var="enable_analytics_views=true" -auto-approve
-	@echo "✨ Stage 5 BigQuery FinOps Views deployed successfully!"
+	@cd $(LIVE_DIR)/stage-4-governance && ENABLE_ANALYTICS_VIEWS=true terragrunt --non-interactive apply -auto-approve
+	@echo "👉 Set enable_analytics_views = true in $(LIVE_DIR)/env.yaml to keep the views on plain re-applies."
 
-deploy-all: deploy-foundations deploy-workloads deploy-governance ## Full automated deploy of all 5 stages of the Esmeralda platform
+# ==============================================================================
+# Image builds: env-neutral, always pushed to the shared dev repository
+# (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote TAG=vX.Y.Z`.
+# ==============================================================================
 
-status-release: ## Inspect current PRD release tag and promotion options
+# $(1) = build context, $(2) = image name
+define build_image
+	@echo "🏗️  Building $(2) (:$(BUILD_TAG), :dev-$(GIT_SHA)) in the shared CI/CD project..."
+	@CICD_JSON=$$(cd $(CICD_DIR) && terragrunt output -json) && \
+	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r .cicd_project_id.value) && \
+	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
+	BUILDER_SA=$$(echo "$$CICD_JSON" | jq -r .builder_sa_email.value) && \
+	gcloud builds submit $(1) --config=.cloudbuild/build-image.yaml --project=$$CICD_PROJ \
+		--service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA \
+		--default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET \
+		--substitutions=_IMAGE=$(2),_REPOSITORY_URL=$$REPO_URL,_TAG=$(BUILD_TAG),_SHA_TAG=dev-$(GIT_SHA)
+endef
+
+build-agent-a2a: ## Build and push the A2A Agent image
+	$(call build_image,apps/agents/a2a-agent,a2a-agent)
+
+build-agent-root: ## Build and push the Root Agent image
+	$(call build_image,apps/agents/base-adk-agent,root-agent)
+
+build-agents: test-all ## Run tests, then build both agent images concurrently
+	@$(MAKE) -j2 build-agent-a2a build-agent-root
+	@echo "✅ All agent images built and pushed!"
+
+build-service-income-verification: ## Build and push the Income Verification MCP image
+	$(call build_image,apps/services/income-verification,income-verification-api)
+
+build-service-corporate-email: ## Build and push the Corporate Email MCP image
+	$(call build_image,apps/services/corporate-email,corporate-email)
+
+build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
+	$(call build_image,apps/services/legacy-dms,legacy-dms)
+
+build-service-kong: ## Build and push the custom Kong Gateway image
+	$(call build_image,apps/services/kong,kong-gateway)
+
+build-service-circuit-breaker: ## Build and push the Circuit Breaker image
+	$(call build_image,apps/services/circuit-breaker,circuit-breaker)
+
+build-services: ## Build all MCP service + Kong images concurrently
+	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong
+	@echo "✅ All service images built and pushed!"
+
+build-images: build-services build-agents ## Build every image deployed by Layer 5
+
+# ==============================================================================
+# Layer 5: workloads (MCP services -> agents -> Kong -> IAP egress), Terragrunt DAG
+# ==============================================================================
+
+deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, Kong, IAP egress, test VM)
+	@echo "🚀 Deploying Layer 5 workloads for $(ENV)..."
+	@cd $(LIVE_DIR)/stage-5-workloads && terragrunt --non-interactive run --all apply
+	@echo "✨ Layer 5 workloads deployed!"
+
+deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Registry entries)
+	@for s in corporate-email income-verification legacy-dms; do \
+		echo "🚀 Deploying $$s..."; \
+		(cd $(LIVE_DIR)/stage-5-workloads/services/$$s && terragrunt --non-interactive apply -auto-approve) || exit 1; \
+	done
+
+deploy-agent-a2a: ## Deploy the A2A Mortgage Specialist Reasoning Engine
+	@echo "🚀 Deploying A2A Reasoning Engine Agent..."
+	@cd $(LIVE_DIR)/stage-5-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
+
+deploy-agent-root: ## Deploy the LOB Root Coordinator Reasoning Engine
+	@echo "🚀 Deploying Root Coordinator Reasoning Engine Agent..."
+	@cd $(LIVE_DIR)/stage-5-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
+
+deploy-agents: deploy-agent-a2a deploy-agent-root ## Deploy both Reasoning Engine agents
+
+deploy-gateway: ## Deploy Kong API Gateway (re-run after agents are recreated: routes use engine IDs)
+	@echo "🚀 Deploying Kong API Gateway..."
+	@cd $(LIVE_DIR)/stage-5-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
+
+deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
+	@cd $(LIVE_DIR)/stage-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
+
+# ==============================================================================
+# Whole environment
+# ==============================================================================
+
+deploy-all: ## Build an env from zero: Layer 0 -> 1-3 -> 4 -> images -> 5 (single pass)
+	@$(MAKE) --no-print-directory deploy-cicd
+	@$(MAKE) --no-print-directory deploy-foundations ENV=$(ENV)
+	@$(MAKE) --no-print-directory deploy-governance ENV=$(ENV)
+	@$(MAKE) --no-print-directory build-images
+	@$(MAKE) --no-print-directory deploy-workloads ENV=$(ENV)
+	@echo "🎉 $(ENV) deployed. Verify with: make test-e2e ENV=$(ENV)"
+
+destroy-all: ## Destroy an env's Layers 5 -> 1 (dev only; never touches the shared Layer 0)
+	@if [ "$(ENV)" = "prd" ]; then echo "❌ destroy-all refuses ENV=prd."; exit 1; fi
+	@read -p "⚠️  Destroy ALL of $(ENV) (layers 5 -> 1)? Type the env name to confirm: " c && [ "$$c" = "$(ENV)" ]
+	@cd $(LIVE_DIR)/stage-5-workloads && terragrunt --non-interactive run --all destroy
+	@cd $(LIVE_DIR)/stage-4-governance && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/stage-3-security && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/stage-2-networking && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/stage-1-projects && terragrunt --non-interactive destroy -auto-approve
+	@echo "🧹 $(ENV) destroyed. The shared Layer 0 CI/CD was not touched."
+
+# ==============================================================================
+# Releases: copy dev images by digest into the immutable release repository
+# ==============================================================================
+
+status-release: ## Show the prd release tag and the shared repositories
 	@bash scripts/promote_release.sh status
 
-promote-patch: ## Bump PRD release tag by patch (e.g. v1.0.0 -> v1.0.1), tag images, update prd/env.yaml (ZERO auto deploy)
+promote-patch: ## Promote dev-latest as v1.0.1 (copy by digest, update prd/env.yaml, no deploy)
 	@bash scripts/promote_release.sh promote --tag v1.0.1
 
-promote-minor: ## Bump PRD release tag by minor (e.g. v1.0.0 -> v1.1.0), tag images, update prd/env.yaml (ZERO auto deploy)
+promote-minor: ## Promote dev-latest as v1.1.0 (copy by digest, update prd/env.yaml, no deploy)
 	@bash scripts/promote_release.sh promote --tag v1.1.0
 
-promote: ## Tag explicit release TAG, update prd/env.yaml (e.g. make promote TAG=v1.0.0) (ZERO auto deploy)
-	@bash scripts/promote_release.sh promote --tag $(TAG)
+promote: ## Promote dev images as TAG (e.g. make promote TAG=v1.2.0 [SOURCE_TAG=dev-<sha>]); no deploy
+	@if [ -z "$(TAG)" ]; then echo "❌ Usage: make promote TAG=vX.Y.Z [SOURCE_TAG=dev-latest]"; exit 1; fi
+	@bash scripts/promote_release.sh promote --tag $(TAG) --source-tag $(SOURCE_TAG)
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."

@@ -12,20 +12,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Promote dev images to a release: copy each image BY DIGEST from the shared dev repository
+# into the immutable release repository as <tag>, then pin prd/env.yaml to <tag>.
+# Never deploys. Repositories come from the shared layer-0 Terragrunt outputs.
+#
+#   promote_release.sh status
+#   promote_release.sh promote --tag vX.Y.Z [--source-tag dev-latest|dev-<sha>]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PRD_ENV_YAML="${REPO_ROOT}/infrastructure/live/prd/env.yaml"
+CICD_DIR="${REPO_ROOT}/infrastructure/live/shared/stage-0-cicd"
 
-CICD_PROJECT="esmeralda-cicd-artifacts-3a3d"
-REGION="us-central1"
 SOURCE_TAG="dev-latest"
 TARGET_TAG=""
 ACTION="promote"
 
-SERVICES=(
+IMAGES=(
   "kong-gateway"
   "legacy-dms"
   "income-verification-api"
@@ -34,103 +40,77 @@ SERVICES=(
   "root-agent"
 )
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
-    status)
-      ACTION="status"
-      shift
-      ;;
-    promote)
-      ACTION="promote"
-      shift
-      ;;
-    --tag)
-      TARGET_TAG="$2"
-      shift 2
-      ;;
-    --tag=*)
-      TARGET_TAG="${1#*=}"
-      shift
-      ;;
-    --source-tag)
-      SOURCE_TAG="$2"
-      shift 2
-      ;;
+    status|promote) ACTION="$1"; shift ;;
+    --tag) TARGET_TAG="$2"; shift 2 ;;
+    --tag=*) TARGET_TAG="${1#*=}"; shift ;;
+    --source-tag) SOURCE_TAG="$2"; shift 2 ;;
+    --source-tag=*) SOURCE_TAG="${1#*=}"; shift ;;
     -h|--help)
-      echo "Usage: $0 [status|promote] [--tag <vX.Y.Z>] [--source-tag <tag>]"
-      exit 0
-      ;;
-    *)
-      if [[ -z "${TARGET_TAG}" && "$1" =~ ^v[0-9] ]]; then
-        TARGET_TAG="$1"
-      fi
-      shift
-      ;;
+      echo "Usage: $0 [status|promote] --tag <vX.Y.Z> [--source-tag <tag>]"
+      exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-# Read current PRD tag from prd/env.yaml
-CURRENT_PRD_TAG="v1.0.0"
-if [[ -f "${PRD_ENV_YAML}" ]]; then
-  EXTRACTED_TAG=$(grep -E 'container_tag\s*:' "${PRD_ENV_YAML}" | sed -E 's/.*"([^"]+)".*/\1/' || true)
-  if [[ -n "${EXTRACTED_TAG}" ]]; then
-    CURRENT_PRD_TAG="${EXTRACTED_TAG}"
-  fi
-fi
+CICD_JSON="$(cd "${CICD_DIR}" && terragrunt output -json)"
+DEV_REPO="$(jq -r .dev_repository_url.value <<<"${CICD_JSON}")"
+RELEASE_REPO="$(jq -r .release_repository_url.value <<<"${CICD_JSON}")"
+
+CURRENT_PRD_TAG="$(sed -nE 's/^[[:space:]]*container_tag[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "${PRD_ENV_YAML}" | head -1)"
 
 if [[ "${ACTION}" == "status" ]]; then
   echo "========================================================================"
-  echo "👑 ESMERALDA MULTI-ENVIRONMENT RELEASE & PROMOTION STATUS (Shell)"
+  echo "👑 ESMERALDA RELEASE STATUS"
   echo "========================================================================"
-  echo "• Active PRD Pinned Tag    : ${CURRENT_PRD_TAG}"
-  echo "• Shared Artifact Registry : ${REGION}-docker.pkg.dev/${CICD_PROJECT}/esmeralda-containers"
+  echo "• PRD pinned tag     : ${CURRENT_PRD_TAG:-<none>}"
+  echo "• Dev repository     : ${DEV_REPO}  (mutable, every build)"
+  echo "• Release repository : ${RELEASE_REPO}  (immutable, promoted by digest)"
   echo "------------------------------------------------------------------------"
-  echo "Commands to Promote Release:"
-  echo "  ./scripts/promote_release.sh promote --tag v1.0.1"
-  echo "  ./scripts/promote_release.sh promote --tag v1.1.0"
+  echo "Promote: make promote TAG=vX.Y.Z [SOURCE_TAG=dev-<sha>]"
   echo "========================================================================"
   exit 0
 fi
 
-# Determine Target Tag
-if [[ -z "${TARGET_TAG}" ]]; then
-  TARGET_TAG="${CURRENT_PRD_TAG}"
+if [[ ! "${TARGET_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+  echo "❌ --tag must look like vX.Y.Z (got '${TARGET_TAG}')" >&2
+  exit 1
 fi
 
 echo "========================================================================"
-echo "🚀 PROMOTING ESMERALDA WORKLOADS TO PRODUCTION"
-echo "========================================================================"
-echo "• Target Tag        : ${TARGET_TAG}"
-echo "• Source Build Tag  : ${SOURCE_TAG}"
-echo "• Registry          : ${REGION}-docker.pkg.dev/${CICD_PROJECT}/esmeralda-containers"
+echo "🚀 PROMOTING ${SOURCE_TAG} -> ${TARGET_TAG} (copy by digest)"
+echo "   from ${DEV_REPO}"
+echo "   to   ${RELEASE_REPO}"
 echo "========================================================================"
 
-REGISTRY_BASE="${REGION}-docker.pkg.dev/${CICD_PROJECT}/esmeralda-containers"
-
-for SVC in "${SERVICES[@]}"; do
-  echo "📦 Tagging ${SVC}:${SOURCE_TAG} -> ${SVC}:${TARGET_TAG}..."
-  gcloud artifacts docker tags add \
-    "${REGISTRY_BASE}/${SVC}:${SOURCE_TAG}" \
-    "${REGISTRY_BASE}/${SVC}:${TARGET_TAG}" \
-    --quiet
+# 1. Resolve every source digest and refuse existing release tags BEFORE copying anything,
+#    so a promotion is all-or-nothing.
+declare -A DIGESTS
+for IMG in "${IMAGES[@]}"; do
+  DIGEST="$(gcloud artifacts docker images describe "${DEV_REPO}/${IMG}:${SOURCE_TAG}" --format='value(image_summary.digest)')"
+  [[ -n "${DIGEST}" ]] || { echo "❌ ${IMG}:${SOURCE_TAG} not found in the dev repository" >&2; exit 1; }
+  DIGESTS["${IMG}"]="${DIGEST}"
+  if gcloud artifacts docker images describe "${RELEASE_REPO}/${IMG}:${TARGET_TAG}" --format='value(image_summary.digest)' >/dev/null 2>&1; then
+    echo "❌ ${IMG}:${TARGET_TAG} already exists in the release repository (tags are immutable: bump the version)" >&2
+    exit 1
+  fi
+  echo "🔎 ${IMG}:${SOURCE_TAG} = ${DIGEST}"
 done
 
-# Update container_tag in prd/env.yaml
-if [[ -f "${PRD_ENV_YAML}" ]]; then
-  if grep -q "container_tag:" "${PRD_ENV_YAML}"; then
-    sed -i -E "s/(container_tag\s*:\s*)\"[^\"]+\"/\1\"${TARGET_TAG}\"/" "${PRD_ENV_YAML}"
-  else
-    # Insert container_tag before monitoring config
-    sed -i "s/  # 📊 OBSERVABILITY & MONITORING CONFIGURATION:/  container_tag       = \"${TARGET_TAG}\"\n\n  # 📊 OBSERVABILITY & MONITORING CONFIGURATION:/" "${PRD_ENV_YAML}"
-  fi
-  echo "✅ Updated ${PRD_ENV_YAML} with container_tag: \"${TARGET_TAG}\""
-fi
+# 2. Copy by digest (the release image is byte-identical to what was tested in dev).
+for IMG in "${IMAGES[@]}"; do
+  echo "📦 ${IMG}@${DIGESTS[${IMG}]} -> ${IMG}:${TARGET_TAG}"
+  gcloud container images add-tag --quiet \
+    "${DEV_REPO}/${IMG}@${DIGESTS[${IMG}]}" \
+    "${RELEASE_REPO}/${IMG}:${TARGET_TAG}"
+done
+
+# 3. Pin prd to the new release.
+sed -i -E "s/^([[:space:]]*container_tag[[:space:]]*=[[:space:]]*)\"[^\"]+\"/\1\"${TARGET_TAG}\"/" "${PRD_ENV_YAML}"
+echo "✅ ${PRD_ENV_YAML}: container_tag = \"${TARGET_TAG}\" (was \"${CURRENT_PRD_TAG}\")"
 
 echo ""
-echo "🎉 Promotion to ${TARGET_TAG} successfully completed!"
-echo "👉 To apply workloads in production, run:"
-echo "   make deploy-services ENV=prd"
-echo "   make deploy-agents ENV=prd"
-echo "   make deploy-gateway ENV=prd"
+echo "🎉 Promoted ${TARGET_TAG}. Nothing was deployed. To roll prd forward:"
+echo "   make deploy-workloads ENV=prd"
 echo "========================================================================"

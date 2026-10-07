@@ -1,0 +1,35 @@
+# .cloudbuild/build-image.yaml
+# Env-neutral image build for every Esmeralda container (agents, MCP services, Kong).
+#
+# Builds touch nothing env-specific: no Secret Manager, no Agent Registry, no CA bundle.
+# Env wiring (CA bundle, registry entries, IAM) happens at deploy time in Terraform, so the
+# same digest can be promoted from the dev repo to the release repo (make promote).
+#
+# Invoked by the Makefile `build-*` targets in the shared layer-0 CI/CD project, e.g.:
+#   gcloud builds submit apps/agents/a2a-agent --config=.cloudbuild/build-image.yaml \
+#     --substitutions=_IMAGE=a2a-agent,_REPOSITORY_URL=<dev repo url>,_TAG=dev-latest,_SHA_TAG=dev-<gitsha>
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REPOSITORY_URL}/${_IMAGE}:${_TAG}'
+      - '-t'
+      - '${_REPOSITORY_URL}/${_IMAGE}:${_SHA_TAG}'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push'
+    args: ['push', '--all-tags', '${_REPOSITORY_URL}/${_IMAGE}']
+
+substitutions:
+  _IMAGE: ''
+  _REPOSITORY_URL: ''
+  _TAG: 'dev-latest'
+  _SHA_TAG: 'dev-unknown'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true

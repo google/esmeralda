@@ -22,7 +22,7 @@ In standard enterprise cloud architectures, deploying an AI agent requires filin
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
 | 🤖 **AI Reasoning Engineer** | Prompt graph development, multi-agent delegation, tool orchestration, evaluating accuracy. | `apps/agents/` (Python/ADK code), `agent.yaml`, prompt templates. | VPC subnetting, Cloud SQL replication, IAM project bindings. |
-| 👷 **Platform / Database Lead** | Ensuring automated database backups, zero public IPs, and IAM-authenticated SQL connections. | `infrastructure/modules/4-workloads/agents/`, Cloud SQL specs, bootstrap Cloud Run jobs. | Agent prompt engineering, LLM model fine-tuning. |
+| 👷 **Platform / Database Lead** | Ensuring automated database backups, zero public IPs, and IAM-authenticated SQL connections. | `infrastructure/modules/5-workloads/agents/`, Cloud SQL specs, bootstrap Cloud Run jobs. | Agent prompt engineering, LLM model fine-tuning. |
 | 🛡️ **SecOps / Identity Auditor** | Enforcing zero-trust database authentication and SPIFFE / OIDC agent identity. | Service Account definitions (`sa-esmeralda-a2a`), Cloud SQL IAM user grants. | Python business logic. |
 
 ---
@@ -70,7 +70,7 @@ sequenceDiagram
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`infrastructure/modules/4-workloads/agents/`)
+## 🏗️ Technical Implementation Breakdown (`infrastructure/modules/5-workloads/agents/`)
 
 ### 1. Atomic Mortgage Assistant (`agents/a2a-agent/main.tf`)
 * **Private Cloud SQL Instance:** Provisions `google_sql_database_instance.task_store` (`POSTGRES_15`, `ZONAL`) with `ipv4_enabled = false` and `private_network = var.vpc_id` (via PSA `10.130.0.0/16`).

@@ -1,2 +1,3 @@
-.agw-roots.pem
 certs/
+*.pem
+*.crt

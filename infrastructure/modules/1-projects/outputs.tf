@@ -12,11 +12,6 @@ output "gateway_project_id" {
   value       = local.gateway_id
 }
 
-output "cicd_project_id" {
-  description = "The project ID allocated for central CI/CD pipelines and Artifact Registry repository"
-  value       = local.cicd_id
-}
-
 output "mcps_project_id" {
   description = "The project ID allocated for corporate MCP servers"
   value       = local.mcps_id
@@ -40,11 +35,6 @@ output "governance_project_id" {
 output "project_suffix" {
   description = "The random project suffix generated in Stage 1"
   value       = local.suffix
-}
-
-output "cicd_build_service_agent" {
-  description = "The Cloud Build Service Agent email in CI/CD project"
-  value       = google_project_service_identity.cicd_build.email
 }
 
 output "mcps_run_service_agent" {

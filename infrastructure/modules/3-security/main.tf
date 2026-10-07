@@ -127,28 +127,6 @@ locals {
   resolved_db_password_secret_id = var.byo_security ? var.existing_db_password_secret_id : try(google_secret_manager_secret.db_password[0].id, "")
 }
 
-# Two-Vault Pointer Secret in CI/CD project pointing to Governance project ID
-resource "google_secret_manager_secret" "gov_project_id" {
-  secret_id = "secret-esmeralda-governance-id-${var.environment}"
-  project   = var.cicd_project_id
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "gov_project_id" {
-  secret      = google_secret_manager_secret.gov_project_id.id
-  secret_data = var.governance_project_id
-}
-
-resource "google_secret_manager_secret_iam_member" "cicd_builder_gov_secret" {
-  project   = var.cicd_project_id
-  secret_id = google_secret_manager_secret.gov_project_id.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${local.builder_sa_email}"
-}
-
 # ====================================================================
 # 3. LEAST-PRIVILEGE WORKLOAD SERVICE ACCOUNTS & IAM ROLE BINDINGS
 # ====================================================================
@@ -172,56 +150,6 @@ resource "google_project_iam_member" "mcps_roles" {
   project = var.mcps_project_id
   role    = each.key
   member  = "serviceAccount:${google_service_account.mcps_sa.email}"
-}
-
-# Dedicated Cloud Build & Container Delivery Identity for CI/CD Hub
-resource "google_service_account" "cicd_builder_sa" {
-  count        = var.byo_cicd_project ? 0 : 1
-  account_id   = "sa-esmeralda-builder-${var.environment}"
-  display_name = "Esmeralda CI/CD Container Builder Workload Service Account"
-  project      = var.cicd_project_id
-}
-
-locals {
-  builder_sa_email = var.byo_cicd_project ? "sa-esmeralda-builder-dev@${var.cicd_project_id}.iam.gserviceaccount.com" : google_service_account.cicd_builder_sa[0].email
-}
-
-# Grant dedicated builder SA least-privilege rights to build and push containers in CI/CD project
-resource "google_project_iam_member" "cicd_builder_roles" {
-  for_each = toset([
-    "roles/cloudbuild.builds.editor",
-    "roles/storage.admin",
-    "roles/artifactregistry.admin",
-    "roles/logging.logWriter"
-  ])
-  project = var.cicd_project_id
-  role    = each.key
-  member  = "serviceAccount:${local.builder_sa_email}"
-}
-
-# Grant Cloud Build Builder SA permission to list projects and register services in Agent Registry atomically
-resource "google_project_iam_member" "cicd_builder_agent_registry" {
-  for_each = toset([
-    var.mcps_project_id,
-    var.a2a_project_id,
-    var.root_project_id,
-    var.governance_project_id,
-  ])
-  project = each.key
-  role    = "roles/agentregistry.admin"
-  member  = "serviceAccount:${local.builder_sa_email}"
-}
-
-resource "google_project_iam_member" "cicd_builder_browser" {
-  for_each = toset([
-    var.mcps_project_id,
-    var.a2a_project_id,
-    var.root_project_id,
-    var.governance_project_id,
-  ])
-  project = each.key
-  role    = "roles/browser"
-  member  = "serviceAccount:${local.builder_sa_email}"
 }
 
 # Provision the Google-managed Agent Platform Service Identity in Governance project
@@ -419,8 +347,10 @@ resource "google_project_iam_member" "runtime_to_agw_viewer" {
 
 
 
-# Grant Artifact Registry Reader on CI/CD project to Reasoning Engine & Cloud Run tenant service agents for BYOC image pulling
-resource "google_project_iam_member" "re_cicd_ar_reader" {
+# Grant Artifact Registry Reader on this env's repository in the shared layer-0 CI/CD project
+# (dev reads the mutable dev repo, prd reads the immutable release repo) so Reasoning Engine
+# and Cloud Run service agents can pull BYOC images. Repository-scoped: no project-wide access.
+resource "google_artifact_registry_repository_iam_member" "re_cicd_ar_reader" {
   for_each = toset([
     "serviceAccount:service-${data.google_project.a2a.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
     "serviceAccount:service-${data.google_project.root_agent.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
@@ -431,9 +361,11 @@ resource "google_project_iam_member" "re_cicd_ar_reader" {
     "serviceAccount:service-${data.google_project.mcps.number}@serverless-robot-prod.iam.gserviceaccount.com",
     "serviceAccount:service-${data.google_project.gateway.number}@serverless-robot-prod.iam.gserviceaccount.com"
   ])
-  project = var.cicd_project_id
-  role    = "roles/artifactregistry.reader"
-  member  = each.value
+  project    = var.cicd_project_id
+  location   = var.artifact_region
+  repository = var.artifact_repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = each.value
 }
 
 

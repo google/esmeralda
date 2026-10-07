@@ -21,7 +21,7 @@ In enterprise environments, different business units and IT organizations have d
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🛡️ **PlatformOps / Ingress Lead** | Managing SSL certificates, ingress security policies, API proxy policies, and token exchange. | `infrastructure/modules/4-workloads/gateways/`, Apigee proxy XMLs, `kong.yml`, ILB URL maps. | Internal agent prompt graphs, Python business logic. |
+| 🛡️ **PlatformOps / Ingress Lead** | Managing SSL certificates, ingress security policies, API proxy policies, and token exchange. | `infrastructure/modules/5-workloads/gateways/`, Apigee proxy XMLs, `kong.yml`, ILB URL maps. | Internal agent prompt graphs, Python business logic. |
 | 🌐 **NetOps Engineer** | Providing proxy-only subnets and managing Cloud DNS bindings. | `sb-esmeralda-proxy` subnetwork, DNS A records (`*.esmeralda.internal`). | Ingress route transformation policies. |
 | 🧑‍💻 **AI Application Developer** | Calling target endpoints via standard internal DNS hostnames. | Consuming `http://a2a-mortgage-agent.esmeralda.internal/v1/message:send`. | Gateway configuration, OIDC token generation, or proxy infrastructure. |
 
@@ -46,7 +46,7 @@ In enterprise environments, different business units and IT organizations have d
 flowchart TD
     Req["Incoming User / Agent Prompt<br/>(Host: a2a-mortgage-agent.esmeralda.internal)"]
     
-    subgraph Adapters["Selectable Gateway Adapter (modules/4-workloads/gateways/)"]
+    subgraph Adapters["Selectable Gateway Adapter (modules/5-workloads/gateways/)"]
         direction TB
         OptA["<b>Option A: Apigee X</b><br/>• Enterprise API management<br/>• Dynamic KVM route lookup<br/>• Policy-driven token exchange"]
         OptB["<b>Option B: Kong DB-less</b><br/>• Serverless Cloud Run (Port 8000)<br/>• Secret Manager kong.yml<br/>• GCP Service Account Plugin"]

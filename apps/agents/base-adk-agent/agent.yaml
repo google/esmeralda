@@ -44,7 +44,6 @@ env:
 
   # --- Central Agent Gateway & SPIFFE Identity ---
   GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"
-  SECRET_NAME: "agw-root-ca-cert-dev"
   GRPC_IPV6_PREFER: "0"
   GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
   GOOGLE_API_USE_MTLS_ENDPOINT: "never"
