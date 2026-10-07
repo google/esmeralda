@@ -31,7 +31,10 @@ resource "google_project" "cicd" {
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
-  auto_create_network = false
+  # Same as the layer-1 projects. "false" makes the provider enable Compute right after
+  # creation (to delete the default VPC), which fails before Service Usage is bootstrapped.
+  # Compute is never enabled here, so no default VPC is ever created.
+  auto_create_network = true
   # Shared by every environment and holds release images: never delete by accident.
   deletion_policy = "PREVENT"
 
