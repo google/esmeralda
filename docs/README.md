@@ -24,7 +24,7 @@ In most enterprises, AI Agent prototypes remain stuck in notebooks or local scri
                                          │  Zero-Trust Integration
                ┌─────────────────────────┴──────────────────────────────┐
                │  🔵 EMBAIXO (Platform Layer - infrastructure/)         │
-               │  5-layer Terragrunt IaC, Shared VPC, mTLS SPIFFE,      │
+               │  6-layer Terragrunt IaC, Shared VPC, SPIFFE identity,  │
                │  Central Agent Gateway, Model Armor & BigQuery FinOps. │
                └────────────────────────────────────────────────────────┘
 ```
@@ -40,6 +40,17 @@ Esmeralda is designed around two distinct developer personas who collaborate wit
 | 🧑‍💻 **AI / Application Developer** | [`apps/`](../apps/) | Writing agent logic with **Google ADK**, defining **MCP tool servers** (FastAPI/FastMCP), testing prompts with **Gemini 3.7 Flash**, and orchestrating multi-agent **A2A protocols**. | Terraform, Terragrunt, VPC peering, KMS IAM roles, subnets, firewall rules, or DNS zones. |
 | 👷 **Platform / SecOps Engineer** | [`infrastructure/`](../infrastructure/) | Managing declarative **Terragrunt & Terraform modules**, isolated GCP projects, Private Service Connect (PSC), **Central Agent Gateway** egress, and **BigQuery FinOps** chargeback views. | Python application business logic, agent prompts, or internal tool schemas. |
 
+### 👥 Agent Teams: Who Owns Which Agent
+
+Application developers are further split into teams, and **each team owns its own GCP project** (named after the team), so agents, identities and budgets never mix:
+
+| Team | What it builds | Esmeralda agent | Project |
+| :--- | :--- | :--- | :--- |
+| 🧑‍💼 **CX team** | User-facing **orchestrator** agents (Google ADK). They talk to the customer and *consume* reusable agents instead of rebuilding them. | `cx-mortgage-orchestrator` ([`apps/agents/cx-mortgage-orchestrator`](../apps/agents/cx-mortgage-orchestrator/)) | `esm-<env>-cx-agents-<sfx>` |
+| 🧠 **AI CoE team** | Reusable **specialist** agents published over the **A2A** (Agent-to-Agent) protocol, an open standard where an agent advertises its skills in an *agent card* and receives tasks over HTTP. Any team can call them. | `ai-coe-mortgage-specialist` ([`apps/agents/ai-coe-mortgage-specialist`](../apps/agents/ai-coe-mortgage-specialist/)), skills: Document Search, Income Verification, Corporate Email | `esm-<env>-ai-coe-agents-<sfx>` |
+
+The specialist's agent card is registered in the central **Agent Registry** (governance project), and the orchestrator reaches it at `https://ai-coe-mortgage-specialist.esmeralda.internal` through the Agent Gateway and Kong. Neither team needs network or IAM access to the other's project.
+
 ---
 
 ## 🔄 End-to-End Request & Security Lifecycle
@@ -50,33 +61,37 @@ Here is what happens under the hood when a user submits a prompt (e.g., *"Proces
 sequenceDiagram
     autonumber
     actor User as Client
-    participant Root as Root Coordinator<br/>(Vertex Agent)
-    participant A2A as Specialist Agent<br/>(Vertex A2A)
-    participant MCP as MCP Tools<br/>(Cloud Run)
-    participant AGW as Agent Gateway<br/>(Central Proxy)
-    participant MA as Model Armor<br/>(Guardrails)
+    participant Orch as cx-mortgage-orchestrator<br/>(CX team, Agent Runtime)
+    participant AGW as Agent Gateway<br/>(Central Egress Proxy)
     participant Gemini as Gemini 3.7 Flash<br/>(Vertex AI API)
-    participant FinOps as Central Governance<br/>(BigQuery FinOps)
+    participant Kong as Kong<br/>(internal HTTPS LB)
+    participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE team, A2A)
+    participant MCP as MCP Tools<br/>(Cloud Run)
+    participant FinOps as Central Governance<br/>(Log Sinks & BigQuery)
 
-    User->>Root: 1. Ingress User Request
-    Root->>A2A: 2. Delegate Task (A2A Protocol / PSC)
-    
-    Note over A2A,MCP: Phase A — Private Intranet Tool Execution
-    A2A->>MCP: 3. Query Documents (Legacy DMS)
-    A2A->>MCP: 4. Verify Payroll (Income Verification)
-    A2A->>MCP: 5. Fetch Applicant History (Corporate Email)
+    User->>Orch: Query (Vertex AI streamQuery)
+    Orch->>AGW: Reason about the request
+    AGW->>Gemini: Forward (registered host + iap.egressor check)
+    Gemini-->>Orch: Decision: delegate to the specialist
 
-    Note over A2A,Gemini: Phase B — Zero-Trust Model Egress via Central Gateway
-    A2A->>AGW: 6. Model Egress with mTLS Workload Identity (SPIFFE)
-    AGW->>MA: 7. Sanitize Content (PII & Injection Filters)
-    AGW->>FinOps: 8. Emit Real-time Token & Chargeback Telemetry
-    AGW->>Gemini: 9. Forward Authorized Request
-    Gemini-->>AGW: 10. Model Response & Reasoning Thoughts
-    AGW-->>A2A: 11. Validated Model Output
+    Note over Orch,Spec: Phase A — Governed A2A delegation
+    Orch->>AGW: A2A task to ai-coe-mortgage-specialist.esmeralda.internal
+    AGW->>Kong: Private egress (PSC attachment, private DNS, internal Root CA)
+    Kong->>Spec: Route by Host header (+ Google ID token)
 
-    A2A-->>Root: 12. Structured Assessment
-    Root-->>User: 13. Final User Response
+    Note over Spec,MCP: Phase B — Private tool execution
+    Spec->>AGW: Model calls and MCP calls (https://<svc>.esmeralda.internal/mcp)
+    AGW->>Gemini: Reasoning
+    AGW->>Kong: MCP calls
+    Kong->>MCP: Legacy DMS, Income Verification, Corporate Email
+
+    Spec-->>Orch: Structured assessment (back along the same path)
+    Orch-->>User: Final response
+    Orch-)FinOps: Token & request telemetry (agent logs → central sinks)
+    Spec-)FinOps: Token & request telemetry (agent logs → central sinks)
 ```
+
+Every arrow that leaves an agent passes the gateway's three checks: **who** (SPIFFE Agent Identity), **where** (Agent Registry entry + `roles/iap.egressor`), and optionally **what** (Model Armor inline inspection, wired but disabled by default). Details, certificates and troubleshooting: [Central Agent Gateway guide](./3-agentops-and-lifecycle/01-central-agent-gateway.md).
 
 ---
 
@@ -100,16 +115,18 @@ flowchart LR
 2. 🌐 **[Layer 2: Private Networking (`layer-2-networking`)](./1-platform-foundations/02-private-networking.md)**:
    Deploys the central Shared VPC, private subnets, Cloud DNS zones (`*.esmeralda.internal`), and Private Service Connect (PSC) attachments.
 3. 🔐 **[Layer 3: Security & Secrets (`layer-3-security`)](./1-platform-foundations/03-security-iam-and-telemetry.md)**:
-   Configures Cloud KMS CMEK encryption keyrings, Secret Manager secrets, the internal root CA, and workload Service Accounts with least-privilege IAM bindings.
+   Configures Cloud KMS CMEK encryption keyrings, Secret Manager secrets, workload Service Accounts and Agent Identity grants with least-privilege IAM bindings, and the **internal Root CA**: a self-signed certificate authority (Terraform `tls` provider) that signs the certificate Kong presents for `*.esmeralda.internal`.
 4. 🛡️ **[Layer 4: Central Governance Hub (`layer-4-governance`)](./3-agentops-and-lifecycle/README.md)**:
    Establishes the enterprise control plane before any workload runs:
-   * **Central Agent Gateway**: Intercepts agent egress using `AGENT_TO_ANYWHERE` with mTLS SPIFFE identity.
-   * **Model Armor**: Enforces PII sanitization and prompt injection filters.
-   * **FinOps Analytics**: Sinks telemetry events to BigQuery views (`vw_monthly_agent_chargeback`, `vw_request_level_telemetry`) and Cloud Monitoring dashboards.
+   * **Central Agent Gateway**: a Google-managed proxy on every agent's outbound path (`AGENT_TO_ANYWHERE`). It authorizes each call by SPIFFE Agent Identity against the **Agent Registry** allowlist and IAP `roles/iap.egressor`. See the [Central Agent Gateway guide](./3-agentops-and-lifecycle/01-central-agent-gateway.md).
+   * **Model Armor**: prompt and response guardrail templates (PII, prompt injection). Inline gateway inspection is wired but disabled by default.
+   * **FinOps Analytics**: Sinks agent and service logs from the workload projects to BigQuery views (`vw_monthly_agent_chargeback`, `vw_request_level_telemetry`) and Cloud Monitoring dashboards.
 5. ⚙️ **[Layer 5: Workloads & Tool Catalog (`layer-5-workloads`)](./2-workloads-and-catalog/README.md)**:
    Deploys the runtime applications, bound to the layer-4 gateway and registry:
-   * **MCP Microservices** (Cloud Run): Corporate Email, Income Verification, Legacy DMS.
-   * **AI Reasoning Engines** (Vertex AI): the CX team's orchestrator (`cx-mortgage-orchestrator`) consuming the AI CoE's reusable A2A specialist (`ai-coe-mortgage-specialist`, backed by Cloud SQL).
+   * **MCP Microservices** (Cloud Run, internal only): Corporate Email, Income Verification, Legacy DMS, each registered in the Agent Registry.
+   * **AI Reasoning Engines** (Vertex AI Agent Engine, BYOC containers bound to the gateway): the CX team's orchestrator (`cx-mortgage-orchestrator`) consuming the AI CoE's reusable A2A specialist (`ai-coe-mortgage-specialist`; a Cloud SQL task store is provisioned but not yet enabled).
+   * **Kong** (Cloud Run behind an internal HTTPS load balancer): the private front door for `*.esmeralda.internal`, routing by Host header to the MCP servers and agents.
+   * **IAP egress grants** and a **test VM** for private smoke tests.
 
 ---
 
@@ -121,6 +138,6 @@ Deep-dive into specific areas of the platform:
 | :--- | :--- | :--- |
 | 🏢 **[1. Platform Foundations](./1-platform-foundations/README.md)** | Core cloud landing zone and infrastructure specs. | [Projects & APIs](./1-platform-foundations/01-projects-and-finops.md), [Shared VPC Networking](./1-platform-foundations/02-private-networking.md), [Security, CMEK & IAM](./1-platform-foundations/03-security-iam-and-telemetry.md). |
 | 🤖 **[2. Workloads & Catalog](./2-workloads-and-catalog/README.md)** | Runtimes, microservices, and AI engines. | [Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md), [MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md), [Reasoning Engines & Database](./2-workloads-and-catalog/03-ai-agents-and-database.md). |
-| 📊 **[3. AgentOps & Governance](./3-agentops-and-lifecycle/README.md)** | Enterprise governance, security, and observability. | [Central Agent Gateway](./3-agentops-and-lifecycle/01-central-agent-gateway.md), [Centralized Monitoring & FinOps Dashboards](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md), Multi-repo SDLC, FinOps chargebacks. |
-| 🤝 **[Contributing Guidelines](./contributing.md)** | Contribution standards and testing guidelines. | Git conventions, PR requirements, test coverage expectations. |
+| 📊 **[3. AgentOps & Governance](./3-agentops-and-lifecycle/README.md)** | Enterprise governance, security, and observability. | [Central Agent Gateway](./3-agentops-and-lifecycle/01-central-agent-gateway.md), [Centralized Monitoring & FinOps Dashboards](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md), [Multi-repo SDLC, cross-team model & image promotion](./3-agentops-and-lifecycle/README.md). |
+| 🤝 **[Contributing Guidelines](./contributing.md)** | Contribution process and local testing. | CLA, PR reviews, `make` test targets. |
 | 📜 **[Code of Conduct](./code-of-conduct.md)** | Community engagement standards. | Respect, inclusivity, and community ethics. |
