@@ -28,7 +28,7 @@ dependencies = [
     "httpx",
     "cloud-sql-python-connector[asyncpg]",
     "asyncpg",
-    "a2a-sdk>=0.3.26,<1.0.0",
+    "a2a-sdk>=0.3.26,<2.0.0",
     "mcp>=1.0.0",
     "google-cloud-bigquery-storage",
     "google-genai",
