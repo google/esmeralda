@@ -43,8 +43,8 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
-	@chmod +x ./preflight.sh
-	@./preflight.sh
+	@chmod +x ./scripts/preflight.sh
+	@./scripts/preflight.sh
 
 bootstrap: preflight ## Setup local python virtual environments and sync workspace dependencies via uv
 	@echo "📦 Bootstrapping local monorepo environment with uv..."
