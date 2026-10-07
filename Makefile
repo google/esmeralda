@@ -245,9 +245,10 @@ define build_image
 	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r .cicd_project_id.value) && \
 	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
 	BUILDER_SA=$$(echo "$$CICD_JSON" | jq -r .builder_sa_email.value) && \
+	SOURCE_BUCKET=$$(echo "$$CICD_JSON" | jq -r .build_source_bucket.value) && \
 	gcloud builds submit $(1) --config=.cloudbuild/build-image.yaml --project=$$CICD_PROJ \
 		--service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA \
-		--default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET \
+		--gcs-source-staging-dir=gs://$$SOURCE_BUCKET/source \
 		--substitutions=_IMAGE=$(2),_REPOSITORY_URL=$$REPO_URL,_TAG=$(BUILD_TAG),_SHA_TAG=dev-$(GIT_SHA)
 endef
 

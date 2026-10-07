@@ -205,11 +205,20 @@ resource "google_network_security_authz_policy" "model_armor_policy" {
   }
 }
 
+# Google creates the Network Security service agent lazily. Force it into existence so the
+# grant below doesn't race it on a fresh governance project.
+resource "google_project_service_identity" "networksecurity" {
+  count    = var.enable_agent_gateway ? 1 : 0
+  provider = google-beta
+  project  = var.governance_project_id
+  service  = "networksecurity.googleapis.com"
+}
+
 resource "google_project_iam_member" "networksecurity_model_armor" {
   count   = var.enable_agent_gateway ? 1 : 0
   project = var.governance_project_id
   role    = "roles/modelarmor.user"
-  member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-networksecurity.iam.gserviceaccount.com"
+  member  = "serviceAccount:${google_project_service_identity.networksecurity[0].email}"
 }
 
 resource "google_project_iam_member" "agentgateway_model_armor" {

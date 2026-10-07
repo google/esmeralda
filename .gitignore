@@ -60,3 +60,6 @@ links.txt
 *.crt
 *.pem
 **/certs/
+
+# Local record written by apps/services/register_mcp.py on each MCP deploy (env-specific)
+apps/services/mcp_registry.json

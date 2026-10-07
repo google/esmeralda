@@ -49,3 +49,8 @@ output "cloudbuild_service_agent" {
   description = "Cloud Build service agent of the shared CI/CD project."
   value       = google_project_service_identity.cloudbuild.email
 }
+
+output "build_source_bucket" {
+  description = "GCS bucket where `gcloud builds submit` stages build sources."
+  value       = google_storage_bucket.build_source.name
+}
