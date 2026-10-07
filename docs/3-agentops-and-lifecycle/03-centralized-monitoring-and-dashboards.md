@@ -1,4 +1,4 @@
-# Centralized Governance, Observability & FinOps Guide (Stage 5)
+# Centralized Governance, Observability & FinOps Guide (Layer 4)
 
 ## Overview
 

@@ -1,22 +1,22 @@
-# 🌐 Stage 2: Private Networking, DNS & Private Service Connect (PSC)
+# 🌐 Layer 2: Private Networking, DNS & Private Service Connect (PSC)
 
-Welcome to the technical deep-dive for **Stage 2 (Private Networking & Connectivity)**.
+Welcome to the technical deep-dive for **Layer 2 (Private Networking & Connectivity)**.
 
-Stage 2 deploys a zero-trust enterprise Shared VPC hub network inside `prj-esmeralda-net-host`, establishes private subnet topologies, configures Private Service Connect (PSC) Network Attachments for serverless AI reasoning engines, and deploys private Cloud DNS zones.
+Layer 2 deploys a zero-trust enterprise Shared VPC hub network inside `prj-esmeralda-net-host`, establishes private subnet topologies, configures Private Service Connect (PSC) Network Attachments for serverless AI reasoning engines, and deploys private Cloud DNS zones.
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Stage 2 Exists
+## 💡 The 60-Second Mental Model: Why Layer 2 Exists
 
 AI Reasoning Engines running in Google Cloud Vertex AI execute inside Google-managed tenant networks. By default, communicating with private databases (Cloud SQL) or corporate tools (Cloud Run MCPs) would require either:
 1. Exposing database and tool ports to the public internet (a severe enterprise security violation).
 2. Complex VPC Peering meshes that exhaust IP address space (CIDR) and suffer from non-transitive routing.
 
-**Stage 2 creates a centralized Shared VPC and uses Private Service Connect (PSC) to bridge serverless AI reasoning engines securely into the private corporate intranet with zero public IPs.**
+**Layer 2 creates a centralized Shared VPC and uses Private Service Connect (PSC) to bridge serverless AI reasoning engines securely into the private corporate intranet with zero public IPs.**
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns Stage 2?
+## 🎭 Persona & Role Breakdown: Who Owns Layer 2?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
@@ -97,12 +97,12 @@ resource "google_compute_network_attachment" "psc_attachment" {
   subnetworks           = [google_compute_subnetwork.psc_interface[0].id]
 }
 ```
-When an ADK Reasoning Engine is deployed in Stage 4, its `psc_interface_config` references this network attachment, creating an isolated, bi-directional tunnel from Google's runtime into `10.11.0.0/24`.
+When an ADK Reasoning Engine is deployed in Layer 5, its `psc_interface_config` references this network attachment, creating an isolated, bi-directional tunnel from Google's runtime into `10.11.0.0/24`.
 
 ---
 
 ### 3. Subnet IAM Network User Permissions (`roles/compute.networkUser`)
-To permit serverless containers in spoke projects to consume host subnets, Stage 2 grants `roles/compute.networkUser` to the 7 required service robot identities:
+To permit serverless containers in spoke projects to consume host subnets, Layer 2 grants `roles/compute.networkUser` to the 7 required service robot identities:
 * `service-{mcps_number}@serverless-robot-prod.iam.gserviceaccount.com`
 * `service-{a2a_number}@serverless-robot-prod.iam.gserviceaccount.com`
 * `service-{a2a_number}@gcp-sa-aiplatform.iam.gserviceaccount.com`
@@ -118,7 +118,7 @@ To permit serverless containers in spoke projects to consume host subnets, Stage
 ### Test Private DNS Resolution from Jumpbox VM
 ```bash
 # SSH into the test jumpbox VM via IAP tunnel
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
 # Inside VM: Verify internal DNS resolves to private VIP
 dig +short ai-coe-mortgage-specialist.esmeralda.internal
@@ -129,5 +129,5 @@ dig +short ai-coe-mortgage-specialist.esmeralda.internal
 ```bash
 gcloud compute network-attachments describe gateway-psc-interface-attachment-dev \
     --region=us-central1 \
-    --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw net_host_project_id)
+    --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw net_host_project_id)
 ```

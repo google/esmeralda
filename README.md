@@ -57,19 +57,19 @@ flowchart TD
         TestVM["Test Runner VM (IAP Tunnel)"]
     end
 
-    subgraph Governance["🛡️ Central Governance & Security (Stage 5)"]
+    subgraph Governance["🛡️ Central Governance & Security (Layer 4)"]
         AGW["Central Agent Gateway\n(AGENT_TO_ANYWHERE)"]
         MA["Model Armor\nGuardrails (PII / Injection)"]
         AR["Central Agent Registry\n(Catalog & Endpoints)"]
         FinOps["FinOps Telemetry\n& BigQuery Analytics"]
     end
 
-    subgraph Agents["🧠 AI Reasoning Layer (Stage 4)"]
+    subgraph Agents["🧠 AI Reasoning (Layer 5)"]
         RootAgent["CX Mortgage Orchestrator\n(Vertex AI Reasoning Engine)"]
         A2AAgent["AI CoE Mortgage Specialist\n(Vertex AI Reasoning Engine / A2A)"]
     end
 
-    subgraph Tools["🔌 MCP Tool Microservices (Stage 4)"]
+    subgraph Tools["🔌 MCP Tool Microservices (Layer 5)"]
         DMS["Legacy DMS Server\n(Cloud Run)"]
         Income["Income Verification Server\n(Cloud Run)"]
         Email["Corporate Email Server\n(Cloud Run)"]
@@ -104,7 +104,7 @@ flowchart TD
 | 🛡️ **Zero-Trust Governance** | **Central Agent Gateway & SPIFFE Identity** | Centralized egress proxy enforcing mTLS cryptographic workload certificates, IAP IAM access boundaries, and Model Armor content sanitization. |
 | 🔌 **Tool Ecosystem** | **Model Context Protocol (MCP)** | Decoupled, serverless tool microservices exposing corporate systems (DMS, email, payroll) via standardized MCP endpoints over Private Service Connect. |
 | 📊 **Observability & FinOps** | **OpenTelemetry & BQ Analytics** | Native per-request token usage tracking, audit sinks, automated chargeback SQL views, and Cloud Monitoring golden signal dashboards. |
-| 🏗️ **Declarative Platform** | **5-Stage Terragrunt Progression** | Modular infrastructure stack isolating Projects (S1), Networking (S2), Security (S3), Workloads (S4), and Governance (S5) across environments. |
+| 🏗️ **Declarative Platform** | **Layered Terragrunt Progression** | Modular infrastructure stack built from the ground up: shared CI/CD (L0), then per environment Projects (L1), Networking (L2), Security (L3), Governance (L4), and Workloads (L5). |
 
 ---
 
@@ -113,9 +113,9 @@ flowchart TD
 
 Explore in-depth documentation organized by domain:
 
-* 🏗️ **[Platform Foundations (Stage 1-3)](docs/1-platform-foundations/README.md)** — Shared VPC, KMS CMEK encryption, IAM hierarchies, and Secret Manager architecture.
-* 🤖 **[Workloads & Service Catalog (Stage 4)](docs/2-workloads-and-catalog/README.md)** — Reasoning Engine deployment specs, MCP server contracts, and Swappable Ingress Gateways.
-* 📊 **[AgentOps, Governance & FinOps (Stage 5)](docs/3-agentops-and-lifecycle/README.md)** — Centralized monitoring, Multi-repo SDLC, and BigQuery FinOps views.
+* 🏗️ **[Platform Foundations (Layer 1-3)](docs/1-platform-foundations/README.md)** — Shared VPC, KMS CMEK encryption, IAM hierarchies, and Secret Manager architecture.
+* 🤖 **[Workloads & Service Catalog (Layer 5)](docs/2-workloads-and-catalog/README.md)** — Reasoning Engine deployment specs, MCP server contracts, and Swappable Ingress Gateways.
+* 📊 **[AgentOps, Governance & FinOps (Layer 4)](docs/3-agentops-and-lifecycle/README.md)** — Centralized monitoring, Multi-repo SDLC, and BigQuery FinOps views.
 * 🤝 **[Contributing Guidelines](docs/contributing.md)** — Code standards, PR workflow, and testing requirements.
 
 

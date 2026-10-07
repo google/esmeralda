@@ -92,7 +92,7 @@ variable "environment" {
 }
 
 variable "project_suffix" {
-  description = "The random project suffix generated in Stage 1"
+  description = "The random project suffix generated in Layer 1"
   type        = string
 }
 

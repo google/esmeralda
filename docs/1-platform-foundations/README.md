@@ -1,4 +1,4 @@
-# 🏗️ Platform Foundations (Stages 1, 2, and 3)
+# 🏗️ Platform Foundations (Layers 1, 2, and 3)
 
 This section of the documentation details the conceptual architecture, **Architectural Decision Records (ADRs)**, FinOps governance principles, and production-grade Terraform/Terragrunt implementations for Esmeralda's foundational platform.
 
@@ -37,45 +37,45 @@ This section of the documentation details the conceptual architecture, **Archite
 
 ---
 
-## 🧭 Foundations 3-Stage Progression Pipeline
+## 🧭 Foundations 3-Layer Progression Pipeline
 
 ```mermaid
 flowchart TD
-    subgraph Stage1["Stage 1: Projects & FinOps (modules/1-projects)"]
+    subgraph Layer1["Layer 1: Projects & FinOps (modules/1-projects)"]
         P1["Provision 7 Isolated GCP Projects<br/>(net_host, gateway, governance, mcps, ai_coe_agents, cx_agents; cicd is shared in layer 0)"]
         P2["Link Corporate Billing & Enable Service APIs"]
         P1 --> P2
     end
 
-    subgraph Stage2["Stage 2: Private Networking (modules/2-networking)"]
+    subgraph Layer2["Layer 2: Private Networking (modules/2-networking)"]
         N1["Deploy Shared VPC Network in net_host"]
         N2["Provision Subnets: core, proxy, psc, psc-interface"]
         N3["Configure Cloud NAT, SWP & Private DNS Zones"]
         N1 --> N2 --> N3
     end
 
-    subgraph Stage3["Stage 3: Security & Telemetry (modules/3-security)"]
+    subgraph Layer3["Layer 3: Security & Telemetry (modules/3-security)"]
         S1["Centralize KMS Keyrings & CMEK Keys in governance"]
         S2["Provision Secret Manager Secrets & BigQuery Audit Sinks"]
         S3["Create Workload SAs with Strict Least-Privilege IAM Roles"]
         S1 --> S2 --> S3
     end
 
-    Stage1 ==>|Provides Project IDs & Service Agents| Stage2
-    Stage2 ==>|Provides VPC, Subnet & DNS Self-Links| Stage3
-    Stage3 ==>|Ready for AI Application Catalog Workloads| Catalog["Stage 4: Composable Workloads Catalog"]
+    Layer1 ==>|Provides Project IDs & Service Agents| Layer2
+    Layer2 ==>|Provides VPC, Subnet & DNS Self-Links| Layer3
+    Layer3 ==>|Ready for AI Application Catalog Workloads| Catalog["Layer 5: Composable Workloads Catalog"]
 ```
 
 ---
 
 ## 📚 Foundations Detailed Guides
 
-1. **[Stage 1: Foundational Projects, Billing (FinOps), and APIs](./01-projects-and-finops.md)**
+1. **[Layer 1: Foundational Projects, Billing (FinOps), and APIs](./01-projects-and-finops.md)**
    * Architectural & FinOps Deep-Dive
    * Technical Specifications & HCL Blueprints (`modules/1-projects/`)
-2. **[Stage 2: Private Networking, DNS, and Private Service Connect (PSC)](./02-private-networking.md)**
+2. **[Layer 2: Private Networking, DNS, and Private Service Connect (PSC)](./02-private-networking.md)**
    * Network Topology & Secure Egress Overview
    * Technical Specifications & HCL Blueprints (`modules/2-networking/`)
-3. **[Stage 3: Security, CMEK Keys, Secrets, and Identities](./03-security-iam-and-telemetry.md)**
+3. **[Layer 3: Security, CMEK Keys, Secrets, and Identities](./03-security-iam-and-telemetry.md)**
    * Encryption, Service Accounts, and Least-Privilege IAM Overview
    * Technical Specifications & HCL Blueprints (`modules/3-security/`)

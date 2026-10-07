@@ -1,4 +1,4 @@
-# Outputs for Stage 4 Governance Stack
+# Outputs for Layer 4 Governance Stack
 output "governance_dataset_id" {
   value       = "esmeralda_telemetry_logs_${var.environment}"
   description = "BigQuery dataset ID for telemetry and chargeback analytics"
@@ -56,7 +56,7 @@ output "model_armor_response_template_name" {
 
 output "governance_status" {
   value       = var.enable_analytics_views ? "✅ Full Governance, Telemetry Sinks & FinOps SQL Views Deployed." : "✅ Core Governance, Telemetry Sinks & Guardrails Deployed (Day-0 Bootstrap)."
-  description = "Status of the Stage 5 Governance deployment"
+  description = "Status of the Layer 5 Governance deployment"
 }
 
 output "next_steps" {

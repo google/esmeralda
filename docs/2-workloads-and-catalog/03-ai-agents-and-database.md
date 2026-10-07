@@ -1,8 +1,8 @@
-# 🧠 Stage 4 Workloads: Atomic AI Reasoning Engines & Database Bootstrapping
+# 🧠 Layer 5 Workloads: Atomic AI Reasoning Engines & Database Bootstrapping
 
-Welcome to the technical deep-dive for **Stage 4 AI Agents & Databases**.
+Welcome to the technical deep-dive for **Layer 5 AI Agents & Databases**.
 
-Stage 4 deploys the reasoning engines onto Google Cloud **Vertex AI Reasoning Engines (Agent Engine)** and establishes isolated state stores (Cloud SQL PostgreSQL) with zero-bastion serverless schema bootstrap jobs.
+Layer 5 deploys the reasoning engines onto Google Cloud **Vertex AI Reasoning Engines (Agent Engine)** and establishes isolated state stores (Cloud SQL PostgreSQL) with zero-bastion serverless schema bootstrap jobs.
 
 ---
 
@@ -92,6 +92,6 @@ sequenceDiagram
 ### Execute End-to-End Multi-Agent Test via Jumpbox VM
 ```bash
 # Execute the automated multi-agent verification script on the test VM
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap --command="bash -s" < apps/agents/ai-coe-mortgage-specialist/scripts/test_through_gateway.sh
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap --command="bash -s" < apps/agents/ai-coe-mortgage-specialist/scripts/test_through_gateway.sh
 ```
 

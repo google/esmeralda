@@ -1,19 +1,19 @@
-# 🛡️ Stage 3: Centralized Security, IAM, CMEK & Telemetry
+# 🛡️ Layer 3: Centralized Security, IAM, CMEK & Telemetry
 
-Welcome to the technical deep-dive for **Stage 3 (Security, IAM, CMEK & Telemetry)**.
+Welcome to the technical deep-dive for **Layer 3 (Security, IAM, CMEK & Telemetry)**.
 
-Stage 3 centralizes cryptographic keys (Cloud KMS CMEK), secret stores (Secret Manager), least-privilege workload service identities, Model Armor safety templates, and multi-project audit log sinks in `prj-esmeralda-governance`.
+Layer 3 centralizes cryptographic keys (Cloud KMS CMEK), secret stores (Secret Manager), least-privilege workload service identities, Model Armor safety templates, and multi-project audit log sinks in `prj-esmeralda-governance`.
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Stage 3 Exists
+## 💡 The 60-Second Mental Model: Why Layer 3 Exists
 
 In AI agent platforms, security vulnerabilities fall into three distinct vectors:
 1. **Uncontrolled Secret Proliferation:** Developers hardcoding database passwords or API keys in git or agent prompt strings.
 2. **Over-Privileged Service Accounts:** A compromised tool microservice having IAM rights to read all customer databases or modify audit trails.
 3. **Data Loss & Exfiltration:** Lack of encryption-at-rest keys (CMEK) that can be revoked instantly during an incident.
 
-**Stage 3 isolates all cryptographic keys, master secrets, and audit sinks inside a dedicated `prj-esmeralda-governance` project managed exclusively by SecOps.**
+**Layer 3 isolates all cryptographic keys, master secrets, and audit sinks inside a dedicated `prj-esmeralda-governance` project managed exclusively by SecOps.**
 
 ---
 
@@ -112,5 +112,5 @@ flowchart TD
 gcloud kms keys get-iam-policy key-esmeralda-sql-dev \
     --keyring=keyring-esmeralda-dev \
     --location=us-central1 \
-    --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw governance_project_id)
+    --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw governance_project_id)
 ```

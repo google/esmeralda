@@ -273,7 +273,7 @@ locals {
   ]
 }
 
-# Delay to allow newly generated service agent identities from Stage 1 to fully propagate to Google's global IAM servers
+# Delay to allow newly generated service agent identities from Layer 1 to fully propagate to Google's global IAM servers
 resource "time_sleep" "iam_propagation" {
   create_duration = "30s"
 
