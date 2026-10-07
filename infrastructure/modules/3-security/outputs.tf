@@ -22,25 +22,14 @@ output "mcps_sa_email" {
   value       = google_service_account.mcps_sa.email
 }
 
-output "cicd_builder_sa_email" {
-  description = "The email address of the dedicated Cloud Build container delivery service account in CI/CD project"
-  value       = local.builder_sa_email
-}
-
-output "mcps_builder_sa_email" {
-  description = "Alias for backwards compatibility"
-  value       = local.builder_sa_email
-}
-
-
-output "a2a_agent_sa_email" {
+output "ai_coe_mortgage_specialist_sa_email" {
   description = "The email address of the A2A agent service account"
-  value       = google_service_account.a2a_sa.email
+  value       = google_service_account.ai_coe_mortgage_specialist_sa.email
 }
 
-output "root_agent_sa_email" {
-  description = "The email address of the Root Orchestrator service account"
-  value       = google_service_account.root_sa.email
+output "cx_mortgage_orchestrator_sa_email" {
+  description = "The email address of the CX mortgage orchestrator service account"
+  value       = google_service_account.cx_mortgage_orchestrator_sa.email
 }
 
 output "test_vm_sa_email" {
@@ -61,4 +50,24 @@ output "telemetry_dataset_id" {
 output "mcp_invoker_sa_email" {
   description = "The email address of the shared MCP invoker service account"
   value       = google_service_account.mcp_invoker_sa.email
+}
+
+# --------------------------------------------------------------------
+# Internal PKI (Root CA for *.esmeralda.internal)
+# --------------------------------------------------------------------
+
+output "internal_ca_cert_pem" {
+  description = "PEM of the internal Root CA. Trusted by the Agent Gateway (TrustConfig) and the agents."
+  value       = tls_self_signed_cert.internal_ca.cert_pem
+}
+
+output "internal_ca_key_pem" {
+  description = "Private key of the internal Root CA, used by layer 5 (Kong) to sign its *.esmeralda.internal leaf."
+  value       = tls_private_key.internal_ca.private_key_pem
+  sensitive   = true
+}
+
+output "internal_ca_secret_id" {
+  description = "Secret Manager secret (gateway project) publishing the internal Root CA certificate."
+  value       = google_secret_manager_secret.internal_ca.id
 }

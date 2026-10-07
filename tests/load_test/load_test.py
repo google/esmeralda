@@ -57,7 +57,7 @@ if not remote_agent_engine_id:
 
 # Fallback default for Esmeralda Dev
 if not remote_agent_engine_id:
-    remote_agent_engine_id = "projects/esmeralda-root-agent-dev/locations/us-central1/reasoningEngines/1234567890123456789"
+    remote_agent_engine_id = "projects/esm-dev-cx-agents/locations/us-central1/reasoningEngines/1234567890123456789"
 
 match = re.search(
     r"projects/([^/]+)/locations/([^/]+)/reasoningEngines/([^/]+)",

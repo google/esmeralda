@@ -26,7 +26,7 @@ steps:
       - '-c'
       - |
         pip install --quiet pytest
-        pytest apps/agents/base-adk-agent/tests/ -v
+        pytest apps/agents/cx-mortgage-orchestrator/tests/ -v
 
 options:
   logging: CLOUD_LOGGING_ONLY

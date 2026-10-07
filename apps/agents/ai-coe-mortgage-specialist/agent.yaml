@@ -1,0 +1,101 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: ai-coe-mortgage-specialist
+description: A2A mortgage agent with MCP tool connections for document management, income verification, and corporate email.
+version: 1.0.0
+
+entrypoint:
+  module: agent_app
+  object: adk_app
+
+resources:
+  cpu: 1
+  memory: 4Gi
+  min_instances: 0
+  max_instances: 1
+  concurrency: 9
+
+env:
+  AGENT_NAME: "ai_coe_mortgage_specialist"
+  # --- Resource Identity & Dashboard Triggers ---
+  OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai,gcp.resource_type=reasoning_engine"
+  OTEL_SERVICE_NAME: "ai-coe-mortgage-specialist"
+
+  # --- Agent Engine Trace Provider ---
+  USE_CUSTOM_TELEMETRY: false
+  GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
+  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
+
+  DMS_MCP_URL: "https://legacy-dms.esmeralda.internal/mcp"
+  INCOME_VERIFICATION_URL: "https://income-verification.esmeralda.internal/mcp"
+  EMAIL_MCP_URL: "https://corporate-email.esmeralda.internal/mcp"
+  MODEL_NAME: "gemini-3.7-flash"
+  MODEL_LOCATION: "global"
+  GOOGLE_CLOUD_LOCATION: "us-central1"
+
+  # --- Central Agent Gateway & SPIFFE Identity ---
+  GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"
+  GRPC_IPV6_PREFER: "0"
+  GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
+  GOOGLE_API_USE_MTLS_ENDPOINT: "never"
+  GOOGLE_GENAI_USE_VERTEXAI: "True"
+  USE_IN_MEMORY_SESSIONS: "0"
+  NO_PROXY: "169.254.169.254,metadata.google.internal"
+
+labels:
+  author: "your-name"
+  version: "latest"
+
+framework: a2a
+
+agent_card:
+  name: "ai-coe-mortgage-specialist"
+  description: "Mortgage underwriting assistant with document management, income verification, and corporate email capabilities."
+  version: "1.0.0"
+  url: "https://ai-coe-mortgage-specialist.esmeralda.internal"
+  preferred_transport: "HTTP+JSON"
+  capabilities:
+    streaming: false
+    extensions:
+      - uri: "https://google.github.io/adk-docs/a2a/a2a-extension/"
+        description: "Ability to use the new agent executor implementation"
+        required: false
+  default_input_modes:
+    - "text/plain"
+  default_output_modes:
+    - "application/json"
+  supported_interfaces:
+    - url: "https://ai-coe-mortgage-specialist.esmeralda.internal"
+      protocol_binding: "HTTP+JSON"
+      protocol_version: "0.3"
+  skills:
+    - id: "document-search"
+      name: "Document Search"
+      description: "Search and retrieve mortgage application documents from the legacy document management system."
+      tags:
+        - "dms"
+        - "documents"
+    - id: "income-verification"
+      name: "Income Verification"
+      description: "Verify applicant income against employer records and tax filings."
+      tags:
+        - "income"
+        - "verification"
+    - id: "corporate-email"
+      name: "Corporate Email"
+      description: "Read corporate email inbox for mortgage-related communications."
+      tags:
+        - "email"
+
