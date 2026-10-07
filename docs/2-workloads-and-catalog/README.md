@@ -27,7 +27,7 @@ This section of the documentation unifies the architectural specifications, **Ar
 
 ### 3. ADR-06: Why Automated VPC-Internal Database Bootstrapping?
 * **The Problem:** In a zero-trust architecture, Cloud SQL PostgreSQL instances have **no public IP address** and are accessible only from within the Shared VPC. Manual schema execution (`psql`) is impossible from local developer laptops.
-* **The Decision:** Terragrunt provisions an ephemeral **Cloud Run DB Bootstrap Job** inside the private subnet that executes schema creation and IAM grants automatically during `stage-4-workloads` deployment.
+* **The Decision:** Terragrunt provisions an ephemeral **Cloud Run DB Bootstrap Job** inside the private subnet that executes schema creation and IAM grants automatically during `stage-5-workloads` deployment.
 * **The Benefit:** 100% automated, deterministic, zero-touch greenfield deployments with zero exposed public IPs.
 
 ---
@@ -36,23 +36,23 @@ This section of the documentation unifies the architectural specifications, **Ar
 
 ```mermaid
 flowchart TB
-    subgraph Gateways["Ingress Adapters (modules/4-workloads/gateways)"]
+    subgraph Gateways["Ingress Adapters (modules/5-workloads/gateways)"]
         G1["Apigee X Enterprise Gateway"]
         G2["Kong DB-less on Cloud Run"]
         G3["L7 ILB + Routing Broker"]
     end
 
-    subgraph Orchestrator["Root Orchestrator (modules/4-workloads/agents/base-adk-agent)"]
+    subgraph Orchestrator["Root Orchestrator (modules/5-workloads/agents/base-adk-agent)"]
         Root["Client Reasoning Engine<br/>(base-adk-agent)"]
     end
 
-    subgraph MCPServers["MCP Utility Catalog (modules/4-workloads/mcp-servers)"]
+    subgraph MCPServers["MCP Utility Catalog (modules/5-workloads/mcp-servers)"]
         M1["corporate-email"]
         M2["income-verification"]
         M3["legacy-dms"]
     end
 
-    subgraph Downstream["Assistant Agent (modules/4-workloads/agents/a2a-agent)"]
+    subgraph Downstream["Assistant Agent (modules/5-workloads/agents/a2a-agent)"]
         A2A["a2a-agent Reasoning Engine"]
         DB[(Atomic Cloud SQL Postgres)]
         A2A --> DB

@@ -35,9 +35,11 @@ import vertexai
 from google.genai import types
 
 async def main(user_input: str):
-    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("PROJECT_ID") or "esm-dev-a2a-00b1"
+    PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("PROJECT_ID")
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
-    RESOURCE_ID = os.getenv("REASONING_ENGINE_ID") or os.getenv("RESOURCE_ID") or "3701459165663723520"
+    RESOURCE_ID = os.getenv("REASONING_ENGINE_ID") or os.getenv("RESOURCE_ID")
+    if not PROJECT_ID or not RESOURCE_ID:
+        raise SystemExit("❌ Set GOOGLE_CLOUD_PROJECT and REASONING_ENGINE_ID (make test-a2a-remote resolves them from Terragrunt outputs).")
     RESOURCE_NAME = f"projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
 
     print("🚀 Initializing vertexai.Client...")
@@ -79,12 +81,32 @@ async def main(user_input: str):
         response = await remote_agent.on_message_send(**message_data)
         print("\n🤖 Reasoning Engine Response:")
         print(response)
-        print("\n✅ Reasoning Engine Execution SUCCESSFUL!")
     except Exception as e:
         print(f"\n❌ Execution error: {e}")
         import traceback
         traceback.print_exc()
+        sys.exit(1)
+
+    state = _task_state(response)
+    if state is None:
+        print("\n⚠️  Could not determine the A2A task state from the response.")
+    elif not str(state).lower().endswith("completed"):
+        print(f"\n❌ A2A task finished in state '{state}' (expected completed).")
+        sys.exit(1)
+    print("\n✅ Reasoning Engine Execution SUCCESSFUL!")
     print("-------------------------------------------------------------------------\n")
+
+
+def _task_state(resp):
+    """Best-effort extraction of the A2A task state from dict or SDK object responses."""
+    try:
+        if isinstance(resp, dict):
+            status = resp.get("status") or (resp.get("result") or {}).get("status") or {}
+            return status.get("state")
+        state = getattr(getattr(resp, "status", None), "state", None)
+        return getattr(state, "value", state)
+    except Exception:
+        return None
 
 if __name__ == "__main__":
     test_query = sys.argv[1] if len(sys.argv) > 1 else "I'm reviewing the Rivera family's $700K loan. Can you summarize their 2024 tax returns?"

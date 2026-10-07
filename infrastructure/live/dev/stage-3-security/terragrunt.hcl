@@ -7,6 +7,10 @@ terraform {
   source = "../../../modules//3-security"
 }
 
+dependency "cicd" {
+  config_path = "../../shared/stage-0-cicd"
+}
+
 dependency "projects" {
   config_path = "../stage-1-projects"
 }
@@ -18,10 +22,10 @@ locals {
 
 dependency "networking" {
   config_path = "../stage-2-networking"
-  
+
   # Avoid running output lookups on skipped modules
   skip_outputs = local.byo_networking
-  
+
   # Satisfy parser during evaluation with mock variables
   mock_outputs = {
     subnet_id = local.env_vars.locals.existing_subnet_id
@@ -29,22 +33,24 @@ dependency "networking" {
 }
 
 inputs = {
-  net_host_project_id   = dependency.projects.outputs.net_host_project_id
-  gateway_project_id    = dependency.projects.outputs.gateway_project_id
-  cicd_project_id       = dependency.projects.outputs.cicd_project_id
-  byo_cicd_project      = local.env_vars.locals.byo_cicd_project
-  mcps_project_id       = dependency.projects.outputs.mcps_project_id
+  net_host_project_id = dependency.projects.outputs.net_host_project_id
+  gateway_project_id  = dependency.projects.outputs.gateway_project_id
+  # Shared layer-0 CI/CD: this env only gets repository-scoped reader access
+  cicd_project_id        = dependency.cicd.outputs.cicd_project_id
+  artifact_region        = dependency.cicd.outputs.region
+  artifact_repository_id = lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_id : dependency.cicd.outputs.dev_repository_id
+  mcps_project_id        = dependency.projects.outputs.mcps_project_id
 
   a2a_project_id        = dependency.projects.outputs.a2a_project_id
   root_project_id       = dependency.projects.outputs.root_project_id
   governance_project_id = dependency.projects.outputs.governance_project_id
   project_suffix        = dependency.projects.outputs.project_suffix
 
-  region                = local.env_vars.locals.region
-  environment           = local.env_vars.locals.environment
-  org_id                = lookup(local.env_vars.locals, "org_id", "")
+  region      = local.env_vars.locals.region
+  environment = local.env_vars.locals.environment
+  org_id      = lookup(local.env_vars.locals, "org_id", "")
 
-  backend_subnet_id     = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
+  backend_subnet_id = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 
   a2a_sql_service_agent            = dependency.projects.outputs.a2a_sql_service_agent
   governance_secrets_service_agent = dependency.projects.outputs.governance_secrets_service_agent

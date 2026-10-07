@@ -22,7 +22,7 @@ In conventional prototype agents, tool logic (e.g. `def verify_income()`) is wri
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
 | 🧑‍💻 **AppDev / Tools Engineer** | Building API connectors, wrapping enterprise systems in FastMCP, maintaining tool schemas (`tools.json`). | `apps/services/` (Python/FastMCP code), tool unit tests, `cloudbuild.yaml`. | Terraform infrastructure, Shared VPC subnets, KMS keyrings. |
-| 🛡️ **SecOps / Platform Engineer** | Governing tool authentication (`roles/run.invoker`), network ingress filters, and Agent Registry catalogs. | `infrastructure/modules/4-workloads/services/`, Cloud Run IAM policies, Direct VPC Egress. | Tool Python business logic, prompt engineering. |
+| 🛡️ **SecOps / Platform Engineer** | Governing tool authentication (`roles/run.invoker`), network ingress filters, and Agent Registry catalogs. | `infrastructure/modules/5-workloads/services/`, Cloud Run IAM policies, Direct VPC Egress. | Tool Python business logic, prompt engineering. |
 | 🤖 **AI Reasoning Engineer** | Discovering and invoking tools via JSON-RPC / MCP protocols. | Specifying tools in `agent.yaml` and ADK toolsets. | Tool hosting, backend system authentication. |
 
 ---
@@ -70,7 +70,7 @@ flowchart TD
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`apps/services/` & `modules/4-workloads/services/`)
+## 🏗️ Technical Implementation Breakdown (`apps/services/` & `modules/5-workloads/services/`)
 
 ### 1. The 3 Standard Corporate Tool Microservices
 
@@ -82,7 +82,7 @@ flowchart TD
 
 ---
 
-### 2. Cloud Run Service Configuration (`modules/4-workloads/services/`)
+### 2. Cloud Run Service Configuration (`modules/5-workloads/services/`)
 * **Private Network Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` restricts access exclusively to VPC-internal callers.
 * **Direct VPC Egress:** Configured with `vpc_access { egress = "ALL_TRAFFIC" }` bound to `sb-esmeralda-core` for private database and API access.
 * **Custom Audience Validation:** Configures explicit audiences (`http://{service}.internal.gateway/mcp`) to ensure Google OIDC tokens are verified securely.

@@ -72,7 +72,7 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 
 | Blueprint Folder (Monorepo) | Target Production Git Repository | Deployment Endpoint |
 | :--- | :--- | :--- |
-| `infrastructure/modules/1-projects/`<br/>`infrastructure/modules/2-networking/`<br/>`infrastructure/modules/3-security/`<br/>`infrastructure/modules/4-workloads/`<br/>`infrastructure/modules/5-governance/`<br/>`infrastructure/live/` | **`platform-infra-iac.git`** | GCP Projects, VPCs, KMS Keys, IAM Policies, and Terragrunt orchestrations |
+| `infrastructure/modules/1-projects/`<br/>`infrastructure/modules/2-networking/`<br/>`infrastructure/modules/3-security/`<br/>`infrastructure/modules/5-workloads/`<br/>`infrastructure/modules/4-governance/`<br/>`infrastructure/live/` | **`platform-infra-iac.git`** | GCP Projects, VPCs, KMS Keys, IAM Policies, and Terragrunt orchestrations |
 | `apps/services/corporate-email/` | **`mcp-corporate-email.git`** | Cloud Run Service: `corporate-email-{env}` in `prj-esmeralda-mcps` |
 | `apps/services/income-verification/` | **`mcp-income-verification.git`** | Cloud Run Service: `income-verification-{env}` in `prj-esmeralda-mcps` |
 | `apps/services/legacy-dms/` | **`mcp-legacy-dms.git`** | Cloud Run Service: `legacy-dms-{env}` in `prj-esmeralda-mcps` |
@@ -85,7 +85,7 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 
 Decoupling repositories requires a clear mechanism to link them. Rather than allowing application repos to directly execute Terraform, the platform infrastructure repository (`platform-infra-iac.git`) acts as the central binder. It consumes application build outputs using **Dynamic Parameter Injection** within Terragrunt configurations:
 
-#### 1. Tool Container Tag Injection (`live/dev/stage-4-workloads/services/terragrunt.hcl`)
+#### 1. Tool Container Tag Injection (`live/dev/stage-5-workloads/services/terragrunt.hcl`)
 When the AppDev team pushes a new tool container to Artifact Registry, they update the image tag reference in the platform repository. The platform reads the tag dynamically:
 ```hcl
 inputs = {
@@ -96,7 +96,7 @@ inputs = {
 }
 ```
 
-#### 2. Agent Container Digest Pinning (`live/dev/stage-4-workloads/agents/terragrunt.hcl`)
+#### 2. Agent Container Digest Pinning (`live/dev/stage-5-workloads/agents/terragrunt.hcl`)
 To prevent container drift and guarantee that Vertex AI Reasoning Engine runs exactly the code validated by the AI team, the platform resolves the image URI utilizing its immutable digest:
 ```hcl
 inputs = {

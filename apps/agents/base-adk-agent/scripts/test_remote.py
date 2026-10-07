@@ -50,9 +50,11 @@ def get_gcp_access_token() -> str:
         raise RuntimeError("No valid GCP credentials found.")
 
 async def main(user_input: str):
-    PROJECT_ID = os.getenv("ROOT_AGENT_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", os.getenv("PROJECT_ID", "esm-dev-root-agent-00b1")))
+    PROJECT_ID = os.getenv("ROOT_AGENT_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("PROJECT_ID")
     LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    RESOURCE_ID = os.getenv("ROOT_REASONING_ENGINE_ID", os.getenv("REASONING_ENGINE_ID", "5380914798579941376"))
+    RESOURCE_ID = os.getenv("ROOT_REASONING_ENGINE_ID") or os.getenv("REASONING_ENGINE_ID")
+    if not PROJECT_ID or not RESOURCE_ID:
+        raise SystemExit("❌ Set ROOT_AGENT_PROJECT_ID and ROOT_REASONING_ENGINE_ID (make test-root-remote resolves them from Terragrunt outputs).")
     
     base_url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{RESOURCE_ID}"
     stream_url = f"{base_url}:streamQuery?alt=sse"
@@ -111,6 +113,8 @@ async def main(user_input: str):
     print(f"💬 Sending query: '{user_input}' (session_id={session_id})")
     print("\n🤖 --- AGENT RESPONSE STREAM ---")
     
+    received_text = False
+    stream_errors = []
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream("POST", stream_url, json=query_payload, headers=headers) as response:
@@ -130,9 +134,13 @@ async def main(user_input: str):
                                 if isinstance(content, dict) and "parts" in content:
                                     for part in content["parts"]:
                                         if isinstance(part, dict) and "text" in part and part["text"]:
+                                            received_text = True
                                             print(part["text"], end="", flush=True)
                                         elif isinstance(part, dict) and "function_call" in part:
                                             print(f"\n[Tool Call: {part['function_call'].get('name')}]", flush=True)
+                                elif "error" in data_json or "error_code" in data_json:
+                                    stream_errors.append(data_json)
+                                    print(json.dumps(data_json), flush=True)
                                 elif "output" in data_json:
                                     print(data_json["output"], end="", flush=True)
                                 else:
@@ -146,8 +154,15 @@ async def main(user_input: str):
         print(f"\n❌ Error during execution: {e}")
         import traceback
         traceback.print_exc()
+        sys.exit(1)
 
     print("--------------------------------\n")
+    if stream_errors:
+        print(f"❌ The agent stream reported {len(stream_errors)} error event(s).")
+        sys.exit(1)
+    if not received_text:
+        print("❌ The agent returned no text response.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     test_query = sys.argv[1] if len(sys.argv) > 1 else "Can you search documents for Julian Sterling with document_type tax_return?"

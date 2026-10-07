@@ -1,6 +1,6 @@
 # ==============================================================================
 # Cloud Build Pipeline: Stage 5 Governance & Observability Infrastructure
-# Triggers on changes to infrastructure/modules/5-governance/** or infrastructure/live/dev/stage-5-governance/**
+# Triggers on changes to infrastructure/modules/4-governance/** or infrastructure/live/dev/stage-4-governance/**
 # ==============================================================================
 
 steps:
@@ -19,24 +19,24 @@ steps:
   # Step 2: Validate Stage 5 Governance HCL
   # ----------------------------------------------------------------------------
   - name: 'alpine/terragrunt:latest'
-    id: 'validate-stage-5-governance'
+    id: 'validate-stage-4-governance'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        cd infrastructure/live/dev/stage-5-governance
+        cd infrastructure/live/dev/stage-4-governance
         terragrunt validate
 
   # ----------------------------------------------------------------------------
   # Step 3: Deploy Stage 5 Governance Stack (Terragrunt Apply)
   # ----------------------------------------------------------------------------
   - name: 'alpine/terragrunt:latest'
-    id: 'deploy-stage-5-governance'
+    id: 'deploy-stage-4-governance'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        cd infrastructure/live/dev/stage-5-governance
+        cd infrastructure/live/dev/stage-4-governance
         terragrunt apply -auto-approve
 
 options:
