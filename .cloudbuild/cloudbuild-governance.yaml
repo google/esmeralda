@@ -13,7 +13,7 @@ steps:
     args:
       - '-c'
       - |
-        python3 apps/agents/base-adk-agent/scripts/chaos_telemetry_test.py
+        python3 apps/agents/cx-mortgage-orchestrator/scripts/chaos_telemetry_test.py
 
   # ----------------------------------------------------------------------------
   # Step 2: Validate Stage 5 Governance HCL

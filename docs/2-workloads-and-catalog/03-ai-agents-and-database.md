@@ -23,7 +23,7 @@ In standard enterprise cloud architectures, deploying an AI agent requires filin
 | :--- | :--- | :--- | :--- |
 | 🤖 **AI Reasoning Engineer** | Prompt graph development, multi-agent delegation, tool orchestration, evaluating accuracy. | `apps/agents/` (Python/ADK code), `agent.yaml`, prompt templates. | VPC subnetting, Cloud SQL replication, IAM project bindings. |
 | 👷 **Platform / Database Lead** | Ensuring automated database backups, zero public IPs, and IAM-authenticated SQL connections. | `infrastructure/modules/5-workloads/agents/`, Cloud SQL specs, bootstrap Cloud Run jobs. | Agent prompt engineering, LLM model fine-tuning. |
-| 🛡️ **SecOps / Identity Auditor** | Enforcing zero-trust database authentication and SPIFFE / OIDC agent identity. | Service Account definitions (`sa-esmeralda-a2a`), Cloud SQL IAM user grants. | Python business logic. |
+| 🛡️ **SecOps / Identity Auditor** | Enforcing zero-trust database authentication and SPIFFE / OIDC agent identity. | Service Account definitions (`sa-ai-coe-mortgage-spec`), Cloud SQL IAM user grants. | Python business logic. |
 
 ---
 
@@ -31,7 +31,7 @@ In standard enterprise cloud architectures, deploying an AI agent requires filin
 
 ### ADR-04.3: Atomic Agent + Cloud SQL Packaging
 * **Context:** Shared databases across multiple AI agents violate zero-trust boundaries and create tight coupling during schema migrations.
-* **Decision:** Each stateful agent (e.g. `a2a-agent`) owns its private Cloud SQL PostgreSQL 15 instance inside its dedicated project (`prj-esmeralda-a2a`).
+* **Decision:** Each stateful agent (e.g. `ai-coe-mortgage-specialist`) owns its private Cloud SQL PostgreSQL 15 instance inside its dedicated project (`esm-dev-ai-coe-agents`).
 * **Benefit:** Workloads can be provisioned, upgraded, or destroyed independently with zero cross-agent blast radius.
 
 ---
@@ -50,8 +50,8 @@ sequenceDiagram
     autonumber
     participant Client as User / Jumpbox Test VM
     participant Gateway as Ingress Gateway (*.esmeralda.internal)
-    participant Root as Root Orchestrator (base-adk-agent)
-    participant A2A as Mortgage Specialist (a2a-agent)
+    participant Root as Root Orchestrator (cx-mortgage-orchestrator)
+    participant A2A as Mortgage Specialist (ai-coe-mortgage-specialist)
     participant DMS as Legacy DMS Tool (Cloud Run)
     participant DB as Atomic Postgres (Cloud SQL)
 
@@ -60,7 +60,7 @@ sequenceDiagram
     Root->>Gateway: 3. Invoke Tool: search_documents (Julian Sterling)
     Gateway->>DMS: 4. Route to legacy-dms.esmeralda.internal
     DMS-->>Root: 5. Return documents: W2, Tax Return, Bank Statement
-    Root->>Gateway: 6. Delegate Subtask to a2a-mortgage-agent
+    Root->>Gateway: 6. Delegate Subtask to ai-coe-mortgage-specialist
     Gateway->>A2A: 7. Route to A2A Reasoning Engine
     A2A->>DB: 8. Connect over Private IP (IAM Auth) & Record Task State
     DB-->>A2A: 9. State Saved (Task: COMPLETED)
@@ -72,7 +72,7 @@ sequenceDiagram
 
 ## 🏗️ Technical Implementation Breakdown (`infrastructure/modules/5-workloads/agents/`)
 
-### 1. Atomic Mortgage Assistant (`agents/a2a-agent/main.tf`)
+### 1. AI CoE Mortgage Specialist, A2A (`agents/a2a-agent/main.tf`)
 * **Private Cloud SQL Instance:** Provisions `google_sql_database_instance.task_store` (`POSTGRES_15`, `ZONAL`) with `ipv4_enabled = false` and `private_network = var.vpc_id` (via PSA `10.130.0.0/16`).
 * **IAM Database Authentication:** Sets `cloudsql.iam_authentication = on` and provisions `google_sql_user` derived from the agent's Service Account.
 * **VPC-Bound Schema Bootstrapper:** `google_cloud_run_v2_job.schema_bootstrap` executes inside `sb-esmeralda-core` to run SQL initialization scripts.
@@ -80,9 +80,9 @@ sequenceDiagram
 
 ---
 
-### 2. Root Orchestrator Agent (`agents/base-adk-agent/main.tf`)
+### 2. CX Mortgage Orchestrator, ADK (`agents/adk-agent/main.tf`)
 * **Multi-Agent Coordinator:** Deployed onto Vertex AI Reasoning Engine without local database dependencies.
-* **Dynamic Variable Injection:** Receives `GATEWAY_MCP_URL` and `A2A_AGENT_URL` (`http://a2a-mortgage-agent.esmeralda.internal`) from Terragrunt output references.
+* **Dynamic Variable Injection:** Receives `GATEWAY_MCP_URL` and `A2A_AGENT_URL` (`http://ai-coe-mortgage-specialist.esmeralda.internal`) from Terragrunt output references.
 * **PSC Private Egress:** Attached to `gateway-psc-interface-attachment` in `prj-esmeralda-net-host`.
 
 ---
@@ -92,6 +92,6 @@ sequenceDiagram
 ### Execute End-to-End Multi-Agent Test via Jumpbox VM
 ```bash
 # Execute the automated multi-agent verification script on the test VM
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw root_project_id) --tunnel-through-iap --command="bash -s" < apps/agents/a2a-agent/scripts/test_through_gateway.sh
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap --command="bash -s" < apps/agents/ai-coe-mortgage-specialist/scripts/test_through_gateway.sh
 ```
 

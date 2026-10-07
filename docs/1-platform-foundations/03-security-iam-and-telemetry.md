@@ -22,7 +22,7 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
 | 🛡️ **SecOps / Security Lead** | Managing CMEK key rotation policies (90 days), Secret Manager access policies, and Model Armor floor settings. | `infrastructure/modules/3-security/`, KMS keyrings, secrets, BigQuery audit sinks. | Application prompt graphs, tool Python code. |
-| 👷 **Platform / Identity Engineer** | Provisioning workload Service Accounts and cross-project IAM bindings. | Service Account definitions (`sa-esmeralda-a2a`, `sa-esmeralda-root`, `sa-esmeralda-mcps`). | Direct database SQL schemas or prompt tuning. |
+| 👷 **Platform / Identity Engineer** | Provisioning workload Service Accounts and cross-project IAM bindings. | Service Account definitions (`sa-ai-coe-mortgage-spec`, `sa-cx-mortgage-orch`, `sa-esmeralda-mcps`). | Direct database SQL schemas or prompt tuning. |
 | 🧑‍💻 **AI Application Developer** | Consuming IAM-authenticated identities to call private APIs without hardcoded tokens. | Utilizing `roles/run.invoker` and Google OIDC tokens programmatically. | KMS key policies, root passwords, or IAM role definitions. |
 
 ---
@@ -40,8 +40,8 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 * **Context:** Monolithic architectures use a single service account across VMs, containers, and databases, creating identity escalation risks.
 * **Decision:** Provision 4 isolated Workload Service Accounts + 1 dedicated Test Jumpbox SA:
   1. `sa-esmeralda-mcps`: Cloud Run MCP tool execution.
-  2. `sa-esmeralda-a2a`: Specialist Reasoning Engine + Cloud SQL PostgreSQL client.
-  3. `sa-esmeralda-root`: Root Orchestrator Reasoning Engine + A2A token impersonator.
+  2. `sa-ai-coe-mortgage-spec`: Specialist Reasoning Engine + Cloud SQL PostgreSQL client.
+  3. `sa-cx-mortgage-orch`: CX mortgage orchestrator Reasoning Engine + specialist token impersonator.
   4. `sa-esmeralda-builder`: Dedicated CI/CD container delivery identity.
   5. `sa-esmeralda-test-vm`: Private jumpbox VM identity with strictly scoped invoker permissions.
 
@@ -60,8 +60,8 @@ flowchart TD
 
     subgraph Workloads["Workload Service Projects"]
         P_MCPS["prj-esmeralda-mcps<br/>SA: sa-esmeralda-mcps"]
-        P_A2A["prj-esmeralda-a2a<br/>SA: sa-esmeralda-a2a"]
-        P_Root["prj-esmeralda-root-agent<br/>SA: sa-esmeralda-root"]
+        P_A2A["esm-dev-ai-coe-agents<br/>SA: sa-ai-coe-mortgage-spec"]
+        P_Root["esm-dev-cx-agents<br/>SA: sa-cx-mortgage-orch"]
         P_CI["prj-esmeralda-cicd-artifacts<br/>SA: sa-esmeralda-builder"]
     end
 
@@ -90,10 +90,10 @@ flowchart TD
 | Service Account | Hosted Project | Granted IAM Roles | Purpose |
 | :--- | :--- | :--- | :--- |
 | **`sa-esmeralda-mcps`** | `prj-esmeralda-mcps` | `logging.logWriter`, `monitoring.metricWriter`, `cloudtrace.agent`, `compute.networkUser` | Cloud Run MCP server execution & telemetry. |
-| **`sa-esmeralda-a2a`** | `prj-esmeralda-a2a` | `cloudsql.client`, `cloudsql.instanceUser`, `aiplatform.user`, `secretmanager.secretAccessor`, `compute.networkUser` | Specialist Reasoning Engine & PostgreSQL access. |
-| **`sa-esmeralda-root`** | `prj-esmeralda-root-agent` | `aiplatform.user`, `storage.objectAdmin`, `compute.networkUser`, `roles/iam.serviceAccountTokenCreator` (on A2A SA) | Master Orchestration & downstream A2A delegation. |
+| **`sa-ai-coe-mortgage-spec`** | `esm-dev-ai-coe-agents` | `cloudsql.client`, `cloudsql.instanceUser`, `aiplatform.user`, `secretmanager.secretAccessor`, `compute.networkUser` | Specialist Reasoning Engine & PostgreSQL access. |
+| **`sa-cx-mortgage-orch`** | `esm-dev-cx-agents` | `aiplatform.user`, `storage.objectAdmin`, `compute.networkUser`, `roles/iam.serviceAccountTokenCreator` (on A2A SA) | Master Orchestration & downstream A2A delegation. |
 | **`sa-esmeralda-builder`** | `prj-esmeralda-cicd-artifacts` | `cloudbuild.builds.editor`, `artifactregistry.admin`, `storage.admin` | CI/CD container builds & image pushing. |
-| **`sa-esmeralda-test-vm`** | `prj-esmeralda-root-agent` | `roles/run.invoker` (on MCPS & A2A), `aiplatform.user`, `iam.serviceAccountTokenCreator` (on self) | Private jumpbox debugging & testing. |
+| **`sa-esmeralda-test-vm`** | `esm-dev-cx-agents` | `roles/run.invoker` (on MCPS & A2A), `aiplatform.user`, `iam.serviceAccountTokenCreator` (on self) | Private jumpbox debugging & testing. |
 
 ---
 

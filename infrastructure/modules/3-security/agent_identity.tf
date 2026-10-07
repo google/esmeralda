@@ -4,11 +4,11 @@
 # ==============================================================================
 
 locals {
-  # Root Agent Identity PrincipalSet URI format for Vertex AI Reasoning Engine
-  root_agent_identity_principal = "principalSet://agents.global.org-${data.google_project.root_agent.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.root_agent.number}"
+  # CX mortgage orchestrator identity PrincipalSet URI format for Vertex AI Reasoning Engine
+  cx_mortgage_orchestrator_identity_principal = "principalSet://agents.global.org-${data.google_project.cx_agents.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.cx_agents.number}"
 
-  # Core A2A Agent Identity PrincipalSet URI format for Vertex AI Reasoning Engine
-  a2a_agent_identity_principal = "principalSet://agents.global.org-${data.google_project.a2a.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.a2a.number}"
+  # AI CoE mortgage specialist identity PrincipalSet URI format for Vertex AI Reasoning Engine
+  ai_coe_mortgage_specialist_identity_principal = "principalSet://agents.global.org-${data.google_project.ai_coe_agents.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.ai_coe_agents.number}"
 }
 
 # 1. Shared Invoker Service Account for MCP Microservices
@@ -25,22 +25,22 @@ resource "google_project_iam_member" "mcp_invoker_run_role" {
   member  = "serviceAccount:${google_service_account.mcp_invoker_sa.email}"
 }
 
-# 3a. Allow Root Agent Identity PrincipalSet to Impersonate the Invoker SA
-resource "google_service_account_iam_member" "root_agent_identity_impersonates_mcp_invoker" {
+# 3a. Allow CX mortgage orchestrator identity PrincipalSet to Impersonate the Invoker SA
+resource "google_service_account_iam_member" "cx_mortgage_orchestrator_identity_impersonates_mcp_invoker" {
   service_account_id = google_service_account.mcp_invoker_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = local.root_agent_identity_principal
+  member             = local.cx_mortgage_orchestrator_identity_principal
 }
 
 # 3b. Allow A2A Agent Identity PrincipalSet to Impersonate the Invoker SA
-resource "google_service_account_iam_member" "a2a_agent_identity_impersonates_mcp_invoker" {
+resource "google_service_account_iam_member" "ai_coe_mortgage_specialist_identity_impersonates_mcp_invoker" {
   service_account_id = google_service_account.mcp_invoker_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = local.a2a_agent_identity_principal
+  member             = local.ai_coe_mortgage_specialist_identity_principal
 }
 
-# 4a. Grant Full Role Parity to Root Agent PrincipalSet in Root Project
-resource "google_project_iam_member" "root_agent_identity_roles" {
+# 4a. Grant Full Role Parity to CX mortgage orchestrator PrincipalSet in the CX agents project
+resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
   for_each = toset([
     "roles/aiplatform.user",
     "roles/storage.objectAdmin",
@@ -55,13 +55,13 @@ resource "google_project_iam_member" "root_agent_identity_roles" {
     "roles/bigquery.dataEditor",
     "roles/bigquery.jobUser"
   ])
-  project = var.root_project_id
+  project = var.cx_agents_project_id
   role    = each.key
-  member  = local.root_agent_identity_principal
+  member  = local.cx_mortgage_orchestrator_identity_principal
 }
 
-# 4b. Grant Full Role Parity to A2A Agent PrincipalSet in A2A Project
-resource "google_project_iam_member" "a2a_agent_identity_roles" {
+# 4b. Grant Full Role Parity to AI CoE mortgage specialist PrincipalSet in the AI CoE agents project
+resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles" {
   for_each = toset([
     "roles/cloudsql.client",
     "roles/cloudsql.instanceUser",
@@ -78,25 +78,25 @@ resource "google_project_iam_member" "a2a_agent_identity_roles" {
     "roles/bigquery.dataEditor",
     "roles/bigquery.jobUser"
   ])
-  project = var.a2a_project_id
+  project = var.ai_coe_agents_project_id
   role    = each.key
-  member  = local.a2a_agent_identity_principal
+  member  = local.ai_coe_mortgage_specialist_identity_principal
 }
 
-# 5a. Grant roles/iap.egressor to Root Agent Identity for Agent Gateway Egress Authz
-resource "google_project_iam_member" "root_agent_iap_egressor" {
+# 5a. Grant roles/iap.egressor to CX mortgage orchestrator identity for Agent Gateway Egress Authz
+resource "google_project_iam_member" "cx_mortgage_orchestrator_iap_egressor" {
   for_each = toset([
     var.mcps_project_id,
-    var.a2a_project_id,
+    var.ai_coe_agents_project_id,
   ])
   project = each.key
   role    = "roles/iap.egressor"
-  member  = local.root_agent_identity_principal
+  member  = local.cx_mortgage_orchestrator_identity_principal
 }
 
 # 5b. Grant roles/iap.egressor to A2A Agent Identity for Agent Gateway Egress Authz
-resource "google_project_iam_member" "a2a_agent_iap_egressor" {
+resource "google_project_iam_member" "ai_coe_mortgage_specialist_iap_egressor" {
   project = var.mcps_project_id
   role    = "roles/iap.egressor"
-  member  = local.a2a_agent_identity_principal
+  member  = local.ai_coe_mortgage_specialist_identity_principal
 }

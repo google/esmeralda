@@ -36,8 +36,8 @@ IMAGES=(
   "legacy-dms"
   "income-verification-api"
   "corporate-email"
-  "a2a-agent"
-  "root-agent"
+  "ai-coe-mortgage-specialist"
+  "cx-mortgage-orchestrator"
 )
 
 while [[ $# -gt 0 ]]; do

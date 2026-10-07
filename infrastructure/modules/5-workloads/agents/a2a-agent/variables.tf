@@ -38,9 +38,9 @@ variable "vpc_name" {
 }
 
 variable "agent_name" {
-  description = "The registered display name of the A2A Mortgage Assistant reasoning engine"
+  description = "The registered display name of the AI CoE mortgage specialist reasoning engine"
   type        = string
-  default     = "a2a-mortgage-agent"
+  default     = "ai-coe-mortgage-specialist"
 }
 
 variable "agent_service_account" {

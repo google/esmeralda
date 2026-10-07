@@ -6,8 +6,8 @@
 # same digest can be promoted from the dev repo to the release repo (make promote).
 #
 # Invoked by the Makefile `build-*` targets in the shared layer-0 CI/CD project, e.g.:
-#   gcloud builds submit apps/agents/a2a-agent --config=.cloudbuild/build-image.yaml \
-#     --substitutions=_IMAGE=a2a-agent,_REPOSITORY_URL=<dev repo url>,_TAG=dev-latest,_SHA_TAG=dev-<gitsha>
+#   gcloud builds submit apps/agents/ai-coe-mortgage-specialist --config=.cloudbuild/build-image.yaml \
+#     --substitutions=_IMAGE=ai-coe-mortgage-specialist,_REPOSITORY_URL=<dev repo url>,_TAG=dev-latest,_SHA_TAG=dev-<gitsha>
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'

@@ -19,8 +19,8 @@ inputs = {
   net_host_project_id   = dependency.projects.outputs.net_host_project_id
   gateway_project_id    = dependency.projects.outputs.gateway_project_id
   mcps_project_id       = dependency.projects.outputs.mcps_project_id
-  a2a_project_id        = dependency.projects.outputs.a2a_project_id
-  root_project_id       = dependency.projects.outputs.root_project_id
+  ai_coe_agents_project_id        = dependency.projects.outputs.ai_coe_agents_project_id
+  cx_agents_project_id       = dependency.projects.outputs.cx_agents_project_id
   governance_project_id = dependency.projects.outputs.governance_project_id
   project_suffix        = dependency.projects.outputs.project_suffix
 
@@ -36,9 +36,9 @@ inputs = {
 
   mcps_run_service_agent    = dependency.projects.outputs.mcps_run_service_agent
   gateway_run_service_agent = dependency.projects.outputs.gateway_run_service_agent
-  a2a_run_service_agent     = dependency.projects.outputs.a2a_run_service_agent
-  a2a_vertex_service_agent  = dependency.projects.outputs.a2a_vertex_service_agent
-  root_vertex_service_agent = dependency.projects.outputs.root_vertex_service_agent
+  ai_coe_agents_run_service_agent     = dependency.projects.outputs.ai_coe_agents_run_service_agent
+  ai_coe_agents_vertex_service_agent  = dependency.projects.outputs.ai_coe_agents_vertex_service_agent
+  cx_agents_vertex_service_agent = dependency.projects.outputs.cx_agents_vertex_service_agent
 
   enable_secure_web_proxy   = false
 }

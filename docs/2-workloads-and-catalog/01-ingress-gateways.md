@@ -23,7 +23,7 @@ In enterprise environments, different business units and IT organizations have d
 | :--- | :--- | :--- | :--- |
 | 🛡️ **PlatformOps / Ingress Lead** | Managing SSL certificates, ingress security policies, API proxy policies, and token exchange. | `infrastructure/modules/5-workloads/gateways/`, Apigee proxy XMLs, `kong.yml`, ILB URL maps. | Internal agent prompt graphs, Python business logic. |
 | 🌐 **NetOps Engineer** | Providing proxy-only subnets and managing Cloud DNS bindings. | `sb-esmeralda-proxy` subnetwork, DNS A records (`*.esmeralda.internal`). | Ingress route transformation policies. |
-| 🧑‍💻 **AI Application Developer** | Calling target endpoints via standard internal DNS hostnames. | Consuming `http://a2a-mortgage-agent.esmeralda.internal/v1/message:send`. | Gateway configuration, OIDC token generation, or proxy infrastructure. |
+| 🧑‍💻 **AI Application Developer** | Calling target endpoints via standard internal DNS hostnames. | Consuming `http://ai-coe-mortgage-specialist.esmeralda.internal/v1/message:send`. | Gateway configuration, OIDC token generation, or proxy infrastructure. |
 
 ---
 
@@ -44,7 +44,7 @@ In enterprise environments, different business units and IT organizations have d
 
 ```mermaid
 flowchart TD
-    Req["Incoming User / Agent Prompt<br/>(Host: a2a-mortgage-agent.esmeralda.internal)"]
+    Req["Incoming User / Agent Prompt<br/>(Host: ai-coe-mortgage-specialist.esmeralda.internal)"]
     
     subgraph Adapters["Selectable Gateway Adapter (modules/5-workloads/gateways/)"]
         direction TB
@@ -53,7 +53,7 @@ flowchart TD
         OptC["<b>Option C: Regional L7 ILB</b><br/>• Native GCP L7 Load Balancer<br/>• Serverless NEG<br/>• Routing Broker Container"]
     end
 
-    Backend["Vertex AI Reasoning Engine<br/>(a2a-agent / base-adk-agent)"]
+    Backend["Vertex AI Reasoning Engine<br/>(ai-coe-mortgage-specialist / cx-mortgage-orchestrator)"]
 
     Req --> OptA & OptB & OptC
     OptA & OptB & OptC ==>|Private Routing + OIDC Bearer Token| Backend
@@ -90,8 +90,8 @@ flowchart TD
 ### Test Ingress Routing via Test VM
 ```bash
 # SSH into the test jumpbox VM
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw root_project_id) --tunnel-through-iap
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
 # Inside VM: Test AgentCard discovery through the active gateway
-curl -s http://a2a-mortgage-agent.esmeralda.internal/v1/card | jq .
+curl -s http://ai-coe-mortgage-specialist.esmeralda.internal/v1/card | jq .
 ```

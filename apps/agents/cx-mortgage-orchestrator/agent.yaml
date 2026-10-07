@@ -1,0 +1,57 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: cx-mortgage-orchestrator
+description: A base agent built with ADK using standalone OTEL observability.
+version: 1.0.0
+
+entrypoint:
+  module: agent_app
+  object: adk_app
+
+resources:
+  cpu: 1
+  memory: 4Gi
+  min_instances: 0
+  max_instances: 1
+  concurrency: 9
+
+env:
+  AGENT_NAME: "cx_mortgage_orchestrator"
+  # --- Resource Identity & Dashboard Triggers ---
+  # Essential for grouping traces into the 'Vertex AI' specialized UI
+  OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai,gcp.resource_type=reasoning_engine"
+  OTEL_SERVICE_NAME: "cx-mortgage-orchestrator"
+  
+  # --- Agent Engine Trace Provider ---
+  GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
+  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
+  MODEL_NAME: "gemini-3.7-flash"
+  MODEL_LOCATION: "global"
+  GOOGLE_CLOUD_LOCATION: "us-central1"
+  A2A_AGENT_URL: "https://ai-coe-mortgage-specialist.esmeralda.internal"
+
+  # --- Central Agent Gateway & SPIFFE Identity ---
+  GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"
+  GRPC_IPV6_PREFER: "0"
+  GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
+  GOOGLE_API_USE_MTLS_ENDPOINT: "never"
+  GOOGLE_GENAI_USE_VERTEXAI: "True"
+  NO_PROXY: "169.254.169.254,metadata.google.internal"
+
+labels:
+  author: "your-name"
+  version: "latest"
+
+framework: google-adk

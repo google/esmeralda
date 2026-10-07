@@ -41,8 +41,8 @@ inputs = {
   artifact_repository_id = lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_id : dependency.cicd.outputs.dev_repository_id
   mcps_project_id        = dependency.projects.outputs.mcps_project_id
 
-  a2a_project_id        = dependency.projects.outputs.a2a_project_id
-  root_project_id       = dependency.projects.outputs.root_project_id
+  ai_coe_agents_project_id        = dependency.projects.outputs.ai_coe_agents_project_id
+  cx_agents_project_id       = dependency.projects.outputs.cx_agents_project_id
   governance_project_id = dependency.projects.outputs.governance_project_id
   project_suffix        = dependency.projects.outputs.project_suffix
 
@@ -52,7 +52,7 @@ inputs = {
 
   backend_subnet_id = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 
-  a2a_sql_service_agent            = dependency.projects.outputs.a2a_sql_service_agent
+  ai_coe_agents_sql_service_agent            = dependency.projects.outputs.ai_coe_agents_sql_service_agent
   governance_secrets_service_agent = dependency.projects.outputs.governance_secrets_service_agent
 }
 

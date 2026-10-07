@@ -1,0 +1,147 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""MCP toolset connections for the mortgage assistant agent."""
+
+import json
+import logging
+import os
+import ssl
+import urllib.parse
+import urllib.request
+
+import google.auth
+import google.auth.transport.requests
+from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
+
+from agent import USER_AUTH_TOKEN_KEY
+
+logger = logging.getLogger(__name__)
+
+if os.environ.get("DISABLE_SSL_VERIFICATION") == "true":
+    ssl._create_default_https_context = ssl._create_unverified_context
+    logger.warning("SSL certificate verification has been disabled via environment variable.")
+
+DEFAULT_GATEWAY_AUDIENCE = "https://esmeralda.internal"
+
+
+def _get_oidc_token(audience: str) -> str:
+    """Generate an OIDC ID token for target SERVICE_ACCOUNT_EMAIL using IAM impersonation."""
+    sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
+    if sa_email:
+        try:
+            from google.auth import impersonated_credentials
+            from google.auth.transport.requests import Request as GoogleAuthRequest
+            source_creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            impersonated = impersonated_credentials.Credentials(
+                source_credentials=source_creds,
+                target_principal=sa_email,
+                target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            id_token_creds = impersonated_credentials.IDTokenCredentials(
+                target_credentials=impersonated,
+                target_audience=audience,
+                include_email=True,
+            )
+            auth_req = GoogleAuthRequest()
+            id_token_creds.refresh(auth_req)
+            return id_token_creds.token
+        except Exception as e:
+            logger.warning("Failed to fetch impersonated ID token for %s (%s)", sa_email, e)
+
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        auth_req = GoogleAuthRequest()
+        return google_id_token.fetch_id_token(auth_req, audience)
+    except Exception as e:
+        logger.warning("Failed to fetch ID token via Metadata Server: %s", e)
+        return ""
+
+
+def _make_header_provider(mcp_url: str):
+    """Factory that returns a header_provider for a given MCP server URL."""
+    parsed = urllib.parse.urlsplit(mcp_url)
+    audience = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else mcp_url.replace("/mcp", "")
+
+    def header_provider(context):
+        """Provides service-to-service ID token and forwards user auth token."""
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            "X-API-Key": "ai-coe-mortgage-specialist",
+        }
+        # Bypass OIDC token generation if running against local servers or in local mode
+        if "localhost" in mcp_url or "127.0.0.1" in mcp_url or os.getenv("LOCAL_MODE") == "true":
+            logger.info("Bypassing OIDC token generation for local MCP server: %s", mcp_url)
+        else:
+            try:
+                id_token = _get_oidc_token(audience)
+                headers["Authorization"] = f"Bearer {id_token}"
+            except Exception as e:
+                logger.error("Failed to generate OIDC token, continuing without it: %s", e)
+
+        if context and context.state:
+            user_token = context.state.get(USER_AUTH_TOKEN_KEY)
+            if user_token:
+                headers["User-Auth-Token"] = user_token
+                logger.info("Forwarding user auth token to MCP server")
+
+        return headers
+
+    return header_provider
+
+
+_DEFAULT_MCP_HEADERS = {
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+    "X-API-Key": "ai-coe-mortgage-specialist",
+}
+
+dms_url = os.environ.get("LEGACY_DMS_MCP_URL") or os.environ.get("DMS_MCP_URL", "https://legacy-dms.esmeralda.internal/mcp")
+income_url = os.environ.get("INCOME_VERIFICATION_MCP_URL") or os.environ.get("INCOME_VERIFICATION_URL", "https://income-verification.esmeralda.internal/mcp")
+email_url = os.environ.get("CORPORATE_EMAIL_MCP_URL") or os.environ.get("EMAIL_MCP_URL", "https://corporate-email.esmeralda.internal/mcp")
+
+dms_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=dms_url,
+        headers=_DEFAULT_MCP_HEADERS,
+        timeout=30.0,
+        sse_read_timeout=300.0,
+    ),
+    header_provider=_make_header_provider(dms_url),
+    tool_name_prefix="dms",
+)
+
+income_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=income_url,
+        headers=_DEFAULT_MCP_HEADERS,
+        timeout=30.0,
+        sse_read_timeout=300.0,
+    ),
+    header_provider=_make_header_provider(income_url),
+    tool_name_prefix="income",
+)
+
+email_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=email_url,
+        headers=_DEFAULT_MCP_HEADERS,
+        timeout=30.0,
+        sse_read_timeout=300.0,
+    ),
+    header_provider=_make_header_provider(email_url),
+    tool_name_prefix="email",
+)

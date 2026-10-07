@@ -31,13 +31,13 @@ variable "mcps_project_id" {
 }
 
 
-variable "a2a_project_id" {
+variable "ai_coe_agents_project_id" {
   description = "The project ID allocated for Core AI Platform and A2A agents"
   type        = string
 }
 
-variable "root_project_id" {
-  description = "The project ID allocated for client-facing LOB Root agent"
+variable "cx_agents_project_id" {
+  description = "The project ID allocated for CX team agents (cx-agents project)"
   type        = string
 }
 
@@ -107,8 +107,8 @@ variable "gateway_subnet_id" {
   default     = ""
 }
 
-variable "a2a_sql_service_agent" {
-  description = "The Cloud SQL Service Agent email in A2A project"
+variable "ai_coe_agents_sql_service_agent" {
+  description = "The Cloud SQL Service Agent email in the AI CoE agents project"
   type        = string
 }
 

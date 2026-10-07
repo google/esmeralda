@@ -4,7 +4,7 @@ SELECT
   timestamp,
   SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.session_id') AS STRING) AS session_id,
   SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.user_id') AS STRING) AS user_id,
-  COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.agent_id') AS STRING), 'root_agent') AS agent_id,
+  COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.agent_id') AS STRING), 'cx_mortgage_orchestrator') AS agent_id,
   SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.execution_path') AS STRING) AS execution_path,
   COALESCE(SAFE_CAST(JSON_VALUE(SAFE.PARSE_JSON(textPayload), '$.model') AS STRING), 'gemini-3.7-flash') AS model,
   STRUCT(

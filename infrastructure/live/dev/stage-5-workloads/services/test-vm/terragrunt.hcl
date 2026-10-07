@@ -24,7 +24,7 @@ locals {
 }
 
 inputs = {
-  project_id            = dependency.projects.outputs.root_project_id
+  project_id            = dependency.projects.outputs.cx_agents_project_id
   region                = local.env_vars.locals.region
   subnet_id             = dependency.networking.outputs.subnet_id
   service_account_email = dependency.security.outputs.test_vm_sa_email

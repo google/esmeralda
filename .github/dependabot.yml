@@ -6,12 +6,12 @@ updates:
       interval: "weekly"
 
   - package-ecosystem: "pip"
-    directory: "/apps/agents/base-adk-agent"
+    directory: "/apps/agents/cx-mortgage-orchestrator"
     schedule:
       interval: "weekly"
 
   - package-ecosystem: "pip"
-    directory: "/apps/agents/a2a-agent"
+    directory: "/apps/agents/ai-coe-mortgage-specialist"
     schedule:
       interval: "weekly"
 

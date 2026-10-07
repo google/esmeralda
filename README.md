@@ -65,8 +65,8 @@ flowchart TD
     end
 
     subgraph Agents["🧠 AI Reasoning Layer (Stage 4)"]
-        RootAgent["Root Coordinator Agent\n(Vertex AI Reasoning Engine)"]
-        A2AAgent["Mortgage Specialist Agent\n(Vertex AI Reasoning Engine / A2A)"]
+        RootAgent["CX Mortgage Orchestrator\n(Vertex AI Reasoning Engine)"]
+        A2AAgent["AI CoE Mortgage Specialist\n(Vertex AI Reasoning Engine / A2A)"]
     end
 
     subgraph Tools["🔌 MCP Tool Microservices (Stage 4)"]

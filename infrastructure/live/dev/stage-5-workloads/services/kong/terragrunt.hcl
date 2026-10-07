@@ -31,8 +31,8 @@ dependency "security" {
   config_path = "../../../stage-3-security"
 }
 
-dependency "a2a_agent" {
-  config_path = "../../agents/a2a-agent"
+dependency "ai_coe_mortgage_specialist" {
+  config_path = "../../agents/ai-coe-mortgage-specialist"
   mock_outputs = {
     engine_id    = "mock-engine-id"
     endpoint_url = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/mock/locations/us-central1/reasoningEngines/0"
@@ -40,8 +40,8 @@ dependency "a2a_agent" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
-dependency "root_agent" {
-  config_path = "../../agents/base-adk-agent"
+dependency "cx_mortgage_orchestrator" {
+  config_path = "../../agents/cx-mortgage-orchestrator"
   mock_outputs = {
     engine_id    = "mock-engine-id"
     endpoint_url = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/mock/locations/us-central1/reasoningEngines/0"
@@ -92,23 +92,23 @@ inputs = {
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
-    dependency.security.outputs.a2a_agent_sa_email,
-    dependency.security.outputs.root_agent_sa_email,
+    dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
+    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
     dependency.security.outputs.mcp_invoker_sa_email
   ]
 
   agent_endpoints = {
     # Agents
-    a2a-agent = {
-      logical_name = "a2a-mortgage-agent"
-      engine_id    = dependency.a2a_agent.outputs.engine_id
-      endpoint_url = "${dependency.a2a_agent.outputs.endpoint_url}/a2a"
+    ai-coe-mortgage-specialist = {
+      logical_name = "ai-coe-mortgage-specialist"
+      engine_id    = dependency.ai_coe_mortgage_specialist.outputs.engine_id
+      endpoint_url = "${dependency.ai_coe_mortgage_specialist.outputs.endpoint_url}/a2a"
       audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
     }
-    root-agent = {
-      logical_name = "root-agent"
-      engine_id    = dependency.root_agent.outputs.engine_id
-      endpoint_url = "${dependency.root_agent.outputs.endpoint_url}:streamQuery?alt=sse"
+    cx-mortgage-orchestrator = {
+      logical_name = "cx-mortgage-orchestrator"
+      engine_id    = dependency.cx_mortgage_orchestrator.outputs.engine_id
+      endpoint_url = "${dependency.cx_mortgage_orchestrator.outputs.endpoint_url}:streamQuery?alt=sse"
       audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
     }
     # MCP Servers

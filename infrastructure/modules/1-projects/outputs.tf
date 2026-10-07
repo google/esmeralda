@@ -17,14 +17,14 @@ output "mcps_project_id" {
   value       = local.mcps_id
 }
 
-output "a2a_project_id" {
+output "ai_coe_agents_project_id" {
   description = "The project ID allocated for Core AI Platform and A2A agents"
-  value       = local.a2a_id
+  value       = local.ai_coe_agents_id
 }
 
-output "root_project_id" {
-  description = "The project ID allocated for client-facing LOB Root agent"
-  value       = local.root_agent_id
+output "cx_agents_project_id" {
+  description = "The project ID allocated for CX team agents (cx-agents project)"
+  value       = local.cx_agents_id
 }
 
 output "governance_project_id" {
@@ -48,30 +48,30 @@ output "gateway_run_service_agent" {
   value       = google_project_service_identity.gateway_run.email
 }
 
-output "a2a_run_service_agent" {
-  description = "The Cloud Run Service Agent email in A2A project"
-  value       = google_project_service_identity.a2a_run.email
+output "ai_coe_agents_run_service_agent" {
+  description = "The Cloud Run Service Agent email in the AI CoE agents project"
+  value       = google_project_service_identity.ai_coe_agents_run.email
 }
 
-output "a2a_vertex_service_agent" {
-  description = "The Vertex AI Service Agent email in A2A project"
-  value       = google_project_service_identity.a2a_vertex.email
+output "ai_coe_agents_vertex_service_agent" {
+  description = "The Vertex AI Service Agent email in the AI CoE agents project"
+  value       = google_project_service_identity.ai_coe_agents_vertex.email
 }
 
-output "root_vertex_service_agent" {
-  description = "The Vertex AI Service Agent email in Root Agent project"
-  value       = google_project_service_identity.root_vertex.email
+output "cx_agents_vertex_service_agent" {
+  description = "The Vertex AI Service Agent email in CX agents project"
+  value       = google_project_service_identity.cx_agents_vertex.email
 }
 
-output "root_run_service_agent" {
-  description = "The Cloud Run Service Agent email in Root Agent project"
-  value       = google_project_service_identity.root_run.email
+output "cx_agents_run_service_agent" {
+  description = "The Cloud Run Service Agent email in CX agents project"
+  value       = google_project_service_identity.cx_agents_run.email
 }
 
 
-output "a2a_sql_service_agent" {
-  description = "The Cloud SQL Service Agent email in A2A project"
-  value       = google_project_service_identity.a2a_sql.email
+output "ai_coe_agents_sql_service_agent" {
+  description = "The Cloud SQL Service Agent email in the AI CoE agents project"
+  value       = google_project_service_identity.ai_coe_agents_sql.email
 }
 
 output "governance_secrets_service_agent" {

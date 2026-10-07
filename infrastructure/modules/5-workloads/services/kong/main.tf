@@ -41,7 +41,7 @@ resource "google_secret_manager_secret_version" "kong_config" {
 
 # Resolve pre-created Service Account for Kong from Stage 3 Security
 data "google_service_account" "kong_sa" {
-  account_id = "kong-gateway-sa-${var.environment}"
+  account_id = "sa-esmeralda-kong-${var.environment}"
   project    = var.project_id
 }
 
@@ -65,12 +65,12 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
     "http://esmeralda.internal",
     "https://esmeralda.internal",
     "esmeralda.internal",
-    "http://a2a-mortgage-agent.esmeralda.internal",
-    "https://a2a-mortgage-agent.esmeralda.internal",
-    "a2a-mortgage-agent.esmeralda.internal",
-    "http://root-agent.esmeralda.internal",
-    "https://root-agent.esmeralda.internal",
-    "root-agent.esmeralda.internal",
+    "http://ai-coe-mortgage-specialist.esmeralda.internal",
+    "https://ai-coe-mortgage-specialist.esmeralda.internal",
+    "ai-coe-mortgage-specialist.esmeralda.internal",
+    "http://cx-mortgage-orchestrator.esmeralda.internal",
+    "https://cx-mortgage-orchestrator.esmeralda.internal",
+    "cx-mortgage-orchestrator.esmeralda.internal",
     "http://legacy-dms.esmeralda.internal",
     "https://legacy-dms.esmeralda.internal",
     "legacy-dms.esmeralda.internal",
@@ -220,8 +220,8 @@ resource "tls_cert_request" "kong_ilb_csr" {
     "legacy-dms.esmeralda.internal",
     "income-verification.esmeralda.internal",
     "corporate-email.esmeralda.internal",
-    "a2a-mortgage-agent.esmeralda.internal",
-    "root-agent.esmeralda.internal",
+    "ai-coe-mortgage-specialist.esmeralda.internal",
+    "cx-mortgage-orchestrator.esmeralda.internal",
   ]
 }
 

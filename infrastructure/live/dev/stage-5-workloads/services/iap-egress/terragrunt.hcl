@@ -17,8 +17,8 @@ dependency "governance" {
   config_path = "../../../stage-4-governance"
 }
 
-dependency "a2a_agent" {
-  config_path = "../../agents/a2a-agent"
+dependency "ai_coe_mortgage_specialist" {
+  config_path = "../../agents/ai-coe-mortgage-specialist"
   mock_outputs = {
     registry_service_id = "mock-registry-service"
   }
@@ -58,7 +58,7 @@ inputs = {
   region                = local.env_vars.locals.region
   iap_egress_members    = dependency.governance.outputs.iap_egress_members
   registry_service_ids = [
-    dependency.a2a_agent.outputs.registry_service_id,
+    dependency.ai_coe_mortgage_specialist.outputs.registry_service_id,
     dependency.corporate_email.outputs.registry_service_id,
     dependency.income_verification.outputs.registry_service_id,
     dependency.legacy_dms.outputs.registry_service_id,
