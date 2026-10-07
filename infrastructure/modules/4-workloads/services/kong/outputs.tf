@@ -13,8 +13,3 @@ output "internal_root_ca_pem" {
   value       = tls_self_signed_cert.esmeralda_ca_cert.cert_pem
 }
 
-output "gateway_run_url" {
-  description = "The Cloud Run .run.app URI of the Kong API Gateway"
-  value       = google_cloud_run_v2_service.kong_gateway.uri
-}
-

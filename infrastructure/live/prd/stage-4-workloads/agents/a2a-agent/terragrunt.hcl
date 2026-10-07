@@ -40,7 +40,6 @@ inputs = {
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.a2a_agent_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
-  gateway_project_id    = dependency.projects.outputs.gateway_project_id
   
   # Dynamic Fallback: Use client's existing VPC if BYO is active, else use dependency outputs
   vpc_id                = local.byo_networking ? local.env_vars.locals.existing_vpc_id  : dependency.networking.outputs.network_id

@@ -48,7 +48,6 @@ steps:
           --location="${_REGION}" \
           --display-name="a2a-mortgage-agent" \
           --description="A2A Agent providing domain mortgage processing capabilities" \
-          --agent-spec-type=a2a-agent-card \
           --agent-spec-content="$$CARD_JSON"
 
 substitutions:

@@ -299,17 +299,11 @@ resource "google_compute_network_attachment" "psc_attachment" {
   ]
 }
 
-data "google_project" "gateway" {
-  count      = var.gateway_project_id != "" ? 1 : 0
-  project_id = var.gateway_project_id
-}
-
 # Declaratively define the Vertex AI Reasoning Engine agent
 locals {
   # Read and decode agent.yaml if path is provided
   agent_config = try(yamldecode(file(var.agent_config_path)), {})
 
-  kong_run_base_url = length(data.google_project.gateway) > 0 ? "https://kong-gateway-${var.environment}-${data.google_project.gateway[0].number}.${var.region}.run.app" : ""
 
   # 1. Metadata
   yaml_name = try(local.agent_config.name, var.agent_name)
@@ -329,21 +323,14 @@ locals {
   yaml_env_vars = try(local.agent_config.env, {})
 
   runtime_overrides = {
-    GCS_BUCKET                  = try(google_storage_bucket.logs.name, null)
-    CLOUD_SQL_INSTANCE          = try("${var.project_id}:${var.region}:${google_sql_database_instance.task_store.name}", null)
-    DB_IAM_USER                 = try(google_sql_user.agent_iam_user.name, null)
-    DB_NAME                     = try(var.database_name, null)
-    USE_CLOUD_SQL               = "0"
-    EVENTS_DATASET_ID           = try(google_bigquery_dataset.analytics.dataset_id, null)
-    EVENTS_TABLE_ID             = "${replace(local.yaml_name, "-", "_")}_events"
-    SERVICE_ACCOUNT_EMAIL       = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account
-    LEGACY_DMS_MCP_URL          = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/legacy-dms/mcp" : null
-    DMS_MCP_URL                 = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/legacy-dms/mcp" : null
-    INCOME_VERIFICATION_MCP_URL = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/income-verification/mcp" : null
-    INCOME_VERIFICATION_URL     = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/income-verification/mcp" : null
-    CORPORATE_EMAIL_MCP_URL     = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/corporate-email/mcp" : null
-    EMAIL_MCP_URL               = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/corporate-email/mcp" : null
-    A2A_AGENT_URL               = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/a2a-mortgage-agent" : null
+    GCS_BUCKET             = try(google_storage_bucket.logs.name, null)
+    CLOUD_SQL_INSTANCE     = try("${var.project_id}:${var.region}:${google_sql_database_instance.task_store.name}", null)
+    DB_IAM_USER            = try(google_sql_user.agent_iam_user.name, null)
+    DB_NAME                = try(var.database_name, null)
+    USE_CLOUD_SQL          = "0"
+    EVENTS_DATASET_ID      = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_TABLE_ID        = "${replace(local.yaml_name, "-", "_")}_events"
+    SERVICE_ACCOUNT_EMAIL = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account
   }
 
   final_env_vars = merge(
@@ -363,11 +350,7 @@ locals {
 
   registry_region = replace(split(".", local.registry_host)[0], "-docker", "")
 
-  decoded_agent_card = try(jsondecode(var.agent_card_json), {})
-  agent_card_json = local.kong_run_base_url != "" && length(local.decoded_agent_card) > 0 ? jsonencode(merge(
-    local.decoded_agent_card,
-    { url = "${local.kong_run_base_url}/a2a-mortgage-agent" }
-  )) : var.agent_card_json
+  agent_card_json = var.agent_card_json
 }
 
 data "google_artifact_registry_docker_image" "agent_image" {
