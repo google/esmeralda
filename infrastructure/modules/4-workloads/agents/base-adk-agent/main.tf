@@ -128,17 +128,11 @@ resource "google_compute_network_attachment" "psc_attachment" {
   ]
 }
 
-data "google_project" "gateway" {
-  count      = var.gateway_project_id != "" ? 1 : 0
-  project_id = var.gateway_project_id
-}
-
 # Declaratively define the Vertex AI Reasoning Engine master orchestrator
 locals {
   # Read and decode agent.yaml if path is provided
   agent_config = try(yamldecode(file(var.agent_config_path)), {})
 
-  kong_run_base_url = length(data.google_project.gateway) > 0 ? "https://kong-gateway-${var.environment}-${data.google_project.gateway[0].number}.${var.region}.run.app" : ""
 
   # 1. Metadata
   yaml_name = try(local.agent_config.name, var.agent_name)
@@ -159,8 +153,8 @@ locals {
 
   runtime_overrides = {
     GCS_BUCKET             = try(google_storage_bucket.logs.name, null)
-    GATEWAY_MCP_URL        = local.kong_run_base_url != "" ? local.kong_run_base_url : try(var.gateway_mcp_url, null)
-    A2A_AGENT_URL          = local.kong_run_base_url != "" ? "${local.kong_run_base_url}/a2a-mortgage-agent" : try(var.a2a_agent_url, null)
+    GATEWAY_MCP_URL        = try(var.gateway_mcp_url, null)
+    A2A_AGENT_URL          = try(var.a2a_agent_url, null)
     EVENTS_DATASET_ID      = try(google_bigquery_dataset.analytics.dataset_id, null)
     EVENTS_TABLE_ID        = "${replace(local.yaml_name, "-", "_")}_events"
     SERVICE_ACCOUNT_EMAIL = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account

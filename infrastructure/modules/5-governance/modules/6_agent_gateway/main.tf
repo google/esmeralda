@@ -11,7 +11,8 @@ terraform {
     }
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = ">= 5.0"
+      # >= 8.4.0 required for google_network_services_agent_connectivity_template
+      version = ">= 8.4.0, < 9.0.0"
     }
   }
 }
@@ -41,7 +42,8 @@ resource "google_project_service" "certificatemanager" {
 resource "google_compute_network_attachment" "agent_gateway" {
   count                 = var.enable_agent_gateway && var.subnet_self_link != "" ? 1 : 0
   project               = var.governance_project_id
-  name                  = "agw-egress-na-${var.environment}"
+  # v2: the original attachment is still held by the orphaned (undeletable) v1 gateway.
+  name                  = "agw-egress-na-v2-${var.environment}"
   region                = var.region
   connection_preference = "ACCEPT_AUTOMATIC"
   subnetworks           = [var.subnet_self_link]
@@ -55,40 +57,79 @@ resource "google_project_iam_member" "agent_gateway_dns_peer" {
   member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
 }
 
-# 2. Central Agent Gateway Resource (AGENT_TO_ANYWHERE Egress Mode)
+# Grant roles/compute.networkUser to Agent Gateway Service Agent on Shared VPC Host Project
+# (required when the network attachment references a Shared VPC subnet)
+resource "google_project_iam_member" "agent_gateway_network_user" {
+  count   = var.enable_agent_gateway && var.net_host_project_id != "" ? 1 : 0
+  project = var.net_host_project_id
+  role    = "roles/compute.networkUser"
+  member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+}
+
+# 2a. Agent Connectivity Template (egress networking + private CA trust)
+# - Private ranges (esmeralda.internal -> Kong ILB) egress through the PSC network attachment.
+# - Public Google APIs use Private Google Access automatically (never peer googleapis.com).
+# - TLS to *.esmeralda.internal is validated against the internal Root CA TrustConfig.
+# NOTE: ACTs are immutable while referenced by a gateway; bump the name to roll a new config.
+resource "google_network_services_agent_connectivity_template" "egress" {
+  count                          = var.enable_agent_gateway && var.subnet_self_link != "" ? 1 : 0
+  provider                       = google-beta
+  project                        = var.governance_project_id
+  location                       = var.region
+  agent_connectivity_template_id = "esmeralda-egress-act-v2-${var.environment}"
+  description                    = "Esmeralda AGW egress: PSC-I to Shared VPC, esmeralda.internal DNS peering, internal Root CA trust"
+
+  access_path = "AGENT_TO_ANYWHERE"
+
+  egress_network_config {
+    network_attachment = google_compute_network_attachment.agent_gateway[0].id
+    vpc_egress         = "PRIVATE_RANGES_ONLY"
+
+    dns_peering_config {
+      domains        = ["esmeralda.internal."]
+      target_network = startswith(var.vpc_name, "projects/") ? var.vpc_name : "projects/${var.net_host_project_id}/global/networks/${var.vpc_name}"
+    }
+
+    dynamic "tls_config" {
+      for_each = length(google_certificate_manager_trust_config.internal_trust_config) > 0 ? [1] : []
+      content {
+        trust_config     = "projects/${data.google_project.governance.number}/locations/${var.region}/trustConfigs/${google_certificate_manager_trust_config.internal_trust_config[0].name}"
+        additional_roots = "PUBLICLY_TRUSTED_ROOTS"
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_iam_member.agent_gateway_dns_peer,
+    google_project_iam_member.agent_gateway_network_user,
+  ]
+}
+
+# 2b. Central Agent Gateway Resource (AGENT_TO_ANYWHERE Egress Mode)
+# The ACT must be set at creation time; gateways created without one cannot be migrated.
 resource "google_network_services_agent_gateway" "egress_gateway" {
   count    = var.enable_agent_gateway && var.subnet_self_link != "" ? 1 : 0
   provider = google-beta
   project  = var.governance_project_id
   location = var.region
-  name     = "esmeralda-agent-egress-gateway-${var.environment}"
+  # Renamed from esmeralda-agent-egress-gateway-<env>: v1 is stuck in a failed delete (Code 13).
+  name     = "esmeralda-agw-${var.environment}"
 
   google_managed {
     governed_access_path = "AGENT_TO_ANYWHERE"
   }
 
+  agent_connectivity_template = "projects/${data.google_project.governance.number}/locations/${var.region}/agentConnectivityTemplates/${google_network_services_agent_connectivity_template.egress[0].agent_connectivity_template_id}"
+
   registries = [
     "//agentregistry.googleapis.com/projects/${data.google_project.governance.number}/locations/${var.region}"
   ]
 
-  network_config {
-    egress {
-      network_attachment = google_compute_network_attachment.agent_gateway[0].id
-    }
-
-    # Strict domain peering for private microservices (never wildcard or googleapis.com)
-    dns_peering_config {
-      domains        = ["esmeralda.internal."]
-      target_project = var.net_host_project_id
-      target_network = startswith(var.vpc_name, "projects/") ? var.vpc_name : "projects/${var.net_host_project_id}/global/networks/${var.vpc_name}"
-    }
-  }
-
   lifecycle {
-    ignore_changes = [network_config]
+    # Swapping the ACT on a live gateway is unsupported: recreate the gateway instead.
+    # (Agent Runtimes bound to it must be detached/deleted before the replace.)
+    replace_triggered_by = [google_network_services_agent_connectivity_template.egress]
   }
-
-  depends_on = [google_project_iam_member.agent_gateway_dns_peer]
 }
 
 # 3. IAP Authorization Extension (REQUEST_AUTHZ)
@@ -180,15 +221,9 @@ resource "google_project_iam_member" "agentgateway_model_armor" {
   member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
 }
 
-data "google_project" "gateway" {
-  count      = var.gateway_project_id != "" ? 1 : 0
-  project_id = var.gateway_project_id
-}
-
-# 5. Declarative System Google API & Kong Gateway Endpoints registered in Central Agent Registry
+# 5. Declarative System Google API Endpoints registered in Central Agent Registry
+# IAP egress requires every exact hostname the agents call through the gateway to be registered.
 locals {
-  kong_run_base_url = length(data.google_project.gateway) > 0 ? "https://kong-gateway-${var.environment}-${data.google_project.gateway[0].number}.${var.region}.run.app" : ""
-
   google_apis = {
     aiplatform             = "Vertex AI Platform"
     modelarmor             = "Model Armor"
@@ -196,6 +231,8 @@ locals {
     logging                = "Logging"
     monitoring             = "Monitoring"
     telemetry              = "Telemetry"
+    cloudtrace             = "Cloud Trace"
+    secretmanager          = "Secret Manager"
     agentregistry          = "Agent Registry"
     iap                    = "Identity-Aware Proxy"
     iamcredentials         = "IAM Credentials"
@@ -203,30 +240,7 @@ locals {
     bigquerystorage        = "BigQuery Storage"
   }
 
-  kong_endpoints = var.enable_agent_gateway && local.kong_run_base_url != "" ? {
-    "kong-gateway-run" = {
-      display_name = "Kong API Gateway Cloud Run"
-      url          = local.kong_run_base_url
-    }
-    "legacy-dms-kong-run" = {
-      display_name = "Legacy DMS via Kong Cloud Run"
-      url          = "${local.kong_run_base_url}/legacy-dms/mcp"
-    }
-    "income-verification-kong-run" = {
-      display_name = "Income Verification via Kong Cloud Run"
-      url          = "${local.kong_run_base_url}/income-verification/mcp"
-    }
-    "corporate-email-kong-run" = {
-      display_name = "Corporate Email via Kong Cloud Run"
-      url          = "${local.kong_run_base_url}/corporate-email/mcp"
-    }
-    "a2a-mortgage-agent-kong-run" = {
-      display_name = "A2A Mortgage Agent via Kong Cloud Run"
-      url          = "${local.kong_run_base_url}/a2a-mortgage-agent"
-    }
-  } : {}
-
-  system_endpoints = var.enable_agent_gateway ? merge(concat([
+  system_endpoints = var.enable_agent_gateway ? merge([
     for id, name in local.google_apis : {
       (length(id) >= 4 ? id : "${id}-endpoint") = {
         display_name = name
@@ -257,7 +271,7 @@ locals {
         url          = "https://us-${id}.mtls.googleapis.com"
       }
     }
-  ], [local.kong_endpoints])...) : {}
+  ]...) : {}
 }
 
 resource "google_agent_registry_service" "system_endpoints" {
@@ -351,8 +365,8 @@ resource "null_resource" "grant_iap_egress" {
   triggers = {
     services_hash = md5(jsonencode(local.system_endpoints))
     members_hash  = md5(jsonencode(local.cleaned_iap_members))
-    kong_url      = local.kong_run_base_url
-    version       = "6"
+    gateway_id    = try(google_network_services_agent_gateway.egress_gateway[0].id, "")
+    version       = "7"
   }
 
   provisioner "local-exec" {
@@ -379,18 +393,6 @@ EOF
 
       echo "  -> Discovering MCP servers in Agent Registry..."
       TOKEN="$(gcloud auth print-access-token)"
-      KONG_BASE="${local.kong_run_base_url}"
-
-      if [ -n "$KONG_BASE" ]; then
-        for SVC_NAME in legacy-dms income-verification corporate-email; do
-          echo "  -> Synchronizing Agent Registry service ($SVC_NAME-mcp-service) with $KONG_BASE/$SVC_NAME/mcp..."
-          curl -s -X PATCH \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"interfaces\": [{\"url\": \"$KONG_BASE/$SVC_NAME/mcp\", \"protocolBinding\": \"HTTP_JSON\"}]}" \
-            "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/services/$SVC_NAME-mcp-service?updateMask=interfaces" > /dev/null || true
-        done
-      fi
 
       MCPS_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" "https://agentregistry.googleapis.com/v1alpha/projects/${var.governance_project_id}/locations/${var.region}/mcpServers")
 
@@ -427,7 +429,7 @@ EOF
   }
 }
 
-# 9. Certificate Manager TrustConfig and AgentConnectivityTemplate for Internal Root CA (*.esmeralda.internal)
+# 9. Certificate Manager TrustConfig for Internal Root CA (*.esmeralda.internal)
 resource "google_certificate_manager_trust_config" "internal_trust_config" {
   count       = var.enable_agent_gateway && local.resolved_internal_root_ca_pem != "" ? 1 : 0
   project     = var.governance_project_id
@@ -443,124 +445,3 @@ resource "google_certificate_manager_trust_config" "internal_trust_config" {
 
   depends_on = [google_project_service.certificatemanager]
 }
-
-resource "null_resource" "configure_egress_trust_config" {
-  count      = var.enable_agent_gateway && local.resolved_internal_root_ca_pem != "" && length(google_network_services_agent_gateway.egress_gateway) > 0 ? 1 : 0
-  depends_on = [
-    google_network_services_agent_gateway.egress_gateway,
-    google_certificate_manager_trust_config.internal_trust_config
-  ]
-
-  triggers = {
-    gateway_id       = google_network_services_agent_gateway.egress_gateway[0].id
-    trust_config_id  = google_certificate_manager_trust_config.internal_trust_config[0].id
-    root_ca_pem_md5  = md5(local.resolved_internal_root_ca_pem)
-    version          = "5"
-  }
-
-  provisioner "local-exec" {
-    command = <<EOT
-      set -e
-      echo "🔐 Creating/Updating AgentConnectivityTemplate with Certificate Manager TrustConfig..."
-      TOKEN="$(gcloud auth print-access-token)"
-      ACT_ID="esmeralda-act-${var.environment}"
-      ACT_FULL_NAME="projects/${var.governance_project_id}/locations/${var.region}/agentConnectivityTemplates/$ACT_ID"
-      ACT_NUM_NAME="projects/${data.google_project.governance.number}/locations/${var.region}/agentConnectivityTemplates/$ACT_ID"
-
-      cat << 'EOF' > /tmp/agw_act_payload.json
-{
-  "egressNetworkConfig": {
-    "networkAttachment": "${google_compute_network_attachment.agent_gateway[0].id}",
-    "dnsPeeringConfig": {
-      "domain": "esmeralda.internal.",
-      "targetNetwork": "${startswith(var.vpc_name, "projects/") ? var.vpc_name : "projects/${var.net_host_project_id}/global/networks/${var.vpc_name}"}"
-    },
-    "tlsConfig": {
-      "trustConfig": "projects/${var.governance_project_id}/locations/${var.region}/trustConfigs/${google_certificate_manager_trust_config.internal_trust_config[0].name}",
-      "additionalRoots": "PUBLICLY_TRUSTED_ROOTS"
-    }
-  }
-}
-EOF
-
-      # Check if ACT already exists
-      EXISTING_ACT=$(curl -s -H "Authorization: Bearer $TOKEN" "https://networkservices.googleapis.com/v1/$ACT_FULL_NAME" | jq -r '.name // empty')
-      if [ -z "$EXISTING_ACT" ]; then
-        echo "  -> Creating new AgentConnectivityTemplate ($ACT_ID)..."
-        ACT_RESP=$(curl -s -X POST \
-          -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          -d @/tmp/agw_act_payload.json \
-          "https://networkservices.googleapis.com/v1/projects/${var.governance_project_id}/locations/${var.region}/agentConnectivityTemplates?agentConnectivityTemplateId=$ACT_ID")
-      else
-        echo "  -> Updating existing AgentConnectivityTemplate ($ACT_ID)..."
-        ACT_RESP=$(curl -s -X PATCH \
-          -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          -d @/tmp/agw_act_payload.json \
-          "https://networkservices.googleapis.com/v1/$ACT_FULL_NAME?updateMask=egressNetworkConfig.tlsConfig,egressNetworkConfig.dnsPeeringConfig")
-      fi
-      rm -f /tmp/agw_act_payload.json
-
-      ACT_OP=$(echo "$ACT_RESP" | jq -r '.name // empty')
-      if [ -n "$ACT_OP" ]; then
-        echo "  -> Waiting for ACT operation $ACT_OP..."
-        for i in {1..60}; do
-          OP_STATUS=$(curl -s -H "Authorization: Bearer $TOKEN" "https://networkservices.googleapis.com/v1/$ACT_OP")
-          DONE=$(echo "$OP_STATUS" | jq -r '.done // false')
-          if [ "$DONE" = "true" ]; then
-            ERR=$(echo "$OP_STATUS" | jq -r '.error // empty')
-            if [ -n "$ERR" ] && [ "$ERR" != "null" ]; then
-              echo "❌ ACT Operation failed: $ERR"
-              exit 1
-            fi
-            echo "  -> ACT ready!"
-            break
-          fi
-          sleep 3
-        done
-      else
-        echo "❌ Failed to create/update ACT: $ACT_RESP"
-        exit 1
-      fi
-
-      echo "🔗 Binding AgentConnectivityTemplate ($ACT_NUM_NAME) to AgentGateway..."
-      cat << EOF > /tmp/agw_bind_act.json
-{
-  "agentConnectivityTemplate": "$ACT_NUM_NAME"
-}
-EOF
-
-      RESP=$(curl -s -X PATCH \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -d @/tmp/agw_bind_act.json \
-        "https://networkservices.googleapis.com/v1/projects/${var.governance_project_id}/locations/${var.region}/agentGateways/${google_network_services_agent_gateway.egress_gateway[0].name}?updateMask=agentConnectivityTemplate,networkConfig")
-      rm -f /tmp/agw_bind_act.json
-
-      OP_NAME=$(echo "$RESP" | jq -r '.name // empty')
-      if [ -n "$OP_NAME" ]; then
-        echo "  -> Waiting for AgentGateway update operation $OP_NAME to complete..."
-        for i in {1..60}; do
-          OP_STATUS=$(curl -s -H "Authorization: Bearer $TOKEN" "https://networkservices.googleapis.com/v1/$OP_NAME")
-          DONE=$(echo "$OP_STATUS" | jq -r '.done // false')
-          if [ "$DONE" = "true" ]; then
-            ERR=$(echo "$OP_STATUS" | jq -r '.error // empty')
-            if [ -n "$ERR" ] && [ "$ERR" != "null" ]; then
-              echo "❌ AgentGateway Operation failed: $ERR"
-              exit 1
-            fi
-            echo "✅ Agent Gateway Egress TrustConfig & AgentConnectivityTemplate bound successfully!"
-            break
-          fi
-          sleep 5
-        done
-      else
-        echo "❌ Failed to initiate AgentGateway update: $RESP"
-        exit 1
-      fi
-    EOT
-  }
-}
-
-

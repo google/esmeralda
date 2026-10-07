@@ -53,12 +53,12 @@ resource "google_secret_manager_secret_iam_member" "kong_sa_secret_access" {
   member    = "serviceAccount:${data.google_service_account.kong_sa.email}"
 }
 
-# Deploy Kong Gateway on Cloud Run (protected by IAM roles/run.invoker)
+# Deploy Kong Gateway on Cloud Run with internal-only ingress
 resource "google_cloud_run_v2_service" "kong_gateway" {
   name                = "kong-gateway-${var.environment}"
   location            = var.region
   project             = var.project_id
-  ingress             = "INGRESS_TRAFFIC_ALL"
+  ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   deletion_protection = false
 
   custom_audiences = [

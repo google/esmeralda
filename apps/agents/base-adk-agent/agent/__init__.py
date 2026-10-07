@@ -16,6 +16,25 @@ import os
 
 import google.auth
 
+# Agent Gateway egress: the runtime routes traffic through an HTTP(S) forward proxy
+# advertised via *_PROXY env vars. aiohttp silently ignores https:// proxies, so
+# google-genai's aiohttp path (Gemini + Vertex sessions) would try a direct
+# connection and fail with "Network is unreachable". Force google-genai onto
+# httpx, which honors the proxy env like requests does.
+import logging as _logging
+import os as _os
+
+_logging.getLogger(__name__).info(
+    "Egress proxy env: %s",
+    {k: v for k, v in _os.environ.items() if k.lower().endswith("_proxy")},
+)
+try:
+    from google.genai import _api_client as _genai_api_client
+
+    _genai_api_client.BaseApiClient._use_aiohttp = lambda self: False
+except Exception as _e:  # pragma: no cover
+    _logging.getLogger(__name__).warning("Could not disable google-genai aiohttp: %s", _e)
+
 try:
     from interceptors import ClientPatchInterceptor
     ClientPatchInterceptor().on_startup(None)

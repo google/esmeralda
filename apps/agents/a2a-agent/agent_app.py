@@ -23,7 +23,7 @@ from google.adk import sessions as adk_sessions
 from google.adk.sessions import InMemorySessionService, VertexAiSessionService
 from google.adk.runners import Runner
 
-if os.environ.get("USE_IN_MEMORY_SESSIONS", "1") == "1":
+if os.environ.get("USE_IN_MEMORY_SESSIONS", "0") == "1":
     adk_sessions.VertexAiSessionService = InMemorySessionService
 
 import a2a.types
@@ -72,7 +72,7 @@ bq_logging_plugin = create_bq_plugin()
 
 def _create_session_service():
     """Use Vertex AI managed sessions on Agent Engine, in-memory locally."""
-    if os.environ.get("USE_IN_MEMORY_SESSIONS", "1") == "1":
+    if os.environ.get("USE_IN_MEMORY_SESSIONS", "0") == "1":
         logger.info("Using InMemorySessionService for fast reliable task execution")
         return InMemorySessionService()
     agent_engine_id = os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID")

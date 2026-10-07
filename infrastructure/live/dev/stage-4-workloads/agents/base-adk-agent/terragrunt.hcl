@@ -38,7 +38,6 @@ inputs = {
   agent_service_account = dependency.security.outputs.root_agent_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
   agent_gateway_id      = dependency.governance.outputs.agent_gateway_id
-  gateway_project_id    = dependency.projects.outputs.gateway_project_id
 
   # BYOC Container Image URI
   agent_image_uri       = "${local.env_vars.locals.region}-docker.pkg.dev/${dependency.projects.outputs.cicd_project_id}/esmeralda-containers/root-agent:latest"
