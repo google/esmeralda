@@ -78,6 +78,7 @@ module "agent_gateway" {
   vpc_name                  = var.vpc_name
   model_armor_template_name = module.model_armor.prompt_template_name
   agent_invoker_sa_emails   = var.agent_invoker_sa_emails
+  ca_cert_reader_sa_emails  = var.ca_cert_reader_sa_emails
   agent_project_ids         = var.agent_project_ids
   enable_agent_gateway      = var.enable_agent_gateway
   internal_root_ca_pem      = var.internal_root_ca_pem

@@ -26,11 +26,7 @@ RUN pip install --no-cache-dir .
 
 # Copy agent application files and entrypoint
 COPY . .
-RUN if [ -f /app/certs/agw-gateway.crt ]; then \
-      cp /app/certs/agw-gateway.crt /usr/local/share/ca-certificates/agw-gateway.crt && \
-      update-ca-certificates; \
-    fi && \
-    python3 -c "import certifi, glob; [open(certifi.where(), 'a').write('\n# Agent Gateway Root CA\n' + open(f).read()) for f in glob.glob('/usr/local/share/ca-certificates/agw*.crt')]" && \
+RUN python3 -c "import certifi, glob; [open(certifi.where(), 'a').write('\n# Agent Gateway Root CA\n' + open(f).read()) for f in glob.glob('/usr/local/share/ca-certificates/agw*.crt')]" && \
     chmod +x /app/scripts/entrypoint.sh && cp /app/scripts/entrypoint.sh /entrypoint.sh
 
 # Expose standard container port & Root CA Trust Environment Paths

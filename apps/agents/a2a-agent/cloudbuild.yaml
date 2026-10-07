@@ -2,15 +2,35 @@
 # Cloud Build pipeline for Mortgage A2A Agent container build & Agent Registry registration across spoke projects
 
 steps:
-  # Step 1: Build Docker Container
-  - name: 'gcr.io/cloud-builders/docker'
+  # Step 0: Fetch Agent Gateway root CAs (TLS inspection CA + internal Root CA) published by
+  # Stage 5 governance to Secret Manager. Never committed to the repo.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'fetch-agw-roots'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest'
-      - '.'
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ -n "${_GOVERNANCE_PROJECT_ID}" ]; then
+          GOV_PROJECT="${_GOVERNANCE_PROJECT_ID}"
+        else
+          GOV_PROJECT=$$(gcloud secrets versions access latest --secret="secret-esmeralda-governance-id-${_ENV}" --project="${_CICD_PROJECT_ID}")
+        fi
+        gcloud secrets versions access latest --secret="agw-root-ca-cert-${_ENV}" --project="$$GOV_PROJECT" > /workspace/.agw-roots.pem
+        grep -q "BEGIN CERTIFICATE" /workspace/.agw-roots.pem
+        echo "Fetched $$(grep -c 'BEGIN CERTIFICATE' /workspace/.agw-roots.pem) Agent Gateway root certificate(s) from $$GOV_PROJECT"
+
+  # Step 1: Build Docker Container (root CAs injected via official BYOC build arg)
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker build \
+          --build-arg AGENT_GATEWAY_ROOT_CERTIFICATES="$$(cat /workspace/.agw-roots.pem)" \
+          -t '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:${_TAG}' \
+          -t '${_REGION}-docker.pkg.dev/${_CICD_PROJECT_ID}/esmeralda-containers/a2a-agent:latest' \
+          .
 
   # Step 2: Push Docker Image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'

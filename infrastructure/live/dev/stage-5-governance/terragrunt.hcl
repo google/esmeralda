@@ -51,6 +51,7 @@ inputs = {
     dependency.security.outputs.a2a_agent_sa_email,
     dependency.security.outputs.test_vm_sa_email
   ]
+  ca_cert_reader_sa_emails     = [dependency.security.outputs.cicd_builder_sa_email]
   agent_project_ids            = [
     dependency.projects.outputs.a2a_project_id,
     dependency.projects.outputs.root_project_id

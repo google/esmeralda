@@ -12,7 +12,7 @@ certifi_path = certifi.where()
 certifi_data = open(certifi_path).read() if os.path.exists(certifi_path) else ''
 installed = False
 
-for crt in glob.glob('/usr/local/share/ca-certificates/agw*.crt') + ['/app/certs/agw-gateway.crt']:
+for crt in glob.glob('/usr/local/share/ca-certificates/agw*.crt'):
     if os.path.exists(crt):
         cert_data = open(crt).read()
         if cert_data not in certifi_data:

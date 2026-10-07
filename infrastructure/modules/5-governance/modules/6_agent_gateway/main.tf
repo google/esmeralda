@@ -333,6 +333,15 @@ resource "google_secret_manager_secret_iam_member" "agw_ca_secret_accessors" {
   member    = startswith(each.value, "serviceAccount:") || startswith(each.value, "principalSet:") ? each.value : "serviceAccount:${each.value}"
 }
 
+# 7b. Allow image builders to fetch the root CA bundle (baked into agent images at build time)
+resource "google_secret_manager_secret_iam_member" "agw_ca_secret_build_readers" {
+  for_each  = var.enable_agent_gateway ? toset(var.ca_cert_reader_sa_emails) : toset([])
+  project   = var.governance_project_id
+  secret_id = google_secret_manager_secret.agw_ca_cert[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = startswith(each.value, "serviceAccount:") ? each.value : "serviceAccount:${each.value}"
+}
+
 data "google_project" "agent_projects" {
   for_each   = toset(var.agent_project_ids)
   project_id = each.value

@@ -55,3 +55,8 @@ Thumbs.db
 *.swo
 docs/evaluation-improvement/
 links.txt
+
+# Agent Gateway / private CA material is fetched at build time from Secret Manager; never commit it
+*.crt
+*.pem
+**/certs/
