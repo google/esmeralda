@@ -87,7 +87,9 @@ locals {
     "texttospeech.googleapis.com",
     "saasservicemgmt.googleapis.com",
     "cloudapiregistry.googleapis.com",
-    "iamconnectors.googleapis.com"
+    # Agent Identity (auth providers for agents). Not used yet, enabled ahead of adoption.
+    # It replaces the legacy iamconnectors.googleapis.com, which is closed to new projects.
+    "agentidentity.googleapis.com",
   ]
 
   cx_agents_apis = [
@@ -122,7 +124,9 @@ locals {
     "texttospeech.googleapis.com",
     "saasservicemgmt.googleapis.com",
     "cloudapiregistry.googleapis.com",
-    "iamconnectors.googleapis.com"
+    # Agent Identity (auth providers for agents). Not used yet, enabled ahead of adoption.
+    # It replaces the legacy iamconnectors.googleapis.com, which is closed to new projects.
+    "agentidentity.googleapis.com",
   ]
 
 

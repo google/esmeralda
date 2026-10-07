@@ -95,9 +95,8 @@ resource "google_artifact_registry_repository" "dev" {
   description   = "Esmeralda dev builds (mutable tags: dev-latest, dev-<sha>)"
   format        = "DOCKER"
 
-  docker_config {
-    immutable_tags = false
-  }
+  # Tags are mutable by default. No docker_config block: the API omits
+  # immutable_tags=false, which would show as a perpetual diff.
 
   cleanup_policy_dry_run = false
   cleanup_policies {
@@ -127,6 +126,31 @@ resource "google_artifact_registry_repository" "release" {
 }
 
 # --------------------------------------------------------------------
+# Build source staging bucket (declarative). Without it, `gcloud builds submit`
+# lazily creates <project>_cloudbuild on first use, and parallel builds race on it.
+# --------------------------------------------------------------------
+
+resource "google_storage_bucket" "build_source" {
+  project                     = google_project.cicd.project_id
+  name                        = "${google_project.cicd.project_id}-build-source"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = true
+
+  lifecycle_rule {
+    condition {
+      age = 7
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  depends_on = [time_sleep.api_propagation]
+}
+
+# --------------------------------------------------------------------
 # Builder identity: builds any image, writes only to the dev repository
 # --------------------------------------------------------------------
 
@@ -141,7 +165,7 @@ resource "google_service_account" "builder" {
 resource "google_project_iam_member" "builder_roles" {
   for_each = toset([
     "roles/cloudbuild.builds.builder",
-    "roles/storage.admin", # regional user-owned Cloud Build source bucket
+    "roles/storage.admin", # reads staged sources from the build source bucket
     "roles/logging.logWriter",
   ])
   project = google_project.cicd.project_id
