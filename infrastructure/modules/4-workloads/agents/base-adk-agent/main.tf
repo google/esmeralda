@@ -188,6 +188,8 @@ data "google_artifact_registry_docker_image" "agent_image" {
 
 resource "google_vertex_ai_reasoning_engine" "agent" {
   provider     = google-beta
+  # Vertex AI managed sessions are child resources; FORCE lets destroy/replace cascade them.
+  deletion_policy = "FORCE"
   display_name = "${local.yaml_name}-${var.environment}"
   description  = local.yaml_desc
   region       = var.region

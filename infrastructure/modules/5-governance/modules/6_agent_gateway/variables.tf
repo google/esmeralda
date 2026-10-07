@@ -71,4 +71,8 @@ variable "gateway_project_id" {
   default     = ""
 }
 
-
+variable "ca_cert_reader_sa_emails" {
+  description = "Service accounts (e.g. the Cloud Build builder) that may read the Agent Gateway root CA bundle secret at image build time"
+  type        = list(string)
+  default     = []
+}

@@ -95,21 +95,8 @@ async def main(user_input: str):
         print("❌ Error: Server did not return a valid session ID.")
         sys.exit(1)
 
-    print("📝 2. Registering 19-Digit Session ID in ADK Agent Runtime (async_create_session)...")
-    query_url = f"{base_url}:query"
-    adk_create_payload = {
-        "class_method": "async_create_session",
-        "input": {
-            "user_id": "test-user-123",
-            "session_id": session_id
-        }
-    }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(query_url, json=adk_create_payload, headers=headers)
-        if resp.status_code == 200:
-            print(f"✅ Session {session_id} successfully registered in ADK Runner SessionStore!")
-        else:
-            print(f"⚠️ ADK session registration returned HTTP {resp.status_code}: {resp.text}")
+    # The agent runtime uses VertexAiSessionService, which reads this same managed
+    # session directly; no separate in-runtime registration step is needed.
 
     query_payload = {
         "class_method": "async_stream_query",
