@@ -4,28 +4,40 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "pip"
-    directory: "/apps/agents/base-adk-agent"
+    directory: "/apps/agents/cx-mortgage-orchestrator"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "pip"
-    directory: "/apps/agents/a2a-agent"
+    directory: "/apps/agents/ai-coe-mortgage-specialist"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "pip"
     directory: "/apps/services/corporate-email"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "pip"
     directory: "/apps/services/income-verification"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "pip"
     directory: "/apps/services/legacy-dms"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7

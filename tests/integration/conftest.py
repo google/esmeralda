@@ -113,17 +113,17 @@ def a2a_base_url(access_token: str) -> str:
     override = os.getenv("A2A_AGENT_URL")
     if override:
         return override
-    engine_url = _find_engine_by_display_name("a2a-mortgage-agent", access_token)
+    engine_url = _find_engine_by_display_name("ai-coe-mortgage-specialist", access_token)
     return f"{engine_url}/a2a"
 
 
 @pytest.fixture(scope="session")
 def base_agent_url(access_token: str) -> str:
-    """Base URL for the base-adk-agent, discovered by display name.
+    """Base URL for the cx-mortgage-orchestrator, discovered by display name.
 
     Override with env var BASE_AGENT_URL to skip discovery.
     """
     override = os.getenv("BASE_AGENT_URL")
     if override:
         return override
-    return _find_engine_by_display_name("base-adk-agent", access_token)
+    return _find_engine_by_display_name("cx-mortgage-orchestrator", access_token)

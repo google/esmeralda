@@ -1,6 +1,6 @@
 # ==============================================================================
-# Cloud Build Pipeline: Stage 5 Governance & Observability Infrastructure
-# Triggers on changes to infrastructure/modules/5-governance/** or infrastructure/live/dev/stage-5-governance/**
+# Cloud Build Pipeline: Layer 5 Governance & Observability Infrastructure
+# Triggers on changes to infrastructure/modules/4-governance/** or infrastructure/live/dev/layer-4-governance/**
 # ==============================================================================
 
 steps:
@@ -13,30 +13,30 @@ steps:
     args:
       - '-c'
       - |
-        python3 apps/agents/base-adk-agent/scripts/chaos_telemetry_test.py
+        python3 apps/agents/cx-mortgage-orchestrator/scripts/chaos_telemetry_test.py
 
   # ----------------------------------------------------------------------------
-  # Step 2: Validate Stage 5 Governance HCL
+  # Step 2: Validate Layer 5 Governance HCL
   # ----------------------------------------------------------------------------
   - name: 'alpine/terragrunt:latest'
-    id: 'validate-stage-5-governance'
+    id: 'validate-layer-4-governance'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        cd infrastructure/live/dev/stage-5-governance
+        cd infrastructure/live/dev/layer-4-governance
         terragrunt validate
 
   # ----------------------------------------------------------------------------
-  # Step 3: Deploy Stage 5 Governance Stack (Terragrunt Apply)
+  # Step 3: Deploy Layer 5 Governance Stack (Terragrunt Apply)
   # ----------------------------------------------------------------------------
   - name: 'alpine/terragrunt:latest'
-    id: 'deploy-stage-5-governance'
+    id: 'deploy-layer-4-governance'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        cd infrastructure/live/dev/stage-5-governance
+        cd infrastructure/live/dev/layer-4-governance
         terragrunt apply -auto-approve
 
 options:

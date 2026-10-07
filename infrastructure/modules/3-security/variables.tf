@@ -11,7 +11,17 @@ variable "gateway_project_id" {
 }
 
 variable "cicd_project_id" {
-  description = "The project ID allocated for central CI/CD pipelines and Artifact Registry repository"
+  description = "The shared layer-0 CI/CD project ID hosting the Artifact Registry repositories"
+  type        = string
+}
+
+variable "artifact_repository_id" {
+  description = "Artifact Registry repository this env pulls images from (dev repo for dev, release repo for prd)"
+  type        = string
+}
+
+variable "artifact_region" {
+  description = "Region of the shared Artifact Registry repositories"
   type        = string
 }
 
@@ -21,13 +31,13 @@ variable "mcps_project_id" {
 }
 
 
-variable "a2a_project_id" {
+variable "ai_coe_agents_project_id" {
   description = "The project ID allocated for Core AI Platform and A2A agents"
   type        = string
 }
 
-variable "root_project_id" {
-  description = "The project ID allocated for client-facing LOB Root agent"
+variable "cx_agents_project_id" {
+  description = "The project ID allocated for CX team agents (cx-agents project)"
   type        = string
 }
 
@@ -63,12 +73,6 @@ variable "existing_database_key_id" {
   default     = ""
 }
 
-variable "byo_cicd_project" {
-  description = "Whether CI/CD project is shared/BYO so we reuse the existing sa-esmeralda-builder service account"
-  type        = bool
-  default     = false
-}
-
 variable "existing_secrets_key_id" {
   description = "The full resource URI of the existing secrets KMS key. Required if byo_security is true."
   type        = string
@@ -88,7 +92,7 @@ variable "environment" {
 }
 
 variable "project_suffix" {
-  description = "The random project suffix generated in Stage 1"
+  description = "The random project suffix generated in Layer 1"
   type        = string
 }
 
@@ -103,8 +107,8 @@ variable "gateway_subnet_id" {
   default     = ""
 }
 
-variable "a2a_sql_service_agent" {
-  description = "The Cloud SQL Service Agent email in A2A project"
+variable "ai_coe_agents_sql_service_agent" {
+  description = "The Cloud SQL Service Agent email in the AI CoE agents project"
   type        = string
 }
 

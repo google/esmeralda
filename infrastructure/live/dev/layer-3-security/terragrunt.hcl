@@ -1,0 +1,58 @@
+# infrastructure/live/dev/layer-3-security/terragrunt.hcl
+include "root" {
+  path = find_in_parent_folders()
+}
+
+terraform {
+  source = "../../../modules//3-security"
+}
+
+dependency "cicd" {
+  config_path = "../../shared/layer-0-cicd"
+}
+
+dependency "projects" {
+  config_path = "../layer-1-projects"
+}
+
+locals {
+  env_vars       = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  byo_networking = lookup(local.env_vars.locals, "byo_networking", false)
+}
+
+dependency "networking" {
+  config_path = "../layer-2-networking"
+
+  # Avoid running output lookups on skipped modules
+  skip_outputs = local.byo_networking
+
+  # Satisfy parser during evaluation with mock variables
+  mock_outputs = {
+    subnet_id = local.env_vars.locals.existing_subnet_id
+  }
+}
+
+inputs = {
+  net_host_project_id = dependency.projects.outputs.net_host_project_id
+  gateway_project_id  = dependency.projects.outputs.gateway_project_id
+  # Shared layer-0 CI/CD: this env only gets repository-scoped reader access
+  cicd_project_id        = dependency.cicd.outputs.cicd_project_id
+  artifact_region        = dependency.cicd.outputs.region
+  artifact_repository_id = lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_id : dependency.cicd.outputs.dev_repository_id
+  mcps_project_id        = dependency.projects.outputs.mcps_project_id
+
+  ai_coe_agents_project_id        = dependency.projects.outputs.ai_coe_agents_project_id
+  cx_agents_project_id       = dependency.projects.outputs.cx_agents_project_id
+  governance_project_id = dependency.projects.outputs.governance_project_id
+  project_suffix        = dependency.projects.outputs.project_suffix
+
+  region      = local.env_vars.locals.region
+  environment = local.env_vars.locals.environment
+  org_id      = lookup(local.env_vars.locals, "org_id", "")
+
+  backend_subnet_id = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
+
+  ai_coe_agents_sql_service_agent            = dependency.projects.outputs.ai_coe_agents_sql_service_agent
+  governance_secrets_service_agent = dependency.projects.outputs.governance_secrets_service_agent
+}
+
