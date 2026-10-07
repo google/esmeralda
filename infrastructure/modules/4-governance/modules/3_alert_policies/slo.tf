@@ -11,7 +11,7 @@ resource "google_monitoring_service" "agent_platform_service" {
   basic_service {
     service_type = "CLOUD_RUN"
     service_labels = {
-      service_name = "root-agent"
+      service_name = "cx-mortgage-orchestrator"
       location     = "us-central1"
     }
   }

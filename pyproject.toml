@@ -12,8 +12,8 @@ dependencies = [
 
 [tool.uv.workspace]
 members = [
-  "apps/agents/base-adk-agent",
-  "apps/agents/a2a-agent",
+  "apps/agents/cx-mortgage-orchestrator",
+  "apps/agents/ai-coe-mortgage-specialist",
   "apps/services/corporate-email",
   "apps/services/income-verification",
   "apps/services/legacy-dms",

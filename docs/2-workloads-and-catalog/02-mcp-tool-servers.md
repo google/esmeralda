@@ -44,8 +44,8 @@ In conventional prototype agents, tool logic (e.g. `def verify_income()`) is wri
 ```mermaid
 flowchart TD
     subgraph Clients["Authorized Callers (Shared VPC)"]
-        RootAgent["Root Coordinator Agent<br/>(base-adk-agent)"]
-        A2AAgent["Mortgage Specialist Agent<br/>(a2a-agent)"]
+        RootAgent["Root Coordinator Agent<br/>(cx-mortgage-orchestrator)"]
+        A2AAgent["Mortgage Specialist Agent<br/>(ai-coe-mortgage-specialist)"]
         TestVM["Test Jumpbox VM"]
     end
 
@@ -86,7 +86,7 @@ flowchart TD
 * **Private Network Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` restricts access exclusively to VPC-internal callers.
 * **Direct VPC Egress:** Configured with `vpc_access { egress = "ALL_TRAFFIC" }` bound to `sb-esmeralda-core` for private database and API access.
 * **Custom Audience Validation:** Configures explicit audiences (`http://{service}.internal.gateway/mcp`) to ensure Google OIDC tokens are verified securely.
-* **IAM Least Privilege:** Only identities in `var.invoker_service_accounts` (e.g. `sa-esmeralda-root`, `sa-esmeralda-a2a`, `test-vm-sa`) are granted `roles/run.invoker`.
+* **IAM Least Privilege:** Only identities in `var.invoker_service_accounts` (e.g. `sa-cx-mortgage-orch`, `sa-ai-coe-mortgage-spec`, `test-vm-sa`) are granted `roles/run.invoker`.
 
 ---
 
@@ -109,7 +109,7 @@ gcloud alpha agent-registry services create ${SERVICE_NAME} \
 ### Test MCP Server Directly via Jumpbox VM
 ```bash
 # SSH into the test jumpbox VM
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw root_project_id) --tunnel-through-iap
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
 # Inside VM: Test Legacy DMS search via FastMCP JSON-RPC
 TOKEN=$(gcloud auth print-identity-token --audiences="http://legacy-dms.internal.gateway/mcp")

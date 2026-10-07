@@ -22,14 +22,14 @@ output "mcps_sa_email" {
   value       = google_service_account.mcps_sa.email
 }
 
-output "a2a_agent_sa_email" {
+output "ai_coe_mortgage_specialist_sa_email" {
   description = "The email address of the A2A agent service account"
-  value       = google_service_account.a2a_sa.email
+  value       = google_service_account.ai_coe_mortgage_specialist_sa.email
 }
 
-output "root_agent_sa_email" {
-  description = "The email address of the Root Orchestrator service account"
-  value       = google_service_account.root_sa.email
+output "cx_mortgage_orchestrator_sa_email" {
+  description = "The email address of the CX mortgage orchestrator service account"
+  value       = google_service_account.cx_mortgage_orchestrator_sa.email
 }
 
 output "test_vm_sa_email" {

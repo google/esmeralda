@@ -12,8 +12,8 @@ locals {
   gateway_id    = var.byo_gateway_project ? var.existing_gateway_project : "${var.project_prefix}-gateway-${local.suffix}"
   governance_id = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
   mcps_id       = "${var.project_prefix}-mcps-${local.suffix}"
-  a2a_id        = "${var.project_prefix}-a2a-${local.suffix}"
-  root_agent_id = "${var.project_prefix}-root-agent-${local.suffix}"
+  ai_coe_agents_id        = "${var.project_prefix}-ai-coe-agents-${local.suffix}"
+  cx_agents_id = "${var.project_prefix}-cx-agents-${local.suffix}"
 
   # Systematic project-specific labeling mapping for FinOps and Cost Center attribution
   common_labels = {
@@ -55,7 +55,7 @@ locals {
   ]
 
 
-  a2a_apis = [
+  ai_coe_agents_apis = [
     "compute.googleapis.com",
     "aiplatform.googleapis.com",
     "sqladmin.googleapis.com",
@@ -90,7 +90,7 @@ locals {
     "iamconnectors.googleapis.com"
   ]
 
-  root_agent_apis = [
+  cx_agents_apis = [
     "compute.googleapis.com",
     "aiplatform.googleapis.com",
     "sqladmin.googleapis.com",
@@ -202,10 +202,10 @@ resource "google_project" "mcps" {
   })
 }
 
-# Core AI Platform Project: ALWAYS created by Esmeralda from scratch
-resource "google_project" "a2a" {
-  name                = local.a2a_id
-  project_id          = local.a2a_id
+# AI CoE agents project (reusable A2A agents owned by the AI CoE team): ALWAYS created from scratch
+resource "google_project" "ai_coe_agents" {
+  name                = local.ai_coe_agents_id
+  project_id          = local.ai_coe_agents_id
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
@@ -214,15 +214,15 @@ resource "google_project" "a2a" {
 
   labels = merge(local.common_labels, {
     "cost-center"    = "enterprise-ai-platform"
-    "team"           = "core-ai-agents"
+    "team"           = "ai-coe"
     "agent_platform" = "agent-spoke-project"
   })
 }
 
-# Line-of-Business User Facing Root Agent Project: ALWAYS created from scratch
-resource "google_project" "root_agent" {
-  name                = local.root_agent_id
-  project_id          = local.root_agent_id
+# CX agents project (user-facing orchestrator agents owned by the CX team): ALWAYS created from scratch
+resource "google_project" "cx_agents" {
+  name                = local.cx_agents_id
+  project_id          = local.cx_agents_id
   folder_id           = var.folder_id != "" ? var.folder_id : null
   org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
   billing_account     = var.billing_account
@@ -231,7 +231,7 @@ resource "google_project" "root_agent" {
 
   labels = merge(local.common_labels, {
     "cost-center"    = "lob-business-solutions"
-    "team"           = "lob-root-agent"
+    "team"           = "cx"
     "agent_platform" = "agent-spoke-project"
   })
 }
@@ -261,23 +261,23 @@ resource "null_resource" "serviceusage_bootstrap" {
   triggers = {
     net_host_id   = local.net_host_id
     mcps_id       = local.mcps_id
-    a2a_id        = local.a2a_id
-    root_agent_id = local.root_agent_id
+    ai_coe_agents_id        = local.ai_coe_agents_id
+    cx_agents_id = local.cx_agents_id
     governance_id = local.governance_id
   }
   depends_on = [
     google_project.net_host,
     google_project.gateway,
     google_project.mcps,
-    google_project.a2a,
-    google_project.root_agent,
+    google_project.ai_coe_agents,
+    google_project.cx_agents,
     google_project.governance
   ]
 
   provisioner "local-exec" {
     command = <<EOT
       echo "🚀 Activating serviceusage.googleapis.com directly via gcloud POST on newly created projects..."
-      for p in ${local.net_host_id} ${local.gateway_id} ${local.mcps_id} ${local.a2a_id} ${local.root_agent_id} ${local.governance_id}; do
+      for p in ${local.net_host_id} ${local.gateway_id} ${local.mcps_id} ${local.ai_coe_agents_id} ${local.cx_agents_id} ${local.governance_id}; do
         if [ -n "$p" ] && [ "$p" != "null" ]; then
           echo "  -> Enabling serviceusage & cloudresourcemanager on $p..."
           gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com --project="$p" || true
@@ -323,25 +323,25 @@ resource "google_project_service" "mcps" {
 
 
 # Enable Core AI Platform APIs
-resource "google_project_service" "a2a" {
-  for_each                   = toset(local.a2a_apis)
-  project                    = local.a2a_id
+resource "google_project_service" "ai_coe_agents" {
+  for_each                   = toset(local.ai_coe_agents_apis)
+  project                    = local.ai_coe_agents_id
   service                    = each.key
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.a2a, null_resource.serviceusage_bootstrap]
+  depends_on = [google_project.ai_coe_agents, null_resource.serviceusage_bootstrap]
 }
 
 # Enable Line-of-Business APIs
-resource "google_project_service" "root_agent" {
-  for_each                   = toset(local.root_agent_apis)
-  project                    = local.root_agent_id
+resource "google_project_service" "cx_agents" {
+  for_each                   = toset(local.cx_agents_apis)
+  project                    = local.cx_agents_id
   service                    = each.key
   disable_on_destroy         = false
   disable_dependent_services = false
 
-  depends_on = [google_project.root_agent, null_resource.serviceusage_bootstrap]
+  depends_on = [google_project.cx_agents, null_resource.serviceusage_bootstrap]
 }
 
 # Enable Governance and Telemetry APIs only if created by Esmeralda
@@ -367,8 +367,8 @@ resource "time_sleep" "api_propagation" {
     google_project_service.net_host,
     google_project_service.gateway,
     google_project_service.mcps,
-    google_project_service.a2a,
-    google_project_service.root_agent,
+    google_project_service.ai_coe_agents,
+    google_project_service.cx_agents,
     google_project_service.governance
   ]
 }
@@ -399,36 +399,36 @@ resource "google_project_service_identity" "gateway_run" {
 }
 
 # Force provision Cloud Run Service Agent in Core AI platform project
-resource "google_project_service_identity" "a2a_run" {
+resource "google_project_service_identity" "ai_coe_agents_run" {
   provider = google-beta
-  project  = local.a2a_id
+  project  = local.ai_coe_agents_id
   service  = "run.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]
 }
 
 # Force provision Vertex AI Service Agent in Core AI platform project
-resource "google_project_service_identity" "a2a_vertex" {
+resource "google_project_service_identity" "ai_coe_agents_vertex" {
   provider = google-beta
-  project  = local.a2a_id
+  project  = local.ai_coe_agents_id
   service  = "aiplatform.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]
 }
 
-# Force provision Vertex AI Service Agent in Root Agent project
-resource "google_project_service_identity" "root_vertex" {
+# Force provision Vertex AI Service Agent in the CX agents project
+resource "google_project_service_identity" "cx_agents_vertex" {
   provider = google-beta
-  project  = local.root_agent_id
+  project  = local.cx_agents_id
   service  = "aiplatform.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]
 }
 
-# Force provision Cloud Run Service Agent in Root Agent project
-resource "google_project_service_identity" "root_run" {
+# Force provision Cloud Run Service Agent in CX agents project
+resource "google_project_service_identity" "cx_agents_run" {
   provider = google-beta
-  project  = local.root_agent_id
+  project  = local.cx_agents_id
   service  = "run.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]
@@ -436,9 +436,9 @@ resource "google_project_service_identity" "root_run" {
 
 
 # Force provision Cloud SQL Service Agent in Core AI platform project
-resource "google_project_service_identity" "a2a_sql" {
+resource "google_project_service_identity" "ai_coe_agents_sql" {
   provider = google-beta
-  project  = local.a2a_id
+  project  = local.ai_coe_agents_id
   service  = "sqladmin.googleapis.com"
 
   depends_on = [time_sleep.api_propagation]

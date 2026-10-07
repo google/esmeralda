@@ -33,8 +33,8 @@ inputs = {
     dependency.projects.outputs.net_host_project_id,
     dependency.projects.outputs.gateway_project_id,
     dependency.projects.outputs.mcps_project_id,
-    dependency.projects.outputs.a2a_project_id,
-    dependency.projects.outputs.root_project_id
+    dependency.projects.outputs.ai_coe_agents_project_id,
+    dependency.projects.outputs.cx_agents_project_id
   ]
   alert_email_address          = "esmeralda.secops@google.com"
   runaway_loop_token_threshold = 50000
@@ -51,12 +51,12 @@ inputs = {
   vpc_name             = element(split("/", dependency.networking.outputs.network_id), 4)
   internal_root_ca_pem = dependency.security.outputs.internal_ca_cert_pem
   agent_invoker_sa_emails = [
-    dependency.security.outputs.root_agent_sa_email,
-    dependency.security.outputs.a2a_agent_sa_email,
+    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
+    dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
     dependency.security.outputs.test_vm_sa_email
   ]
   agent_project_ids = [
-    dependency.projects.outputs.a2a_project_id,
-    dependency.projects.outputs.root_project_id
+    dependency.projects.outputs.ai_coe_agents_project_id,
+    dependency.projects.outputs.cx_agents_project_id
   ]
 }

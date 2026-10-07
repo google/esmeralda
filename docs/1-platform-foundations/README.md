@@ -14,7 +14,7 @@ This section of the documentation details the conceptual architecture, **Archite
   * `cicd-artifacts`: Build pipeline and container registry boundary.
   * `mcps`: Reusable corporate tool microservices.
   * `a2a`: Core AI Platform assistant engines and Cloud SQL task stores.
-  * `root-agent`: Client-facing business unit reasoning engine.
+  * `cx-mortgage-orchestrator`: Client-facing business unit reasoning engine.
   * `governance`: Centralized security (KMS, Secrets) and telemetry audit hub.
 * **The Benefit:** Strict blast-radius containment, 100% granular billing attribution in BigQuery, and guaranteed API quota isolation.
 
@@ -42,7 +42,7 @@ This section of the documentation details the conceptual architecture, **Archite
 ```mermaid
 flowchart TD
     subgraph Stage1["Stage 1: Projects & FinOps (modules/1-projects)"]
-        P1["Provision 7 Isolated GCP Projects<br/>(net_host, gateway, cicd, mcps, a2a, root_agent, governance)"]
+        P1["Provision 7 Isolated GCP Projects<br/>(net_host, gateway, governance, mcps, ai_coe_agents, cx_agents; cicd is shared in layer 0)"]
         P2["Link Corporate Billing & Enable Service APIs"]
         P1 --> P2
     end

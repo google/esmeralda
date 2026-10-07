@@ -184,7 +184,7 @@ resource "random_id" "bucket_suffix" {
 # 1. Atomic Deployment Dependencies Staging Bucket (Code/Pickle/Deps)
 resource "google_storage_bucket" "staging" {
   project                     = var.project_id
-  name                        = "${var.project_id}-${var.agent_name}-staging-${var.environment}-${random_id.bucket_suffix.hex}"
+  name                        = "${var.agent_name}-staging-${var.environment}-${random_id.bucket_suffix.hex}"
   location                    = var.region
   force_destroy               = true # Set to false in sandbox/dev environments
   uniform_bucket_level_access = true
@@ -193,7 +193,7 @@ resource "google_storage_bucket" "staging" {
 # 2. Atomic Runtime Task Artifacts Bucket (Agent operational assets)
 resource "google_storage_bucket" "artifacts" {
   project                     = var.project_id
-  name                        = "${var.project_id}-${var.agent_name}-artifacts-${var.environment}-${random_id.bucket_suffix.hex}"
+  name                        = "${var.agent_name}-artifacts-${var.environment}-${random_id.bucket_suffix.hex}"
   location                    = var.region
   force_destroy               = true
   uniform_bucket_level_access = true
@@ -202,7 +202,7 @@ resource "google_storage_bucket" "artifacts" {
 # 3. Atomic Logs Offload Bucket (Long-term tracing and logging)
 resource "google_storage_bucket" "logs" {
   project                     = var.project_id
-  name                        = "${var.project_id}-${var.agent_name}-logs-${var.environment}-${random_id.bucket_suffix.hex}"
+  name                        = "${var.agent_name}-logs-${var.environment}-${random_id.bucket_suffix.hex}"
   location                    = var.region
   force_destroy               = true
   uniform_bucket_level_access = true
@@ -307,7 +307,7 @@ locals {
 
   # 1. Metadata
   yaml_name = try(local.agent_config.name, var.agent_name)
-  yaml_desc = try(local.agent_config.description, "A2A Mortgage Assistant downstream reasoning engine deployed modularly")
+  yaml_desc = try(local.agent_config.description, "AI CoE mortgage specialist downstream reasoning engine deployed modularly")
 
   # 2. Compute Resources & Scaling
   yaml_min_inst    = try(local.agent_config.resources.min_instances, null)
@@ -525,7 +525,7 @@ resource "google_agent_registry_service" "core_gapi_services" {
 # 6. A2A AGENT CARD IN THE CENTRAL GOVERNANCE AGENT REGISTRY
 # -----------------------------------------------------------------------------
 # Deploy-time and env-specific, so it lives here rather than in the (env-neutral) image build.
-# The Agent Gateway only lets callers egress to registered hosts (a2a-mortgage-agent.esmeralda.internal).
+# The Agent Gateway only lets callers egress to registered hosts (ai-coe-mortgage-specialist.esmeralda.internal).
 locals {
   card = jsondecode(var.agent_card_json)
   registry_card = {

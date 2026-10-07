@@ -3,7 +3,7 @@
     <DisplayName>KVM-Lookup</DisplayName>
     <Get assignTo="target.url">
         <Key>
-            <Parameter ref="request.header.host.prefix"/> <!-- Logic inside Proxy Flow extracts prefix e.g. a2a-agent -->
+            <Parameter ref="request.header.host.prefix"/> <!-- Logic inside Proxy Flow extracts prefix e.g. ai-coe-mortgage-specialist -->
         </Key>
     </Get>
     <Scope>environment</Scope>

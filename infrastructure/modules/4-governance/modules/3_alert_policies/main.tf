@@ -243,7 +243,7 @@ resource "google_monitoring_alert_policy" "reasoning_engine_quota" {
 **Alert Trigger**: Agent query request rate approaching regional limit (90 reqs/min) or HTTP 429 quota errors occurring.
 
 #### 🛠️ Immediate On-Call Action Plan:
-1. Check active Reasoning Engine concurrency in `prj-esmeralda-root-agent` or `prj-esmeralda-a2a`:
+1. Check active Reasoning Engine concurrency in `esm-dev-cx-agents` or `esm-dev-ai-coe-agents`:
    `metric.type="aiplatform.googleapis.com/reasoning_engine/request_count"`
 2. Request a regional quota increase via GCP Console:
    `https://console.cloud.google.com/iam-admin/quotas?project=${var.governance_project_id}`

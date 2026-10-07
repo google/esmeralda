@@ -15,13 +15,13 @@ variable "mcps_project_id" {
   type        = string
 }
 
-variable "a2a_project_id" {
+variable "ai_coe_agents_project_id" {
   description = "The project ID allocated for Core AI Platform and A2A agents"
   type        = string
 }
 
-variable "root_project_id" {
-  description = "The project ID allocated for client-facing LOB Root agent"
+variable "cx_agents_project_id" {
+  description = "The project ID allocated for CX team agents (cx-agents project)"
   type        = string
 }
 
@@ -109,18 +109,18 @@ variable "gateway_run_service_agent" {
   type        = string
 }
 
-variable "a2a_run_service_agent" {
-  description = "The Cloud Run Service Agent email in A2A project"
+variable "ai_coe_agents_run_service_agent" {
+  description = "The Cloud Run Service Agent email in the AI CoE agents project"
   type        = string
 }
 
-variable "a2a_vertex_service_agent" {
-  description = "The Vertex AI Service Agent email in A2A project"
+variable "ai_coe_agents_vertex_service_agent" {
+  description = "The Vertex AI Service Agent email in the AI CoE agents project"
   type        = string
 }
 
-variable "root_vertex_service_agent" {
-  description = "The Vertex AI Service Agent email in Root Agent project"
+variable "cx_agents_vertex_service_agent" {
+  description = "The Vertex AI Service Agent email in CX agents project"
   type        = string
 }
 

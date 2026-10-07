@@ -93,7 +93,7 @@ flowchart LR
 ```
 
 1. 🏢 **[Stage 1: Projects & FinOps (`stage-1-projects`)](./1-platform-foundations/01-projects-and-finops.md)**:
-   Provisions isolated GCP spoke projects (`net-host`, `gateway`, `cicd`, `mcps`, `a2a`, `root-agent`, `governance`) and activates required APIs.
+   Provisions isolated GCP spoke projects (`net-host`, `gateway`, `cicd`, `mcps`, `a2a`, `cx-mortgage-orchestrator`, `governance`) and activates required APIs.
 2. 🌐 **[Stage 2: Private Networking (`stage-2-networking`)](./1-platform-foundations/02-private-networking.md)**:
    Deploys the central Shared VPC, private subnets, Cloud DNS zones (`*.esmeralda.internal`), and Private Service Connect (PSC) attachments.
 3. 🔐 **[Stage 3: Security & Secrets (`stage-3-security`)](./1-platform-foundations/03-security-iam-and-telemetry.md)**:
@@ -101,7 +101,7 @@ flowchart LR
 4. ⚙️ **[Stage 4: Workloads & Tool Catalog (`stage-5-workloads`)](./2-workloads-and-catalog/README.md)**:
    Deploys the runtime applications:
    * **MCP Microservices** (Cloud Run): Corporate Email, Income Verification, Legacy DMS.
-   * **AI Reasoning Engines** (Vertex AI): Root Coordinator Agent (`base-adk-agent`) and Mortgage Specialist Agent (`a2a-agent`) backed by Cloud SQL.
+   * **AI Reasoning Engines** (Vertex AI): Root Coordinator Agent (`cx-mortgage-orchestrator`) and Mortgage Specialist Agent (`ai-coe-mortgage-specialist`) backed by Cloud SQL.
 5. 🛡️ **[Stage 5: Central Governance Hub (`stage-4-governance`)](./3-agentops-and-lifecycle/README.md)**:
    Establishes the enterprise control plane:
    * **Central Agent Gateway**: Intercepts model egress using `AGENT_TO_ANYWHERE` with mTLS SPIFFE identity.

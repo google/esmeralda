@@ -26,7 +26,7 @@ WITH combined_requests AS (
     jsonPayload.session_id,
     COALESCE(jsonPayload.trace_id, REGEXP_EXTRACT(trace, r'projects/[^/]+/traces/(.+)')) AS trace_id,
     jsonPayload.user_id,
-    COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
+    COALESCE(jsonPayload.agent_id, 'cx_mortgage_orchestrator') AS agent_id,
     jsonPayload.execution_path,
     COALESCE(jsonPayload.model, 'gemini-3.7-flash') AS model,
     CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,

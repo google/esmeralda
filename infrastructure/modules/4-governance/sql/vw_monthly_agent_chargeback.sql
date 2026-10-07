@@ -5,7 +5,7 @@ WITH combined_token_events AS (
   UNION ALL
   SELECT
     timestamp,
-    COALESCE(jsonPayload.agent_id, 'root_agent') AS agent_id,
+    COALESCE(jsonPayload.agent_id, 'cx_mortgage_orchestrator') AS agent_id,
     COALESCE(jsonPayload.model, 'gemini-3.7-flash') AS model,
     STRUCT(
       CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,

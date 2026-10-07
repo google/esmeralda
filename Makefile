@@ -31,13 +31,13 @@ SOURCE_TAG ?= dev-latest
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
-.PHONY: help bootstrap test test-all test-agents test-terraform run-mcp-local test-a2a-local test-root-local \
-	test-a2a-remote test-root-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
-	deploy-foundations deploy-governance deploy-governance-views build-agent-a2a build-agent-root build-agents \
+.PHONY: help bootstrap test test-all test-agents test-terraform run-mcp-local test-ai-coe-mortgage-specialist-local test-cx-mortgage-orchestrator-local \
+	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
+	deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
-	build-service-circuit-breaker build-services build-images deploy-workloads deploy-services deploy-agent-a2a \
-	deploy-agent-root deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	promote-patch promote-minor promote test-governance-chaos load-test-root-agent clean preflight
+	build-service-circuit-breaker build-services build-images deploy-workloads deploy-services deploy-ai-coe-mortgage-specialist \
+	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
+	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator clean preflight
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -57,8 +57,8 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 
 test-agents: ## Fast execution for agent unit tests only
 	@echo "🧪 Running unit tests for ADK Agents..."
-	@uv run --package mortgage-agent --extra dev pytest apps/agents/base-adk-agent/tests/
-	@uv run --package a2a-mortgage-agent --extra dev pytest apps/agents/a2a-agent/tests/
+	@uv run --package cx-mortgage-orchestrator --extra dev pytest apps/agents/cx-mortgage-orchestrator/tests/
+	@uv run --package ai-coe-mortgage-specialist --extra dev pytest apps/agents/ai-coe-mortgage-specialist/tests/
 	@echo "✅ Agent tests passed!"
 
 test-terraform: ## Run syntax validation for all Terraform modules
@@ -96,7 +96,7 @@ run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 # Default query used for local agent testing
 QUERY ?= Can you verify Julian Sterling's income?
 
-test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MCP servers via run-mcp-local)
+test-ai-coe-mortgage-specialist-local: ## Run local AI CoE mortgage specialist (A2A) test (auto-spins up & tears down local MCP servers via run-mcp-local)
 	@already_running=0; \
 	if curl -s --connect-timeout 1 http://localhost:8001/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003/health &>/dev/null; then \
 		already_running=1; \
@@ -118,7 +118,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
 	export DMS_MCP_URL="http://localhost:8003/mcp"; \
 	echo "🤖 Running A2A Agent test locally..."; \
-	uv run --package a2a-mortgage-agent python apps/agents/a2a-agent/scripts/test_local.py "$(QUERY)"; \
+	uv run --package ai-coe-mortgage-specialist python apps/agents/ai-coe-mortgage-specialist/scripts/test_local.py "$(QUERY)"; \
 	status=$$?; \
 	if [ $$already_running -eq 0 ]; then \
 		echo "🧹 Tearing down background MCP servers..."; \
@@ -132,7 +132,7 @@ test-a2a-local: ## Run local A2A agent test (auto-spins up & tears down local MC
 	disown -a 2>/dev/null || true; \
 	exit $$status
 
-test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins up & tears down MCP servers via run-mcp-local)
+test-cx-mortgage-orchestrator-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins up & tears down MCP servers via run-mcp-local)
 	@already_running=0; \
 	if curl -s --connect-timeout 1 http://localhost:8001/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003/health &>/dev/null; then \
 		already_running=1; \
@@ -154,8 +154,8 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 	export EMAIL_MCP_URL="http://localhost:8001/mcp" && \
 	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
 	export DMS_MCP_URL="http://localhost:8003/mcp"; \
-	echo "👑 Running Root Agent integration test locally (in-memory mock routing)..."; \
-	uv run --package mortgage-agent python apps/agents/base-adk-agent/scripts/test_local.py "$(QUERY)"; \
+	echo "👑 Running cx-mortgage-orchestrator integration test locally (in-memory mock routing)..."; \
+	uv run --package cx-mortgage-orchestrator python apps/agents/cx-mortgage-orchestrator/scripts/test_local.py "$(QUERY)"; \
 	status=$$?; \
 	if [ $$already_running -eq 0 ]; then \
 		echo "🧹 Tearing down background MCP servers..."; \
@@ -173,25 +173,25 @@ test-root-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins 
 # Remote integration tests (resolve project + engine IDs from Terragrunt outputs)
 # ==============================================================================
 
-test-root-remote: ## Run remote Root Coordinator integration test against Vertex AI Reasoning Engine
-	@echo "👑 Running Root Agent remote integration test on Vertex AI ($(ENV))..."
-	@ROOT_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw root_project_id) && \
-	ROOT_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/base-adk-agent && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
+test-cx-mortgage-orchestrator-remote: ## Run remote CX mortgage orchestrator integration test against Vertex AI Reasoning Engine
+	@echo "👑 Running cx-mortgage-orchestrator remote integration test on Vertex AI ($(ENV))..."
+	@ROOT_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cx_agents_project_id) && \
+	ROOT_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/cx-mortgage-orchestrator && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
 	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
-	ROOT_AGENT_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
-	uv run --package mortgage-agent python apps/agents/base-adk-agent/scripts/test_remote.py "$(QUERY)"
+	CX_AGENTS_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
+	uv run --package cx-mortgage-orchestrator python apps/agents/cx-mortgage-orchestrator/scripts/test_remote.py "$(QUERY)"
 
-test-a2a-remote: ## Run remote A2A Specialist integration test against Vertex AI Reasoning Engine
+test-ai-coe-mortgage-specialist-remote: ## Run remote AI CoE mortgage specialist (A2A) integration test against Vertex AI Reasoning Engine
 	@echo "🤖 Running A2A Agent remote integration test on Vertex AI ($(ENV))..."
-	@A2A_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw a2a_project_id) && \
-	A2A_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/a2a-agent && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
+	@A2A_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw ai_coe_agents_project_id) && \
+	A2A_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
 	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
 	GOOGLE_CLOUD_PROJECT="$$A2A_PROJ" REASONING_ENGINE_ID="$$A2A_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
-	uv run --package a2a-mortgage-agent python apps/agents/a2a-agent/scripts/test_remote.py "$(QUERY)"
+	uv run --package ai-coe-mortgage-specialist python apps/agents/ai-coe-mortgage-specialist/scripts/test_remote.py "$(QUERY)"
 
-test-e2e: ## End-to-end check of a deployed env: A2A agent, then Root -> A2A (fails on any error)
-	@$(MAKE) --no-print-directory test-a2a-remote ENV=$(ENV)
-	@$(MAKE) --no-print-directory test-root-remote ENV=$(ENV)
+test-e2e: ## End-to-end check of a deployed env: specialist, then orchestrator -> specialist (fails on any error)
+	@$(MAKE) --no-print-directory test-ai-coe-mortgage-specialist-remote ENV=$(ENV)
+	@$(MAKE) --no-print-directory test-cx-mortgage-orchestrator-remote ENV=$(ENV)
 	@echo "✅ End-to-end tests passed for $(ENV)!"
 
 # ==============================================================================
@@ -251,14 +251,14 @@ define build_image
 		--substitutions=_IMAGE=$(2),_REPOSITORY_URL=$$REPO_URL,_TAG=$(BUILD_TAG),_SHA_TAG=dev-$(GIT_SHA)
 endef
 
-build-agent-a2a: ## Build and push the A2A Agent image
-	$(call build_image,apps/agents/a2a-agent,a2a-agent)
+build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage specialist (A2A) image
+	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist)
 
-build-agent-root: ## Build and push the Root Agent image
-	$(call build_image,apps/agents/base-adk-agent,root-agent)
+build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
+	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator)
 
 build-agents: test-all ## Run tests, then build both agent images concurrently
-	@$(MAKE) -j2 build-agent-a2a build-agent-root
+	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator
 	@echo "✅ All agent images built and pushed!"
 
 build-service-income-verification: ## Build and push the Income Verification MCP image
@@ -297,15 +297,15 @@ deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Regist
 		(cd $(LIVE_DIR)/stage-5-workloads/services/$$s && terragrunt --non-interactive apply -auto-approve) || exit 1; \
 	done
 
-deploy-agent-a2a: ## Deploy the A2A Mortgage Specialist Reasoning Engine
-	@echo "🚀 Deploying A2A Reasoning Engine Agent..."
-	@cd $(LIVE_DIR)/stage-5-workloads/agents/a2a-agent && terragrunt --non-interactive apply -auto-approve
+deploy-ai-coe-mortgage-specialist: ## Deploy the AI CoE mortgage specialist (A2A) Reasoning Engine
+	@echo "🚀 Deploying ai-coe-mortgage-specialist..."
+	@cd $(LIVE_DIR)/stage-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt --non-interactive apply -auto-approve
 
-deploy-agent-root: ## Deploy the LOB Root Coordinator Reasoning Engine
-	@echo "🚀 Deploying Root Coordinator Reasoning Engine Agent..."
-	@cd $(LIVE_DIR)/stage-5-workloads/agents/base-adk-agent && terragrunt --non-interactive apply -auto-approve
+deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasoning Engine
+	@echo "🚀 Deploying cx-mortgage-orchestrator..."
+	@cd $(LIVE_DIR)/stage-5-workloads/agents/cx-mortgage-orchestrator && terragrunt --non-interactive apply -auto-approve
 
-deploy-agents: deploy-agent-a2a deploy-agent-root ## Deploy both Reasoning Engine agents
+deploy-agents: deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator ## Deploy both Reasoning Engine agents
 
 deploy-gateway: ## Deploy Kong API Gateway (re-run after agents are recreated: routes use engine IDs)
 	@echo "🚀 Deploying Kong API Gateway..."
@@ -355,11 +355,11 @@ promote: ## Promote dev images as TAG (e.g. make promote TAG=v1.2.0 [SOURCE_TAG=
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
-	@uv run python apps/agents/base-adk-agent/scripts/chaos_telemetry_test.py
+	@uv run python apps/agents/cx-mortgage-orchestrator/scripts/chaos_telemetry_test.py
 
-load-test-root-agent: ## Run Locust load test against the Root Agent on Vertex AI Reasoning Engines
-	@echo "⚡ Running Locust load test for Root Agent on Vertex AI..."
-	@uv run locust -f apps/agents/base-adk-agent/scripts/locustfile.py --headless -u 5 -r 1 --run-time 1m --host https://us-central1-aiplatform.googleapis.com
+load-test-cx-mortgage-orchestrator: ## Run Locust load test against the CX mortgage orchestrator on Vertex AI Reasoning Engines
+	@echo "⚡ Running Locust load test for cx-mortgage-orchestrator on Vertex AI..."
+	@uv run locust -f apps/agents/cx-mortgage-orchestrator/scripts/locustfile.py --headless -u 5 -r 1 --run-time 1m --host https://us-central1-aiplatform.googleapis.com
 
 clean: ## Clean python virtual environments, caches, and terragrunt cache files recursively
 	@echo "🧹 Cleaning up local caches and environments..."

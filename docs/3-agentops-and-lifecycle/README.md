@@ -51,8 +51,8 @@ flowchart TD
     subgraph RunOps["Target Workload Deployments"]
         Run_Email["Cloud Run: corporate-email"]
         Run_Income["Cloud Run: income-verification"]
-        Run_A2A["Vertex AI: a2a-agent<br/>(Mortgage Assistant)"]
-        Run_Root["Vertex AI: base-adk-agent<br/>(Root Orchestrator)"]
+        Run_A2A["Vertex AI: ai-coe-mortgage-specialist<br/>(Mortgage Assistant)"]
+        Run_Root["Vertex AI: cx-mortgage-orchestrator<br/>(Root Orchestrator)"]
     end
 
     subgraph IaCOps["GitOps Platform Assembly"]
@@ -76,8 +76,8 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 | `apps/services/corporate-email/` | **`mcp-corporate-email.git`** | Cloud Run Service: `corporate-email-{env}` in `prj-esmeralda-mcps` |
 | `apps/services/income-verification/` | **`mcp-income-verification.git`** | Cloud Run Service: `income-verification-{env}` in `prj-esmeralda-mcps` |
 | `apps/services/legacy-dms/` | **`mcp-legacy-dms.git`** | Cloud Run Service: `legacy-dms-{env}` in `prj-esmeralda-mcps` |
-| `apps/agents/a2a-agent/` | **`agent-mortgage-assistant.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-a2a` |
-| `apps/agents/base-adk-agent/` | **`agent-root-orchestrator.git`** | Vertex AI Reasoning Engine in `prj-esmeralda-root-agent` |
+| `apps/agents/ai-coe-mortgage-specialist/` | **`agent-mortgage-assistant.git`** | Vertex AI Reasoning Engine in `esm-dev-ai-coe-agents` |
+| `apps/agents/cx-mortgage-orchestrator/` | **`agent-root-orchestrator.git`** | Vertex AI Reasoning Engine in `esm-dev-cx-agents` |
 
 ---
 
@@ -91,7 +91,7 @@ When the AppDev team pushes a new tool container to Artifact Registry, they upda
 inputs = {
   container_image = "us-central1-docker.pkg.dev/prj-esmeralda-cicd-artifacts/esmeralda-containers/corporate-email:sha-abc123xyz"
   invoker_service_accounts = [
-    dependency.security.outputs.root_agent_sa_email
+    dependency.security.outputs.cx_mortgage_orchestrator_sa_email
   ]
 }
 ```
@@ -101,7 +101,7 @@ To prevent container drift and guarantee that Vertex AI Reasoning Engine runs ex
 ```hcl
 inputs = {
   agent_image_uri = "us-central1-docker.pkg.dev/prj-esmeralda-cicd-artifacts/esmeralda-containers/mortgage-assistant@sha256:d83d12f38c823..."
-  agent_service_account = dependency.security.outputs.a2a_agent_sa_email
+  agent_service_account = dependency.security.outputs.ai_coe_mortgage_specialist_sa_email
 }
 ```
 
@@ -122,8 +122,8 @@ To maintain separation of concerns, Esmeralda maps roles to specific projects an
 | **SecOps & Governance** | Cryptographic key lifecycle, secrets, telemetry auditing. | `prj-esmeralda-governance` | Cloud KMS, Secret Manager database keys, BigQuery log datasets. |
 | **Platform Engineering** | CI/CD systems, container registries. | `prj-esmeralda-cicd-artifacts` | Artifact Registry, Cloud Build triggers, shared build SAs. |
 | **AppDev Tools Team** | Enterprise data connectors, backend integrations. | `prj-esmeralda-mcps` | Cloud Run MCP server tools, tool registries. |
-| **Core AI Platform Team** | Shared assistant agents, database systems. | `prj-esmeralda-a2a` | Cloud SQL task store instances, downstream specialized agents. |
-| **Business Unit Teams** | User-facing solutions, client reasoning engines. | `prj-esmeralda-root-agent` | Root Orchestrator agents, BU prompt templates. |
+| **Core AI Platform Team** | Shared assistant agents, database systems. | `esm-dev-ai-coe-agents` | Cloud SQL task store instances, downstream specialized agents. |
+| **Business Unit Teams** | User-facing solutions, client reasoning engines. | `esm-dev-cx-agents` | Root Orchestrator agents, BU prompt templates. |
 
 ---
 
@@ -134,7 +134,7 @@ When a Business Unit team requests a new feature that requires platform integrat
 ```mermaid
 sequenceDiagram
     autonumber
-    actor BU as "Business Unit Team (Root Agent)"
+    actor BU as "CX Team (cx-mortgage-orchestrator)"
     participant PlatformOps as "PlatformOps / NetOps"
     participant SecOps as "Security Operations (SecOps)"
     participant AppDev as "AppDev Tools Team (MCPs)"
@@ -143,18 +143,18 @@ sequenceDiagram
     BU->>PlatformOps: 1. Request new specialized assistant dependency
     PlatformOps->>SecOps: 2. Check billing & IAM policies
     SecOps-->>PlatformOps: 3. Approve project boundary attachment
-    PlatformOps->>AIPlatform: 4. Provision a2a-agent staging buckets & SQL instances
-    AIPlatform->>BU: 5. Hand over gateway-abstracted endpoint URL (a2a-agent.esmeralda.internal)
+    PlatformOps->>AIPlatform: 4. Provision ai-coe-mortgage-specialist staging buckets & SQL instances
+    AIPlatform->>BU: 5. Hand over gateway-abstracted endpoint URL (ai-coe-mortgage-specialist.esmeralda.internal)
     BU->>AppDev: 6. Request new backend data connector (MCP tool)
     AppDev->>PlatformOps: 7. Deploy new tool container to prj-esmeralda-mcps
-    PlatformOps->>SecOps: 8. Authorize root-agent-sa invoker binding on new tool
+    PlatformOps->>SecOps: 8. Authorize sa-cx-mortgage-orch invoker binding on new tool
     SecOps-->>BU: 9. Access granted to new MCP tool
 ```
 
 1.  **Workload Request**: The Business Unit Team opens an architectural request for a new Specialized Assistant agent.
 2.  **Platform & Security Check**: PlatformOps and SecOps review billing allocations and verify the security posture of the new assistant.
-3.  **Infrastructure Provisioning**: PlatformOps uses Terragrunt to provision staging GCS buckets, Cloud SQL PostgreSQL databases, and IAM service accounts in `prj-esmeralda-a2a`.
-4.  **Endpoint Handoff**: The AI Platform Team deploys the assistant reasoning engine and registers its dynamic Vertex AI endpoint inside the active gateway KVM or Routing Broker. They return the static route `http://a2a-agent.esmeralda.internal` to the Business Unit Team.
+3.  **Infrastructure Provisioning**: PlatformOps uses Terragrunt to provision staging GCS buckets, Cloud SQL PostgreSQL databases, and IAM service accounts in `esm-dev-ai-coe-agents`.
+4.  **Endpoint Handoff**: The AI Platform Team deploys the assistant reasoning engine and registers its dynamic Vertex AI endpoint inside the active gateway KVM or Routing Broker. They return the static route `http://ai-coe-mortgage-specialist.esmeralda.internal` to the Business Unit Team.
 5.  **Tool Request**: The Business Unit Team requests access to legacy data systems via an MCP tool.
 6.  **Tool Compilation & Deployment**: The AppDev Tools Team writes the tool code, builds the container in `prj-esmeralda-cicd-artifacts`, and deploys it as a private Cloud Run service in `prj-esmeralda-mcps`.
 7.  **IAM Access Grant**: PlatformOps applies least-privilege invoker bindings (`roles/run.invoker`) allowing the Root Orchestrator service account to query the new tool endpoint.

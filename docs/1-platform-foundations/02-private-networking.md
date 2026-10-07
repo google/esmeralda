@@ -61,8 +61,8 @@ flowchart TD
 
     subgraph ServiceProjects["Attached Workload Projects"]
         P_MCP["prj-esmeralda-mcps<br/>(Cloud Run MCP Tools)"]
-        P_A2A["prj-esmeralda-a2a<br/>(Vertex Reasoning Engine & Postgres)"]
-        P_Root["prj-esmeralda-root-agent<br/>(Root Coordinator Agent)"]
+        P_A2A["esm-dev-ai-coe-agents<br/>(Vertex Reasoning Engine & Postgres)"]
+        P_Root["esm-dev-cx-agents<br/>(Root Coordinator Agent)"]
     end
 
     P_MCP & P_A2A & P_Root ==>|Direct VPC Egress / roles/compute.networkUser| SubnetCore
@@ -83,7 +83,7 @@ flowchart TD
 | **`sb-esmeralda-proxy`** | `10.9.0.0/24` | `REGIONAL_MANAGED_PROXY` (Active) for Envoy proxies. | Regional Internal Application Load Balancers (ILB), Apigee X. |
 | **`sb-esmeralda-psc`** | `10.10.0.0/24` | Private Service Connect consumer endpoint range. | Forwarding rules to Google-managed and third-party APIs. |
 | **`sb-esmeralda-psc-interface`** | `10.11.0.0/24` | Regular subnetwork bound to PSC Network Attachment. | Inbound PSC interface tunnels for Vertex AI Reasoning Engines. |
-| **`sql-peering-range`** | `10.130.0.0/16` | Allocated `/16` range for Private Services Access (PSA). | Private Cloud SQL PostgreSQL instances in `prj-esmeralda-a2a`. |
+| **`sql-peering-range`** | `10.130.0.0/16` | Allocated `/16` range for Private Services Access (PSA). | Private Cloud SQL PostgreSQL instances in `esm-dev-ai-coe-agents`. |
 
 ---
 
@@ -118,10 +118,10 @@ To permit serverless containers in spoke projects to consume host subnets, Stage
 ### Test Private DNS Resolution from Jumpbox VM
 ```bash
 # SSH into the test jumpbox VM via IAP tunnel
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw root_project_id) --tunnel-through-iap
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
 # Inside VM: Verify internal DNS resolves to private VIP
-dig +short a2a-mortgage-agent.esmeralda.internal
+dig +short ai-coe-mortgage-specialist.esmeralda.internal
 # Output: 10.0.1.200 (or ILB VIP)
 ```
 

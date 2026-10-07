@@ -5,12 +5,12 @@ data "google_project" "mcps" {
   project_id = var.mcps_project_id
 }
 
-data "google_project" "a2a" {
-  project_id = var.a2a_project_id
+data "google_project" "ai_coe_agents" {
+  project_id = var.ai_coe_agents_project_id
 }
 
-data "google_project" "root_agent" {
-  project_id = var.root_project_id
+data "google_project" "cx_agents" {
+  project_id = var.cx_agents_project_id
 }
 
 data "google_project" "gateway" {
@@ -35,16 +35,16 @@ resource "google_compute_shared_vpc_service_project" "mcps" {
 }
 
 # Attach the Core AI Platform project as a service project
-resource "google_compute_shared_vpc_service_project" "a2a" {
+resource "google_compute_shared_vpc_service_project" "ai_coe_agents" {
   host_project    = var.net_host_project_id
-  service_project = var.a2a_project_id
+  service_project = var.ai_coe_agents_project_id
   depends_on      = [google_compute_shared_vpc_host_project.host]
 }
 
-# Attach the Line-of-Business Root Agent project as a service project
-resource "google_compute_shared_vpc_service_project" "root_agent" {
+# Attach the CX agents project as a service project
+resource "google_compute_shared_vpc_service_project" "cx_agents" {
   host_project    = var.net_host_project_id
-  service_project = var.root_project_id
+  service_project = var.cx_agents_project_id
   depends_on      = [google_compute_shared_vpc_host_project.host]
 }
 
@@ -258,18 +258,18 @@ locals {
     "serviceAccount:${var.mcps_run_service_agent}",
 
     # 2. Core AI Platform Project Service SAs
-    "serviceAccount:${var.a2a_run_service_agent}",
-    "serviceAccount:${var.a2a_vertex_service_agent}",
+    "serviceAccount:${var.ai_coe_agents_run_service_agent}",
+    "serviceAccount:${var.ai_coe_agents_vertex_service_agent}",
 
-    # 3. LOB Root Agent Project Service SAs
-    "serviceAccount:${var.root_vertex_service_agent}",
+    # 3. CX agents project service SAs
+    "serviceAccount:${var.cx_agents_vertex_service_agent}",
 
     # 4. Gateway Project Service SAs
     "serviceAccount:${var.gateway_run_service_agent}",
 
     # 5. Vertex AI Reasoning Engine Service Agents (-re)
-    "serviceAccount:${replace(var.a2a_vertex_service_agent, "@gcp-sa-aiplatform.iam.gserviceaccount.com", "@gcp-sa-aiplatform-re.iam.gserviceaccount.com")}",
-    "serviceAccount:${replace(var.root_vertex_service_agent, "@gcp-sa-aiplatform.iam.gserviceaccount.com", "@gcp-sa-aiplatform-re.iam.gserviceaccount.com")}"
+    "serviceAccount:${replace(var.ai_coe_agents_vertex_service_agent, "@gcp-sa-aiplatform.iam.gserviceaccount.com", "@gcp-sa-aiplatform-re.iam.gserviceaccount.com")}",
+    "serviceAccount:${replace(var.cx_agents_vertex_service_agent, "@gcp-sa-aiplatform.iam.gserviceaccount.com", "@gcp-sa-aiplatform-re.iam.gserviceaccount.com")}"
   ]
 }
 
@@ -279,8 +279,8 @@ resource "time_sleep" "iam_propagation" {
 
   depends_on = [
     data.google_project.mcps,
-    data.google_project.a2a,
-    data.google_project.root_agent,
+    data.google_project.ai_coe_agents,
+    data.google_project.cx_agents,
     data.google_project.gateway
   ]
 }

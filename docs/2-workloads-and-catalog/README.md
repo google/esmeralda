@@ -19,8 +19,8 @@ This section of the documentation unifies the architectural specifications, **Ar
 ### 2. ADR-05: Why Multi-Agent Delegation (A2A Protocol) Over a Single Mega-Prompt?
 * **The Problem:** Cramming dozens of tool definitions and hundreds of instruction rules into a single "Mega-Agent" degrades LLM reasoning accuracy, inflates token costs, and creates context pollution.
 * **The Decision:** Implement the **Agent-to-Agent (A2A) protocol**:
-  * **Root Coordinator Agent (`base-adk-agent`)**: Interacts with the user, determines intent, and delegates domain tasks.
-  * **Specialist Agent (`a2a-agent`)**: Dedicated mortgage underwriting assistant with deep tool calling access (DMS, Income, Email) and state persistence in PostgreSQL.
+  * **Root Coordinator Agent (`cx-mortgage-orchestrator`)**: Interacts with the user, determines intent, and delegates domain tasks.
+  * **Specialist Agent (`ai-coe-mortgage-specialist`)**: Dedicated mortgage underwriting assistant with deep tool calling access (DMS, Income, Email) and state persistence in PostgreSQL.
 * **The Benefit:** Clean separation of concerns, modular prompt engineering, reduced token consumption, and independent evaluation loops.
 
 ---
@@ -42,8 +42,8 @@ flowchart TB
         G3["L7 ILB + Routing Broker"]
     end
 
-    subgraph Orchestrator["Root Orchestrator (modules/5-workloads/agents/base-adk-agent)"]
-        Root["Client Reasoning Engine<br/>(base-adk-agent)"]
+    subgraph Orchestrator["CX Mortgage Orchestrator (modules/5-workloads/agents/adk-agent)"]
+        Root["Client Reasoning Engine<br/>(cx-mortgage-orchestrator)"]
     end
 
     subgraph MCPServers["MCP Utility Catalog (modules/5-workloads/mcp-servers)"]
@@ -52,8 +52,8 @@ flowchart TB
         M3["legacy-dms"]
     end
 
-    subgraph Downstream["Assistant Agent (modules/5-workloads/agents/a2a-agent)"]
-        A2A["a2a-agent Reasoning Engine"]
+    subgraph Downstream["AI CoE Mortgage Specialist (modules/5-workloads/agents/a2a-agent)"]
+        A2A["ai-coe-mortgage-specialist Reasoning Engine"]
         DB[(Atomic Cloud SQL Postgres)]
         A2A --> DB
     end
@@ -77,7 +77,7 @@ flowchart TB
    * Income Verification Server (`services/income-verification/`)
    * Legacy DMS Server (`services/legacy-dms/`)
 3. **[Atomic AI Agents & Database Bootstrapping](./03-ai-agents-and-database.md)**
-   * Atomic Mortgage Assistant (`agents/a2a-agent/`)
-   * Root Orchestrator Reasoning Engine (`agents/base-adk-agent/`)
+   * AI CoE Mortgage Specialist, A2A (`agents/a2a-agent/`)
+   * CX Mortgage Orchestrator Reasoning Engine (`agents/adk-agent/`)
    * Database Bootstrap & SQL Lifecycle
    * Live Orchestrator Configurations (Terragrunt Live HCL)

@@ -7,8 +7,8 @@ Esmeralda centralizes all platform observability, real-time token cost accountin
 ```mermaid
 flowchart TD
     subgraph Spokes["Workload Spoke Projects"]
-        RA["esmeralda-root-agent-dev<br/>(Vertex AI Reasoning Engine)"]
-        A2A["esmeralda-a2a-dev<br/>(A2A Sub-Agents)"]
+        RA["esm-dev-cx-agents<br/>(Vertex AI Reasoning Engine)"]
+        A2A["esm-dev-ai-coe-agents<br/>(A2A Sub-Agents)"]
         GW["esmeralda-gateway-dev<br/>(Kong / Ingress Gateway)"]
         MCP["esmeralda-mcps-dev<br/>(Cloud Run MCP Tools)"]
     end
@@ -52,7 +52,7 @@ flowchart TD
 ## 1. Telemetry Ingestion & Storage Architecture
 
 ### Central Logging Sinks (`modules/1_telemetry_sinks`)
-Central Cloud Logging sinks (`google_logging_project_sink.central_sinks`) are deployed across all spoke projects (`esmeralda-root-agent-dev`, `esmeralda-a2a-dev`, `esmeralda-gateway-dev`, `esmeralda-mcps-dev`). 
+Central Cloud Logging sinks (`google_logging_project_sink.central_sinks`) are deployed across all spoke projects (`esm-dev-cx-agents`, `esm-dev-ai-coe-agents`, `esmeralda-gateway-dev`, `esmeralda-mcps-dev`). 
 
 * **Routing Filter**:
   ```hcl
