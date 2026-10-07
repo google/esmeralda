@@ -1,8 +1,8 @@
-# 🚪 Stage 4 Workloads: Swappable Ingress Gateways
+# 🚪 Layer 5 Workloads: Swappable Ingress Gateways
 
-Welcome to the technical deep-dive for **Stage 4 Ingress Gateways**.
+Welcome to the technical deep-dive for **Layer 5 Ingress Gateways**.
 
-Stage 4 transitions Esmeralda into **Composable AI Workloads**. This guide details the **Gateway Adapter Pattern** that decouples API traffic ingress from downstream AI Reasoning Engines and MCP microservices.
+Layer 5 transitions Esmeralda into **Composable AI Workloads**. This guide details the **Gateway Adapter Pattern** that decouples API traffic ingress from downstream AI Reasoning Engines and MCP microservices.
 
 ---
 
@@ -90,7 +90,7 @@ flowchart TD
 ### Test Ingress Routing via Test VM
 ```bash
 # SSH into the test jumpbox VM
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
 # Inside VM: Test AgentCard discovery through the active gateway
 curl -s http://ai-coe-mortgage-specialist.esmeralda.internal/v1/card | jq .

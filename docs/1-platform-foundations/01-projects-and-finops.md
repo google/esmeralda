@@ -1,23 +1,23 @@
-# 🏢 Stage 1: Foundational Projects, Billing & FinOps
+# 🏢 Layer 1: Foundational Projects, Billing & FinOps
 
-Welcome to the technical deep-dive for **Stage 1 (Projects, Billing & APIs)**.
+Welcome to the technical deep-dive for **Layer 1 (Projects, Billing & APIs)**.
 
-Stage 1 provisions and manages the isolated Google Cloud Landing Zone projects, activates essential service APIs, configures corporate billing account linkages, and bootstraps foundational Google-managed service identities.
+Layer 1 provisions and manages the isolated Google Cloud Landing Zone projects, activates essential service APIs, configures corporate billing account linkages, and bootstraps foundational Google-managed service identities.
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Stage 1 Exists
+## 💡 The 60-Second Mental Model: Why Layer 1 Exists
 
 In AI agent architectures, putting everything into a single GCP project causes three catastrophic production failures:
 1. **The FinOps Attribution Blackout:** Generative AI token costs (Gemini 3.7 Flash) get merged onto a single invoice, making it impossible to charge back costs to specific business units.
 2. **IAM Boundary Bleeding:** Application tool developers obtain accidental visibility into platform encryption keys (KMS) or central audit logs.
 3. **API Quota Starvation:** A runaway tool invocation loop in one agent consumes the entire project's Vertex AI quota, bringing down all enterprise agents simultaneously.
 
-**Stage 1 establishes strict cryptographic and operational blast boundaries by partitioning the enterprise into 7 decoupled projects.**
+**Layer 1 establishes strict cryptographic and operational blast boundaries by partitioning the enterprise into 7 decoupled projects.**
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns Stage 1?
+## 🎭 Persona & Role Breakdown: Who Owns Layer 1?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
@@ -46,7 +46,7 @@ In AI agent architectures, putting everything into a single GCP project causes t
 ### ADR-01.2: BYOInfra (Brownfield Fallback) Architecture
 * **Context:** Large enterprises often already have pre-existing Shared VPC Host projects (`net_host`) or centralized Ingress Gateways (`gateway`) and forbid automated tools from recreating them.
 * **Decision:** Implement conditional ternary creation logic (`byo_net_host_project`, `byo_gateway_project`, `byo_governance_project`, `byo_cicd_project`) in `env.yaml`.
-* **Mechanism:** If `byo_* = true`, Stage 1 bypasses project creation and API enablement for that specific project, transparently returning the customer's existing project ID to downstream stages.
+* **Mechanism:** If `byo_* = true`, Layer 1 bypasses project creation and API enablement for that specific project, transparently returning the customer's existing project ID to downstream layers.
 
 ```mermaid
 flowchart TD
@@ -57,7 +57,7 @@ flowchart TD
         Exist_Gwy["existing_gateway_project = prj-corp-apigee-ingress"]
     end
 
-    subgraph Stage1["Stage 1: modules/1-projects"]
+    subgraph Layer1["Layer 1: modules/1-projects"]
         Check_Net{byo_net_host_project?}
         Check_Gwy{byo_gateway_project?}
         
@@ -135,7 +135,7 @@ Each project receives the exact, least-privilege list of Google APIs required fo
 ---
 
 ### 2. Service Identity Bootstrapping (`google_project_service_identity`)
-To prevent IAM race conditions where downstream stages attempt to grant roles to service agents that do not yet exist, Stage 1 explicitly bootstraps **nine Google-managed service identities**:
+To prevent IAM race conditions where downstream layers attempt to grant roles to service agents that do not yet exist, Layer 1 explicitly bootstraps **nine Google-managed service identities**:
 
 1. `cicd_build`: Cloud Build SA in `prj-esmeralda-cicd-artifacts`
 2. `mcps_run`: Cloud Run SA in `prj-esmeralda-mcps`
@@ -160,6 +160,6 @@ gcloud projects list --filter="name:esm-dev-*" --format="table(projectId, projec
 ### Validate Billing Linkage & Cost Labels
 ```bash
 # Inspect billing account and cost labels on the AI CoE agents project
-gcloud beta billing projects describe $(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw ai_coe_agents_project_id)
+gcloud beta billing projects describe $(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw ai_coe_agents_project_id)
 ```
  to their Shared VPC.)*

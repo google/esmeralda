@@ -25,7 +25,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PRD_ENV_YAML="${REPO_ROOT}/infrastructure/live/prd/env.yaml"
-CICD_DIR="${REPO_ROOT}/infrastructure/live/shared/stage-0-cicd"
+CICD_DIR="${REPO_ROOT}/infrastructure/live/shared/layer-0-cicd"
 
 SOURCE_TAG="dev-latest"
 TARGET_TAG=""

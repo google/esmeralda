@@ -24,7 +24,7 @@ In most enterprises, AI Agent prototypes remain stuck in notebooks or local scri
                                          │  Zero-Trust Integration
                ┌─────────────────────────┴──────────────────────────────┐
                │  🔵 EMBAIXO (Platform Layer - infrastructure/)         │
-               │  5-stage Terragrunt IaC, Shared VPC, mTLS SPIFFE,      │
+               │  5-layer Terragrunt IaC, Shared VPC, mTLS SPIFFE,      │
                │  Central Agent Gateway, Model Armor & BigQuery FinOps. │
                └────────────────────────────────────────────────────────┘
 ```
@@ -80,33 +80,36 @@ sequenceDiagram
 
 ---
 
-## 🏗️ The 5-Stage Progressive Infrastructure Blueprint
+## 🏗️ The Layered Infrastructure Blueprint
 
-Infrastructure is provisioned sequentially in **5 decoupled stages** using Terragrunt:
+Infrastructure is built from the ground up in **6 decoupled layers** using Terragrunt. Layer 0 is shared by all environments; layers 1 to 5 are deployed once per environment (`dev`, `prd`):
 
 ```mermaid
 flowchart LR
-    S1["Stage 1<br/><b>Projects & APIs</b><br/>Factory seeding & APIs"] --> S2["Stage 2<br/><b>Networking</b><br/>Shared VPC & PSC"]
-    S2 --> S3["Stage 3<br/><b>Security & IAM</b><br/>KMS CMEK & Secrets"]
-    S3 --> S4["Stage 4<br/><b>Workloads & MCPs</b><br/>Cloud Run & Reasoning Engines"]
-    S4 --> S5["Stage 5<br/><b>Governance Hub</b><br/>Agent Gateway, Model Armor & FinOps"]
+    L0["Layer 0 (shared)<br/><b>CI/CD</b><br/>Artifact Registry & Cloud Build"] --> L1["Layer 1<br/><b>Projects & APIs</b><br/>Project factory & APIs"]
+    L1 --> L2["Layer 2<br/><b>Networking</b><br/>Shared VPC & PSC"]
+    L2 --> L3["Layer 3<br/><b>Security & IAM</b><br/>KMS CMEK, Secrets & internal CA"]
+    L3 --> L4["Layer 4<br/><b>Governance Hub</b><br/>Agent Gateway, Model Armor & FinOps"]
+    L4 --> L5["Layer 5<br/><b>Workloads</b><br/>MCP servers, agents & Kong"]
 ```
 
-1. 🏢 **[Stage 1: Projects & FinOps (`stage-1-projects`)](./1-platform-foundations/01-projects-and-finops.md)**:
-   Provisions isolated GCP spoke projects (`net-host`, `gateway`, `cicd`, `mcps`, `a2a`, `cx-mortgage-orchestrator`, `governance`) and activates required APIs.
-2. 🌐 **[Stage 2: Private Networking (`stage-2-networking`)](./1-platform-foundations/02-private-networking.md)**:
+0. 🏭 **Layer 0: Shared CI/CD (`live/shared/layer-0-cicd`)**:
+   One CI/CD project for all environments, with a mutable dev image repository and an immutable release repository. Images are built once and promoted by digest from dev to release.
+1. 🏢 **[Layer 1: Projects & FinOps (`layer-1-projects`)](./1-platform-foundations/01-projects-and-finops.md)**:
+   Provisions the isolated GCP projects (`net-host`, `gateway`, `governance`, `mcps`, `ai-coe-agents`, `cx-agents`) and activates required APIs. Agent projects are named after the team that owns them.
+2. 🌐 **[Layer 2: Private Networking (`layer-2-networking`)](./1-platform-foundations/02-private-networking.md)**:
    Deploys the central Shared VPC, private subnets, Cloud DNS zones (`*.esmeralda.internal`), and Private Service Connect (PSC) attachments.
-3. 🔐 **[Stage 3: Security & Secrets (`stage-3-security`)](./1-platform-foundations/03-security-iam-and-telemetry.md)**:
-   Configures Cloud KMS CMEK encryption keyrings, Secret Manager secrets, and workload Service Accounts with least-privilege IAM bindings.
-4. ⚙️ **[Stage 4: Workloads & Tool Catalog (`stage-5-workloads`)](./2-workloads-and-catalog/README.md)**:
-   Deploys the runtime applications:
-   * **MCP Microservices** (Cloud Run): Corporate Email, Income Verification, Legacy DMS.
-   * **AI Reasoning Engines** (Vertex AI): Root Coordinator Agent (`cx-mortgage-orchestrator`) and Mortgage Specialist Agent (`ai-coe-mortgage-specialist`) backed by Cloud SQL.
-5. 🛡️ **[Stage 5: Central Governance Hub (`stage-4-governance`)](./3-agentops-and-lifecycle/README.md)**:
-   Establishes the enterprise control plane:
-   * **Central Agent Gateway**: Intercepts model egress using `AGENT_TO_ANYWHERE` with mTLS SPIFFE identity.
+3. 🔐 **[Layer 3: Security & Secrets (`layer-3-security`)](./1-platform-foundations/03-security-iam-and-telemetry.md)**:
+   Configures Cloud KMS CMEK encryption keyrings, Secret Manager secrets, the internal root CA, and workload Service Accounts with least-privilege IAM bindings.
+4. 🛡️ **[Layer 4: Central Governance Hub (`layer-4-governance`)](./3-agentops-and-lifecycle/README.md)**:
+   Establishes the enterprise control plane before any workload runs:
+   * **Central Agent Gateway**: Intercepts agent egress using `AGENT_TO_ANYWHERE` with mTLS SPIFFE identity.
    * **Model Armor**: Enforces PII sanitization and prompt injection filters.
    * **FinOps Analytics**: Sinks telemetry events to BigQuery views (`vw_monthly_agent_chargeback`, `vw_request_level_telemetry`) and Cloud Monitoring dashboards.
+5. ⚙️ **[Layer 5: Workloads & Tool Catalog (`layer-5-workloads`)](./2-workloads-and-catalog/README.md)**:
+   Deploys the runtime applications, bound to the layer-4 gateway and registry:
+   * **MCP Microservices** (Cloud Run): Corporate Email, Income Verification, Legacy DMS.
+   * **AI Reasoning Engines** (Vertex AI): the CX team's orchestrator (`cx-mortgage-orchestrator`) consuming the AI CoE's reusable A2A specialist (`ai-coe-mortgage-specialist`, backed by Cloud SQL).
 
 ---
 

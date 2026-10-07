@@ -39,7 +39,7 @@ resource "google_secret_manager_secret_version" "kong_config" {
 
 
 
-# Resolve pre-created Service Account for Kong from Stage 3 Security
+# Resolve pre-created Service Account for Kong from Layer 3 Security
 data "google_service_account" "kong_sa" {
   account_id = "sa-esmeralda-kong-${var.environment}"
   project    = var.project_id

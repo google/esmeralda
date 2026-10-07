@@ -1,6 +1,6 @@
-# ⚙️ Workloads & Catalog (Stage 4)
+# ⚙️ Workloads & Catalog (Layer 5)
 
-This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Stage 4 workloads (Swappable Ingress Gateways, Standalone API Hub, Composable MCP Tool Servers, and Atomic AI Agents).
+This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads (Swappable Ingress Gateways, Standalone API Hub, Composable MCP Tool Servers, and Atomic AI Agents).
 
 ---
 
@@ -27,7 +27,7 @@ This section of the documentation unifies the architectural specifications, **Ar
 
 ### 3. ADR-06: Why Automated VPC-Internal Database Bootstrapping?
 * **The Problem:** In a zero-trust architecture, Cloud SQL PostgreSQL instances have **no public IP address** and are accessible only from within the Shared VPC. Manual schema execution (`psql`) is impossible from local developer laptops.
-* **The Decision:** Terragrunt provisions an ephemeral **Cloud Run DB Bootstrap Job** inside the private subnet that executes schema creation and IAM grants automatically during `stage-5-workloads` deployment.
+* **The Decision:** Terragrunt provisions an ephemeral **Cloud Run DB Bootstrap Job** inside the private subnet that executes schema creation and IAM grants automatically during `layer-5-workloads` deployment.
 * **The Benefit:** 100% automated, deterministic, zero-touch greenfield deployments with zero exposed public IPs.
 
 ---

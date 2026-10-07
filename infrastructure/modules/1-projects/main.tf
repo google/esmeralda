@@ -455,7 +455,7 @@ resource "google_project_service_identity" "governance_secrets" {
 }
 
 # The CI/CD project and its Cloud Build service agent moved to the shared layer 0
-# (live/shared/stage-0-cicd). Forget the old identity without calling the API.
+# (live/shared/layer-0-cicd). Forget the old identity without calling the API.
 removed {
   from = google_project_service_identity.cicd_build
   lifecycle {

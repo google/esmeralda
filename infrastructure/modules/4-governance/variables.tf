@@ -1,4 +1,4 @@
-# Variables for Stage 4 Governance Stack
+# Variables for Layer 4 Governance Stack
 variable "governance_project_id" {
   type        = string
   description = "Central Governance GCP Project ID hosting metrics scope, BigQuery logs, and alerts"

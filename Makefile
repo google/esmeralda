@@ -18,7 +18,7 @@ SHELL := /bin/bash
 
 ENV ?= dev
 LIVE_DIR = infrastructure/live/$(ENV)
-CICD_DIR = infrastructure/live/shared/stage-0-cicd
+CICD_DIR = infrastructure/live/shared/layer-0-cicd
 
 # Image builds (env-neutral, shared dev repository)
 BUILD_TAG ?= dev-latest
@@ -175,16 +175,16 @@ test-cx-mortgage-orchestrator-local: ## Run local multi-agent test (Root -> A2A 
 
 test-cx-mortgage-orchestrator-remote: ## Run remote CX mortgage orchestrator integration test against Vertex AI Reasoning Engine
 	@echo "👑 Running cx-mortgage-orchestrator remote integration test on Vertex AI ($(ENV))..."
-	@ROOT_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw cx_agents_project_id) && \
-	ROOT_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/cx-mortgage-orchestrator && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
+	@ROOT_PROJ=$$(cd $(LIVE_DIR)/layer-1-projects && terragrunt output -raw cx_agents_project_id) && \
+	ROOT_ID=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/cx-mortgage-orchestrator && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
 	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
 	CX_AGENTS_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
 	uv run --package cx-mortgage-orchestrator python apps/agents/cx-mortgage-orchestrator/scripts/test_remote.py "$(QUERY)"
 
 test-ai-coe-mortgage-specialist-remote: ## Run remote AI CoE mortgage specialist (A2A) integration test against Vertex AI Reasoning Engine
 	@echo "🤖 Running A2A Agent remote integration test on Vertex AI ($(ENV))..."
-	@A2A_PROJ=$$(cd $(LIVE_DIR)/stage-1-projects && terragrunt output -raw ai_coe_agents_project_id) && \
-	A2A_ID=$$(cd $(LIVE_DIR)/stage-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
+	@A2A_PROJ=$$(cd $(LIVE_DIR)/layer-1-projects && terragrunt output -raw ai_coe_agents_project_id) && \
+	A2A_ID=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
 	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
 	GOOGLE_CLOUD_PROJECT="$$A2A_PROJ" REASONING_ENGINE_ID="$$A2A_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
 	uv run --package ai-coe-mortgage-specialist python apps/agents/ai-coe-mortgage-specialist/scripts/test_remote.py "$(QUERY)"
@@ -208,15 +208,15 @@ deploy-cicd: ## Deploy Layer 0: shared CI/CD project, dev + release Artifact Reg
 
 deploy-projects: ## Deploy Layer 1: Projects via Terragrunt for $(ENV)
 	@echo "🏗️  Deploying Layer 1: Projects for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-1-projects && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-1-projects && terragrunt --non-interactive apply -auto-approve
 
 deploy-networking: ## Deploy Layer 2: Networking via Terragrunt for $(ENV)
 	@echo "🏗️  Deploying Layer 2: Networking for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-2-networking && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-2-networking && terragrunt --non-interactive apply -auto-approve
 
 deploy-security: ## Deploy Layer 3: Security + internal Root CA via Terragrunt for $(ENV)
 	@echo "🏗️  Deploying Layer 3: Security for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-3-security && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-3-security && terragrunt --non-interactive apply -auto-approve
 
 deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy Layers 1-3 (Projects, Networking, Security)
 
@@ -226,11 +226,11 @@ deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy 
 
 deploy-governance: ## Deploy Layer 4: Governance, Agent Gateway, Observability & Alerts for $(ENV)
 	@echo "🏛️  Deploying Layer 4: Governance for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-4-governance && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-4-governance && terragrunt --non-interactive apply -auto-approve
 
 deploy-governance-views: ## Deploy Layer 4 BigQuery FinOps & Telemetry SQL Views (after agent traffic generated logs)
 	@echo "📊 Deploying BigQuery FinOps & Telemetry SQL Views for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-4-governance && ENABLE_ANALYTICS_VIEWS=true terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-4-governance && ENABLE_ANALYTICS_VIEWS=true terragrunt --non-interactive apply -auto-approve
 	@echo "👉 Set enable_analytics_views = true in $(LIVE_DIR)/env.yaml to keep the views on plain re-applies."
 
 # ==============================================================================
@@ -288,31 +288,31 @@ build-images: build-services build-agents ## Build every image deployed by Layer
 
 deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, Kong, IAP egress, test VM)
 	@echo "🚀 Deploying Layer 5 workloads for $(ENV)..."
-	@cd $(LIVE_DIR)/stage-5-workloads && terragrunt --non-interactive run --all apply
+	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all apply
 	@echo "✨ Layer 5 workloads deployed!"
 
 deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Registry entries)
 	@for s in corporate-email income-verification legacy-dms; do \
 		echo "🚀 Deploying $$s..."; \
-		(cd $(LIVE_DIR)/stage-5-workloads/services/$$s && terragrunt --non-interactive apply -auto-approve) || exit 1; \
+		(cd $(LIVE_DIR)/layer-5-workloads/services/$$s && terragrunt --non-interactive apply -auto-approve) || exit 1; \
 	done
 
 deploy-ai-coe-mortgage-specialist: ## Deploy the AI CoE mortgage specialist (A2A) Reasoning Engine
 	@echo "🚀 Deploying ai-coe-mortgage-specialist..."
-	@cd $(LIVE_DIR)/stage-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt --non-interactive apply -auto-approve
 
 deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasoning Engine
 	@echo "🚀 Deploying cx-mortgage-orchestrator..."
-	@cd $(LIVE_DIR)/stage-5-workloads/agents/cx-mortgage-orchestrator && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/agents/cx-mortgage-orchestrator && terragrunt --non-interactive apply -auto-approve
 
 deploy-agents: deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator ## Deploy both Reasoning Engine agents
 
 deploy-gateway: ## Deploy Kong API Gateway (re-run after agents are recreated: routes use engine IDs)
 	@echo "🚀 Deploying Kong API Gateway..."
-	@cd $(LIVE_DIR)/stage-5-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
-	@cd $(LIVE_DIR)/stage-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
 
 # ==============================================================================
 # Whole environment
@@ -329,11 +329,11 @@ deploy-all: ## Build an env from zero: Layer 0 -> 1-3 -> 4 -> images -> 5 (singl
 destroy-all: ## Destroy an env's Layers 5 -> 1 (dev only; never touches the shared Layer 0)
 	@if [ "$(ENV)" = "prd" ]; then echo "❌ destroy-all refuses ENV=prd."; exit 1; fi
 	@read -p "⚠️  Destroy ALL of $(ENV) (layers 5 -> 1)? Type the env name to confirm: " c && [ "$$c" = "$(ENV)" ]
-	@cd $(LIVE_DIR)/stage-5-workloads && terragrunt --non-interactive run --all destroy
-	@cd $(LIVE_DIR)/stage-4-governance && terragrunt --non-interactive destroy -auto-approve
-	@cd $(LIVE_DIR)/stage-3-security && terragrunt --non-interactive destroy -auto-approve
-	@cd $(LIVE_DIR)/stage-2-networking && terragrunt --non-interactive destroy -auto-approve
-	@cd $(LIVE_DIR)/stage-1-projects && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all destroy
+	@cd $(LIVE_DIR)/layer-4-governance && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/layer-3-security && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/layer-2-networking && terragrunt --non-interactive destroy -auto-approve
+	@cd $(LIVE_DIR)/layer-1-projects && terragrunt --non-interactive destroy -auto-approve
 	@echo "🧹 $(ENV) destroyed. The shared Layer 0 CI/CD was not touched."
 
 # ==============================================================================

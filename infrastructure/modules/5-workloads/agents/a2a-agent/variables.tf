@@ -44,7 +44,7 @@ variable "agent_name" {
 }
 
 variable "agent_service_account" {
-  description = "The email address of the dedicated A2A Agent service account created in Stage 3"
+  description = "The email address of the dedicated A2A Agent service account created in Layer 3"
   type        = string
 }
 

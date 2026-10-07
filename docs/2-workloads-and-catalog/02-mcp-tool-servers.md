@@ -1,8 +1,8 @@
-# 🔌 Stage 4 Workloads: Composable Model Context Protocol (MCP) Tool Servers
+# 🔌 Layer 5 Workloads: Composable Model Context Protocol (MCP) Tool Servers
 
-Welcome to the technical deep-dive for **Stage 4 MCP Tool Servers & API Hub**.
+Welcome to the technical deep-dive for **Layer 5 MCP Tool Servers & API Hub**.
 
-Stage 4 establishes the reusable corporate tool ecosystem. This guide details how enterprise data utilities (Legacy DMS, Income Verification, Corporate Email) are built with **FastMCP** and deployed as serverless Cloud Run microservices on Google Cloud.
+Layer 5 establishes the reusable corporate tool ecosystem. This guide details how enterprise data utilities (Legacy DMS, Income Verification, Corporate Email) are built with **FastMCP** and deployed as serverless Cloud Run microservices on Google Cloud.
 
 ---
 
@@ -109,7 +109,7 @@ gcloud alpha agent-registry services create ${SERVICE_NAME} \
 ### Test MCP Server Directly via Jumpbox VM
 ```bash
 # SSH into the test jumpbox VM
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/stage-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
 # Inside VM: Test Legacy DMS search via FastMCP JSON-RPC
 TOKEN=$(gcloud auth print-identity-token --audiences="http://legacy-dms.internal.gateway/mcp")

@@ -85,7 +85,7 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 
 Decoupling repositories requires a clear mechanism to link them. Rather than allowing application repos to directly execute Terraform, the platform infrastructure repository (`platform-infra-iac.git`) acts as the central binder. It consumes application build outputs using **Dynamic Parameter Injection** within Terragrunt configurations:
 
-#### 1. Tool Container Tag Injection (`live/dev/stage-5-workloads/services/terragrunt.hcl`)
+#### 1. Tool Container Tag Injection (`live/dev/layer-5-workloads/services/terragrunt.hcl`)
 When the AppDev team pushes a new tool container to Artifact Registry, they update the image tag reference in the platform repository. The platform reads the tag dynamically:
 ```hcl
 inputs = {
@@ -96,7 +96,7 @@ inputs = {
 }
 ```
 
-#### 2. Agent Container Digest Pinning (`live/dev/stage-5-workloads/agents/terragrunt.hcl`)
+#### 2. Agent Container Digest Pinning (`live/dev/layer-5-workloads/agents/terragrunt.hcl`)
 To prevent container drift and guarantee that Vertex AI Reasoning Engine runs exactly the code validated by the AI team, the platform resolves the image URI utilizing its immutable digest:
 ```hcl
 inputs = {
@@ -198,7 +198,7 @@ Centralized governance requires collecting telemetry from all workloads without 
 *   **AI Agent Reasoning Engines**: Vertex AI Reasoning Engines stream trace spans, token counts, execution trajectories, and system metrics using the ADK framework.
 
 ### Hub Dataset (Centralized Audit Platform)
-*   Stage 3 deploys project-level log sinks (`google_logging_project_sink`) across all 7 projects.
+*   Layer 3 deploys project-level log sinks (`google_logging_project_sink`) across all 7 projects.
 *   These sinks route agentic executions and container telemetries into the central BigQuery dataset `esmeralda_telemetry_logs_{environment}` inside `prj-esmeralda-governance`.
 *   Because logs are centralized in the governance project:
     *   BU developers can analyze agent trajectories without accessing underlying database systems.

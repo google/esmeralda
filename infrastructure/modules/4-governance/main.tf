@@ -1,5 +1,5 @@
 # ==============================================================================
-# ESMERALDA STAGE 4 GOVERNANCE & OBSERVABILITY ORCHESTRATOR MODULE
+# ESMERALDA LAYER 4 GOVERNANCE & OBSERVABILITY ORCHESTRATOR MODULE
 # ==============================================================================
 
 terraform {
