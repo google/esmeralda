@@ -96,7 +96,7 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
     service_account = data.google_service_account.kong_sa.email
 
     containers {
-      image = var.kong_image
+      image = local.image_by_digest
       ports {
         container_port = 8000
       }
