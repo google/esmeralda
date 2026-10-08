@@ -40,7 +40,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
 	deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
-	build-service-circuit-breaker build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
+	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator clean preflight
 
@@ -283,9 +283,6 @@ build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
 
 build-service-kong: ## Build and push the custom Kong Gateway image
 	$(call build_image,apps/services/kong,kong-gateway)
-
-build-service-circuit-breaker: ## Build and push the Circuit Breaker image
-	$(call build_image,apps/services/circuit-breaker,circuit-breaker)
 
 build-services: ## Build all MCP service + Kong images concurrently
 	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong
