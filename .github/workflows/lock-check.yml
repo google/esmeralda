@@ -1,0 +1,30 @@
+# Fails a PR when a pyproject.toml changed but uv.lock was not regenerated
+# (fix: run the "Update uv.lock" workflow and merge its branch into the PR).
+name: uv.lock check
+
+on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "apps/**/pyproject.toml"
+      - "uv.lock"
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.9.30" # keep in sync with the uv image in apps/services/*/Dockerfile
+          enable-cache: false
+
+      - name: uv lock --check
+        run: uv lock --check

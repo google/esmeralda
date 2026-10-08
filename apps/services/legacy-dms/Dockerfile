@@ -27,15 +27,18 @@
 # limitations under the License.
 FROM python:3.12-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Pinned uv release (never :latest) for reproducible, supply-chain-safe builds.
+COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /uvx /bin/
 
 RUN groupadd -g 65532 nonroot && \
     useradd -u 65532 -g 65532 -s /bin/false nonroot
 
 WORKDIR /app
 
-COPY --chown=65532:65532 pyproject.toml ./
-RUN uv sync --no-dev
+# Install the exact, hash-pinned dependency set exported from the committed workspace uv.lock
+# (generated as requirements.lock by `make build-*`), instead of re-resolving at build time.
+COPY --chown=65532:65532 requirements.lock ./
+RUN uv venv .venv && uv pip install --python .venv/bin/python --require-hashes --no-cache -r requirements.lock
 
 COPY --chown=65532:65532 . .
 

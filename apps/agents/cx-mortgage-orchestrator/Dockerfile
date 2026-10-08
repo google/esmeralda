@@ -14,11 +14,10 @@ RUN apt-get update -qqy && apt-get install -qqy --no-install-recommends \
 # deploy time (AGENT_GATEWAY_ROOT_CERTIFICATES) and installed by /entrypoint.sh, so the same
 # image digest can be promoted from dev to prd.
 
-# Copy packaging manifests first for layer caching
-COPY pyproject.toml .
-
-# Install dependencies directly into system python
-RUN pip install --no-cache-dir .
+# Install the exact, hash-pinned dependency set exported from the committed workspace uv.lock
+# (generated as requirements.lock by `make build-*`), instead of re-resolving at build time.
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Copy agent application files and entrypoint
 COPY . .

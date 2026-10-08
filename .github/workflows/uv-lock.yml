@@ -1,0 +1,67 @@
+# Regenerates the root uv.lock against public PyPI and pushes it to a new branch.
+#
+# Routine updates come from Dependabot (see .github/dependabot.yml). Run this workflow manually
+# (Actions -> "Update uv.lock" -> Run workflow) when:
+#   - a pyproject.toml was edited by hand (new dependency, changed version range): leave "packages" empty;
+#   - a library must be upgraded now (e.g. a security fix): set "packages", e.g. "urllib3" or
+#     "google-adk==2.11.0" (space-separated for several).
+# Then open a PR from the pushed branch.
+name: Update uv.lock
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Packages to upgrade (space-separated, optional '==version'). Empty = only sync the lock with pyproject.toml."
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the branch with the new uv.lock
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.9.30" # keep in sync with the uv image in apps/services/*/Dockerfile
+          enable-cache: false
+
+      - name: Lock
+        env:
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          args=()
+          for p in $PACKAGES; do
+            if [[ ! "$p" =~ ^[A-Za-z0-9._-]+(==[A-Za-z0-9.+!_-]+)?$ ]]; then
+              echo "::error::Invalid package spec: $p"; exit 1
+            fi
+            args+=(--upgrade-package "$p")
+          done
+          uv lock "${args[@]}"
+
+      - name: Push branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          if git diff --quiet -- uv.lock; then
+            echo "::notice::uv.lock is already up to date; nothing to push."
+            exit 0
+          fi
+          branch="chore/uv-lock-${RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add uv.lock
+          git commit -m "chore(deps): update uv.lock${PACKAGES:+ (upgrade: $PACKAGES)}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$branch"
+          echo "::notice::Pushed $branch. Open a PR: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${branch}?expand=1"
