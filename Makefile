@@ -28,6 +28,11 @@ GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 TAG ?=
 SOURCE_TAG ?= dev-latest
 
+# uv: always install exactly what uv.lock says and never re-resolve locally. The lock is generated
+# against public PyPI by .github/workflows/uv-lock.yml; re-locking on a machine with a different
+# package index (e.g. a corporate proxy) would rewrite every URL in uv.lock.
+export UV_FROZEN := 1
+
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
@@ -238,9 +243,13 @@ deploy-governance-views: ## Deploy Layer 4 BigQuery FinOps & Telemetry SQL Views
 # (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote TAG=vX.Y.Z`.
 # ==============================================================================
 
-# $(1) = build context, $(2) = image name
+# $(1) = build context, $(2) = image name, $(3) = uv workspace package (optional).
+# When $(3) is set, the package's exact, hashed dependency set is exported from the committed
+# workspace uv.lock into $(1)/requirements.lock (generated, gitignored) so the image installs
+# exactly what was locked and audited, instead of re-resolving at build time.
 define build_image
 	@echo "🏗️  Building $(2) (:$(BUILD_TAG), :dev-$(GIT_SHA)) in the shared CI/CD project..."
+	$(if $(3),@uv export --frozen --package $(3) --no-dev --no-emit-workspace --quiet -o $(1)/requirements.lock)
 	@CICD_JSON=$$(cd $(CICD_DIR) && terragrunt output -json) && \
 	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r .cicd_project_id.value) && \
 	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
@@ -253,23 +262,23 @@ define build_image
 endef
 
 build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage specialist (A2A) image
-	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist)
+	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,ai-coe-mortgage-specialist)
 
 build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
-	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator)
+	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator)
 
 build-agents: test-all ## Run tests, then build both agent images concurrently
 	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator
 	@echo "✅ All agent images built and pushed!"
 
 build-service-income-verification: ## Build and push the Income Verification MCP image
-	$(call build_image,apps/services/income-verification,income-verification-api)
+	$(call build_image,apps/services/income-verification,income-verification-api,income-verification-api)
 
 build-service-corporate-email: ## Build and push the Corporate Email MCP image
-	$(call build_image,apps/services/corporate-email,corporate-email)
+	$(call build_image,apps/services/corporate-email,corporate-email,corporate-email)
 
 build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
-	$(call build_image,apps/services/legacy-dms,legacy-dms)
+	$(call build_image,apps/services/legacy-dms,legacy-dms,legacy-dms)
 
 build-service-kong: ## Build and push the custom Kong Gateway image
 	$(call build_image,apps/services/kong,kong-gateway)

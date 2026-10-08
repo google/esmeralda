@@ -1,42 +1,36 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  # Whole uv workspace (both agents + the 3 MCP services) from the committed root uv.lock.
+  # Covers direct and transitive dependencies, so security updates can be proposed for both.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      opentelemetry:
+        patterns:
+          - "opentelemetry-*"
+      google:
+        patterns:
+          - "google-*"
+    ignore:
+      # a2a-sdk 1.x changes the A2A protocol/types used by both agents: upgrade in a dedicated spike.
+      - dependency-name: "a2a-sdk"
+        update-types: ["version-update:semver-major"]
+
+  # SHA-pinned actions in .github/workflows.
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     cooldown:
       default-days: 7
 
+  # Not a uv workspace member (plain requirements.txt; not deployed in layer 5).
   - package-ecosystem: "pip"
-    directory: "/apps/agents/cx-mortgage-orchestrator"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-
-  - package-ecosystem: "pip"
-    directory: "/apps/agents/ai-coe-mortgage-specialist"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-
-  - package-ecosystem: "pip"
-    directory: "/apps/services/corporate-email"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-
-  - package-ecosystem: "pip"
-    directory: "/apps/services/income-verification"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-
-  - package-ecosystem: "pip"
-    directory: "/apps/services/legacy-dms"
+    directory: "/apps/services/circuit-breaker"
     schedule:
       interval: "weekly"
     cooldown:

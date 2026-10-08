@@ -54,6 +54,35 @@ If you have a deployed `dev` environment, `make test-e2e ENV=dev` checks the
 specialist and then the orchestrator -> specialist path through the Agent
 Gateway and Kong.
 
+## Dependencies
+
+**What the lockfile is.** All Python dependencies (direct and transitive) of the
+workspace are pinned, with hashes, in the root [`uv.lock`](../uv.lock). Each
+`pyproject.toml` only declares version *ranges*; `uv.lock` records the exact
+versions that were tested.
+
+**How images use it.** `make build-images` exports each app's exact set from
+`uv.lock` into `apps/**/requirements.lock` (generated, gitignored) and the
+Dockerfile installs it with `--require-hashes`. An image therefore contains
+exactly what is in `uv.lock`, never whatever is newest on PyPI on build day.
+
+**Never re-lock locally.** The Makefile sets `UV_FROZEN=1`, so `uv` installs
+from `uv.lock` without re-resolving. `uv.lock` is always generated against
+public PyPI on GitHub; running `uv lock` on a machine that uses a different
+package index (for example a corporate proxy) would rewrite every URL in it.
+
+**How updates happen:**
+
+| Situation | What to do |
+|---|---|
+| Routine and security updates | Nothing: Dependabot opens weekly PRs (7-day cooldown, OpenTelemetry and `google-*` grouped) that update `pyproject.toml` and `uv.lock`. Review and merge. |
+| You edited a `pyproject.toml` (new dependency, new range) | Run **Actions → Update uv.lock → Run workflow** on your branch with `packages` empty, then merge the pushed `chore/uv-lock-<run>` branch into your PR. |
+| A library must be upgraded now | Same workflow, with `packages` set, e.g. `urllib3` or `google-adk==2.11.0`. Open a PR from the pushed branch. |
+
+The **uv.lock check** workflow fails any PR whose `pyproject.toml` files and
+`uv.lock` are out of sync. `a2a-sdk` major versions are ignored by Dependabot
+until the A2A 1.x migration is done.
+
 Conventions:
 
 * Use **layer** (L0 to L5), never "stage", for the infrastructure levels.
