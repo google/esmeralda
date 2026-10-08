@@ -1,16 +1,16 @@
-# 🌐 Layer 2: Private Networking, DNS & Private Service Connect (PSC)
+# Layer 2: Private Networking, DNS & Private Service Connect (PSC)
 
 Welcome to the technical deep-dive for **Layer 2 (Private Networking & Connectivity)**.
 
 Layer 2 deploys an enterprise Shared VPC network inside `esm-<env>-net-host-<sfx>`, attaches the workload projects to it, establishes the private subnet topology, prepares the subnet that Private Service Connect (PSC) network attachments use, and creates the private Cloud DNS zone `esmeralda.internal.`.
 
-* **Module:** [`infrastructure/modules/2-networking/`](../../infrastructure/modules/2-networking/main.tf)
+* **Module:** [`infrastructure/modules/2-networking/`](../../../infrastructure/modules/2-networking/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-2-networking/`
 * **Deploy:** `make deploy-networking ENV=<env>`
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Layer 2 Exists
+## The 60-Second Mental Model: Why Layer 2 Exists
 
 AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Google-managed tenant networks, not in your VPC. By default, letting them reach private databases (Cloud SQL) or corporate tools (Cloud Run MCPs) would require either:
 1. Exposing database and tool ports to the public internet (a severe enterprise security violation).
@@ -20,17 +20,17 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns Layer 2?
+## Persona & Role Breakdown: Who Owns Layer 2?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🌐 **Network Operations (NetOps)** | Managing CIDR allocations, routing tables, Cloud NAT, firewall ingress rules, and DNS resolution. | `infrastructure/modules/2-networking/`, Shared VPC host, subnets, firewall rules, Cloud Router. | Application Python code, agent prompt graphs, SQL schemas. |
-| 👷 **Platform / SecOps Engineer** | Auditing private egress paths and ensuring zero-trust traffic segmentation. | Subnet IAM bindings (`roles/compute.networkUser`), PSC attachments. | Direct database query tuning or tool implementations. |
-| 🧑‍💻 **AI Application Developer** (CX or AI CoE team) | Consuming internal private domain names (`*.esmeralda.internal`). | Agent tool client configurations (e.g. `https://legacy-dms.esmeralda.internal/mcp`, `https://ai-coe-mortgage-specialist.esmeralda.internal`). | Subnet IP math, VPC peering, firewall configurations. |
+| **Network Operations (NetOps)** | Managing CIDR allocations, routing tables, Cloud NAT, firewall ingress rules, and DNS resolution. | `infrastructure/modules/2-networking/`, Shared VPC host, subnets, firewall rules, Cloud Router. | Application Python code, agent prompt graphs, SQL schemas. |
+| **Platform / SecOps Engineer** | Auditing private egress paths and ensuring zero-trust traffic segmentation. | Subnet IAM bindings (`roles/compute.networkUser`), PSC attachments. | Direct database query tuning or tool implementations. |
+| **AI Application Developer** (CX or AI CoE team) | Consuming internal private domain names (`*.esmeralda.internal`). | Agent tool client configurations (e.g. `https://legacy-dms.esmeralda.internal/mcp`, `https://ai-coe-mortgage-specialist.esmeralda.internal`). | Subnet IP math, VPC peering, firewall configurations. |
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why"
+## Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-02.1: Shared VPC Hub-and-Spoke vs. VPC Peering Mesh
 * **Context:** Interconnecting the workload projects via standard VPC Peering requires many bilateral peering links, cannot route transitively, and risks overlapping IP space.
@@ -48,7 +48,7 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 
 ---
 
-## 🗺️ Shared VPC Network Topology
+## Shared VPC Network Topology
 
 ```mermaid
 flowchart TD
@@ -82,7 +82,7 @@ flowchart TD
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`modules/2-networking/`)
+## Technical Implementation Breakdown (`modules/2-networking/`)
 
 ### 1. Subnet Classifications & CIDR Allocations
 
@@ -102,10 +102,10 @@ Also created: Cloud Router `cr-esmeralda-nat-<env>` with Cloud NAT `nat-esmerald
 
 **What it is:** a Cloud DNS *private zone* answers queries only for the VPC networks it is bound to; it is invisible from the internet.
 
-**In Esmeralda:** Layer 2 creates the zone `esmeralda-private-dns-<env>` for `esmeralda.internal.`, bound to the Shared VPC. It starts empty. In Layer 5, the [Kong module](../../infrastructure/modules/5-workloads/services/kong/main.tf) adds `esmeralda.internal` and `*.esmeralda.internal` A records pointing at Kong's internal load balancer, so every private service (`legacy-dms`, `income-verification`, `corporate-email`, `ai-coe-mortgage-specialist`, ...) is reached through Kong, which routes by `Host` header. The Agent Gateway resolves these names by DNS-peering this zone (never `googleapis.com.`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#37-agent-connectivity-template-act).
+**In Esmeralda:** Layer 2 creates the zone `esmeralda-private-dns-<env>` for `esmeralda.internal.`, bound to the Shared VPC. It starts empty. In Layer 5, the [Kong module](../../../infrastructure/modules/5-workloads/services/kong/main.tf) adds `esmeralda.internal` and `*.esmeralda.internal` A records pointing at Kong's internal load balancer, so every private service (`legacy-dms`, `income-verification`, `corporate-email`, `ai-coe-mortgage-specialist`, ...) is reached through Kong, which routes by `Host` header. The Agent Gateway resolves these names by DNS-peering this zone (never `googleapis.com.`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#37-agent-connectivity-template-act).
 
 > [!NOTE]
-> `.internal` can't get a public certificate, which is why Kong's `*.esmeralda.internal` certificate is signed by the internal Root CA from [Layer 3](./03-security-iam-and-telemetry.md). See [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#-5-tls-and-certificates-why-we-need-self-signed-cas).
+> `.internal` can't get a public certificate, which is why Kong's `*.esmeralda.internal` certificate is signed by the internal Root CA from [Layer 3](./03-security-iam-and-telemetry.md). See [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
 
 ---
 
@@ -113,7 +113,7 @@ Also created: Cloud Router `cr-esmeralda-nat-<env>` with Cloud NAT `nat-esmerald
 
 | Attachment | Project | Created by | Used? |
 | :--- | :--- | :--- | :--- |
-| `agw-egress-na-<env>` | governance | Layer 4 ([6_agent_gateway](../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf)) | **Yes**: all agent egress to `*.esmeralda.internal` enters the VPC here. |
+| `agw-egress-na-<env>` | governance | Layer 4 ([6_agent_gateway](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf)) | **Yes**: all agent egress to `*.esmeralda.internal` enters the VPC here. |
 | `gateway-psc-interface-attachment-<env>` | net-host | Layer 2 | Created (`enable_psc_interface = true`) but not referenced by any later layer. |
 | `<agent>-psc-attachment-<env>` | each agent project | Layer 5 agent modules (`enable_psc_network = true`) | Only used as the engine's `psc_interface_config` when the agent is **not** bound to an Agent Gateway; in dev/prd agents are bound, so it is unused. |
 
@@ -140,7 +140,7 @@ When `enable_psc_interface = true` (the default), the same identities also get `
 
 ---
 
-## 🛠️ Verification & Runbook
+## Verification & Runbook
 
 ### Test Private DNS Resolution from the Test VM
 ```bash

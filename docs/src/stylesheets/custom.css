@@ -1,0 +1,31 @@
+/* Esmeralda brand: navy header, mosaic-red accent (from the Esmeralda banner). */
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1f2d4b;
+  --md-primary-fg-color--light: #2e4170;
+  --md-primary-fg-color--dark: #141d31;
+  --md-accent-fg-color: #c2412d;
+  --md-typeset-a-color: #b23a28;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #1f2d4b;
+  --md-primary-fg-color--light: #2e4170;
+  --md-primary-fg-color--dark: #141d31;
+  --md-accent-fg-color: #f0a33a;
+  --md-typeset-a-color: #f0a33a;
+}
+
+/* Home page banner */
+.md-typeset .esmeralda-banner {
+  display: block;
+  margin: 0 auto 1.5rem;
+  max-width: 360px;
+  border-radius: 8px;
+}
+
+/* Wide tables scroll instead of squeezing */
+.md-typeset table:not([class]) {
+  display: table;
+  font-size: 0.72rem;
+}
