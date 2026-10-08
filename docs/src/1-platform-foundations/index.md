@@ -1,4 +1,4 @@
-# 🏗️ Platform Foundations (Layers 1, 2, and 3)
+# Platform Foundations (Layers 1, 2, and 3)
 
 This section of the documentation details the conceptual architecture, **Architectural Decision Records (ADRs)**, FinOps governance principles, and Terraform/Terragrunt implementations for Esmeralda's foundational platform.
 
@@ -7,7 +7,7 @@ This section of the documentation details the conceptual architecture, **Archite
 
 ---
 
-## 👥 Who Builds What: The Team Model
+## Who Builds What: The Team Model
 
 The foundations exist to give each team its own boundary. Two teams build agents:
 
@@ -20,7 +20,7 @@ Platform teams own the shared projects around them: NetOps (`net-host`), Platfor
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why" Behind Foundations
+## Architecture Decision Records (ADRs): The "Why" Behind Foundations
 
 ### 1. ADR-01: Why 7 Isolated GCP Projects Instead of a Monolith?
 * **The Problem:** In monolith deployments, all workloads share a single GCP project. This leads to **FinOps attribution blackouts** (inability to distinguish which business unit consumed Vertex AI tokens), **IAM privilege bleeding** (tool developers can inspect platform security keys), and **API quota starvation** (one rogue agent loop kills all corporate workloads).
@@ -53,7 +53,7 @@ Platform teams own the shared projects around them: NetOps (`net-host`), Platfor
 
 ---
 
-## 🧭 Foundations 3-Layer Progression Pipeline
+## Foundations 3-Layer Progression Pipeline
 
 ```mermaid
 flowchart TD
@@ -87,7 +87,7 @@ flowchart TD
 
 ---
 
-## 📚 Foundations Detailed Guides
+## Foundations Detailed Guides
 
 1. **[Layer 1: Foundational Projects, Billing (FinOps), and APIs](./01-projects-and-finops.md)**
    * Architectural & FinOps Deep-Dive
@@ -99,4 +99,4 @@ flowchart TD
    * Service Accounts, Agent Identity, and Least-Privilege IAM Overview
    * Technical Specifications (`modules/3-security/`)
 
-**Next:** Layer 4 builds the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and [centralized monitoring & FinOps](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md) on top of these foundations; Layer 5 deploys the [workloads catalog](../2-workloads-and-catalog/README.md).
+**Next:** Layer 4 builds the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and [centralized monitoring & FinOps](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md) on top of these foundations; Layer 5 deploys the [workloads catalog](../2-workloads-and-catalog/index.md).

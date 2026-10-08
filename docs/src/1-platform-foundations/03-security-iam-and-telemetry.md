@@ -1,10 +1,10 @@
-# 🛡️ Layer 3: Security, IAM, CMEK & Internal PKI
+# Layer 3: Security, IAM, CMEK & Internal PKI
 
 Welcome to the technical deep-dive for **Layer 3 (Security, IAM, CMEK & Internal PKI)**.
 
 Layer 3 creates the least-privilege workload service accounts, grants IAM to each team's **Agent Identity**, provisions Cloud KMS keys (CMEK) and platform secrets in `esm-<env>-governance-<sfx>`, grants image-pull access on the shared CI/CD repository, and creates the **internal Root CA** that secures `*.esmeralda.internal`.
 
-* **Module:** [`infrastructure/modules/3-security/`](../../infrastructure/modules/3-security/main.tf) (`main.tf`, [`agent_identity.tf`](../../infrastructure/modules/3-security/agent_identity.tf), [`pki.tf`](../../infrastructure/modules/3-security/pki.tf))
+* **Module:** [`infrastructure/modules/3-security/`](../../../infrastructure/modules/3-security/main.tf) (`main.tf`, [`agent_identity.tf`](../../../infrastructure/modules/3-security/agent_identity.tf), [`pki.tf`](../../../infrastructure/modules/3-security/pki.tf))
 * **Live config:** `infrastructure/live/<env>/layer-3-security/`
 * **Deploy:** `make deploy-security ENV=<env>`
 
@@ -13,7 +13,7 @@ Layer 3 creates the least-privilege workload service accounts, grants IAM to eac
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Layer 3 Exists
+## The 60-Second Mental Model: Why Layer 3 Exists
 
 In AI agent platforms, security vulnerabilities fall into three distinct vectors:
 1. **Uncontrolled Secret Proliferation:** Developers hardcoding database passwords or API keys in git or agent prompt strings.
@@ -24,17 +24,17 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns Security & IAM?
+## Persona & Role Breakdown: Who Owns Security & IAM?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🛡️ **SecOps / Security Lead** | Managing CMEK key rotation policies (90 days), Secret Manager access policies, and the internal Root CA. | `infrastructure/modules/3-security/`, KMS key ring, secrets, Root CA. | Application prompt graphs, tool Python code. |
-| 👷 **Platform / Identity Engineer** | Provisioning workload Service Accounts, Agent Identity grants and cross-project IAM bindings. | Service Account definitions (`sa-ai-coe-mortgage-spec-<env>`, `sa-cx-mortgage-orch-<env>`, `sa-esmeralda-mcps-<env>`, `sa-mcp-invoker-<env>`, ...). | Direct database SQL schemas or prompt tuning. |
-| 🧑‍💻 **AI Application Developer** (CX or AI CoE team) | Consuming IAM-authenticated identities to call private APIs without hardcoded tokens. | Minting Google ID tokens (via `sa-mcp-invoker-<env>`) programmatically. | KMS key policies, root passwords, or IAM role definitions. |
+| **SecOps / Security Lead** | Managing CMEK key rotation policies (90 days), Secret Manager access policies, and the internal Root CA. | `infrastructure/modules/3-security/`, KMS key ring, secrets, Root CA. | Application prompt graphs, tool Python code. |
+| **Platform / Identity Engineer** | Provisioning workload Service Accounts, Agent Identity grants and cross-project IAM bindings. | Service Account definitions (`sa-ai-coe-mortgage-spec-<env>`, `sa-cx-mortgage-orch-<env>`, `sa-esmeralda-mcps-<env>`, `sa-mcp-invoker-<env>`, ...). | Direct database SQL schemas or prompt tuning. |
+| **AI Application Developer** (CX or AI CoE team) | Consuming IAM-authenticated identities to call private APIs without hardcoded tokens. | Minting Google ID tokens (via `sa-mcp-invoker-<env>`) programmatically. | KMS key policies, root passwords, or IAM role definitions. |
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why"
+## Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-03.1: Centralized Governance Project vs. In-Project Security Assets
 * **Context:** Allowing application teams to manage their own KMS keys or secrets lets a compromised workload decrypt data or tamper with its own controls.
@@ -62,7 +62,7 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 
 ---
 
-## 🗺️ Security, IAM & PKI Topology
+## Security, IAM & PKI Topology
 
 ```mermaid
 flowchart TD
@@ -91,7 +91,7 @@ flowchart TD
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`modules/3-security/`)
+## Technical Implementation Breakdown (`modules/3-security/`)
 
 ### 1. Cloud KMS CMEK Keys (`google_kms_crypto_key`)
 **What it is:** a Customer-Managed Encryption Key (CMEK) is a Cloud KMS key you own and control that a Google service uses to encrypt your data at rest; disabling it makes the data unreadable.
@@ -116,14 +116,14 @@ flowchart TD
 
 ---
 
-### 3. Agent Identity Grants ([`agent_identity.tf`](../../infrastructure/modules/3-security/agent_identity.tf))
+### 3. Agent Identity Grants ([`agent_identity.tf`](../../../infrastructure/modules/3-security/agent_identity.tf))
 
 | `principalSet` of… | Roles in its own project | Agent Gateway egress (`roles/iap.egressor`) |
 | :--- | :--- | :--- |
 | **CX agents** project | `aiplatform.user`, `storage.objectAdmin`, `bigquery.dataEditor`, `bigquery.jobUser`, `telemetry.writer`, logging/monitoring/trace writers, `serviceusage.serviceUsageConsumer`, ... | on the `mcps` **and** `ai-coe-agents` projects (tools + the reusable specialist) |
 | **AI CoE agents** project | the above plus `cloudsql.client`, `cloudsql.instanceUser` | on the `mcps` project (tools) |
 
-This encodes the team model: the **CX** orchestrator may call MCP tools and the **AI CoE** specialist; the specialist may call MCP tools. The registry-level `iap.egressor` grants used by the gateway are added later by [`grant_iap_egress.sh`](../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh) (Layers 4 and 5).
+This encodes the team model: the **CX** orchestrator may call MCP tools and the **AI CoE** specialist; the specialist may call MCP tools. The registry-level `iap.egressor` grants used by the gateway are added later by [`grant_iap_egress.sh`](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh) (Layers 4 and 5).
 
 ---
 
@@ -134,20 +134,20 @@ This encodes the team model: the **CX** orchestrator may call MCP tools and the 
 
 ---
 
-### 5. Internal Root CA ([`pki.tf`](../../infrastructure/modules/3-security/pki.tf))
+### 5. Internal Root CA ([`pki.tf`](../../../infrastructure/modules/3-security/pki.tf))
 **What it is:** a self-signed root certificate authority that only clients which explicitly install it will trust. Esmeralda needs one because no public CA issues certificates for the private `esmeralda.internal` zone.
 
 **In Esmeralda:**
 * `tls_private_key.internal_ca` + `tls_self_signed_cert.internal_ca` ("Esmeralda Internal Root CA", RSA 2048, 10 years), generated by the Terraform `tls` provider.
 * The **public** certificate (never the key) is stored in Secret Manager as `esmeralda-internal-root-ca-<env>` in the gateway project, for operators and test clients.
-* Layer 4 puts the Root CA into the Agent Gateway TrustConfig and the agent trust bundle; Layer 5 uses it to sign Kong's `*.esmeralda.internal` leaf. Nothing is baked into images: certificates reach the agents at deploy time via `AGENT_GATEWAY_ROOT_CERTIFICATES`. Full walkthrough: [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#-5-tls-and-certificates-why-we-need-self-signed-cas) and [BYOC](../3-agentops-and-lifecycle/01-central-agent-gateway.md#-6-bring-your-own-container-byoc).
+* Layer 4 puts the Root CA into the Agent Gateway TrustConfig and the agent trust bundle; Layer 5 uses it to sign Kong's `*.esmeralda.internal` leaf. Nothing is baked into images: certificates reach the agents at deploy time via `AGENT_GATEWAY_ROOT_CERTIFICATES`. Full walkthrough: [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas) and [BYOC](../3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc).
 
 > [!CAUTION]
 > The Root CA private key is stored in Terraform state. Treat the state backend as secret material.
 
 ---
 
-## 🛠️ Verification & Runbook
+## Verification & Runbook
 
 ### Verify Cross-Project KMS Access
 ```bash

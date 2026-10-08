@@ -4,7 +4,7 @@
 
 Esmeralda centralizes platform observability, token cost accounting, security audit logging and PII inspection templates in the **governance project** `esm-<env>-governance-<sfx>`, following a **hub-and-spoke telemetry architecture**: every workload project (a *spoke*) forwards its logs to one central project (the *hub*), so that SecOps and FinOps get a single place to query, chart and alert, while application teams keep their own projects.
 
-All resources on this page are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Agent Gateway, which lives in the same module, has its own guide: **[01. Central Agent Gateway](./01-central-agent-gateway.md)**.
+All resources on this page are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Agent Gateway, which lives in the same module, has its own guide: **[01. Central Agent Gateway](./01-central-agent-gateway.md)**.
 
 ```mermaid
 flowchart TD
@@ -98,7 +98,7 @@ flowchart TD
 > `vw_monthly_agent_chargeback` and `vw_request_level_telemetry` query the stdout table, which only exists after the agents have served traffic. They are therefore **off on a fresh environment**. Run `make deploy-governance-views ENV=<env>` after the first agent traffic, then set `enable_analytics_views = true` in `infrastructure/live/<env>/env.yaml` to keep them on later re-applies. `vw_security_audit_trail` is always created.
 
 #### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
-Calculates monthly agent cost and context-caching savings. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:
+Calculates monthly agent cost and context-caching savings. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:
 * **Uncached Prompt Tokens**: `$0.075` per 1M tokens
 * **Cached Prompt Tokens**: `$0.01875` per 1M tokens (**75% cost reduction**)
 * **Response & Reasoning Tokens**: `$0.30` per 1M tokens
@@ -131,7 +131,7 @@ Filters audit logs for security-critical methods:
 
 **What it is:** a *log-based metric* turns matching log entries into a Cloud Monitoring time series (a counter or a distribution of an extracted value). Dashboards and alert policies can then use it like any built-in metric.
 
-**In Esmeralda:** the agents print structured JSON events to stdout ([`agent/telemetry.py`](../../apps/agents/cx-mortgage-orchestrator/agent/telemetry.py)), and Layer 4 turns them into metrics. Token and MCP metrics are created in the governance project **and** every spoke project; security metrics only in the governance project.
+**In Esmeralda:** the agents print structured JSON events to stdout ([`agent/telemetry.py`](../../../apps/agents/cx-mortgage-orchestrator/agent/telemetry.py)), and Layer 4 turns them into metrics. Token and MCP metrics are created in the governance project **and** every spoke project; security metrics only in the governance project.
 
 | Metric (`logging.googleapis.com/user/...`) | Source event / filter | Labels |
 | :--- | :--- | :--- |

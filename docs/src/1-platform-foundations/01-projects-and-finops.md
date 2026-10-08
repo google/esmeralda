@@ -1,19 +1,19 @@
-# 🏢 Layer 1: Foundational Projects, Billing & FinOps
+# Layer 1: Foundational Projects, Billing & FinOps
 
 Welcome to the technical deep-dive for **Layer 1 (Projects, Billing & APIs)**.
 
 Layer 1 provisions and manages the isolated Google Cloud projects of one environment, activates essential service APIs, links them to the billing account, applies cost-attribution labels, and bootstraps foundational Google-managed service identities.
 
-* **Module:** [`infrastructure/modules/1-projects/`](../../infrastructure/modules/1-projects/main.tf)
+* **Module:** [`infrastructure/modules/1-projects/`](../../../infrastructure/modules/1-projects/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-1-projects/` (inputs from `infrastructure/live/<env>/env.yaml`)
 * **Deploy:** `make deploy-projects ENV=<env>` (or `make deploy-foundations ENV=<env>` for Layers 1–3)
 
 > [!NOTE]
-> The CI/CD project is **not** part of Layer 1. It is created once, for all environments, by Layer 0 (`make deploy-cicd`, module [`0-cicd`](../../infrastructure/modules/0-cicd/main.tf)) as `esm-cicd-<sfx>`. It holds the mutable dev image repository (`esmeralda-containers`), the immutable release repository (`esmeralda-containers-release`), and the `sa-esmeralda-builder` / `sa-esmeralda-promoter` service accounts.
+> The CI/CD project is **not** part of Layer 1. It is created once, for all environments, by Layer 0 (`make deploy-cicd`, module [`0-cicd`](../../../infrastructure/modules/0-cicd/main.tf)) as `esm-cicd-<sfx>`. It holds the mutable dev image repository (`esmeralda-containers`), the immutable release repository (`esmeralda-containers-release`), and the `sa-esmeralda-builder` / `sa-esmeralda-promoter` service accounts.
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Layer 1 Exists
+## The 60-Second Mental Model: Why Layer 1 Exists
 
 In AI agent architectures, putting everything into a single GCP project causes three catastrophic production failures:
 1. **The FinOps Attribution Blackout:** Generative AI token costs (Gemini 3.7 Flash) get merged onto a single invoice, making it impossible to charge back costs to specific business units.
@@ -24,17 +24,17 @@ In AI agent architectures, putting everything into a single GCP project causes t
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns Layer 1?
+## Persona & Role Breakdown: Who Owns Layer 1?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🧑‍💼 **FinOps / Cloud Treasury** | Enforcing budget thresholds, monitoring token cost-centers, auditing monthly agent chargebacks. | Project labels (`cost-center`, `team`, `env`), Cloud Billing exports, BigQuery billing datasets. | Agent prompts, Python code, MCP tool endpoints. |
-| 👷 **Platform / Landing Zone Lead** | Maintaining organizational compliance, project factories, and API activation policies. | `infrastructure/modules/1-projects/`, Terraform project resources, service agent lifecycle. | Application business logic, database SQL schemas. |
-| 🧑‍💻 **AI Application Developer** (CX or AI CoE team) | Writing prompt graphs and building agent reasoning capabilities. | Python logic in `apps/agents/<agent>/`. | Project creation, billing linkages, or GCP service API enablements. |
+| **FinOps / Cloud Treasury** | Enforcing budget thresholds, monitoring token cost-centers, auditing monthly agent chargebacks. | Project labels (`cost-center`, `team`, `env`), Cloud Billing exports, BigQuery billing datasets. | Agent prompts, Python code, MCP tool endpoints. |
+| **Platform / Landing Zone Lead** | Maintaining organizational compliance, project factories, and API activation policies. | `infrastructure/modules/1-projects/`, Terraform project resources, service agent lifecycle. | Application business logic, database SQL schemas. |
+| **AI Application Developer** (CX or AI CoE team) | Writing prompt graphs and building agent reasoning capabilities. | Python logic in `apps/agents/<agent>/`. | Project creation, billing linkages, or GCP service API enablements. |
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why"
+## Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-01.1: Seven Specialized GCP Projects vs. Monolithic Landing Zone
 * **Context:** Enterprise organizations require strict separation of concerns between Network Engineers, Security Operations, the AI Center of Excellence, and Line-of-Business (LOB) application developers.
@@ -92,7 +92,7 @@ flowchart TD
 
 ---
 
-## 💰 FinOps Cost Attribution Architecture
+## FinOps Cost Attribution Architecture
 
 Because every team has its own project, and every project carries `cost-center`, `team` and `env` labels, costs can be attributed in the Cloud Billing BigQuery export without guesswork:
 
@@ -139,7 +139,7 @@ flowchart TD
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`modules/1-projects/`)
+## Technical Implementation Breakdown (`modules/1-projects/`)
 
 ### 1. Service API Enablement Matrix (`google_project_service`)
 Each project receives the list of Google APIs required for its operational domain. Layer 1 first enables `serviceusage` and `cloudresourcemanager` on every new project with `gcloud` (a bootstrap step), then enables the rest declaratively:
@@ -175,7 +175,7 @@ The Cloud Build service agent of the shared CI/CD project is bootstrapped by Lay
 
 ---
 
-## 🛠️ Verification & Runbook
+## Verification & Runbook
 
 ### Inspect Provisioned Projects
 ```bash

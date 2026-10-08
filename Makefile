@@ -42,7 +42,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator clean preflight
+	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator docs-serve docs-build clean preflight
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -372,6 +372,16 @@ test-governance-chaos: ## Run local chaos simulation test for governance telemet
 load-test-cx-mortgage-orchestrator: ## Run Locust load test against the CX mortgage orchestrator on Vertex AI Reasoning Engines
 	@echo "⚡ Running Locust load test for cx-mortgage-orchestrator on Vertex AI..."
 	@uv run locust -f apps/agents/cx-mortgage-orchestrator/scripts/locustfile.py --headless -u 5 -r 1 --run-time 1m --host https://us-central1-aiplatform.googleapis.com
+
+# ==============================================================================
+# Documentation site (MkDocs Material, published to GitHub Pages by .github/workflows/docs.yml)
+# ==============================================================================
+
+docs-serve: ## Preview the documentation site locally on http://127.0.0.1:8000 (live reload)
+	@uv run --only-group docs mkdocs serve -f docs/mkdocs.yml
+
+docs-build: ## Build the documentation site into site/ in strict mode (fails on broken links)
+	@uv run --only-group docs mkdocs build --strict -f docs/mkdocs.yml
 
 clean: ## Clean python virtual environments, caches, and terragrunt cache files recursively
 	@echo "🧹 Cleaning up local caches and environments..."
