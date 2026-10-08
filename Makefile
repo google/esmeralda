@@ -28,6 +28,11 @@ GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 TAG ?=
 SOURCE_TAG ?= dev-latest
 
+# uv: always install exactly what uv.lock says and never re-resolve locally. The lock is generated
+# against public PyPI by .github/workflows/uv-lock.yml; re-locking on a machine with a different
+# package index (e.g. a corporate proxy) would rewrite every URL in uv.lock.
+export UV_FROZEN := 1
+
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
@@ -35,7 +40,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
 	deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
-	build-service-circuit-breaker build-services build-images deploy-workloads deploy-services deploy-ai-coe-mortgage-specialist \
+	build-service-circuit-breaker build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator clean preflight
 
@@ -61,7 +66,8 @@ test-agents: ## Fast execution for agent unit tests only
 	@uv run --package ai-coe-mortgage-specialist --extra dev pytest apps/agents/ai-coe-mortgage-specialist/tests/
 	@echo "✅ Agent tests passed!"
 
-test-terraform: ## Run syntax validation for all Terraform modules
+test-terraform: ## Run syntax validation for all Terraform modules (+ workload image digest pinning check)
+	@bash scripts/check_image_pinning.sh
 	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
 	@set -e; for d in $$(find infrastructure/modules -name main.tf -not -path '*/.terraform/*' -exec dirname {} \; | sort); do \
 		echo "→ $$d"; \
@@ -238,9 +244,13 @@ deploy-governance-views: ## Deploy Layer 4 BigQuery FinOps & Telemetry SQL Views
 # (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote TAG=vX.Y.Z`.
 # ==============================================================================
 
-# $(1) = build context, $(2) = image name
+# $(1) = build context, $(2) = image name, $(3) = uv workspace package (optional).
+# When $(3) is set, the package's exact, hashed dependency set is exported from the committed
+# workspace uv.lock into $(1)/requirements.lock (generated, gitignored) so the image installs
+# exactly what was locked and audited, instead of re-resolving at build time.
 define build_image
 	@echo "🏗️  Building $(2) (:$(BUILD_TAG), :dev-$(GIT_SHA)) in the shared CI/CD project..."
+	$(if $(3),@uv export --frozen --package $(3) --no-dev --no-emit-workspace --quiet -o $(1)/requirements.lock)
 	@CICD_JSON=$$(cd $(CICD_DIR) && terragrunt output -json) && \
 	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r .cicd_project_id.value) && \
 	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
@@ -253,23 +263,23 @@ define build_image
 endef
 
 build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage specialist (A2A) image
-	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist)
+	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,ai-coe-mortgage-specialist)
 
 build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
-	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator)
+	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator)
 
 build-agents: test-all ## Run tests, then build both agent images concurrently
 	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator
 	@echo "✅ All agent images built and pushed!"
 
 build-service-income-verification: ## Build and push the Income Verification MCP image
-	$(call build_image,apps/services/income-verification,income-verification-api)
+	$(call build_image,apps/services/income-verification,income-verification-api,income-verification-api)
 
 build-service-corporate-email: ## Build and push the Corporate Email MCP image
-	$(call build_image,apps/services/corporate-email,corporate-email)
+	$(call build_image,apps/services/corporate-email,corporate-email,corporate-email)
 
 build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
-	$(call build_image,apps/services/legacy-dms,legacy-dms)
+	$(call build_image,apps/services/legacy-dms,legacy-dms,legacy-dms)
 
 build-service-kong: ## Build and push the custom Kong Gateway image
 	$(call build_image,apps/services/kong,kong-gateway)
@@ -291,6 +301,10 @@ deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, K
 	@echo "🚀 Deploying Layer 5 workloads for $(ENV)..."
 	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all apply
 	@echo "✨ Layer 5 workloads deployed!"
+	@$(MAKE) --no-print-directory verify-images ENV=$(ENV)
+
+verify-images: ## Check every Layer 5 workload runs the digest its tag points to (runs after deploy-workloads)
+	@bash scripts/verify_images.sh $(ENV)
 
 deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Registry entries)
 	@for s in corporate-email income-verification legacy-dms; do \
