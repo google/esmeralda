@@ -1,4 +1,4 @@
-# 🛡️ Central Agent Gateway: How It Works and How to Deploy It
+# Central Agent Gateway: How It Works and How to Deploy It
 
 > **Audience:** engineers and architects who know cloud basics (projects, IAM, VPCs, HTTPS) but are not networking or PKI specialists.
 >
@@ -11,22 +11,22 @@
 
 ---
 
-## 📚 Contents
+## Contents
 
-1. [The problem Agent Gateway solves](#-1-the-problem-agent-gateway-solves)
-2. [The big picture](#-2-the-big-picture)
-3. [The building blocks, one by one](#-3-the-building-blocks-one-by-one)
-4. [Life of a request](#-4-life-of-a-request)
-5. [TLS and certificates: why we need self-signed CAs](#-5-tls-and-certificates-why-we-need-self-signed-cas)
-6. [Bring Your Own Container (BYOC)](#-6-bring-your-own-container-byoc)
-7. [Deployment checklist: everything you must create](#-7-deployment-checklist-everything-you-must-create)
-8. [Gotchas we learned the hard way](#-8-gotchas-we-learned-the-hard-way)
-9. [Troubleshooting](#-9-troubleshooting)
-10. [Inspection commands](#-10-inspection-commands)
+1. [The problem Agent Gateway solves](#1-the-problem-agent-gateway-solves)
+2. [The big picture](#2-the-big-picture)
+3. [The building blocks, one by one](#3-the-building-blocks-one-by-one)
+4. [Life of a request](#4-life-of-a-request)
+5. [TLS and certificates: why we need self-signed CAs](#5-tls-and-certificates-why-we-need-self-signed-cas)
+6. [Bring Your Own Container (BYOC)](#6-bring-your-own-container-byoc)
+7. [Deployment checklist: everything you must create](#7-deployment-checklist-everything-you-must-create)
+8. [Gotchas we learned the hard way](#8-gotchas-we-learned-the-hard-way)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Inspection commands](#10-inspection-commands)
 
 ---
 
-## 💡 1. The problem Agent Gateway solves
+## 1. The problem Agent Gateway solves
 
 Classic microservices talk to a fixed, known set of destinations, and a firewall rule or API gateway route is enough to control them. AI agents are different:
 
@@ -53,7 +53,7 @@ The rest of this guide covers the **egress** gateway.
 
 ---
 
-## 🗺️ 2. The big picture
+## 2. The big picture
 
 ```mermaid
 flowchart LR
@@ -101,7 +101,7 @@ The second kind is why this guide spends so much time on certificates.
 
 ---
 
-## 🧩 3. The building blocks, one by one
+## 3. The building blocks, one by one
 
 ### 3.1 Agent Runtime (Vertex AI Agent Engine)
 
@@ -110,7 +110,7 @@ The second kind is why this guide spends so much time on certificates.
 **In Agent Gateway:** an engine joins a gateway through `deployment_spec.agent_gateway_config.agent_to_anywhere_config.agent_gateway`. From then on, all of the engine's outbound traffic is sent through that gateway transparently. You don't set `HTTP_PROXY`, and you don't need a sidecar or SDK changes.
 
 **Esmeralda:**
-- `google_vertex_ai_reasoning_engine.agent` in [a2a-agent/main.tf](../../infrastructure/modules/5-workloads/agents/a2a-agent/main.tf) and [adk-agent/main.tf](../../infrastructure/modules/5-workloads/agents/adk-agent/main.tf).
+- `google_vertex_ai_reasoning_engine.agent` in [a2a-agent/main.tf](../../../infrastructure/modules/5-workloads/agents/a2a-agent/main.tf) and [adk-agent/main.tf](../../../infrastructure/modules/5-workloads/agents/adk-agent/main.tf).
 - `identity_type = "AGENT_IDENTITY"` gives each engine its own identity (section 3.2).
 
 ### 3.2 Agent Identity (SPIFFE)
@@ -128,7 +128,7 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 ```
 
 **Esmeralda:**
-- Role grants and `roles/iap.egressor` live in [3-security/agent_identity.tf](../../infrastructure/modules/3-security/agent_identity.tf).
+- Role grants and `roles/iap.egressor` live in [3-security/agent_identity.tf](../../../infrastructure/modules/3-security/agent_identity.tf).
 - Because CX agents and AI CoE agents run in separate projects, each team's agents form their own `principalSet`.
 
 ### 3.3 Agent Registry
@@ -143,9 +143,9 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 
 | Entries | Where | Created by |
 | :--- | :--- | :--- |
-| Google APIs: 13 services × 7 hostname variants (global, mTLS, regional, regional mTLS, REP, US multi-region) | governance | `google_agent_registry_service.system_endpoints` in [6_agent_gateway/main.tf](../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf) |
-| MCP servers (`https://legacy-dms.esmeralda.internal/mcp`, ...) | governance | each service module, e.g. [legacy-dms/main.tf](../../infrastructure/modules/5-workloads/services/legacy-dms/main.tf) |
-| A2A agent card (`ai-coe-mortgage-specialist`) | governance | `google_agent_registry_service.agent_card` in [a2a-agent/main.tf](../../infrastructure/modules/5-workloads/agents/a2a-agent/main.tf) |
+| Google APIs: 13 services × 7 hostname variants (global, mTLS, regional, regional mTLS, REP, US multi-region) | governance | `google_agent_registry_service.system_endpoints` in [6_agent_gateway/main.tf](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf) |
+| MCP servers (`https://legacy-dms.esmeralda.internal/mcp`, ...) | governance | each service module, e.g. [legacy-dms/main.tf](../../../infrastructure/modules/5-workloads/services/legacy-dms/main.tf) |
+| A2A agent card (`ai-coe-mortgage-specialist`) | governance | `google_agent_registry_service.agent_card` in [a2a-agent/main.tf](../../../infrastructure/modules/5-workloads/agents/a2a-agent/main.tf) |
 
 ### 3.4 IAP authorization: authz extension, authz policy and `roles/iap.egressor`
 
@@ -159,8 +159,8 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 - Without this policy attached, the gateway has nothing to make allow decisions, and agent egress fails.
 
 **Esmeralda:**
-- The extension `agw-iap-authz-<env>` and the policy `agw-iap-policy-<env>` are in [6_agent_gateway/main.tf](../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
-- `roles/iap.egressor` is granted with `gcloud iap web set-iam-policy --resource-type=agent-registry`, both registry-wide and on each MCP server or agent entry, by [grant_iap_egress.sh](../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh).
+- The extension `agw-iap-authz-<env>` and the policy `agw-iap-policy-<env>` are in [6_agent_gateway/main.tf](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
+- `roles/iap.egressor` is granted with `gcloud iap web set-iam-policy --resource-type=agent-registry`, both registry-wide and on each MCP server or agent entry, by [grant_iap_egress.sh](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh).
   - Layer 4 runs it once the gateway exists.
   - Layer 5 runs it again (stack `services/iap-egress`) after the MCP servers and agents have registered.
 
@@ -211,7 +211,7 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 > - **An ACT must be attached when the gateway is created.** A gateway created without one cannot be migrated later.
 > - **An ACT can't be changed while a gateway uses it.** Changing it forces the gateway to be replaced. Terraform does this automatically via `replace_triggered_by`. Agent Runtimes bound to the gateway must be detached or redeployed.
 
-**Esmeralda:** `google_network_services_agent_connectivity_template.egress` (`esmeralda-egress-act-<env>`) in [6_agent_gateway/main.tf](../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
+**Esmeralda:** `google_network_services_agent_connectivity_template.egress` (`esmeralda-egress-act-<env>`) in [6_agent_gateway/main.tf](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
 
 ### 3.8 Certificate Manager TrustConfig
 
@@ -252,9 +252,9 @@ When it is created, it publishes its own **TLS-inspection root certificates** in
 
 | Piece | Resource | File |
 | :--- | :--- | :--- |
-| Root CA key + self-signed cert ("Esmeralda Internal Root CA", 10 years) | `tls_private_key.internal_ca`, `tls_self_signed_cert.internal_ca` | [3-security/pki.tf](../../infrastructure/modules/3-security/pki.tf) |
+| Root CA key + self-signed cert ("Esmeralda Internal Root CA", 10 years) | `tls_private_key.internal_ca`, `tls_self_signed_cert.internal_ca` | [3-security/pki.tf](../../../infrastructure/modules/3-security/pki.tf) |
 | Public CA cert published for operators | Secret `esmeralda-internal-root-ca-<env>` (certificate only, **never** the key) | same |
-| Kong leaf for `*.esmeralda.internal` (1 year), signed by the Root CA | `tls_cert_request` + `tls_locally_signed_cert.kong_ilb_cert` | [kong/main.tf](../../infrastructure/modules/5-workloads/services/kong/main.tf) |
+| Kong leaf for `*.esmeralda.internal` (1 year), signed by the Root CA | `tls_cert_request` + `tls_locally_signed_cert.kong_ilb_cert` | [kong/main.tf](../../../infrastructure/modules/5-workloads/services/kong/main.tf) |
 | Leaf + CA chain loaded on the internal HTTPS LB | `google_compute_region_ssl_certificate.kong_ilb_cert` → `google_compute_region_target_https_proxy` | same |
 | DNS: `esmeralda.internal` and `*.esmeralda.internal` → LB IP | `google_dns_record_set` in the Shared VPC private zone | same |
 
@@ -268,12 +268,12 @@ When it is created, it publishes its own **TLS-inspection root certificates** in
 - Layer 5 injects the bundle into each agent at deploy time.
 
 **Esmeralda:**
-- The local `agw_root_ca_bundle` and secret `agw-root-ca-cert-<env>` are in [6_agent_gateway/main.tf](../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
+- The local `agw_root_ca_bundle` and secret `agw-root-ca-cert-<env>` are in [6_agent_gateway/main.tf](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
 - The bundle is passed as the env var `AGENT_GATEWAY_ROOT_CERTIFICATES` (section 6).
 
 ---
 
-## 🔬 4. Life of a request
+## 4. Life of a request
 
 ### 4.1 Agent → Gemini (public Google API)
 
@@ -329,7 +329,7 @@ The MCP tool calls (`legacy-dms`, `income-verification`, `corporate-email`) foll
 
 ---
 
-## 🔐 5. TLS and certificates: why we need self-signed CAs
+## 5. TLS and certificates: why we need self-signed CAs
 
 ### 5.1 TLS in 60 seconds
 
@@ -375,7 +375,7 @@ The gateway decrypts traffic in order to inspect and authorize it, so every conn
 
 ---
 
-## 🐳 6. Bring Your Own Container (BYOC)
+## 6. Bring Your Own Container (BYOC)
 
 ### 6.1 What BYOC is
 
@@ -405,7 +405,7 @@ flowchart LR
 
 ### 6.3 What the container does
 
-The [Dockerfile](../../apps/agents/ai-coe-mortgage-specialist/Dockerfile) installs `ca-certificates`, points every TLS library at the system store and uses the entrypoint:
+The [Dockerfile](../../../apps/agents/ai-coe-mortgage-specialist/Dockerfile) installs `ca-certificates`, points every TLS library at the system store and uses the entrypoint:
 
 ```dockerfile
 ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/etc/ssl/certs/ca-certificates.crt   # gRPC (Google API clients)
@@ -415,7 +415,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python3", "server.py"]
 ```
 
-At start-up, [entrypoint.sh](../../apps/agents/ai-coe-mortgage-specialist/scripts/entrypoint.sh) runs before the agent process:
+At start-up, [entrypoint.sh](../../../apps/agents/ai-coe-mortgage-specialist/scripts/entrypoint.sh) runs before the agent process:
 
 1. It splits `AGENT_GATEWAY_ROOT_CERTIFICATES` into individual PEM certificates.
 2. It writes each one to `/usr/local/share/ca-certificates/agw-<n>.crt` and runs `update-ca-certificates`. This updates the system store used by OpenSSL, gRPC and curl.
@@ -435,22 +435,22 @@ If the variable is missing, the entrypoint prints a warning, and egress through 
 
 ---
 
-## ✅ 7. Deployment checklist: everything you must create
+## 7. Deployment checklist: everything you must create
 
-The layers deploy in order (`make deploy-all ENV=<env>`). Items marked 🔐 exist **only because of the self-signed CA and private destinations**.
+The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **only because of the self-signed CA and private destinations**.
 
 | # | Layer | What | Why |
 | :- | :- | :- | :- |
 | 1 | L1 projects | Projects: governance, net-host, gateway, mcps, cx-agents, ai-coe-agents | Separation of duties and per-team projects |
 | 2 | L1 projects | APIs: `networkservices`, `networksecurity`, `certificatemanager`, `agentregistry`, `iap`, `aiplatform`, `agentidentity`, `modelarmor`, ... | Gateway, authz, TrustConfig, registry, Agent Identity |
 | 3 | L2 networking | Shared VPC, subnets (core, proxy-only, PSC), Cloud NAT | The network the gateway attaches to |
-| 4 | L2 networking | 🔐 Private DNS zone `esmeralda.internal.` | Private hostnames for the MCPs and A2A agents |
+| 4 | L2 networking | Private DNS zone `esmeralda.internal.` | Private hostnames for the MCPs and A2A agents |
 | 5 | L3 security | Agent Identity grants + `roles/iap.egressor` per team `principalSet` | "Who" may egress |
-| 6 | L3 security | 🔐 Internal Root CA (`tls_self_signed_cert`) + public cert in Secret Manager | Signs Kong's leaf; anchor for the TrustConfig |
-| 7 | L4 governance | 🔐 PSC network attachment `agw-egress-na-<env>` | Gateway → Shared VPC |
-| 8 | L4 governance | 🔐 Agent Gateway service agent: `compute.networkUser` + `dns.peer` on net-host | Allows the attachment and DNS peering |
-| 9 | L4 governance | 🔐 TrustConfig `esmeralda-internal-trust-<env>` | Gateway trusts our Root CA on leg 2 |
-| 10 | L4 governance | ACT `esmeralda-egress-act-<env>` (🔐 network attachment, DNS peering, `tls_config`) | Connectivity + TLS trust; must exist **before** the gateway |
+| 6 | L3 security | Internal Root CA (`tls_self_signed_cert`) + public cert in Secret Manager | Signs Kong's leaf; anchor for the TrustConfig |
+| 7 | L4 governance | PSC network attachment `agw-egress-na-<env>` | Gateway → Shared VPC |
+| 8 | L4 governance | Agent Gateway service agent: `compute.networkUser` + `dns.peer` on net-host | Allows the attachment and DNS peering |
+| 9 | L4 governance | TrustConfig `esmeralda-internal-trust-<env>` | Gateway trusts our Root CA on leg 2 |
+| 10 | L4 governance | ACT `esmeralda-egress-act-<env>` (network attachment, DNS peering, `tls_config`) | Connectivity + TLS trust; must exist **before** the gateway |
 | 11 | L4 governance | Agent Gateway `esmeralda-agent-egress-gateway-<env>` (with ACT + registry) | The proxy |
 | 12 | L4 governance | IAP authz extension + `REQUEST_AUTHZ` authz policy | Allow/deny decisions |
 | 13 | L4 governance | Model Armor grants (+ optional `CONTENT_AUTHZ` extension/policy) | Payload inspection |
@@ -458,7 +458,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked 🔐 exis
 | 15 | L4 governance | `roles/iap.egressor` on the registry (`grant_iap_egress.sh`) | Authorizes the agents on the registered entries |
 | 16 | L4 governance | Trust bundle `agw_root_ca_bundle` + secret `agw-root-ca-cert-<env>` | What the agents must trust on leg 1 |
 | 17 | L5 workloads | MCP services on Cloud Run (internal-LB ingress) + registry entries `https://<svc>.esmeralda.internal/mcp` | Private tools, registered exactly |
-| 18 | L5 workloads | 🔐 Kong on Cloud Run + internal HTTPS LB + leaf cert signed by the Root CA + A records | The TLS endpoint behind `*.esmeralda.internal` |
+| 18 | L5 workloads | Kong on Cloud Run + internal HTTPS LB + leaf cert signed by the Root CA + A records | The TLS endpoint behind `*.esmeralda.internal` |
 | 19 | L5 workloads | A2A specialist engine + its registry agent card | Reusable agent, callable through the gateway |
 | 20 | L5 workloads | Engines with `agent_gateway_config` + `AGENT_GATEWAY_ROOT_CERTIFICATES` env | Binds BYOC agents to the gateway with the right trust |
 | 21 | L5 workloads | `services/iap-egress` stack (runs `grant_iap_egress.sh` again) | Grants on the entries registered in L5 |
@@ -466,7 +466,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked 🔐 exis
 
 ---
 
-## ⚠️ 8. Gotchas we learned the hard way
+## 8. Gotchas we learned the hard way
 
 - **Never DNS-peer `googleapis.com.`** in the ACT or the agent's PSC interface. Public Google APIs must take the gateway's default path (Private Google Access). Peering them into the VPC breaks interception.
 - **Keep the IAP `REQUEST_AUTHZ` policy attached.** Without it, the gateway has nothing to make allow decisions.
@@ -478,7 +478,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked 🔐 exis
 
 ---
 
-## 🔍 9. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | :--- | :--- | :--- |
@@ -491,7 +491,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked 🔐 exis
 
 ---
 
-## 🛠️ 10. Inspection commands
+## 10. Inspection commands
 
 ```bash
 GOV=<governance-project-id>; REGION=us-central1; ENV=dev

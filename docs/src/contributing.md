@@ -34,7 +34,7 @@ for this purpose.
 ## Local development and testing
 
 Esmeralda is a [`uv`](https://docs.astral.sh/uv/) workspace driven by the root
-[`Makefile`](../Makefile). Run `make help` to list every target. Before opening
+[`Makefile`](../../Makefile). Run `make help` to list every target. Before opening
 a pull request, run at least:
 
 ```bash
@@ -54,10 +54,30 @@ If you have a deployed `dev` environment, `make test-e2e ENV=dev` checks the
 specialist and then the orchestrator -> specialist path through the Agent
 Gateway and Kong.
 
+## Documentation
+
+The documentation site (<https://google.github.io/esmeralda/>) is built with
+[MkDocs Material](https://squidfunk.github.io/mkdocs-material/) from
+[`docs/src/`](index.md), configured in [`docs/mkdocs.yml`](../mkdocs.yml).
+
+```bash
+make docs-serve   # live preview on http://127.0.0.1:8000
+make docs-build   # strict build into site/ (fails on broken links), same as CI
+```
+
+* Add a new page to the `nav` in `docs/mkdocs.yml`.
+* Write plain GitHub Markdown: GitHub alerts (`> [!NOTE]`) and relative links
+  to repo files (for example `../../../infrastructure/...`) are converted for
+  the site at build time, so pages read well on github.com too.
+* The *Make Targets* reference is generated from the Makefile's `## ...`
+  comments: document a new target there, not in the docs.
+* The **Docs** workflow builds every PR that touches the docs and publishes
+  `main` to GitHub Pages.
+
 ## Dependencies
 
 **What the lockfile is.** All Python dependencies (direct and transitive) of the
-workspace are pinned, with hashes, in the root [`uv.lock`](../uv.lock). Each
+workspace are pinned, with hashes, in the root [`uv.lock`](../../uv.lock). Each
 `pyproject.toml` only declares version *ranges*; `uv.lock` records the exact
 versions that were tested.
 
@@ -91,7 +111,7 @@ Conventions:
   `apps/agents/ai-coe-*` and the AI CoE project.
 * Never commit certificates or private keys (`*.pem` and `*.crt` are
   gitignored). Certificates are injected at deploy time (see the
-  [Central Agent Gateway guide](3-agentops-and-lifecycle/01-central-agent-gateway.md#-6-bring-your-own-container-byoc)).
+  [Central Agent Gateway guide](3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
 * Don't hardcode project IDs in code or docs: read them from layer outputs, and
   write placeholders such as `esm-<env>-governance-<sfx>` in documentation.
 * **Deploy images by digest, never by tag.** Cloud Run and Agent Runtime read a

@@ -1,4 +1,4 @@
-# 🔌 Layer 5 Workloads: Composable Model Context Protocol (MCP) Tool Servers
+# Layer 5 Workloads: Composable Model Context Protocol (MCP) Tool Servers
 
 Welcome to the technical deep-dive for **Layer 5 MCP Tool Servers**.
 
@@ -8,7 +8,7 @@ Welcome to the technical deep-dive for **Layer 5 MCP Tool Servers**.
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Standalone MCP Servers?
+## The 60-Second Mental Model: Why Standalone MCP Servers?
 
 In conventional prototype agents, tool logic (e.g. `def verify_income()`) is written as Python helper functions embedded inside the agent repo. This causes major enterprise friction:
 1. **Coupled Release Cycles:** Fixing a bug in a SQL connector forces a full redeployment and re-evaluation (LLM-as-judge) of the AI Agent reasoning engine.
@@ -19,17 +19,17 @@ In conventional prototype agents, tool logic (e.g. `def verify_income()`) is wri
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns MCP Tools?
+## Persona & Role Breakdown: Who Owns MCP Tools?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🧑‍💻 **AppDev / Tools Engineer** | Building API connectors, wrapping enterprise systems in FastMCP, maintaining tool schemas (`tools.json`). | `apps/services/<tool>/` (Python/FastMCP code, `Dockerfile`, `tools.json`), tool unit tests. | Terraform infrastructure, Shared VPC subnets, KMS keyrings. |
-| 🛡️ **SecOps / Platform Engineer** | Governing tool authentication (`roles/run.invoker`), network ingress, Agent Registry entries and `roles/iap.egressor` grants. | `infrastructure/modules/5-workloads/services/<tool>/`, Cloud Run IAM policies, Direct VPC Egress. | Tool Python business logic, prompt engineering. |
-| 🤖 **AI Reasoning Engineer** (AI CoE team) | Discovering and invoking tools via MCP. | MCP URLs in `agent.yaml` (`DMS_MCP_URL`, ...) and the ADK MCP toolsets in `agent/tools.py`. | Tool hosting, backend system authentication. |
+| **AppDev / Tools Engineer** | Building API connectors, wrapping enterprise systems in FastMCP, maintaining tool schemas (`tools.json`). | `apps/services/<tool>/` (Python/FastMCP code, `Dockerfile`, `tools.json`), tool unit tests. | Terraform infrastructure, Shared VPC subnets, KMS keyrings. |
+| **SecOps / Platform Engineer** | Governing tool authentication (`roles/run.invoker`), network ingress, Agent Registry entries and `roles/iap.egressor` grants. | `infrastructure/modules/5-workloads/services/<tool>/`, Cloud Run IAM policies, Direct VPC Egress. | Tool Python business logic, prompt engineering. |
+| **AI Reasoning Engineer** (AI CoE team) | Discovering and invoking tools via MCP. | MCP URLs in `agent.yaml` (`DMS_MCP_URL`, ...) and the ADK MCP toolsets in `agent/tools.py`. | Tool hosting, backend system authentication. |
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why"
+## Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-04.2: Standalone FastMCP Microservices vs. In-Process Python Tools
 * **Context:** Enterprise tools connect to heterogeneous backend systems (legacy mainframes, SaaS APIs, SQL databases) maintained by distinct teams.
@@ -41,7 +41,7 @@ In conventional prototype agents, tool logic (e.g. `def verify_income()`) is wri
 
 ---
 
-## 🗺️ MCP Tool Server Architecture
+## MCP Tool Server Architecture
 
 ```mermaid
 flowchart TD
@@ -75,7 +75,7 @@ flowchart TD
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`apps/services/` & `modules/5-workloads/services/`)
+## Technical Implementation Breakdown (`apps/services/` & `modules/5-workloads/services/`)
 
 ### 1. The 3 Standard Corporate Tool Microservices
 
@@ -128,7 +128,7 @@ Each module also runs `apps/services/register_mcp.py`, which only records the Cl
 
 ---
 
-## 🛠️ Verification & Runbook
+## Verification & Runbook
 
 ### Test an MCP Server via the Test VM
 The test VM calls Kong directly inside the Shared VPC (no Agent Gateway on this path). Copy the internal Root CA to the VM first, as shown in [Ingress Gateways → Verification & Runbook](./01-ingress-gateways.md).
