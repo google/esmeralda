@@ -40,7 +40,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
 	deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
-	build-service-circuit-breaker build-services build-images deploy-workloads deploy-services deploy-ai-coe-mortgage-specialist \
+	build-service-circuit-breaker build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator clean preflight
 
@@ -66,7 +66,8 @@ test-agents: ## Fast execution for agent unit tests only
 	@uv run --package ai-coe-mortgage-specialist --extra dev pytest apps/agents/ai-coe-mortgage-specialist/tests/
 	@echo "✅ Agent tests passed!"
 
-test-terraform: ## Run syntax validation for all Terraform modules
+test-terraform: ## Run syntax validation for all Terraform modules (+ workload image digest pinning check)
+	@bash scripts/check_image_pinning.sh
 	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
 	@set -e; for d in $$(find infrastructure/modules -name main.tf -not -path '*/.terraform/*' -exec dirname {} \; | sort); do \
 		echo "→ $$d"; \
@@ -300,6 +301,10 @@ deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, K
 	@echo "🚀 Deploying Layer 5 workloads for $(ENV)..."
 	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all apply
 	@echo "✨ Layer 5 workloads deployed!"
+	@$(MAKE) --no-print-directory verify-images ENV=$(ENV)
+
+verify-images: ## Check every Layer 5 workload runs the digest its tag points to (runs after deploy-workloads)
+	@bash scripts/verify_images.sh $(ENV)
 
 deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Registry entries)
 	@for s in corporate-email income-verification legacy-dms; do \

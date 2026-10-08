@@ -25,7 +25,7 @@ resource "google_cloud_run_v2_service" "legacy_dms" {
     }
 
     containers {
-      image = var.container_image
+      image = local.image_by_digest
       ports {
         container_port = 8080
       }
@@ -72,7 +72,7 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
 resource "null_resource" "mcp_registration" {
   triggers = {
     service_uri = google_cloud_run_v2_service.legacy_dms.uri
-    image_uri   = var.container_image
+    image_uri   = local.image_by_digest
   }
 
   provisioner "local-exec" {

@@ -94,3 +94,12 @@ Conventions:
   [Central Agent Gateway guide](3-agentops-and-lifecycle/01-central-agent-gateway.md#-6-bring-your-own-container-byoc)).
 * Don't hardcode project IDs in code or docs: read them from layer outputs, and
   write placeholders such as `esm-<env>-governance-<sfx>` in documentation.
+* **Deploy images by digest, never by tag.** Cloud Run and Agent Runtime read a
+  tag only when a revision is created, so a template that keeps saying
+  `:dev-latest` never rolls out a rebuilt image. Every Layer 5 workload resolves
+  the tag to its digest at plan time (`services/*/image.tf` →
+  `local.image_by_digest`; the `google_artifact_registry_docker_image` data
+  source in `agents/*`). Copy that pattern for new workloads:
+  `make test-terraform` fails if a module deploys `image = var.…` directly, and
+  `deploy-workloads` ends with `make verify-images`, which compares the digest
+  each workload is running with the digest its tag points to.
