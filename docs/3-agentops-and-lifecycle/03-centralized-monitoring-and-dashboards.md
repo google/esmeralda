@@ -162,7 +162,7 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 
 **What it is:** a Cloud Monitoring *alert policy* evaluates a metric condition and notifies one or more *notification channels* when it is breached.
 
-**In Esmeralda:** two channels are created: an email channel (address set in the Layer 4 live config) and a Pub/Sub channel on topic `esmeralda-monitoring-alerts-<env>`, intended to drive automated remediation such as a circuit breaker.
+**In Esmeralda:** two channels are created: an email channel (address set in the Layer 4 live config) and a Pub/Sub channel on topic `esmeralda-monitoring-alerts-<env>`, available for automated remediation.
 
 | Alert Policy (`[Esmeralda <env>] ...`) | Condition | Channels |
 | :--- | :--- | :--- |
@@ -173,7 +173,7 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 | **SecOps - Privilege Escalation & IAM Modification Alert** | Any `security/iam_privilege_changes` event | Email + Pub/Sub |
 
 > [!NOTE]
-> Secret access and Reasoning Engine deployments are tracked as metrics and in `vw_security_audit_trail`, but have no alert policy. The Pub/Sub topic has no subscriber in the IaC: the circuit-breaker image can be built (`make build-service-circuit-breaker`) but is not deployed by Layer 5.
+> Secret access and Reasoning Engine deployments are tracked as metrics and in `vw_security_audit_trail`, but have no alert policy. The Pub/Sub topic has no subscriber in the IaC yet.
 
 ### Platform Service Level Objectives (SLOs)
 

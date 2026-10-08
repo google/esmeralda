@@ -17,7 +17,7 @@ resource "google_monitoring_notification_channel" "email_alert" {
 
 resource "google_monitoring_notification_channel" "pubsub_alert" {
   project      = var.governance_project_id
-  display_name = "Esmeralda PubSub Circuit Breaker Alert"
+  display_name = "Esmeralda PubSub Remediation Alert"
   type         = "pubsub"
   labels = {
     topic = google_pubsub_topic.monitoring_alerts_topic.id
@@ -204,7 +204,7 @@ resource "google_monitoring_alert_policy" "runaway_loop_token_cap" {
 1. Open Cloud Logging in `prj-esmeralda-governance` and query the flagged session ID:
    `jsonPayload.event="genai_token_consumption" AND jsonPayload.tokens.total_tokens > ${var.runaway_loop_token_threshold}`
 2. Identify the `execution_path` and `user_id` breaching the threshold.
-3. If an API key or service account is malfunctioning, run the Gateway revocation command or check circuit breaker status.
+3. If an API key or service account is malfunctioning, run the Gateway revocation command.
 EOF
     mime_type = "text/markdown"
   }

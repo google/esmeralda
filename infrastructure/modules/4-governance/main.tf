@@ -41,7 +41,7 @@ module "dlp_inspection" {
   governance_project_id = var.governance_project_id
 }
 
-# 4. Submodule 3: Alert Policies & Pub/Sub Circuit Breaker
+# 4. Submodule 3: Alert Policies & Pub/Sub notification channel
 module "alert_policies" {
   source                       = "./modules/3_alert_policies"
   environment                  = var.environment
