@@ -10,6 +10,13 @@ dependencies = [
     "locust>=2.32.0",
 ]
 
+# Documentation site (docs/mkdocs.yml). Locked in uv.lock, never installed in images.
+[dependency-groups]
+docs = [
+    "mkdocs>=1.6.1,<2",
+    "mkdocs-material>=9.7,<10",
+]
+
 [tool.uv.workspace]
 members = [
   "apps/agents/cx-mortgage-orchestrator",

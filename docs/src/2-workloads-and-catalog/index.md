@@ -1,4 +1,4 @@
-# ⚙️ Workloads & Catalog (Layer 5)
+# Workloads & Catalog (Layer 5)
 
 This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads: the swappable ingress gateway (Kong by default), the composable MCP tool servers, and the two AI agents.
 
@@ -12,7 +12,7 @@ Layer 5 is deployed with `make deploy-workloads ENV=<env>` (Terragrunt `run --al
 
 ---
 
-## 👥 Who Builds What: CX Team vs. AI CoE Team
+## Who Builds What: CX Team vs. AI CoE Team
 
 Esmeralda separates **agents that talk to customers** from **agents that are reused across the business**. Each team has its own GCP project, service account and Agent Identity:
 
@@ -27,7 +27,7 @@ The orchestrator never calls MCP tools directly: it delegates to the specialist 
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why" Behind Workloads
+## Architecture Decision Records (ADRs): The "Why" Behind Workloads
 
 ### 1. ADR-04: Why Standalone MCP Microservices Instead of Embedded Python Tools?
 * **The Problem:** In traditional agent projects, tool functions (`get_payroll()`, `search_dms()`) are hardcoded as internal Python functions within the agent process. If a backend API changes, the entire AI agent must be re-tested, re-evaluated with LLM-as-judge, and redeployed. Furthermore, tools cannot scale independently or be shared across different business unit agents.
@@ -55,7 +55,7 @@ The orchestrator never calls MCP tools directly: it delegates to the specialist 
 
 ---
 
-## 🧭 Composable AI Workloads Matrix
+## Composable AI Workloads Matrix
 
 ```mermaid
 flowchart TB
@@ -90,7 +90,7 @@ flowchart TB
 
 ---
 
-## 📚 Workloads Catalog Detailed Guides
+## Workloads Catalog Detailed Guides
 
 1. **[Swappable Ingress Gateways](./01-ingress-gateways.md)**
    * Kong Gateway on Cloud Run behind an internal HTTPS load balancer (default in dev and prd)

@@ -1,4 +1,4 @@
-# 🧠 Layer 5 Workloads: AI Reasoning Engines & Database Bootstrapping
+# Layer 5 Workloads: AI Reasoning Engines & Database Bootstrapping
 
 Welcome to the technical deep-dive for **Layer 5 AI Agents & Databases**.
 
@@ -15,7 +15,7 @@ Both run with `identity_type = AGENT_IDENTITY` and are bound to the [Central Age
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Atomic Agent Packaging?
+## The 60-Second Mental Model: Why Atomic Agent Packaging?
 
 In standard enterprise cloud architectures, deploying an AI agent requires filing tickets across 3 teams:
 1. **DBA Team:** Create a database instance, assign passwords, and run SQL grants.
@@ -26,17 +26,17 @@ In standard enterprise cloud architectures, deploying an AI agent requires filin
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns AI Agents & Databases?
+## Persona & Role Breakdown: Who Owns AI Agents & Databases?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🤖 **AI Reasoning Engineer** (CX team or AI CoE team) | Prompt graph development, multi-agent delegation, tool orchestration, evaluating accuracy. | `apps/agents/<agent>/` (Python/ADK code, `Dockerfile`, `scripts/entrypoint.sh`), `agent.yaml`, prompts. | VPC subnetting, Cloud SQL replication, IAM project bindings. |
-| 👷 **Platform / Database Lead** | Ensuring zero public IPs, IAM-authenticated SQL connections and automated bootstrap. | `infrastructure/modules/5-workloads/agents/`, Cloud SQL specs, bootstrap Cloud Run jobs. | Agent prompt engineering, LLM model fine-tuning. |
-| 🛡️ **SecOps / Identity Auditor** | Enforcing zero-trust database authentication and Agent Identity (SPIFFE). | Service accounts (`sa-cx-mortgage-orch-<env>`, `sa-ai-coe-mortgage-spec-<env>`, `sa-mcp-invoker-<env>`), Agent Identity grants, Cloud SQL IAM users. | Python business logic. |
+| **AI Reasoning Engineer** (CX team or AI CoE team) | Prompt graph development, multi-agent delegation, tool orchestration, evaluating accuracy. | `apps/agents/<agent>/` (Python/ADK code, `Dockerfile`, `scripts/entrypoint.sh`), `agent.yaml`, prompts. | VPC subnetting, Cloud SQL replication, IAM project bindings. |
+| **Platform / Database Lead** | Ensuring zero public IPs, IAM-authenticated SQL connections and automated bootstrap. | `infrastructure/modules/5-workloads/agents/`, Cloud SQL specs, bootstrap Cloud Run jobs. | Agent prompt engineering, LLM model fine-tuning. |
+| **SecOps / Identity Auditor** | Enforcing zero-trust database authentication and Agent Identity (SPIFFE). | Service accounts (`sa-cx-mortgage-orch-<env>`, `sa-ai-coe-mortgage-spec-<env>`, `sa-mcp-invoker-<env>`), Agent Identity grants, Cloud SQL IAM users. | Python business logic. |
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why"
+## Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-04.3: Atomic Agent + Cloud SQL Packaging
 * **Context:** Shared databases across multiple AI agents violate zero-trust boundaries and create tight coupling during schema migrations.
@@ -52,7 +52,7 @@ In standard enterprise cloud architectures, deploying an AI agent requires filin
 
 ---
 
-## 🗺️ Multi-Agent Interaction & Database Architecture
+## Multi-Agent Interaction & Database Architecture
 
 ```mermaid
 sequenceDiagram
@@ -77,17 +77,17 @@ sequenceDiagram
     Orch-->>Client: 11. Final response stream
 ```
 
-How each hop is authorized and how TLS works on it is detailed in [Central Agent Gateway §4](../3-agentops-and-lifecycle/01-central-agent-gateway.md#-4-life-of-a-request).
+How each hop is authorized and how TLS works on it is detailed in [Central Agent Gateway §4](../3-agentops-and-lifecycle/01-central-agent-gateway.md#4-life-of-a-request).
 
 ---
 
-## 🏗️ Technical Implementation Breakdown (`infrastructure/modules/5-workloads/agents/`)
+## Technical Implementation Breakdown (`infrastructure/modules/5-workloads/agents/`)
 
 ### Common to both agents
 * **BYOC image:** built with `make build-ai-coe-mortgage-specialist` / `make build-cx-mortgage-orchestrator` into the shared CI/CD Artifact Registry. Terraform resolves the tag from `env.yaml` (`container_tag`) to a **digest** and pins `container_spec.image_uri` to it. Images contain no certificates, so the same digest is promoted from dev to prd.
 * **Agent Identity:** `identity_type = AGENT_IDENTITY` gives each engine a SPIFFE identity. Grants go to the team project's `principalSet://agents.global.org-<ORG>.system.id.goog/attribute.platformContainer/aiplatform/projects/<PROJECT_NUMBER>`, so CX and AI CoE agents are authorized independently.
 * **Agent Gateway binding:** `deployment_spec.agent_gateway_config.agent_to_anywhere_config.agent_gateway` points at the Layer 4 gateway. When it is set, the module does **not** attach `psc_interface_config`; all egress (Gemini, Google APIs, MCPs, A2A) goes through the Agent Gateway.
-* **Trust bundle:** the Layer 4 bundle (gateway inspection roots + internal Root CA) is injected as `AGENT_GATEWAY_ROOT_CERTIFICATES` and installed by `scripts/entrypoint.sh` at start-up (see [Central Agent Gateway §6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#-6-bring-your-own-container-byoc)).
+* **Trust bundle:** the Layer 4 bundle (gateway inspection roots + internal Root CA) is injected as `AGENT_GATEWAY_ROOT_CERTIFICATES` and installed by `scripts/entrypoint.sh` at start-up (see [Central Agent Gateway §6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
 * **Calling Kong:** `SERVICE_ACCOUNT_EMAIL` is set to `sa-mcp-invoker-<env>`. The agent impersonates it to mint the ID token that Kong's Cloud Run IAM check requires.
 * **Per-agent resources:** staging, artifacts and logs buckets, and a BigQuery dataset `<agent>_logs_<env>` for event analytics.
 * **Configuration:** `apps/agents/<agent>/agent.yaml` supplies the name, resources (CPU, memory, min/max instances, concurrency) and env vars. Terraform runtime values (bucket, dataset, URLs, certificates) override the YAML.
@@ -114,7 +114,7 @@ How each hop is authorized and how TLS works on it is detailed in [Central Agent
 
 ---
 
-## 🛠️ Verification & Runbook
+## Verification & Runbook
 
 ### End-to-End Multi-Agent Test
 ```bash

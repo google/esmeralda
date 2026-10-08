@@ -1,17 +1,17 @@
-# 📊 AgentOps, Lifecycle & Platform Governance
+# AgentOps, Lifecycle & Platform Governance
 
 **AgentOps** is the operational discipline for AI agents: how they are built, released, secured, observed and paid for once several teams run them in production. It extends the classic **Software Development Lifecycle (SDLC)** with agent-specific concerns such as egress control, token cost attribution and prompt-safety screening. Esmeralda enforces an opinionated AgentOps and SDLC strategy so that the platform stays scalable, secure and resilient as more teams onboard.
 
-### 📚 Guides in this section
+### Guides in this section
 
 | Guide | What it covers |
 | :--- | :--- |
-| 🛡️ **[01. Central Agent Gateway: How It Works and How to Deploy It](./01-central-agent-gateway.md)** | The featured deep-dive. How Agent Gateway intercepts, inspects and authorizes agent traffic; every component (Agent Registry, IAP authz, ACT, TrustConfig, PSC attachment); why the gateway needs our self-signed internal Root CA; how BYOC agents get the gateway's trust bundle at deploy time. |
-| 📈 **[03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)** | Layer 4 telemetry: log sinks, the BigQuery dataset and views, Cloud Monitoring dashboards, alert policies, SLOs and the DLP template. |
+| **[01. Central Agent Gateway: How It Works and How to Deploy It](./01-central-agent-gateway.md)** | The featured deep-dive. How Agent Gateway intercepts, inspects and authorizes agent traffic; every component (Agent Registry, IAP authz, ACT, TrustConfig, PSC attachment); why the gateway needs our self-signed internal Root CA; how BYOC agents get the gateway's trust bundle at deploy time. |
+| **[03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)** | Layer 4 telemetry: log sinks, the BigQuery dataset and views, Cloud Monitoring dashboards, alert policies, SLOs and the DLP template. |
 
 ---
 
-## 👥 Who Owns What: CX Team vs AI CoE Team
+## Who Owns What: CX Team vs AI CoE Team
 
 Esmeralda separates agent work between two application teams, each with its **own GCP project** (and therefore its own Agent Identity `principalSet`):
 
@@ -20,11 +20,11 @@ Esmeralda separates agent work between two application teams, each with its **ow
 | **CX team** | User-facing **orchestrator** agents (ADK). They own the conversation and *consume* reusable agents. | `cx-mortgage-orchestrator` | `esm-<env>-cx-agents-<sfx>` (label `team=cx`) |
 | **AI CoE team** | Reusable **A2A specialist** agents that any orchestrator can call over the A2A protocol. | `ai-coe-mortgage-specialist` | `esm-<env>-ai-coe-agents-<sfx>` (label `team=ai-coe`) |
 
-The orchestrator never calls the specialist directly: it calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and **Kong** (see [01. Central Agent Gateway §4.2](./01-central-agent-gateway.md#-4-life-of-a-request)). This lets the AI CoE team redeploy or scale its specialist without any change on the CX side.
+The orchestrator never calls the specialist directly: it calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and **Kong** (see [01. Central Agent Gateway §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). This lets the AI CoE team redeploy or scale its specialist without any change on the CX side.
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why" Behind Governance
+## Architecture Decision Records (ADRs): The "Why" Behind Governance
 
 ### 1. ADR-07: Why Central Agent Gateway (AGENT_TO_ANYWHERE) + SPIFFE Identity Over Direct Public NAT Egress?
 * **The Problem:** Allowing AI agents to directly access external Foundation Models or public endpoints via standard Cloud NAT creates critical enterprise vulnerabilities:
@@ -194,11 +194,11 @@ sequenceDiagram
 
 ## AgentOps CI/CD & Image Promotion Pipeline
 
-To ensure that only tested container images run in production, Esmeralda builds images **once**, in an environment-neutral form, and promotes the exact same bytes from dev to prd by digest. Images contain no environment-specific configuration or certificates; those are injected at deploy time (see [01. Central Agent Gateway §6](./01-central-agent-gateway.md#-6-bring-your-own-container-byoc)).
+To ensure that only tested container images run in production, Esmeralda builds images **once**, in an environment-neutral form, and promotes the exact same bytes from dev to prd by digest. Images contain no environment-specific configuration or certificates; those are injected at deploy time (see [01. Central Agent Gateway §6](./01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
 
 ### 1. Developer Workspaces & Local Iteration
 *   Developers run unit tests and local servers with `make test-agents`, `make test-terraform`, `make run-mcp-local` and the `make test-*-local` targets.
-*   Once tests pass, code is committed and a Pull Request is opened against the main branch of the service repository (e.g., `mcp-corporate-email.git`). Example Cloud Build configs for PR checks live in [`.cloudbuild/`](../../.cloudbuild/) (`pr_checks.yaml`: unit + integration tests).
+*   Once tests pass, code is committed and a Pull Request is opened against the main branch of the service repository (e.g., `mcp-corporate-email.git`). Example Cloud Build configs for PR checks live in [`.cloudbuild/`](../../../.cloudbuild/) (`pr_checks.yaml`: unit + integration tests).
 
 ### 2. Build & Registry Push (dev)
 *   `make build-*` (e.g. `make build-cx-mortgage-orchestrator`, `make build-images`) submits a Cloud Build job in the shared CI/CD project `esm-cicd-<sfx>`, running as `sa-esmeralda-builder`.
@@ -210,7 +210,7 @@ To ensure that only tested container images run in production, Esmeralda builds 
 *   Verify with `make test-e2e ENV=dev`.
 
 ### 4. Promote to release (prd)
-*   `make promote TAG=vX.Y.Z` (or `make promote-patch` / `make promote-minor`) runs [`scripts/promote_release.sh`](../../scripts/promote_release.sh): it copies the dev images **by digest** into the **immutable release repository** `esmeralda-containers-release` (writable by `sa-esmeralda-promoter`) and rewrites `container_tag` in `infrastructure/live/prd/env.yaml`. It does not deploy.
+*   `make promote TAG=vX.Y.Z` (or `make promote-patch` / `make promote-minor`) runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh): it copies the dev images **by digest** into the **immutable release repository** `esmeralda-containers-release` (writable by `sa-esmeralda-promoter`) and rewrites `container_tag` in `infrastructure/live/prd/env.yaml`. It does not deploy.
 *   `make status-release` shows what is in the release repository.
 *   prd pulls **only** from the release repository; deploy it with `make deploy-workloads ENV=prd`.
 

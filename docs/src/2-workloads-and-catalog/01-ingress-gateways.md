@@ -1,4 +1,4 @@
-# 🚪 Layer 5 Workloads: Swappable Ingress Gateways
+# Layer 5 Workloads: Swappable Ingress Gateways
 
 Welcome to the technical deep-dive for **Layer 5 Ingress Gateways**.
 
@@ -11,7 +11,7 @@ Welcome to the technical deep-dive for **Layer 5 Ingress Gateways**.
 
 ---
 
-## 💡 The 60-Second Mental Model: Why Swappable Gateways?
+## The 60-Second Mental Model: Why Swappable Gateways?
 
 In enterprise environments, different business units and IT organizations have divergent API gateway standards:
 * **Large Financial Enterprises** mandate **Apigee X** for API product cataloging, rate limiting, and compliance auditing.
@@ -23,17 +23,17 @@ The adapter is chosen per environment with `gateway_product` in `infrastructure/
 
 ---
 
-## 🎭 Persona & Role Breakdown: Who Owns Ingress Gateways?
+## Persona & Role Breakdown: Who Owns Ingress Gateways?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| 🛡️ **PlatformOps / Ingress Lead** | Managing the internal LB certificate, ingress security policies, routes, and upstream token injection. | `infrastructure/modules/5-workloads/services/kong/` (and `services/apigee/`), `apps/services/kong/` (custom image + plugin), `templates/kong.yml.tpl`. | Internal agent prompt graphs, Python business logic. |
-| 🌐 **NetOps Engineer** | Providing the Shared VPC subnets and the private DNS zone. | `sb-esmeralda-core-<env>` / `sb-esmeralda-proxy-<env>` subnets, the `esmeralda.internal.` zone (the `*.esmeralda.internal` A records are created by the Kong module). | Ingress route transformation policies. |
-| 🧑‍💻 **AI Application Developer** (CX and AI CoE teams) | Calling targets via standard internal DNS hostnames. | Consuming `https://ai-coe-mortgage-specialist.esmeralda.internal` or `https://<svc>.esmeralda.internal/mcp`. | Gateway configuration, upstream token generation, or proxy infrastructure. |
+| **PlatformOps / Ingress Lead** | Managing the internal LB certificate, ingress security policies, routes, and upstream token injection. | `infrastructure/modules/5-workloads/services/kong/` (and `services/apigee/`), `apps/services/kong/` (custom image + plugin), `templates/kong.yml.tpl`. | Internal agent prompt graphs, Python business logic. |
+| **NetOps Engineer** | Providing the Shared VPC subnets and the private DNS zone. | `sb-esmeralda-core-<env>` / `sb-esmeralda-proxy-<env>` subnets, the `esmeralda.internal.` zone (the `*.esmeralda.internal` A records are created by the Kong module). | Ingress route transformation policies. |
+| **AI Application Developer** (CX and AI CoE teams) | Calling targets via standard internal DNS hostnames. | Consuming `https://ai-coe-mortgage-specialist.esmeralda.internal` or `https://<svc>.esmeralda.internal/mcp`. | Gateway configuration, upstream token generation, or proxy infrastructure. |
 
 ---
 
-## 🏛️ Architecture Decision Records (ADRs): The "Why"
+## Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-04.1: Gateway Adapter Contract & Upstream Token Injection
 * **Context:** Private Vertex AI Reasoning Engines require a Google OAuth2 access token (`roles/aiplatform.user`), and Cloud Run MCP servers require a Google OIDC ID token for an identity holding `roles/run.invoker`. The engines are also only reachable through their `aiplatform.googleapis.com` resource URL, not a friendly hostname.
@@ -46,7 +46,7 @@ The adapter is chosen per environment with `gateway_product` in `infrastructure/
 
 ---
 
-## 🧭 The Gateway Options
+## The Gateway Options
 
 ```mermaid
 flowchart TD
@@ -68,7 +68,7 @@ flowchart TD
 
 ---
 
-## 🏗️ Technical Specifications & Blueprints
+## Technical Specifications & Blueprints
 
 ### 1. Kong Gateway on Cloud Run (`services/kong/`, default)
 
@@ -83,7 +83,7 @@ flowchart TD
   * the upstream URL: `<engine endpoint>/a2a` for the specialist, `<engine endpoint>:streamQuery?alt=sse` for the orchestrator, and the Cloud Run URI for each MCP server;
   * a global `rate-limiting` plugin (120 requests/minute per `X-API-Key`).
 * **Token injection (`gcp-service-account` plugin):** for `*.googleapis.com` audiences (Reasoning Engines) it fetches an **OAuth2 access token**; for Cloud Run audiences it fetches an **OIDC ID token** for the service URI. MCP services list `sa-esmeralda-kong-<env>` as an invoker.
-* **Internal HTTPS load balancer:** serverless NEG → regional backend service (`INTERNAL_MANAGED`) → URL map → target HTTPS proxy → forwarding rule on port **443** (uses the proxy-only subnet). The LB presents a `*.esmeralda.internal` leaf certificate signed by the Layer 3 **internal Root CA**, and the module writes the `esmeralda.internal` and `*.esmeralda.internal` A records into the private zone. Why a private CA is needed, and how the Agent Gateway trusts it, is explained in [Central Agent Gateway §5](../3-agentops-and-lifecycle/01-central-agent-gateway.md#-5-tls-and-certificates-why-we-need-self-signed-cas).
+* **Internal HTTPS load balancer:** serverless NEG → regional backend service (`INTERNAL_MANAGED`) → URL map → target HTTPS proxy → forwarding rule on port **443** (uses the proxy-only subnet). The LB presents a `*.esmeralda.internal` leaf certificate signed by the Layer 3 **internal Root CA**, and the module writes the `esmeralda.internal` and `*.esmeralda.internal` A records into the private zone. Why a private CA is needed, and how the Agent Gateway trusts it, is explained in [Central Agent Gateway §5](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
 
 > [!IMPORTANT]
 > Kong routes use the agents' **engine IDs**. If an agent engine is recreated, run `make deploy-gateway ENV=<env>` to re-render the routes.
@@ -105,7 +105,7 @@ flowchart TD
 
 ---
 
-## 🛠️ Verification & Runbook
+## Verification & Runbook
 
 ### Test Ingress Routing via Test VM
 The test VM (`test-vm-<env>`) currently lives in the CX agents project. The internal LB only listens on HTTPS, so pass the internal Root CA public certificate (Secret Manager `esmeralda-internal-root-ca-<env>` in the gateway project) to `curl`.
