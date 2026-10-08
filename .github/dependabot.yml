@@ -27,11 +27,3 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
-
-  # Not a uv workspace member (plain requirements.txt; not deployed in layer 5).
-  - package-ecosystem: "pip"
-    directory: "/apps/services/circuit-breaker"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7

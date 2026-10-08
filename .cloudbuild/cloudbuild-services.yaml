@@ -1,5 +1,5 @@
 # ==============================================================================
-# Cloud Build Pipeline: Microservices & Circuit Breaker (Parallel Builds)
+# Cloud Build Pipeline: Microservices (Parallel Builds)
 # Triggers on changes to apps/services/**
 # ==============================================================================
 
@@ -41,23 +41,11 @@ steps:
       - 'apps/services/legacy-dms'
 
   # ----------------------------------------------------------------------------
-  # Parallel Step 4: Build & Push Circuit Breaker Service Container
-  # ----------------------------------------------------------------------------
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'build-circuit-breaker'
-    waitFor: ['-']
-    args:
-      - 'build'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/circuit-breaker:latest'
-      - 'apps/services/circuit-breaker'
-
-  # ----------------------------------------------------------------------------
-  # Step 5: Push Containers to Artifact Registry in Parallel
+  # Step 4: Push Containers to Artifact Registry in Parallel
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push-all-containers'
-    waitFor: ['build-income-verification', 'build-corporate-email', 'build-legacy-dms', 'build-circuit-breaker']
+    waitFor: ['build-income-verification', 'build-corporate-email', 'build-legacy-dms']
     entrypoint: 'bash'
     args:
       - '-c'
@@ -65,14 +53,12 @@ steps:
         docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/income-verification-api:latest &
         docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/corporate-email:latest &
         docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/legacy-dms:latest &
-        docker push us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/circuit-breaker:latest &
         wait
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/income-verification-api:latest'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/corporate-email:latest'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/legacy-dms:latest'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/esmeralda-containers/circuit-breaker:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
