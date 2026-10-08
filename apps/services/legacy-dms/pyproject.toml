@@ -31,7 +31,7 @@ dependencies = [
     "python-multipart>=0.0.31",
     "authlib>=1.6.12",
     "cryptography>=48.0.1",
-    "pygments==2.20.0",
+    "pygments==2.21.0",
 ]
 
 [project.optional-dependencies]
