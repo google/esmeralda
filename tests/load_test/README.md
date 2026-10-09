@@ -9,7 +9,6 @@ This directory provides a load testing framework for Esmeralda's deployed agents
 - reports **Time to First Event (TTFE)**, per-MCP-tool latency and total turn latency, parsed from the SSE stream;
 - waits 10 to 20 s between turns and tracks a rolling 60 s request rate, logging a warning at 80 RPM and an error at 90 RPM (the regional Reasoning Engine quota assumed by the script).
 
-The same script runs in the staging Cloud Build pipeline ([`.cloudbuild/staging.yaml`](../../.cloudbuild/staging.yaml)), which uploads the results to GCS.
 
 ## Load Testing
 
@@ -49,12 +48,14 @@ Follow these steps to execute load tests:
 
    This command runs a 30-second load test that spawns 2 users per second up to a maximum of 5 concurrent users. Results are written to `tests/load_test/.results/` (gitignored).
 
-## Alternative: `make load-test-cx-mortgage-orchestrator`
+## Shortcut: `make load-test`
 
-The Makefile target runs a separate, simpler multi-turn script, [`apps/agents/cx-mortgage-orchestrator/scripts/locustfile.py`](../../apps/agents/cx-mortgage-orchestrator/scripts/locustfile.py) (5 users, 1 minute, fixed mortgage conversation flows). It reads `CX_AGENTS_PROJECT_ID` and `ROOT_REASONING_ENGINE_ID` (the numeric engine ID only), which you must export yourself; the target does not resolve them from Terragrunt:
+`make load-test` resolves the engine from the Layer 5 Terragrunt output and runs the same script, writing the CSV and HTML reports to `tests/load_test/.results/`:
 
 ```bash
-export CX_AGENTS_PROJECT_ID=esm-dev-cx-agents-<sfx>
-export ROOT_REASONING_ENGINE_ID=<id>
-make load-test-cx-mortgage-orchestrator
+make load-test ENV=dev                                   # cx-mortgage-orchestrator, 5 users, 1 minute
+make load-test ENV=dev USERS=20 DURATION=5m
+make load-test ENV=dev LOAD_AGENT=<another ADK agent>
 ```
+
+The script speaks the ADK query API (`:query`, `:streamQuery`), so it targets ADK agents. A2A agents are exercised through the orchestrator.

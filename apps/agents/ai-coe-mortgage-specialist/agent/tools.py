@@ -14,10 +14,8 @@
 
 """MCP toolset connections for the mortgage assistant agent."""
 
-import json
 import logging
 import os
-import ssl
 import urllib.parse
 import urllib.request
 
@@ -28,10 +26,6 @@ from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from agent import USER_AUTH_TOKEN_KEY
 
 logger = logging.getLogger(__name__)
-
-if os.environ.get("DISABLE_SSL_VERIFICATION") == "true":
-    ssl._create_default_https_context = ssl._create_unverified_context
-    logger.warning("SSL certificate verification has been disabled via environment variable.")
 
 DEFAULT_GATEWAY_AUDIENCE = "https://esmeralda.internal"
 
@@ -61,8 +55,8 @@ def _get_oidc_token(audience: str) -> str:
             logger.warning("Failed to fetch impersonated ID token for %s (%s)", sa_email, e)
 
     try:
-        from google.oauth2 import id_token as google_id_token
         from google.auth.transport.requests import Request as GoogleAuthRequest
+        from google.oauth2 import id_token as google_id_token
         auth_req = GoogleAuthRequest()
         return google_id_token.fetch_id_token(auth_req, audience)
     except Exception as e:
@@ -109,9 +103,9 @@ _DEFAULT_MCP_HEADERS = {
     "X-API-Key": "ai-coe-mortgage-specialist",
 }
 
-dms_url = os.environ.get("LEGACY_DMS_MCP_URL") or os.environ.get("DMS_MCP_URL", "https://legacy-dms.esmeralda.internal/mcp")
-income_url = os.environ.get("INCOME_VERIFICATION_MCP_URL") or os.environ.get("INCOME_VERIFICATION_URL", "https://income-verification.esmeralda.internal/mcp")
-email_url = os.environ.get("CORPORATE_EMAIL_MCP_URL") or os.environ.get("EMAIL_MCP_URL", "https://corporate-email.esmeralda.internal/mcp")
+dms_url = os.environ.get("DMS_MCP_URL", "https://legacy-dms.esmeralda.internal/mcp")
+income_url = os.environ.get("INCOME_VERIFICATION_URL", "https://income-verification.esmeralda.internal/mcp")
+email_url = os.environ.get("EMAIL_MCP_URL", "https://corporate-email.esmeralda.internal/mcp")
 
 dms_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(

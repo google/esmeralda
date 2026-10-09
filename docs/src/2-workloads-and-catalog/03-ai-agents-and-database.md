@@ -130,5 +130,5 @@ make test-cx-mortgage-orchestrator-remote ENV=dev   # TEST_VERBOSE=1 dumps raw o
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap \
-  --command="bash -s" < apps/agents/ai-coe-mortgage-specialist/scripts/test_through_gateway.sh
+  --command="bash -s" < scripts/test_a2a_through_gateway.sh
 ```
