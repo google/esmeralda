@@ -29,10 +29,6 @@ dependency "governance" {
   config_path = "../../../layer-4-governance"
 }
 
-dependency "ai_coe_mortgage_specialist" {
-  config_path = "../ai-coe-mortgage-specialist"
-}
-
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
 }
@@ -60,6 +56,8 @@ inputs = {
 
   # Downstream endpoints
   gateway_mcp_url = ""
+  # The specialist is reached by name through DNS + the Agent Gateway, so there is no deploy-time
+  # dependency on it (only a runtime one): both agents can be deployed in parallel.
   a2a_agent_url   = "https://ai-coe-mortgage-specialist.esmeralda.internal"
 
   agent_config_path = "${get_repo_root()}/apps/agents/cx-mortgage-orchestrator/agent.yaml"

@@ -412,7 +412,7 @@ ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/etc/ssl/certs/ca-certificates.crt   # gRPC
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt                 # requests
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt                      # OpenSSL / httpx / aiohttp
 ENTRYPOINT ["esmeralda", "run", "--"]
-CMD ["python3", "server.py"]
+CMD ["esmeralda", "serve", "--otel-to-cloud"]
 ```
 
 At start-up, `esmeralda run` ([certs.py](../../../packages/esmeralda/src/esmeralda/certs.py)) runs before the agent process:
