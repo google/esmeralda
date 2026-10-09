@@ -1,5 +1,5 @@
 # Fails a PR when a pyproject.toml changed but uv.lock was not regenerated
-# (fix: run the "Update uv.lock" workflow and merge its branch into the PR).
+# (fix: run `make lock`, commit uv.lock and push).
 name: uv.lock check
 
 on:

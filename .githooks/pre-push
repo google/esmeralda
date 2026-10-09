@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Blocks a push whose uv.lock is out of date with the pyproject.toml files.
+# Installed by `make bootstrap` (git config core.hooksPath .githooks). Bypass once with --no-verify.
+exec scripts/check_lock.sh
