@@ -187,6 +187,51 @@ esmeralda run -- <command> [args...]
 
 Exit codes (when it doesn't `exec`): `2` for a usage error, `1` if the certificate bundle is invalid. Other failures (for example `update-ca-certificates` failing) stop the container with a traceback.
 
+```text
+esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE] [--user ID] [--session ID]
+                [--caller PROJECT/AGENT] [--timeout SECONDS] [--fail-on-tool-error] [--verbose] MESSAGE
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--agent-dir` | `.` | Agent directory, with `agent.yaml` and the `agent` package |
+| `--url` | | A running server. ADK: `POST <url>/api/stream_reasoning_engine`. A2A: card at `<url>/v1/card` (or `/.well-known/agent-card.json`), then `message:send` |
+| `--engine` | | `projects/P/locations/L/reasoningEngines/ID`. ADK: `:streamQuery`. A2A: `<engine>/a2a`. Authenticated with ADC, else `gcloud auth print-access-token` |
+| `--user` | `esmeralda-cli` | User id |
+| `--session` | new session | Session id (ADK) or context id (A2A) to continue |
+| `--caller` | `<project>/esmeralda_cli` | Caller context. The project comes from `GOOGLE_CLOUD_PROJECT`, else ADC |
+| `--timeout` | `300` | HTTP timeout, in seconds |
+| `--fail-on-tool-error` | off | Also fail when a tool call returned an error |
+| `--verbose` | off | Print raw events and tracebacks |
+
+Without `--url` or `--engine`, the agent runs in-process with `env` + `local_env` applied. Exit codes: `0` passed, `1` failed run, `2` usage or configuration error.
+
+## `esmeralda.config`
+
+### `class AgentConfig`
+
+`AgentConfig.load(directory=".")` reads `<directory>/agent.yaml`.
+
+| Field | From `agent.yaml` | Description |
+|---|---|---|
+| `name` | `name` | Deployment name (defaults to the directory name) |
+| `framework` | `framework` | `google-adk` (default) or `a2a`; anything else raises `ValueError` |
+| `env` | `env` | Environment of the deployed agent (values as strings; booleans as `true`/`false`) |
+| `local_env` | `local_env` | Overrides for local runs only |
+| `agent_card` | `agent_card` | A2A agent card |
+
+`apply_local_env(environ=os.environ)` sets `env`, then `local_env`, without overriding variables already set.
+
+## `esmeralda.query` and `esmeralda.report`
+
+| Name | Description |
+|---|---|
+| `Query(message, user_id="esmeralda-cli", session_id=None, caller=None, timeout=300.0)` | One query |
+| `run(config, query, report, *, url=None, engine=None)` | Runs the query on the chosen target and feeds the report |
+| `load_app(config)` | Imports the agent package from the agent directory and returns its `app` (or wraps `root_agent` with `create_app`) |
+| `parse_caller("project/agent")` | A `CallerContext` |
+| `Report(stream=sys.stdout, verbose=False)` | Renders ADK events (`adk_event`) and A2A tasks (`a2a_task`); `summary(fail_on_tool_error=False)` prints the result and returns the exit code |
+
 ## Environment variables
 
 | Variable | Read by | Effect |

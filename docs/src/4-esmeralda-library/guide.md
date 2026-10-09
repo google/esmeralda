@@ -14,6 +14,7 @@ This page shows how to use the `esmeralda` library in each situation. For the fu
 | Client or test calling an agent through the Agent Runtime API | `"state_delta": {"temp:caller_context": {...}}` in the query input |
 | Agent-specific plugins (BigQuery analytics, ...) | `esmeralda.create_app(root_agent, plugins=[...])` |
 | Agent-specific process setup | `esmeralda.prepare([*esmeralda.lifecycle.PREPARE, my_step])` |
+| Run or test an agent, locally or deployed | `esmeralda query`, or `make query AGENT=<agent>` (add `TARGET=remote` or `TARGET=<url>`) |
 
 ## Add the library to an agent
 
@@ -169,8 +170,47 @@ esmeralda.prepare([*esmeralda.lifecycle.PREPARE, enable_my_sdk_proxy])
 
 The same applies to `finalize`, with `esmeralda.lifecycle.FINALIZE`. When you pass custom finalize steps, give them to the plugin too: `EsmeraldaTelemetryPlugin(finalize_steps=...)`.
 
+## Querying an agent: locally, on a server, or deployed
+
+`esmeralda query` calls any agent, ADK or A2A, with one command and one report. It reads `framework` from the agent's `agent.yaml` to choose how to talk to it:
+
+| Target | Command | How it calls the agent |
+|---|---|---|
+| In-process (default) | `esmeralda query --agent-dir apps/agents/<agent> "message"` | Loads the package's `app` and runs it through the ADK runner. No server or port needed, and it works in a debugger |
+| A running server | `... --url http://localhost:8080 "message"` | ADK: `POST /api/stream_reasoning_engine` (`async_stream_query`). A2A: agent card, then `message:send` |
+| The deployed agent | `... --engine projects/P/locations/L/reasoningEngines/ID "message"` | The same calls through the Agent Runtime API, with your gcloud credentials |
+
+Every run prints the same report: the events as they arrive (agent transfers, tool calls and results, text), then the answer, tool and token counts, and a verdict. The exit code is `0` on success, and `1` if the agent reported an error, returned no answer, or (A2A) the task didn't complete. Add `--fail-on-tool-error` to also fail when a tool call returned an error.
+
+The caller context is always sent, as `<project>/esmeralda_cli` by default (override with `--caller project/agent`). Other options: `--user`, `--session` (continue a conversation), `--timeout`, `--verbose` (raw events).
+
+From the repository root, `make query` resolves the agent directory and the deployed engine for you:
+
+```bash
+make query AGENT=ai-coe-mortgage-specialist                           # in-process, local MCP servers started for you
+make query AGENT=cx-mortgage-orchestrator QUERY="Verify Julian Sterling's income"
+make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=dev       # the engine deployed in dev
+make query AGENT=cx-mortgage-orchestrator TARGET=http://localhost:8080
+make test-e2e ENV=dev                                                 # remote query: specialist, then orchestrator
+```
+
+### Local runs and `local_env`
+
+A local run applies the agent's `agent.yaml` `env` (the same variables the deployed engine gets), then its `local_env`, without overriding variables already set in your shell. `local_env` holds what differs on a workstation:
+
+```yaml
+local_env:
+  LOCAL_MODE: "true"                               # orchestrator: load the specialist in-process
+  EMAIL_MCP_URL: "http://localhost:8001/mcp"       # local MCP servers started by make query
+  INCOME_VERIFICATION_URL: "http://localhost:8002/mcp"
+  DMS_MCP_URL: "http://localhost:8003/mcp"
+```
+
+Local runs call Gemini on Vertex AI with your Application Default Credentials. Run `gcloud auth application-default login` with an account that can use Vertex AI, and set `GOOGLE_CLOUD_PROJECT` to a project where it is enabled.
+
 ## Running and testing locally
 
+- **`esmeralda query`** (above) is the standard way to run an agent locally.
 - **`adk web` / `adk api_server`** load `app` exactly as in production. Without `AGENT_GATEWAY_ROOT_CERTIFICATES`, the entrypoint only logs a warning, and you don't need it locally.
 - **Scripts** can wrap the app with the Agent Engine template: `AdkApp(app=app)` (see [test_local.py](../../../apps/agents/cx-mortgage-orchestrator/scripts/test_local.py)).
 - **Unit tests that mock ADK or google-genai** (as the agents' `conftest.py` do) should stub `prepare`, because it patches the real clients. The library's own tests cover the patches:

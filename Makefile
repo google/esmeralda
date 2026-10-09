@@ -38,7 +38,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
 .PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform run-mcp-local test-ai-coe-mortgage-specialist-local test-cx-mortgage-orchestrator-local \
 	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
-	deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
+	query deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
@@ -110,6 +110,23 @@ run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 
 # Default query used for local agent testing
 QUERY ?= Can you verify Julian Sterling's income?
+
+# ==============================================================================
+# Query any agent (ADK or A2A) the same way: in-process, on a running server, or deployed
+# ==============================================================================
+
+AGENT ?=
+TARGET ?= local
+
+query: ## Query an agent: AGENT=<dir under apps/agents> [QUERY="..."] [TARGET=local|remote|<url>] (remote = the ENV deployment)
+	@[ -n "$(AGENT)" ] || { echo "❌ Set AGENT=<agent directory under apps/agents>, e.g. AGENT=cx-mortgage-orchestrator"; exit 1; }
+	@case "$(TARGET)" in \
+	  local) scripts/with_local_mcp.sh uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) "$(QUERY)" ;; \
+	  remote) ENGINE=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/$(AGENT) && terragrunt output -raw engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(AGENT) in $(ENV)"; exit 1; }; \
+	    uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --engine "$$ENGINE" "$(QUERY)" ;; \
+	  http://*|https://*) uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --url "$(TARGET)" "$(QUERY)" ;; \
+	  *) echo "❌ TARGET must be local, remote or a URL (got '$(TARGET)')"; exit 1 ;; \
+	esac
 
 test-ai-coe-mortgage-specialist-local: ## Run local AI CoE mortgage specialist (A2A) test (auto-spins up & tears down local MCP servers via run-mcp-local)
 	@already_running=0; \
@@ -205,8 +222,8 @@ test-ai-coe-mortgage-specialist-remote: ## Run remote AI CoE mortgage specialist
 	uv run --package ai-coe-mortgage-specialist python apps/agents/ai-coe-mortgage-specialist/scripts/test_remote.py "$(QUERY)"
 
 test-e2e: ## End-to-end check of a deployed env: specialist, then orchestrator -> specialist (fails on any error)
-	@$(MAKE) --no-print-directory test-ai-coe-mortgage-specialist-remote ENV=$(ENV)
-	@$(MAKE) --no-print-directory test-cx-mortgage-orchestrator-remote ENV=$(ENV)
+	@$(MAKE) --no-print-directory query AGENT=ai-coe-mortgage-specialist TARGET=remote ENV=$(ENV)
+	@$(MAKE) --no-print-directory query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=$(ENV)
 	@echo "✅ End-to-end tests passed for $(ENV)!"
 
 # ==============================================================================
