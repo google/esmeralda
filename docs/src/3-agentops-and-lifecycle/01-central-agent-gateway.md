@@ -400,29 +400,29 @@ flowchart LR
     AGWC["Agent Gateway: agent_gateway_card.root_certificates"] --> L4
     L4["Layer 4: agw_root_ca_bundle (one PEM bundle)"] --> L5
     L5["Layer 5: env AGENT_GATEWAY_ROOT_CERTIFICATES on the Reasoning Engine"] --> EP
-    EP["Container start: entrypoint.sh installs certs, then runs the server"]
+    EP["Container start: esmeralda run installs certs, then runs the server"]
 ```
 
 ### 6.3 What the container does
 
-The [Dockerfile](../../../apps/agents/ai-coe-mortgage-specialist/Dockerfile) installs `ca-certificates`, points every TLS library at the system store and uses the entrypoint:
+The [Dockerfile](../../../apps/agents/ai-coe-mortgage-specialist/Dockerfile) installs `ca-certificates`, points every TLS library at the system store and starts through the `esmeralda` entrypoint (from the [esmeralda library](../4-esmeralda-library/index.md)):
 
 ```dockerfile
 ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/etc/ssl/certs/ca-certificates.crt   # gRPC (Google API clients)
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt                 # requests
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt                      # OpenSSL / httpx / aiohttp
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["esmeralda", "run", "--"]
 CMD ["python3", "server.py"]
 ```
 
-At start-up, [entrypoint.sh](../../../apps/agents/ai-coe-mortgage-specialist/scripts/entrypoint.sh) runs before the agent process:
+At start-up, `esmeralda run` ([certs.py](../../../packages/esmeralda/src/esmeralda/certs.py)) runs before the agent process:
 
 1. It splits `AGENT_GATEWAY_ROOT_CERTIFICATES` into individual PEM certificates.
 2. It writes each one to `/usr/local/share/ca-certificates/agw-<n>.crt` and runs `update-ca-certificates`. This updates the system store used by OpenSSL, gRPC and curl.
 3. It appends the certificates to Python's `certifi` bundle, for libraries that ignore `SSL_CERT_FILE`.
-4. It runs `exec "$@"` to start the server with the trust in place.
+4. It `exec`s the `CMD` to start the server with the trust in place (the server keeps PID 1).
 
-If the variable is missing, the entrypoint prints a warning, and egress through the gateway will fail TLS verification.
+If the variable is missing, the entrypoint logs a warning, and egress through the gateway will fail TLS verification. If it is set but holds no certificate, the container stops.
 
 ### 6.4 BYOC checklist
 

@@ -20,6 +20,7 @@ from typing import Any
 import google.auth
 import google.auth.transport.requests
 import httpx
+from esmeralda import context
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 
 logger = logging.getLogger(__name__)
@@ -82,14 +83,15 @@ async def _add_auth_header(request):
 
 
 def _a2a_metadata_provider(invocation_context, a2a_message):
-    """Attach user auth token from session state to A2A request metadata.
+    """Build the A2A request metadata for each message sent to the specialist.
 
-    This is called before sending each A2A message. It reads the user token
-    from session state (placed there by streaming_agent_run_with_events via
-    the authorizations field) and attaches it as A2A metadata so the
-    receiving agent can extract it.
+    * ``caller_context``: identifies this agent (project and agent name) so the specialist's
+      telemetry can attribute the call (esmeralda.context.outgoing_metadata). Telemetry only.
+    * ``user_auth_token``: the user token from session state (placed there by
+      streaming_agent_run_with_events via the authorizations field), so the receiving agent can
+      act on behalf of the user.
     """
-    metadata = {}
+    metadata = context.outgoing_metadata()
     if invocation_context.session and invocation_context.session.state:
         token = invocation_context.session.state.get(USER_AUTH_TOKEN_KEY)
         if token:

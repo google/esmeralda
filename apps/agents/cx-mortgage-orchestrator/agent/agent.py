@@ -15,10 +15,8 @@
 import os
 from google.adk.agents import Agent
 from agent.remote_agent import mortgage_tools_agent
-from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
 
-telemetry_plugin = EsmeraldaTelemetryPlugin()
-
+# Tool and token telemetry come from EsmeraldaTelemetryPlugin (esmeralda.create_app in agent/__init__.py).
 root_agent = Agent(
     name=os.getenv("AGENT_NAME", "cx_mortgage_orchestrator"),
     model=os.getenv("MODEL_NAME", "gemini-3.7-flash"),
@@ -26,6 +24,4 @@ root_agent = Agent(
                 "Delegate all document search, income verification, and email "
                 "operations to the mortgage_tools_agent.",
     sub_agents=[mortgage_tools_agent],
-    after_model_callback=telemetry_plugin.after_model_callback,
-    after_tool_callback=telemetry_plugin.after_tool_callback,
 )
