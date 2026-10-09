@@ -12,57 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for remote agent metadata provider and auth header injection."""
+"""The orchestrator package: the app and its A2A sub-agent (behavior of the A2A client is tested in esmeralda)."""
 
-from __future__ import annotations
-
-import asyncio
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from agent.remote_agent import _a2a_metadata_provider, _add_auth_header, USER_AUTH_TOKEN_KEY
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+from google.adk.apps import App
 
 
-CALLER = {"caller_context": {"project_id": "cx-project", "agent_name": "cx_mortgage_orchestrator"}}
+def test_app_serves_the_root_agent_with_the_telemetry_plugin():
+    import agent
+
+    assert isinstance(agent.app, App)
+    assert agent.app.root_agent.name == "cx_mortgage_orchestrator"
+    assert [p.name for p in agent.app.plugins] == ["esmeralda_telemetry"]
 
 
-class TestA2aMetadataProvider:
-    @pytest.fixture(autouse=True)
-    def identity(self, monkeypatch):
-        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "cx-project")
-        monkeypatch.setenv("AGENT_NAME", "cx_mortgage_orchestrator")
+def test_specialist_is_an_a2a_sub_agent_through_the_gateway():
+    from agent.remote_agent import A2A_AGENT_URL, mortgage_tools_agent
 
-    def test_attaches_token_from_session_state(self):
-        ctx = MagicMock()
-        ctx.session.state = {USER_AUTH_TOKEN_KEY: "test-token-123"}
-        metadata = _a2a_metadata_provider(ctx, MagicMock())
-        assert metadata == {**CALLER, USER_AUTH_TOKEN_KEY: "test-token-123"}
-
-    def test_only_caller_context_when_no_token(self):
-        ctx = MagicMock()
-        ctx.session.state = {}
-        assert _a2a_metadata_provider(ctx, MagicMock()) == CALLER
-
-    def test_only_caller_context_when_no_session(self):
-        ctx = MagicMock()
-        ctx.session = None
-        assert _a2a_metadata_provider(ctx, MagicMock()) == CALLER
-
-    def test_only_caller_context_when_no_state(self):
-        ctx = MagicMock()
-        ctx.session.state = None
-        assert _a2a_metadata_provider(ctx, MagicMock()) == CALLER
-
-
-class TestAddAuthHeader:
-    def test_injects_bearer_token(self):
-        mock_creds = MagicMock()
-        mock_creds.token = "access-token-abc"
-
-        with patch("agent.remote_agent.google.auth.default", return_value=(mock_creds, "project-id")):
-            request = MagicMock()
-            request.headers = {}
-            asyncio.run(_add_auth_header(request))
-            assert request.headers["Authorization"] == "Bearer access-token-abc"
-            mock_creds.refresh.assert_called_once()
+    assert isinstance(mortgage_tools_agent, RemoteA2aAgent)
+    assert mortgage_tools_agent.name == "mortgage_tools_agent"
+    assert mortgage_tools_agent._agent_card_source == f"{A2A_AGENT_URL}/v1/card"
