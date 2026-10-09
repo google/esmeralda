@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import os
+
 from google.adk.agents import Agent
+
 from agent.remote_agent import mortgage_tools_agent
 
 # Tool and token telemetry come from EsmeraldaTelemetryPlugin (esmeralda.create_app in agent/__init__.py).

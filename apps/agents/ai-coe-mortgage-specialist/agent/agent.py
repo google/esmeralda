@@ -16,16 +16,13 @@
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
-from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
-from google.genai import types
 
-from agent import USER_AUTH_TOKEN_KEY
 from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
 from agent.tools import dms_toolset, email_toolset, income_toolset
 
@@ -67,26 +64,6 @@ def _handle_tool_error(
     return None
 
 
-async def _extract_user_token(callback_context: CallbackContext) -> Optional[types.Content]:
-    """Extract user auth token from A2A metadata into session state.
-
-    The A2A executor places incoming message metadata in
-    RunConfig.custom_metadata['a2a_metadata']. This callback bridges it
-    to session state so the MCP header_provider can read it.
-    """
-    run_config = callback_context._invocation_context.run_config
-    if not run_config or not run_config.custom_metadata:
-        return None
-
-    a2a_metadata = run_config.custom_metadata.get("a2a_metadata", {})
-    token = a2a_metadata.get(USER_AUTH_TOKEN_KEY)
-    if token:
-        callback_context.state[USER_AUTH_TOKEN_KEY] = token
-        logger.info("User auth token extracted from A2A metadata into session state")
-
-    return None
-
-
 mortgage_assistant_agent = Agent(
     model=os.environ.get("MODEL_NAME", "gemini-3.7-flash"),
     name=os.environ.get("AGENT_NAME", "ai_coe_mortgage_specialist").replace("-", "_"),
@@ -96,6 +73,5 @@ mortgage_assistant_agent = Agent(
     ),
     instruction=MORTGAGE_ASSISTANT_INSTRUCTION,
     tools=[dms_toolset, income_toolset, email_toolset],
-    before_agent_callback=_extract_user_token,
     on_tool_error_callback=_handle_tool_error,
 )
