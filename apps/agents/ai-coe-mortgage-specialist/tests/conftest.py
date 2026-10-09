@@ -14,8 +14,17 @@
 
 """Mock heavy dependencies so unit tests don't require ADK installed."""
 
+import os
 import sys
 from unittest.mock import MagicMock
+
+os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "test-project")
+
+# `import agent` runs esmeralda.prepare(), which patches the real google-genai/aiohttp clients.
+# Those modules are mocked below, and the patches are covered by packages/esmeralda/tests.
+import esmeralda  # noqa: E402
+
+esmeralda.prepare = lambda *args, **kwargs: None
 
 for mod in [
     "google.adk",
@@ -29,6 +38,7 @@ for mod in [
     "google.adk.agents.llm_agent",
     "google.adk.agents.remote_a2a_agent",
     "google.adk.agents.callback_context",
+    "google.adk.apps",
     "google.adk.tools",
     "google.adk.tools.base_tool",
     "google.adk.tools.tool_context",

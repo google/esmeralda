@@ -19,6 +19,7 @@ docs = [
 
 [tool.uv.workspace]
 members = [
+  "packages/esmeralda",
   "apps/agents/cx-mortgage-orchestrator",
   "apps/agents/ai-coe-mortgage-specialist",
   "apps/services/corporate-email",

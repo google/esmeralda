@@ -65,6 +65,8 @@ test-agents: ## Fast execution for agent unit tests only
 	@echo "🧪 Running unit tests for ADK Agents..."
 	@uv run --package cx-mortgage-orchestrator --extra dev pytest apps/agents/cx-mortgage-orchestrator/tests/
 	@uv run --package ai-coe-mortgage-specialist --extra dev pytest apps/agents/ai-coe-mortgage-specialist/tests/
+	@echo "🧪 Running unit tests for the esmeralda library..."
+	@uv run --package esmeralda --extra dev pytest packages/esmeralda/tests/
 	@echo "✅ Agent tests passed!"
 
 test-terraform: ## Run syntax validation for all Terraform modules (+ workload image digest pinning check)
@@ -251,13 +253,16 @@ deploy-governance-views: ## Deploy Layer 4 BigQuery FinOps & Telemetry SQL Views
 # (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote TAG=vX.Y.Z`.
 # ==============================================================================
 
-# $(1) = build context, $(2) = image name, $(3) = uv workspace package (optional).
+# $(1) = build context, $(2) = image name, $(3) = uv workspace package (optional),
+# $(4) = workspace library to ship as a wheel (optional).
 # When $(3) is set, the package's exact, hashed dependency set is exported from the committed
 # workspace uv.lock into $(1)/requirements.lock (generated, gitignored) so the image installs
-# exactly what was locked and audited, instead of re-resolving at build time.
+# exactly what was locked and audited, instead of re-resolving at build time. Workspace members
+# are not in that export; $(4) is built into $(1)/dist/ (gitignored) for the image to install.
 define build_image
 	@echo "🏗️  Building $(2) (:$(BUILD_TAG), :dev-$(GIT_SHA)) in the shared CI/CD project..."
 	$(if $(3),@uv export --frozen --package $(3) --no-dev --no-emit-workspace --quiet -o $(1)/requirements.lock)
+	$(if $(4),@rm -rf $(1)/dist && uv build --package $(4) --wheel --out-dir $(1)/dist --quiet)
 	@CICD_JSON=$$(cd $(CICD_DIR) && terragrunt output -json) && \
 	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r .cicd_project_id.value) && \
 	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
@@ -270,10 +275,10 @@ define build_image
 endef
 
 build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage specialist (A2A) image
-	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,ai-coe-mortgage-specialist)
+	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,esmeralda)
 
 build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
-	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator)
+	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator,esmeralda)
 
 build-agents: test-all ## Run tests, then build both agent images concurrently
 	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator

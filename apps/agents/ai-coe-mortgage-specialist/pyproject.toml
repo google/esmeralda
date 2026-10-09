@@ -18,6 +18,7 @@ version = "0.1.0"
 description = "A2A mortgage assistant agent with MCP tool connections"
 requires-python = ">=3.12"
 dependencies = [
+    "esmeralda",
     "google-cloud-aiplatform[adk,agent_engines]>=1.74.0",
     "google-adk[a2a,mcp,otel-gcp]>=2.4.0",
     "google-auth",
@@ -36,6 +37,9 @@ dependencies = [
     "pyarrow",
     "google-cloud-secret-manager",
 ]
+
+[tool.uv.sources]
+esmeralda = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

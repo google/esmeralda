@@ -19,59 +19,40 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from agent.remote_agent import _a2a_metadata_provider, _add_auth_header, USER_AUTH_TOKEN_KEY
 
 
+CALLER = {"caller_context": {"project_id": "cx-project", "agent_name": "cx_mortgage_orchestrator"}}
+
+
 class TestA2aMetadataProvider:
+    @pytest.fixture(autouse=True)
+    def identity(self, monkeypatch):
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "cx-project")
+        monkeypatch.setenv("AGENT_NAME", "cx_mortgage_orchestrator")
+
     def test_attaches_token_from_session_state(self):
         ctx = MagicMock()
         ctx.session.state = {USER_AUTH_TOKEN_KEY: "test-token-123"}
         metadata = _a2a_metadata_provider(ctx, MagicMock())
-        assert metadata == {USER_AUTH_TOKEN_KEY: "test-token-123"}
+        assert metadata == {**CALLER, USER_AUTH_TOKEN_KEY: "test-token-123"}
 
-    def test_returns_empty_when_no_token(self):
+    def test_only_caller_context_when_no_token(self):
         ctx = MagicMock()
         ctx.session.state = {}
-        metadata = _a2a_metadata_provider(ctx, MagicMock())
-        assert metadata == {}
+        assert _a2a_metadata_provider(ctx, MagicMock()) == CALLER
 
-    def test_returns_empty_when_no_session(self):
+    def test_only_caller_context_when_no_session(self):
         ctx = MagicMock()
         ctx.session = None
-        metadata = _a2a_metadata_provider(ctx, MagicMock())
-        assert metadata == {}
+        assert _a2a_metadata_provider(ctx, MagicMock()) == CALLER
 
-
-class TestTelemetryPluginCallbacks:
-    def test_after_model_callback_positional_invocation(self):
-        from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
-        plugin = EsmeraldaTelemetryPlugin(agent_name="test_agent")
-        mock_ctx = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.usage_metadata = {
-            "prompt_token_count": 100,
-            "candidates_token_count": 50,
-            "thoughts_token_count": 10,
-            "total_token_count": 160
-        }
-        # Verify positional invocation executes cleanly without TypeError
-        asyncio.run(plugin.after_model_callback(mock_ctx, mock_resp))
-
-    def test_after_tool_callback_positional_invocation(self):
-        from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
-        plugin = EsmeraldaTelemetryPlugin(agent_name="test_agent")
-        mock_tool = MagicMock()
-        mock_tool.name = "test_tool"
-        mock_ctx = MagicMock()
-        # Verify positional invocation executes cleanly without TypeError
-        res = asyncio.run(plugin.after_tool_callback(mock_tool, {"arg": "val"}, mock_ctx, {"status": "ok"}))
-        assert res == {"status": "ok"}
-
-    def test_returns_empty_when_no_state(self):
+    def test_only_caller_context_when_no_state(self):
         ctx = MagicMock()
         ctx.session.state = None
-        metadata = _a2a_metadata_provider(ctx, MagicMock())
-        assert metadata == {}
+        assert _a2a_metadata_provider(ctx, MagicMock()) == CALLER
 
 
 class TestAddAuthHeader:
