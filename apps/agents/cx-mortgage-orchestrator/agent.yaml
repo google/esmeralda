@@ -13,7 +13,7 @@
 # limitations under the License.
 
 name: cx-mortgage-orchestrator
-description: A base agent built with ADK using standalone OTEL observability.
+description: CX mortgage orchestrator. Delegates document, income and email work to the AI CoE mortgage specialist over A2A.
 version: 1.0.0
 
 entrypoint:
@@ -59,9 +59,5 @@ local_env:
   EMAIL_MCP_URL: "http://localhost:8001/mcp"
   INCOME_VERIFICATION_URL: "http://localhost:8002/mcp"
   DMS_MCP_URL: "http://localhost:8003/mcp"
-
-labels:
-  author: "your-name"
-  version: "latest"
 
 framework: google-adk

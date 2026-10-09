@@ -26,3 +26,13 @@ members = [
   "apps/services/income-verification",
   "apps/services/legacy-dms",
 ]
+
+# Lint settings for every workspace member (`uv run ruff check .`).
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# First-party import roots, for import sorting.
+src = ["packages/*/src", "apps/agents/*", "apps/services/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

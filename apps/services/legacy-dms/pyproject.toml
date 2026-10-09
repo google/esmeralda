@@ -38,18 +38,11 @@ dependencies = [
 dev = [
     "pytest==9.1.1",
     "ruff>=0.8.0",
-    "ty>=0.0.1a0",
 ]
 
 [tool.setuptools]
 py-modules = ["server", "otel_setup"]
 
-[tool.ruff]
-line-length = 120
-target-version = "py312"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "W"]
 
 [dependency-groups]
 dev = [
