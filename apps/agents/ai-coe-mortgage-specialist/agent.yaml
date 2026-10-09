@@ -17,8 +17,8 @@ description: A2A mortgage agent with MCP tool connections for document managemen
 version: 1.0.0
 
 entrypoint:
-  module: agent_app
-  object: adk_app
+  module: agent
+  object: app
 
 resources:
   cpu: 1

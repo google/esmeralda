@@ -37,6 +37,7 @@ EXPOSE 8080
 # Installs the Agent Gateway root CA, then execs CMD.
 ENTRYPOINT ["esmeralda", "run", "--"]
 
-# Run the A2A production server
-CMD ["python3", "server.py"]
+# Serve the agent (framework and agent card from agent.yaml), exporting telemetry to Google Cloud.
+# `make serve` runs the same command locally.
+CMD ["esmeralda", "serve", "--otel-to-cloud"]
 

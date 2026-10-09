@@ -37,6 +37,7 @@ EXPOSE 8080
 # Installs the Agent Gateway root CA, then execs CMD.
 ENTRYPOINT ["esmeralda", "run", "--"]
 
-# Run the ADK production API server with Reasoning Engine endpoints and telemetry enabled
-CMD ["sh", "-c", "exec adk api_server . --host 0.0.0.0 --port ${PORT:-8080} --no-reload --gemini_enterprise_app_name agent --otel_to_cloud"]
+# Serve the agent (framework and agent card from agent.yaml), exporting telemetry to Google Cloud.
+# `make serve` runs the same command locally.
+CMD ["esmeralda", "serve", "--otel-to-cloud"]
 
