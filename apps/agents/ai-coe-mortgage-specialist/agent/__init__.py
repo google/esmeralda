@@ -17,9 +17,12 @@
 ``esmeralda.prepare()`` runs on import, before the agent definition (``agent.agent``) creates
 its clients, so the Agent Gateway egress patches apply to them.
 
-``app`` is the ADK App (agent + plugins). The A2A server (``agent_app.py``) serves it, and
-``esmeralda query`` runs it in-process.
+``app`` is the ADK App (agent + plugins). ``esmeralda serve`` serves it over A2A (agent card from
+agent.yaml), and ``esmeralda query`` runs it in-process. ``a2a_task_store_builder`` persists A2A
+tasks in Cloud SQL when USE_CLOUD_SQL=1 (in memory otherwise).
 """
+
+import os
 
 import esmeralda
 
@@ -34,4 +37,8 @@ from .agent import mortgage_assistant_agent  # noqa: E402
 _bq_plugin = create_bq_plugin()
 app = esmeralda.create_app(mortgage_assistant_agent, plugins=[_bq_plugin] if _bq_plugin else [])
 
-__all__ = ["USER_AUTH_TOKEN_KEY", "app", "mortgage_assistant_agent"]
+a2a_task_store_builder = None
+if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):
+    from plugins.task_store import build_cloud_sql_taskstore as a2a_task_store_builder  # noqa: E402
+
+__all__ = ["USER_AUTH_TOKEN_KEY", "a2a_task_store_builder", "app", "mortgage_assistant_agent"]

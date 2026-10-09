@@ -114,12 +114,17 @@ def access_token() -> str:
 # ------------------------------------------------------------------------------------------
 
 
-def load_app(config: AgentConfig) -> Any:
-    """Imports the agent package (``agent``) from the agent directory and returns its ADK App."""
+def load_package(config: AgentConfig) -> Any:
+    """Imports the agent package (``agent``) from the agent directory."""
     directory = str(config.directory)
     if directory not in sys.path:
         sys.path.insert(0, directory)
-    package = importlib.import_module("agent")
+    return importlib.import_module("agent")
+
+
+def load_app(config: AgentConfig) -> Any:
+    """The agent package's ADK App (``app``), or its ``root_agent`` wrapped with ``create_app``."""
+    package = load_package(config)
     app = getattr(package, "app", None)
     if app is None:
         from esmeralda.app import create_app
