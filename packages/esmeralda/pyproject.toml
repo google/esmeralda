@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,34 +13,31 @@
 # limitations under the License.
 
 [project]
-name = "cx-mortgage-orchestrator"
+name = "esmeralda"
 version = "0.1.0"
-description = "ADK mortgage assistant agent with Agent Gateway MCP connections"
+description = "Operational runtime for Esmeralda agents on Agent Runtime: lifecycle, ADK plugin, telemetry, gateway trust"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "esmeralda",
-    "google-cloud-aiplatform[adk,agent_engines]>=1.74.0",
-    "google-adk[a2a,otel-gcp]>=2.4.0",
+    "google-adk>=2.4.0",
     "google-auth",
-    "google-cloud-logging",
-    "pyyaml",
+    "certifi",
     "opentelemetry-api>=1.36.0,<1.46.0",
     "opentelemetry-sdk>=1.36.0,<1.46.0",
-    "fsspec[gcs]",
-    "httpx",
-    "a2a-sdk>=0.3.26,<1.0.0",
-    "google-cloud-secret-manager",
 ]
-
-[tool.uv.sources]
-esmeralda = { workspace = true }
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "ruff>=0.8.0",
-    "ty>=0.0.1a0",
 ]
+
+[project.scripts]
+esmeralda = "esmeralda.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
@@ -48,4 +45,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-

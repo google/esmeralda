@@ -51,7 +51,9 @@ if not hasattr(a2a.types, "TransportProtocol"):
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent
-from agent.agent import mortgage_assistant_agent
+import esmeralda
+from esmeralda import EsmeraldaTelemetryPlugin
+from agent.agent import mortgage_assistant_agent  # importing the package runs esmeralda.prepare()
 from plugins.bq_analytics import create_bq_plugin
 
 logging.basicConfig(
@@ -106,15 +108,9 @@ class AdkAgentExecutorBuilder:
 
 
 class TelemetryA2aAgent(A2aAgent):
-    """A2aAgent template subclass with OpenTelemetry GCP Trace exporter and startup interceptors enabled."""
+    """A2aAgent template subclass with the OpenTelemetry GCP Trace and Logging exporters enabled."""
     def set_up(self):
         super().set_up()
-        try:
-            from interceptors import ClientPatchInterceptor
-            ClientPatchInterceptor().on_startup(self)
-        except Exception as e:
-            logger.error("Failed to execute ClientPatchInterceptor on startup: %s", e)
-
         try:
             from opentelemetry.sdk.resources import OTELResourceDetector
             from google.adk.telemetry.google_cloud import get_gcp_exporters, get_gcp_resource
@@ -130,12 +126,8 @@ class TelemetryA2aAgent(A2aAgent):
         except Exception as e:
             logger.error("Failed to initialize OpenTelemetry GCP Trace Exporter: %s", e)
 
-# Also run ClientPatchInterceptor at module load
-try:
-    from interceptors import ClientPatchInterceptor
-    ClientPatchInterceptor().on_startup(None)
-except Exception:
-    pass
+        # The tracer provider exists now: register the caller-context span processor.
+        esmeralda.finalize()
 
 
 def load_agent_card_from_yaml():
@@ -210,9 +202,7 @@ def load_agent_card_from_yaml():
 
 def create_a2a_app():
     card = load_agent_card_from_yaml()
-    from agent.telemetry_plugin import EsmeraldaTelemetryPlugin
-    telemetry_plugin = EsmeraldaTelemetryPlugin()
-    plugins = [bq_logging_plugin, telemetry_plugin] if bq_logging_plugin else [telemetry_plugin]
+    plugins = [EsmeraldaTelemetryPlugin(), bq_logging_plugin] if bq_logging_plugin else [EsmeraldaTelemetryPlugin()]
 
     task_store_builder = None
     if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):

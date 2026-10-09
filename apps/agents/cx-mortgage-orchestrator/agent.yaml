@@ -17,8 +17,8 @@ description: A base agent built with ADK using standalone OTEL observability.
 version: 1.0.0
 
 entrypoint:
-  module: agent_app
-  object: adk_app
+  module: agent
+  object: app
 
 resources:
   cpu: 1
