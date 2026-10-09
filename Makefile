@@ -42,7 +42,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	promote-patch promote-minor promote test-governance-chaos load-test-cx-mortgage-orchestrator docs-serve docs-build clean preflight
+	promote-patch promote-minor promote test-governance-chaos load-test docs-serve docs-build clean preflight
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -316,9 +316,15 @@ test-governance-chaos: ## Run local chaos simulation test for governance telemet
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
 	@uv run python apps/agents/cx-mortgage-orchestrator/scripts/chaos_telemetry_test.py
 
-load-test-cx-mortgage-orchestrator: ## Run Locust load test against the CX mortgage orchestrator on Vertex AI Reasoning Engines
-	@echo "⚡ Running Locust load test for cx-mortgage-orchestrator on Vertex AI..."
-	@uv run locust -f apps/agents/cx-mortgage-orchestrator/scripts/locustfile.py --headless -u 5 -r 1 --run-time 1m --host https://us-central1-aiplatform.googleapis.com
+LOAD_AGENT ?= cx-mortgage-orchestrator
+USERS ?= 5
+DURATION ?= 1m
+
+load-test: ## Locust load test of a deployed ADK agent: [LOAD_AGENT=cx-mortgage-orchestrator] [USERS=5] [DURATION=1m] ENV=dev (results in tests/load_test/.results)
+	@ENGINE=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/$(LOAD_AGENT) && terragrunt output -raw engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(LOAD_AGENT) in $(ENV)"; exit 1; }; \
+	echo "⚡ Load testing $$ENGINE ($(USERS) users, $(DURATION))..."; \
+	REMOTE_AGENT_ENGINE_ID="$$ENGINE" uv run locust -f tests/load_test/load_test.py --headless -u $(USERS) -r 1 --run-time $(DURATION) \
+		--csv=tests/load_test/.results/results --html=tests/load_test/.results/report.html
 
 # ==============================================================================
 # Documentation site (MkDocs Material, published to GitHub Pages by .github/workflows/docs.yml)

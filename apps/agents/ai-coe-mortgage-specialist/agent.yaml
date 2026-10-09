@@ -63,10 +63,6 @@ local_env:
   DMS_MCP_URL: "http://localhost:8003/mcp"
   USE_IN_MEMORY_SESSIONS: "1"
 
-labels:
-  author: "your-name"
-  version: "latest"
-
 framework: a2a
 
 agent_card:
