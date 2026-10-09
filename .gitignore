@@ -68,3 +68,6 @@ apps/**/requirements.lock
 
 # MkDocs build output (make docs-build)
 site/
+
+# ADK local dev state (adk web / adk run sessions)
+.adk/
