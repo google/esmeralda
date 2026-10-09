@@ -4,7 +4,9 @@ The operational runtime shared by every Esmeralda agent on Agent Runtime:
 - the `esmeralda run` container entrypoint, which installs the Agent Gateway root CA;
 - `prepare()` / `finalize()`, the process lifecycle;
 - `EsmeraldaTelemetryPlugin`, for caller context and telemetry in every serving mode;
-- `create_app()`.
+- `create_app()`;
+- `esmeralda serve`, the same server locally and in the container (ADK or A2A, from `agent.yaml`);
+- `esmeralda query`, one client for ADK and A2A agents: in-process, on a server, or on Agent Runtime.
 
 Documentation (also published on the docs site under **Esmeralda Library**):
 

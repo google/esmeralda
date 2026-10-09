@@ -36,8 +36,8 @@ export UV_FROZEN := 1
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
-.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform run-mcp-local test-ai-coe-mortgage-specialist-local test-cx-mortgage-orchestrator-local \
-	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
+.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform run-mcp-local \
+	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
@@ -128,98 +128,15 @@ query: ## Query an agent: AGENT=<dir under apps/agents> [QUERY="..."] [TARGET=lo
 	  *) echo "❌ TARGET must be local, remote or a URL (got '$(TARGET)')"; exit 1 ;; \
 	esac
 
-test-ai-coe-mortgage-specialist-local: ## Run local AI CoE mortgage specialist (A2A) test (auto-spins up & tears down local MCP servers via run-mcp-local)
-	@already_running=0; \
-	if curl -s --connect-timeout 1 http://localhost:8001/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003/health &>/dev/null; then \
-		already_running=1; \
-		echo "ℹ️  MCP servers are already running locally. Running tests directly..."; \
-	fi; \
-	if [ $$already_running -eq 0 ]; then \
-		echo "🚀 Launching MCP Servers in background via run-mcp-local..."; \
-		make run-mcp-local & make_pid=$$! ; \
-		trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill -TERM -$$make_pid 2>/dev/null || true; pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; fi; exit 1' INT TERM EXIT; \
-		echo "⏳ Waiting for MCP servers to initialize..."; \
-		for i in {1..15}; do \
-			if curl -s --connect-timeout 1 http://localhost:8001/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003/health &>/dev/null; then \
-				break; \
-			fi; \
-			sleep 1; \
-		done; \
-	fi; \
-	export EMAIL_MCP_URL="http://localhost:8001/mcp" && \
-	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
-	export DMS_MCP_URL="http://localhost:8003/mcp"; \
-	echo "🤖 Running A2A Agent test locally..."; \
-	uv run --package ai-coe-mortgage-specialist python apps/agents/ai-coe-mortgage-specialist/scripts/test_local.py "$(QUERY)"; \
-	status=$$?; \
-	if [ $$already_running -eq 0 ]; then \
-		echo "🧹 Tearing down background MCP servers..."; \
-		trap - INT TERM EXIT; \
-		kill -TERM -$$make_pid 2>/dev/null || true; \
-		pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); \
-		if [ -n "$$pids" ]; then \
-			kill -TERM $$pids 2>/dev/null || true; \
-		fi; \
-	fi; \
-	disown -a 2>/dev/null || true; \
-	exit $$status
+PORT ?= 8080
 
-test-cx-mortgage-orchestrator-local: ## Run local multi-agent test (Root -> A2A -> MCP) (auto-spins up & tears down MCP servers via run-mcp-local)
-	@already_running=0; \
-	if curl -s --connect-timeout 1 http://localhost:8001/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003/health &>/dev/null; then \
-		already_running=1; \
-		echo "ℹ️  MCP servers are already running locally. Running tests directly..."; \
-	fi; \
-	if [ $$already_running -eq 0 ]; then \
-		echo "🚀 Launching MCP Servers in background via run-mcp-local..."; \
-		make run-mcp-local & make_pid=$$! ; \
-		trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill -TERM -$$make_pid 2>/dev/null || true; pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; fi; exit 1' INT TERM EXIT; \
-		echo "⏳ Waiting for MCP servers to initialize..."; \
-		for i in {1..15}; do \
-			if curl -s --connect-timeout 1 http://localhost:8001/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8002/health &>/dev/null && curl -s --connect-timeout 1 http://localhost:8003/health &>/dev/null; then \
-				break; \
-			fi; \
-			sleep 1; \
-		done; \
-	fi; \
-	export LOCAL_MODE="true" && \
-	export EMAIL_MCP_URL="http://localhost:8001/mcp" && \
-	export INCOME_VERIFICATION_URL="http://localhost:8002/mcp" && \
-	export DMS_MCP_URL="http://localhost:8003/mcp"; \
-	echo "👑 Running cx-mortgage-orchestrator integration test locally (in-memory mock routing)..."; \
-	uv run --package cx-mortgage-orchestrator python apps/agents/cx-mortgage-orchestrator/scripts/test_local.py "$(QUERY)"; \
-	status=$$?; \
-	if [ $$already_running -eq 0 ]; then \
-		echo "🧹 Tearing down background MCP servers..."; \
-		trap - INT TERM EXIT; \
-		kill -TERM -$$make_pid 2>/dev/null || true; \
-		pids=$$(ss -tlnp 2>/dev/null | grep -E "8001|8002|8003" | grep -o -E "pid=[0-9]+" | cut -d= -f2 | sort -u); \
-		if [ -n "$$pids" ]; then \
-			kill -TERM $$pids 2>/dev/null || true; \
-		fi; \
-	fi; \
-	disown -a 2>/dev/null || true; \
-	exit $$status
+serve: ## Serve an agent locally exactly as in the container: AGENT=<dir under apps/agents> [PORT=8080] [WEB=1 for the ADK dev UI]
+	@[ -n "$(AGENT)" ] || { echo "❌ Set AGENT=<agent directory under apps/agents>, e.g. AGENT=cx-mortgage-orchestrator"; exit 1; }
+	@scripts/with_local_mcp.sh uv run --package $(AGENT) esmeralda serve --agent-dir apps/agents/$(AGENT) --local --port $(PORT) $(if $(WEB),--web)
 
 # ==============================================================================
-# Remote integration tests (resolve project + engine IDs from Terragrunt outputs)
+# End-to-end tests of a deployed environment (engine IDs from Terragrunt outputs)
 # ==============================================================================
-
-test-cx-mortgage-orchestrator-remote: ## Run remote CX mortgage orchestrator integration test against Vertex AI Reasoning Engine
-	@echo "👑 Running cx-mortgage-orchestrator remote integration test on Vertex AI ($(ENV))..."
-	@ROOT_PROJ=$$(cd $(LIVE_DIR)/layer-1-projects && terragrunt output -raw cx_agents_project_id) && \
-	ROOT_ID=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/cx-mortgage-orchestrator && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
-	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
-	CX_AGENTS_PROJECT_ID="$$ROOT_PROJ" ROOT_REASONING_ENGINE_ID="$$ROOT_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
-	uv run --package cx-mortgage-orchestrator python apps/agents/cx-mortgage-orchestrator/scripts/test_remote.py "$(QUERY)"
-
-test-ai-coe-mortgage-specialist-remote: ## Run remote AI CoE mortgage specialist (A2A) integration test against Vertex AI Reasoning Engine
-	@echo "🤖 Running A2A Agent remote integration test on Vertex AI ($(ENV))..."
-	@A2A_PROJ=$$(cd $(LIVE_DIR)/layer-1-projects && terragrunt output -raw ai_coe_agents_project_id) && \
-	A2A_ID=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt output -raw engine_id | awk -F'/' '{print $$NF}') && \
-	REGION=$$(awk -F'"' '/^  region[[:space:]]*=/ {print $$2; exit}' $(LIVE_DIR)/env.yaml) && \
-	GOOGLE_CLOUD_PROJECT="$$A2A_PROJ" REASONING_ENGINE_ID="$$A2A_ID" GOOGLE_CLOUD_LOCATION="$$REGION" \
-	uv run --package ai-coe-mortgage-specialist python apps/agents/ai-coe-mortgage-specialist/scripts/test_remote.py "$(QUERY)"
 
 test-e2e: ## End-to-end check of a deployed env: specialist, then orchestrator -> specialist (fails on any error)
 	@$(MAKE) --no-print-directory query AGENT=ai-coe-mortgage-specialist TARGET=remote ENV=$(ENV)
