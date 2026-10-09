@@ -198,7 +198,7 @@ To ensure that only tested container images run in production, Esmeralda builds 
 
 ### 1. Developer Workspaces & Local Iteration
 *   Developers run unit tests and local servers with `make test-agents`, `make test-terraform`, `make run-mcp-local` and the `make test-*-local` targets.
-*   Once tests pass, code is committed and a Pull Request is opened against the main branch of the service repository (e.g., `mcp-corporate-email.git`). Example Cloud Build configs for PR checks live in [`.cloudbuild/`](../../../.cloudbuild/) (`pr_checks.yaml`: unit + integration tests).
+*   Once tests pass, code is committed and a Pull Request is opened against the main branch of the service repository (e.g., `mcp-corporate-email.git`).
 
 ### 2. Build & Registry Push (dev)
 *   `make build-*` (e.g. `make build-cx-mortgage-orchestrator`, `make build-images`) submits a Cloud Build job in the shared CI/CD project `esm-cicd-<sfx>`, running as `sa-esmeralda-builder`.
