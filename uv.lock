@@ -769,11 +769,14 @@ name = "esmeralda"
 version = "0.1.0"
 source = { editable = "packages/esmeralda" }
 dependencies = [
+    { name = "a2a-sdk" },
     { name = "certifi" },
     { name = "google-adk" },
     { name = "google-auth" },
+    { name = "httpx" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -784,12 +787,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "a2a-sdk", specifier = ">=0.3.26,<1.0.0" },
     { name = "certifi" },
     { name = "google-adk", specifier = ">=2.4.0" },
     { name = "google-auth" },
+    { name = "httpx" },
     { name = "opentelemetry-api", specifier = ">=1.36.0,<1.46.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.36.0,<1.46.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pyyaml" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
 ]
 provides-extras = ["dev"]
