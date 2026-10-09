@@ -214,7 +214,7 @@ build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage speciali
 build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
 	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator,esmeralda)
 
-build-agents: test-all ## Run tests, then build both agent images concurrently
+build-agents: $(if $(SKIP_TESTS),,test-all) ## Run tests, then build both agent images concurrently (SKIP_TESTS=1 if you just ran them)
 	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator
 	@echo "✅ All agent images built and pushed!"
 
@@ -263,7 +263,8 @@ deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasonin
 	@echo "🚀 Deploying cx-mortgage-orchestrator..."
 	@cd $(LIVE_DIR)/layer-5-workloads/agents/cx-mortgage-orchestrator && terragrunt --non-interactive apply -auto-approve
 
-deploy-agents: deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator ## Deploy both Reasoning Engine agents
+deploy-agents: ## Deploy both Reasoning Engine agents, in parallel (no deploy-time dependency between them)
+	@$(MAKE) --no-print-directory -j2 deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator
 
 deploy-gateway: ## Deploy Kong API Gateway (re-run after agents are recreated: routes use engine IDs)
 	@echo "🚀 Deploying Kong API Gateway..."
