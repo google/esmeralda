@@ -12,180 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
+"""The AI CoE mortgage specialist, as the orchestrator's sub-agent.
+
+Deployed: an A2A call through the gateway (``A2A_AGENT_URL``), with ID-token auth, this agent's
+caller context and the user's token handled by ``esmeralda.a2a.remote_agent``.
+
+``LOCAL_MODE=true`` (workstation runs): the specialist's agent runs in-process instead.
+"""
+
 import logging
 import os
-from typing import Any
 
-import google.auth
-import google.auth.transport.requests
-import httpx
-from esmeralda import context
-from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+from esmeralda import a2a
 
 logger = logging.getLogger(__name__)
 
 A2A_AGENT_URL = os.getenv("A2A_AGENT_URL", "https://ai-coe-mortgage-specialist.esmeralda.internal")
+NAME = "mortgage_tools_agent"
+DESCRIPTION = (
+    "Mortgage underwriting assistant with document management, income verification, and corporate "
+    "email capabilities. Delegate all mortgage-related queries to this agent."
+)
 
-# Must match ai-coe-mortgage-specialist/agent.USER_AUTH_TOKEN_KEY
-USER_AUTH_TOKEN_KEY = "user_auth_token"
 
+def _load_local_specialist():
+    """Imports the specialist's agent in-process (both agents' packages are named `agent`)."""
+    import sys
 
-def _get_id_token(audience: str) -> str:
-    sa_email = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
-    if sa_email:
-        try:
-            from google.auth import impersonated_credentials
-            from google.auth.transport.requests import Request as GoogleAuthRequest
-            source_creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-            impersonated = impersonated_credentials.Credentials(
-                source_credentials=source_creds,
-                target_principal=sa_email,
-                target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-            id_token_creds = impersonated_credentials.IDTokenCredentials(
-                target_credentials=impersonated,
-                target_audience=audience,
-                include_email=True,
-            )
-            auth_req = GoogleAuthRequest()
-            id_token_creds.refresh(auth_req)
-            return id_token_creds.token
-        except Exception as e:
-            logger.warning("Failed to fetch impersonated ID token for %s (%s)", sa_email, e)
-
+    specialist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../ai-coe-mortgage-specialist"))
+    saved_modules = {
+        name: sys.modules.pop(name) for name in list(sys.modules) if name == "agent" or name.startswith("agent.")
+    }
+    original_path = list(sys.path)
+    sys.path.insert(0, specialist_dir)
     try:
-        from google.oauth2 import id_token as google_id_token
-        from google.auth.transport.requests import Request as GoogleAuthRequest
-        auth_req = GoogleAuthRequest()
-        return google_id_token.fetch_id_token(auth_req, audience)
-    except Exception as e:
-        logger.warning("Failed to fetch ID token via Metadata Server: %s", e)
-        return ""
+        from agent.agent import mortgage_assistant_agent
+    finally:
+        sys.path = original_path
+        sys.modules.update(saved_modules)
+    mortgage_assistant_agent.name = NAME
+    return mortgage_assistant_agent
 
 
-async def _add_auth_header(request):
-    """Inject OIDC ID token for Cloud Run Kong Gateway or access token."""
-    request.headers["X-API-Key"] = "cx-mortgage-orchestrator"
-    url = str(request.url)
-    if "esmeralda.internal" in url or ".run.app" in url:
-        audience = f"{request.url.scheme}://{request.url.host}" if ".run.app" in url else "https://ai-coe-mortgage-specialist.esmeralda.internal"
-        id_token = await asyncio.to_thread(_get_id_token, audience)
-        if id_token:
-            request.headers["Authorization"] = f"Bearer {id_token}"
-            return
-    credentials, _ = await asyncio.to_thread(
-        google.auth.default, scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    auth_req = google.auth.transport.requests.Request()
-    await asyncio.to_thread(credentials.refresh, auth_req)
-    request.headers["Authorization"] = f"Bearer {credentials.token}"
-
-
-def _a2a_metadata_provider(invocation_context, a2a_message):
-    """Build the A2A request metadata for each message sent to the specialist.
-
-    * ``caller_context``: identifies this agent (project and agent name) so the specialist's
-      telemetry can attribute the call (esmeralda.context.outgoing_metadata). Telemetry only.
-    * ``user_auth_token``: the user token from session state (placed there by
-      streaming_agent_run_with_events via the authorizations field), so the receiving agent can
-      act on behalf of the user.
-    """
-    metadata = context.outgoing_metadata()
-    if invocation_context.session and invocation_context.session.state:
-        token = invocation_context.session.state.get(USER_AUTH_TOKEN_KEY)
-        if token:
-            metadata[USER_AUTH_TOKEN_KEY] = token
-            logger.info("Attaching user auth token to A2A metadata")
-    return metadata
-
-
-# Check if running in Local Sandbox (Mock Router) mode
-LOCAL_MODE = os.getenv("LOCAL_MODE") == "true"
-
-if LOCAL_MODE:
-    logger.info("🔌 LOCAL_MODE is active! Loading mortgage_assistant_agent in-memory to mock remote agent.")
-    try:
-        import sys
-        # Dynamic path resolution to load the ai-coe-mortgage-specialist code
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        a2a_path = os.path.abspath(os.path.join(current_dir, "../../ai-coe-mortgage-specialist"))
-        
-        # Save any existing 'agent' related modules to avoid conflicts
-        saved_modules = {}
-        for mod_name in list(sys.modules.keys()):
-            if mod_name == "agent" or mod_name.startswith("agent."):
-                saved_modules[mod_name] = sys.modules.pop(mod_name)
-                
-        # Insert a2a_path to sys.path
-        original_sys_path = list(sys.path)
-        if a2a_path not in sys.path:
-            sys.path.insert(0, a2a_path)
-            
-        try:
-            from agent.agent import mortgage_assistant_agent
-        finally:
-            # Restore original sys.path
-            sys.path = original_sys_path
-            # Restore saved modules to sys.modules
-            for mod_name, mod_obj in saved_modules.items():
-                sys.modules[mod_name] = mod_obj
-                
-        # Align the name with what the base coordinator agent expects for delegation
-        mortgage_assistant_agent.name = "mortgage_tools_agent"
-        mortgage_tools_agent = mortgage_assistant_agent
-    except Exception as e:
-        logger.error(f"Failed to import local ai-coe-mortgage-specialist in-memory. Falling back to remote mode: {e}", exc_info=True)
-        LOCAL_MODE = False
-
-class CustomRemoteA2aAgent(RemoteA2aAgent):
-    """A subclass of RemoteA2aAgent that supports serialization by omitting and
-    reconstructing the unpickleable httpx client, and allows internal http:// VPC targets.
-    """
-    def _validate_card_rpc_targets(self, agent_card: Any) -> None:
-        """Pin A2A RPC target URL to the configured Gateway URL (A2A_AGENT_URL)."""
-        if A2A_AGENT_URL and hasattr(agent_card, "url"):
-            agent_card.url = A2A_AGENT_URL
-            if getattr(agent_card, "additional_interfaces", None):
-                for iface in agent_card.additional_interfaces:
-                    if hasattr(iface, "url"):
-                        iface.url = A2A_AGENT_URL
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_httpx_client"] = None
-        state["_a2a_client"] = None
-        state["_a2a_client_factory"] = None
-        state["_is_resolved"] = False
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self._httpx_client = None
-        self._a2a_client = None
-        self._a2a_client_factory = None
-        self._is_resolved = False
-        if not os.getenv("LOCAL_MODE") == "true":
-            self._httpx_client = httpx.AsyncClient(
-                event_hooks={"request": [_add_auth_header]},
-                timeout=httpx.Timeout(60.0),
-            )
-
-
-if not LOCAL_MODE:
-    _httpx_client = httpx.AsyncClient(
-        event_hooks={"request": [_add_auth_header]},
-        timeout=httpx.Timeout(60.0),
-    )
-
-    mortgage_tools_agent = CustomRemoteA2aAgent(
-        name="mortgage_tools_agent",
-        description="Mortgage underwriting assistant with document management, "
-                    "income verification, and corporate email capabilities. "
-                    "Delegate all mortgage-related queries to this agent.",
-        agent_card=f"{A2A_AGENT_URL}/v1/card",
-        httpx_client=_httpx_client,
-        a2a_request_meta_provider=_a2a_metadata_provider,
-        use_legacy=False,
-    )
-
+mortgage_tools_agent = None
+if os.getenv("LOCAL_MODE") == "true":
+    logger.info("LOCAL_MODE: running the AI CoE mortgage specialist in-process.")
+    mortgage_tools_agent = _load_local_specialist()
+else:
+    mortgage_tools_agent = a2a.remote_agent(NAME, url=A2A_AGENT_URL, description=DESCRIPTION)

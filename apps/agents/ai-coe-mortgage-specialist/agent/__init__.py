@@ -28,8 +28,6 @@ import esmeralda
 
 esmeralda.prepare()
 
-USER_AUTH_TOKEN_KEY = "user_auth_token"  # defined before .agent is imported: agent.agent imports it
-
 from plugins.bq_analytics import create_bq_plugin  # noqa: E402
 
 from .agent import mortgage_assistant_agent  # noqa: E402
@@ -41,4 +39,4 @@ a2a_task_store_builder = None
 if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):
     from plugins.task_store import build_cloud_sql_taskstore as a2a_task_store_builder  # noqa: E402
 
-__all__ = ["USER_AUTH_TOKEN_KEY", "a2a_task_store_builder", "app", "mortgage_assistant_agent"]
+__all__ = ["a2a_task_store_builder", "app", "mortgage_assistant_agent"]

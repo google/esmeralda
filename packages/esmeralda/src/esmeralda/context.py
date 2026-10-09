@@ -126,3 +126,46 @@ def detach_baggage(token: object | None) -> None:
         context.detach(token)
     except ValueError as exc:
         logger.debug("Baggage detach skipped after a context switch: %s", exc)
+
+
+# --------------------------------------------------------------------------------------------
+# User token: the end user's OAuth token, forwarded to MCP servers and other agents
+# --------------------------------------------------------------------------------------------
+
+USER_TOKEN_KEY = "user_auth_token"
+"""A2A metadata key, and default authorization id, of the user's token."""
+
+
+def user_token_state_key() -> str:
+    """Session-state key of the user token for this invocation.
+
+    Gemini Enterprise passes the user's authorizations to ``streaming_agent_run_with_events``,
+    which stores each one as ``temp:<authorization id>`` (never persisted). ``USER_AUTH_ID`` names
+    the authorization configured for the agent (default ``user_auth_token``).
+    """
+    return f"temp:{os.environ.get('USER_AUTH_ID') or USER_TOKEN_KEY}"
+
+
+def user_token(ctx: Any) -> str | None:
+    """The user's token for the current invocation, if any.
+
+    ``ctx`` is an ADK invocation context or a callback/tool/readonly context. The token comes from
+    the ``temp:`` session state (Gemini Enterprise authorizations), else from the A2A request
+    metadata of a calling agent.
+    """
+    state = getattr(ctx, "state", None)
+    if state is None:
+        state = getattr(getattr(ctx, "session", None), "state", None)
+    if isinstance(state, Mapping):
+        token = state.get(user_token_state_key())
+        if isinstance(token, str) and token:
+            return token
+
+    custom_metadata = getattr(getattr(ctx, "run_config", None), "custom_metadata", None)
+    if isinstance(custom_metadata, Mapping):
+        a2a_metadata = custom_metadata.get(A2A_METADATA_KEY)
+        if isinstance(a2a_metadata, Mapping):
+            token = a2a_metadata.get(USER_TOKEN_KEY)
+            if isinstance(token, str) and token:
+                return token
+    return None
