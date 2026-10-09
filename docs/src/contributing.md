@@ -86,22 +86,37 @@ versions that were tested.
 Dockerfile installs it with `--require-hashes`. An image therefore contains
 exactly what is in `uv.lock`, never whatever is newest on PyPI on build day.
 
-**Never re-lock locally.** The Makefile sets `UV_FROZEN=1`, so `uv` installs
-from `uv.lock` without re-resolving. `uv.lock` is always generated against
-public PyPI on GitHub; running `uv lock` on a machine that uses a different
-package index (for example a corporate proxy) would rewrite every URL in it.
+**Never run `uv lock` directly.** On corporate machines `uv` goes through a
+package proxy (for example Corp Airlock) that holds back new releases for 1-3
+weeks and would rewrite every URL in `uv.lock`. The Makefile sets
+`UV_FROZEN=1`, so `uv` only installs what `uv.lock` says; to change the lock,
+use `make lock`.
+
+**`make lock`** sends your local `pyproject.toml` files and `uv.lock` to Cloud
+Build (CI/CD project), runs `uv lock` there against public PyPI, streams the
+log and writes the new `uv.lock` into your working copy. Nothing is pushed:
+review the diff and commit it yourself. It needs `gcloud` access to the CI/CD
+project.
 
 **How updates happen:**
 
 | Situation | What to do |
 |---|---|
 | Routine and security updates | Nothing: Dependabot opens weekly PRs (7-day cooldown, OpenTelemetry and `google-*` grouped) that update `pyproject.toml` and `uv.lock`. Review and merge. |
-| You edited a `pyproject.toml` (new dependency, new range) | Run **Actions → Update uv.lock → Run workflow** on your branch with `packages` empty, then merge the pushed `chore/uv-lock-<run>` branch into your PR. |
-| A library must be upgraded now | Same workflow, with `packages` set, e.g. `urllib3` or `google-adk==2.11.0`. Open a PR from the pushed branch. |
+| You edited a `pyproject.toml` (new dependency, new range) | `make lock`, then commit `uv.lock` with your change. |
+| A library must be upgraded now | `make lock PKG=urllib3` (several: `PKG="urllib3 google-adk==2.11.0"`), then commit `uv.lock`. |
 
-The **uv.lock check** workflow fails any PR whose `pyproject.toml` files and
-`uv.lock` are out of sync. `a2a-sdk` major versions are ignored by Dependabot
-until the A2A 1.x migration is done.
+**Guards against a stale lock:**
+
+* **git pre-push hook** (installed by `make bootstrap`, in `.githooks/`): runs
+  `make lock-check` and blocks the push if `uv.lock` is out of date with the
+  `pyproject.toml` files. The check is offline and takes milliseconds.
+* **`make test-all`** runs the same check.
+* The **uv.lock check** workflow runs it on every PR, for anyone without the
+  hook.
+
+`a2a-sdk` major versions are ignored by Dependabot until the A2A 1.x migration
+is done.
 
 Conventions:
 
