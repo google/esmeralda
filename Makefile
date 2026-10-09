@@ -29,14 +29,14 @@ TAG ?=
 SOURCE_TAG ?= dev-latest
 
 # uv: always install exactly what uv.lock says and never re-resolve locally. The lock is generated
-# against public PyPI by .github/workflows/uv-lock.yml; re-locking on a machine with a different
-# package index (e.g. a corporate proxy) would rewrite every URL in uv.lock.
+# against public PyPI by `make lock` (scripts/uv_lock.sh, runs in Cloud Build); re-locking on a machine
+# with a different package index (e.g. a corporate proxy) would rewrite every URL in uv.lock.
 export UV_FROZEN := 1
 
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
-.PHONY: help bootstrap test test-all test-agents test-terraform run-mcp-local test-ai-coe-mortgage-specialist-local test-cx-mortgage-orchestrator-local \
+.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform run-mcp-local test-ai-coe-mortgage-specialist-local test-cx-mortgage-orchestrator-local \
 	test-ai-coe-mortgage-specialist-remote test-cx-mortgage-orchestrator-remote test-e2e deploy-cicd deploy-projects deploy-networking deploy-security \
 	deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
@@ -58,6 +58,7 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 		exit 1; \
 	fi
 	@uv sync --all-packages --all-extras
+	@git config core.hooksPath .githooks && echo "🪝 Git hooks installed (.githooks: pre-push checks uv.lock)"
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
 test-agents: ## Fast execution for agent unit tests only
@@ -75,7 +76,13 @@ test-terraform: ## Run syntax validation for all Terraform modules (+ workload i
 	done
 	@echo "✅ Terraform validation passed!"
 
-test-all: test test-terraform ## Run all Python unit tests and Terraform validation
+test-all: lock-check test test-terraform ## Run the uv.lock check, all Python unit tests and Terraform validation
+
+lock: ## Regenerate uv.lock against public PyPI (in Cloud Build) from your working copy; PKG="a b==1.2" also upgrades those
+	@bash scripts/uv_lock.sh $(PKG)
+
+lock-check: ## Fail if uv.lock is out of date with the pyproject.toml files (offline; also the git pre-push hook)
+	@bash scripts/check_lock.sh
 
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."
