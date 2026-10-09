@@ -12,41 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mock heavy dependencies so unit tests don't require ADK installed."""
+"""Test environment: real ADK, no network (agents are built, not called)."""
 
 import os
-import sys
-from unittest.mock import MagicMock
 
 os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "test-project")
-
-# `import agent` runs esmeralda.prepare(), which patches the real google-genai/aiohttp clients.
-# Those modules are mocked below, and the patches are covered by packages/esmeralda/tests.
-import esmeralda  # noqa: E402
-
-esmeralda.prepare = lambda *args, **kwargs: None
-
-for mod in [
-    "google.adk",
-    "google.adk.agents",
-    "google.adk.agents.llm_agent",
-    "google.adk.agents.remote_a2a_agent",
-    "google.adk.agents.callback_context",
-    "google.adk.apps",
-    "google.adk.tools",
-    "google.adk.tools.base_tool",
-    "google.adk.tools.tool_context",
-    "google.adk.tools.mcp_tool",
-    "google.genai",
-    "google.genai.types",
-]:
-    sys.modules.setdefault(mod, MagicMock())
-
-class BasePlugin:
-    def __init__(self, name: str = "base"):
-        self.name = name
-
-base_plugin_mod = MagicMock()
-base_plugin_mod.BasePlugin = BasePlugin
-sys.modules.setdefault("google.adk.plugins", base_plugin_mod)
-sys.modules.setdefault("google.adk.plugins.base_plugin", base_plugin_mod)
+os.environ.setdefault("AGENT_NAME", "cx_mortgage_orchestrator")
+os.environ.pop("LOCAL_MODE", None)

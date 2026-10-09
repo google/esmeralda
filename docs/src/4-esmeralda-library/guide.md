@@ -12,7 +12,8 @@ This page shows how to use the `esmeralda` library in each situation. For the fu
 | Start the agent's server (container or workstation) | `esmeralda serve` / `make serve AGENT=<agent>` |
 | Agent served over A2A | `framework: a2a` and `agent_card` in `agent.yaml`; the package exports `app` like any agent, and `esmeralda serve` does the rest |
 | A runner you build yourself | `EsmeraldaTelemetryPlugin()` in the runner's `plugins`, and `esmeralda.finalize()` once the tracer provider is set up |
-| Agent that calls another agent over A2A | `esmeralda.context.outgoing_metadata()` in the A2A request metadata |
+| Agent that calls MCP tool servers through the gateway | `esmeralda.mcp.toolset(url, prefix=...)` |
+| Agent that calls another agent over A2A | `esmeralda.a2a.remote_agent(name, url=...)` as a sub-agent |
 | Client or test calling an agent through the Agent Runtime API | `"state_delta": {"temp:caller_context": {...}}` in the query input |
 | Agent-specific plugins (BigQuery analytics, ...) | `esmeralda.create_app(root_agent, plugins=[...])` |
 | Agent-specific process setup | `esmeralda.prepare([*esmeralda.lifecycle.PREPARE, my_step])` |
@@ -132,24 +133,60 @@ An A2A agent is written like any other agent: the package exports `app` (`esmera
 
 `finalize()` runs once the tracer provider is set up.
 
+## Calling MCP servers and other agents
+
+Calls through the gateway need the same things every time: an ID token for the target, the end user's token when there is one, and the agent's API key, which the gateway uses for rate limiting. The library adds them for you.
+
+### MCP tool servers
+
+```python
+import os
+
+from esmeralda import mcp
+
+dms_toolset = mcp.toolset(os.environ.get("DMS_MCP_URL", "https://legacy-dms.esmeralda.internal/mcp"), prefix="dms")
+
+root_agent = Agent(..., tools=[dms_toolset])
+```
+
+Each request carries:
+- `Authorization: Bearer <ID token>` for the server's origin. Not sent to `localhost`, so local MCP servers work as-is.
+- `User-Auth-Token`, when the invocation has a user token (see below).
+- `X-API-Key: <AGENT_NAME>`.
+
+### Other agents (A2A)
+
+```python
+from esmeralda import a2a
+
+specialist = a2a.remote_agent(
+    "mortgage_tools_agent",
+    url=os.environ["A2A_AGENT_URL"],  # the callee's gateway address, e.g. https://<agent>.esmeralda.internal
+    description="Delegate all mortgage-related queries to this agent.",
+)
+
+root_agent = Agent(..., sub_agents=[specialist])
+```
+
+The remote agent fetches the card from `<url>/v1/card`, and pins every RPC address on it to `url`, so calls always go through the configured gateway address. ADK's own checks still apply: https, or http on a loopback host. Each request carries an ID token for `url`'s origin and the API key. Each message carries this agent's caller context and the user token in A2A metadata.
+
+### ID tokens
+
+ID tokens come from `esmeralda.auth`. With `SERVICE_ACCOUNT_EMAIL` set, they are minted for that service account through impersonation; otherwise for the runtime identity. Each is cached per audience and refreshed shortly before it expires, so tool calls don't pay for IAM round trips. If impersonation fails, the library logs a warning and falls back to the runtime identity.
+
+### The user's token
+
+When Gemini Enterprise calls an agent with a user authorization, the runtime stores the user's OAuth token as `temp:<authorization id>` session state. It is ephemeral and never written to the session. Set `USER_AUTH_ID` to the authorization id configured in Gemini Enterprise (default `user_auth_token`).
+
+`esmeralda.context.user_token(ctx)` finds the token for the current invocation, either in that state or in the A2A metadata of a calling agent. Toolsets and remote agents forward it on their own. Agent code can call it from a tool or a callback.
+
 ## Caller context
 
 The caller context says which project and agent made a call. The plugin puts it in OpenTelemetry baggage for the run, and every span created during the run gets the attributes `caller.project_id` and `caller.agent_name`. It is for telemetry and cost attribution, never for authorization.
 
 ### Agent-to-agent calls (A2A)
 
-Add `outgoing_metadata()` to the request metadata of the remote agent. The calling agent identifies itself from `GOOGLE_CLOUD_PROJECT` and `AGENT_NAME`:
-
-```python
-from esmeralda import context
-
-
-def a2a_metadata_provider(invocation_context, a2a_message):
-    return {**context.outgoing_metadata(), "other_key": "..."}
-
-
-remote = RemoteA2aAgent(..., a2a_request_meta_provider=a2a_metadata_provider)
-```
+`esmeralda.a2a.remote_agent` sends it automatically: the calling agent identifies itself from `GOOGLE_CLOUD_PROJECT` and `AGENT_NAME`. A hand-built `RemoteA2aAgent` can pass `a2a_request_meta_provider=esmeralda.a2a.request_metadata`.
 
 On the receiving side, ADK exposes the metadata as `run_config.custom_metadata["a2a_metadata"]`, where the plugin reads it.
 
