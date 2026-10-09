@@ -8,8 +8,10 @@ This page shows how to use the `esmeralda` library in each situation. For the fu
 |---|---|
 | Any agent container on Agent Runtime | `ENTRYPOINT ["esmeralda", "run", "--"]` in the Dockerfile |
 | Any agent package | `esmeralda.prepare()` at the top of `agent/__init__.py`, before importing the agent definition |
-| Agent served by `adk api_server` or `adk web` (the default) | `app = esmeralda.create_app(root_agent)` in `agent/__init__.py` |
-| Agent served by your own runner (for example an A2A server) | `EsmeraldaTelemetryPlugin()` in the runner's `plugins`, and `esmeralda.finalize()` once the tracer provider is set up |
+| Every agent package | `app = esmeralda.create_app(root_agent)` in `agent/__init__.py` |
+| Start the agent's server (container or workstation) | `esmeralda serve` / `make serve AGENT=<agent>` |
+| Agent served over A2A | `framework: a2a` and `agent_card` in `agent.yaml`; the package exports `app` like any agent, and `esmeralda serve` does the rest |
+| A runner you build yourself | `EsmeraldaTelemetryPlugin()` in the runner's `plugins`, and `esmeralda.finalize()` once the tracer provider is set up |
 | Agent that calls another agent over A2A | `esmeralda.context.outgoing_metadata()` in the A2A request metadata |
 | Client or test calling an agent through the Agent Runtime API | `"state_delta": {"temp:caller_context": {...}}` in the query input |
 | Agent-specific plugins (BigQuery analytics, ...) | `esmeralda.create_app(root_agent, plugins=[...])` |
@@ -58,7 +60,7 @@ Order matters: `prepare()` patches the google-genai and aiohttp clients, so it m
 > [!NOTE]
 > Don't wire telemetry callbacks on the agent itself (`after_model_callback=...`, `after_tool_callback=...`). The plugin already emits the events for every agent in the app, and doing both would emit them twice.
 
-### 3. Start the container through `esmeralda run`
+### 3. Start the container through `esmeralda run` and `esmeralda serve`
 
 `Dockerfile`:
 
@@ -77,10 +79,10 @@ ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT ["esmeralda", "run", "--"]
-CMD ["sh", "-c", "exec adk api_server . --host 0.0.0.0 --port ${PORT:-8080} --no-reload --gemini_enterprise_app_name agent --otel_to_cloud"]
+CMD ["esmeralda", "serve", "--otel-to-cloud"]
 ```
 
-The base image needs `ca-certificates`, so that `update-ca-certificates` is available.
+The same `CMD` works for ADK and A2A agents: `esmeralda serve` reads `framework` from `agent.yaml` (see [Serving an agent](#serving-an-agent)). The base image needs `ca-certificates`, so that `update-ca-certificates` is available.
 
 ### 4. Build the wheel into the image
 
@@ -91,25 +93,44 @@ build-my-agent: ## Build and push my agent image
 	$(call build_image,apps/agents/my-agent,my-agent,my-agent,esmeralda)
 ```
 
-## Agents with their own runner (A2A servers)
+## Serving an agent
 
-An A2A server builds its own ADK `Runner`, so `create_app` isn't used. Pass the plugin to the runner, and call `finalize()` after the tracer provider is set up. The [AI CoE mortgage specialist](../../../apps/agents/ai-coe-mortgage-specialist/agent_app.py) does this:
+`esmeralda serve` starts the agent's server, the same way in the container and on a workstation. It reads `framework` from `agent.yaml`:
 
-```python
-from esmeralda import EsmeraldaTelemetryPlugin
-import esmeralda
+| Framework | Server |
+|---|---|
+| `google-adk` | `adk api_server` for the agent directory, with the Agent Runtime endpoints (`--gemini_enterprise_app_name agent`). `--web` starts the ADK dev UI instead |
+| `a2a` | An A2A REST server for the package's `app`, with the agent card from `agent.yaml` `agent_card` (`A2A_AGENT_URL` overrides its `url`). Mounted at `/`, `/a2a` and `/api/a2a` |
 
-runner = Runner(agent=my_agent, app_name="agent", session_service=..., plugins=[EsmeraldaTelemetryPlugin(), *other_plugins])
+| Option | Container | Workstation |
+|---|---|---|
+| `--otel-to-cloud` | Yes: exports traces and logs to Google Cloud | Usually not |
+| `--local` | No | Yes: applies `local_env` from `agent.yaml` |
+| `--port` | `$PORT` (default 8080) | Any |
 
+Locally, `make serve` adds `--local` and starts the local MCP servers:
 
-class TelemetryA2aAgent(A2aAgent):
-    def set_up(self):
-        super().set_up()
-        ...  # set up the OpenTelemetry providers
-        esmeralda.finalize()
+```bash
+make serve AGENT=ai-coe-mortgage-specialist            # A2A server on :8080
+make serve AGENT=cx-mortgage-orchestrator PORT=8081    # ADK API server on :8081
+make serve AGENT=cx-mortgage-orchestrator WEB=1        # ADK dev UI
+make query AGENT=cx-mortgage-orchestrator TARGET=http://localhost:8081
 ```
 
-The agent package still calls `esmeralda.prepare()` on import. The container still starts through `esmeralda run`.
+> [!NOTE]
+> The first time ADK runs in a terminal, it asks once whether to enable ADK usage telemetry. It never asks in the container, which has no terminal.
+
+### What an A2A agent package provides
+
+An A2A agent is written like any other agent: the package exports `app` (`esmeralda.create_app`). `esmeralda serve` builds the A2A executor, the session service and the task store around it:
+
+| Concern | Default | Override |
+|---|---|---|
+| Sessions | Vertex AI managed sessions on Agent Runtime (`GOOGLE_CLOUD_AGENT_ENGINE_ID`); in memory locally | `USE_IN_MEMORY_SESSIONS=1` |
+| A2A task store | In memory | Export `a2a_task_store_builder` from the package (a callable that returns an A2A `TaskStore`). The [specialist](../../../apps/agents/ai-coe-mortgage-specialist/agent/__init__.py) uses Cloud SQL when `USE_CLOUD_SQL=1` |
+| Plugins | `EsmeraldaTelemetryPlugin` | The app's other plugins (for example BigQuery analytics) |
+
+`finalize()` runs once the tracer provider is set up.
 
 ## Caller context
 
@@ -212,7 +233,7 @@ Local runs call Gemini on Vertex AI with your Application Default Credentials. R
 
 - **`esmeralda query`** (above) is the standard way to run an agent locally.
 - **`adk web` / `adk api_server`** load `app` exactly as in production. Without `AGENT_GATEWAY_ROOT_CERTIFICATES`, the entrypoint only logs a warning, and you don't need it locally.
-- **Scripts** can wrap the app with the Agent Engine template: `AdkApp(app=app)` (see [test_local.py](../../../apps/agents/cx-mortgage-orchestrator/scripts/test_local.py)).
+- **Scripts** can wrap the app with the Agent Engine template: `AdkApp(app=app)`.
 - **Unit tests that mock ADK or google-genai** (as the agents' `conftest.py` do) should stub `prepare`, because it patches the real clients. The library's own tests cover the patches:
 
   ```python

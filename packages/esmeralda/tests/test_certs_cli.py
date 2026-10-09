@@ -79,7 +79,7 @@ def test_system_store_failure_propagates(tmp_path, certifi_bundle, monkeypatch):
         certs.install_gateway_ca({certs.ENV_VAR: CERT_A}, system_dir=system_dir, certifi_path=str(certifi_bundle))
 
 
-@pytest.mark.parametrize("argv", [[], ["serve"], ["run"], ["run", "--"]])
+@pytest.mark.parametrize("argv", [[], ["bogus"], ["run"], ["run", "--"]])
 def test_cli_usage_errors(argv, capsys):
     assert cli.main(argv) == 2
     assert "usage" in capsys.readouterr().err
