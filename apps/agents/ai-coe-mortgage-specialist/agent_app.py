@@ -52,9 +52,7 @@ from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent
 import esmeralda
-from esmeralda import EsmeraldaTelemetryPlugin
-from agent.agent import mortgage_assistant_agent  # importing the package runs esmeralda.prepare()
-from plugins.bq_analytics import create_bq_plugin
+from agent import app as specialist_app  # the ADK App (agent + plugins); importing it runs esmeralda.prepare()
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -69,7 +67,6 @@ try:
 except Exception:
     GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 
-bq_logging_plugin = create_bq_plugin()
 
 
 def _create_session_service():
@@ -202,7 +199,6 @@ def load_agent_card_from_yaml():
 
 def create_a2a_app():
     card = load_agent_card_from_yaml()
-    plugins = [EsmeraldaTelemetryPlugin(), bq_logging_plugin] if bq_logging_plugin else [EsmeraldaTelemetryPlugin()]
 
     task_store_builder = None
     if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):
@@ -214,7 +210,7 @@ def create_a2a_app():
 
     return TelemetryA2aAgent(
         agent_card=card,
-        agent_executor_builder=AdkAgentExecutorBuilder(mortgage_assistant_agent, plugins=plugins),
+        agent_executor_builder=AdkAgentExecutorBuilder(specialist_app.root_agent, plugins=list(specialist_app.plugins)),
         task_store_builder=task_store_builder,
     )
 

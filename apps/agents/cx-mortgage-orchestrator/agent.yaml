@@ -50,6 +50,16 @@ env:
   GOOGLE_GENAI_USE_VERTEXAI: "True"
   NO_PROXY: "169.254.169.254,metadata.google.internal"
 
+# Local runs only (esmeralda query / esmeralda serve on a workstation): LOCAL_MODE loads the
+# specialist in-process instead of calling it over A2A, and `make query` / `make serve` start the
+# three MCP servers on these ports. Applied on top of `env`, and never overrides a variable
+# already set in the shell.
+local_env:
+  LOCAL_MODE: "true"
+  EMAIL_MCP_URL: "http://localhost:8001/mcp"
+  INCOME_VERIFICATION_URL: "http://localhost:8002/mcp"
+  DMS_MCP_URL: "http://localhost:8003/mcp"
+
 labels:
   author: "your-name"
   version: "latest"

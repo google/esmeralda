@@ -16,10 +16,22 @@
 
 ``esmeralda.prepare()`` runs on import, before the agent definition (``agent.agent``) creates
 its clients, so the Agent Gateway egress patches apply to them.
+
+``app`` is the ADK App (agent + plugins). The A2A server (``agent_app.py``) serves it, and
+``esmeralda query`` runs it in-process.
 """
 
 import esmeralda
 
 esmeralda.prepare()
 
-USER_AUTH_TOKEN_KEY = "user_auth_token"
+USER_AUTH_TOKEN_KEY = "user_auth_token"  # defined before .agent is imported: agent.agent imports it
+
+from plugins.bq_analytics import create_bq_plugin  # noqa: E402
+
+from .agent import mortgage_assistant_agent  # noqa: E402
+
+_bq_plugin = create_bq_plugin()
+app = esmeralda.create_app(mortgage_assistant_agent, plugins=[_bq_plugin] if _bq_plugin else [])
+
+__all__ = ["USER_AUTH_TOKEN_KEY", "app", "mortgage_assistant_agent"]

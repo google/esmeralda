@@ -24,6 +24,9 @@ dependencies = [
     "certifi",
     "opentelemetry-api>=1.36.0,<1.46.0",
     "opentelemetry-sdk>=1.36.0,<1.46.0",
+    "pyyaml",
+    "httpx",
+    "a2a-sdk>=0.3.26,<1.0.0",
 ]
 
 [project.optional-dependencies]
