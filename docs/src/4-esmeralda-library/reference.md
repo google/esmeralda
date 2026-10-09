@@ -206,6 +206,31 @@ esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE] [--user ID] [-
 
 Without `--url` or `--engine`, the agent runs in-process with `env` + `local_env` applied. Exit codes: `0` passed, `1` failed run, `2` usage or configuration error.
 
+```text
+esmeralda serve [--agent-dir DIR] [--host HOST] [--port PORT] [--local] [--web] [--otel-to-cloud]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--agent-dir` | `.` | Agent directory, with `agent.yaml` and the `agent` package |
+| `--host` | `0.0.0.0` | Bind address |
+| `--port` | `$PORT`, else `8080` | Port |
+| `--local` | off | Apply `local_env` (workstation runs). Without it, only `env` is applied, as defaults |
+| `--web` | off | ADK dev UI (`adk web`) instead of the API server. ADK agents only |
+| `--otel-to-cloud` | off | Export traces and logs to Google Cloud (`--otel_to_cloud` for ADK; the GCP exporters for A2A) |
+
+ADK agents: replaces itself with `adk api_server <dir> --host --port --no-reload --gemini_enterprise_app_name agent [--otel_to_cloud]`. A2A agents: runs uvicorn with `esmeralda.serve.a2a_server(config)`. Exit code `2` for a usage or configuration error.
+
+## `esmeralda.serve`
+
+| Name | Description |
+|---|---|
+| `serve(config, *, host="0.0.0.0", port=None, local=False, web=False, otel_to_cloud=False)` | Serves the agent, as the CLI does |
+| `adk_command(config, *, host, port, web=False, otel_to_cloud=False)` | The `adk` command line for an ADK agent |
+| `a2a_server(config, *, otel_to_cloud=False)` | The FastAPI app for an A2A agent: the package's `app` behind the A2A REST transport, mounted at `/`, `/a2a` and `/api/a2a`. Uses the package's `a2a_task_store_builder` if it has one |
+| `agent_card(config)` | The A2A `AgentCard` from `agent.yaml` `agent_card`. `A2A_AGENT_URL` overrides `url`; missing fields get defaults |
+| `session_service()` | `VertexAiSessionService` when `GOOGLE_CLOUD_AGENT_ENGINE_ID` is set and `USE_IN_MEMORY_SESSIONS` isn't `1`; else `InMemorySessionService` |
+
 ## `esmeralda.config`
 
 ### `class AgentConfig`
@@ -228,7 +253,8 @@ Without `--url` or `--engine`, the agent runs in-process with `env` + `local_env
 |---|---|
 | `Query(message, user_id="esmeralda-cli", session_id=None, caller=None, timeout=300.0)` | One query |
 | `run(config, query, report, *, url=None, engine=None)` | Runs the query on the chosen target and feeds the report |
-| `load_app(config)` | Imports the agent package from the agent directory and returns its `app` (or wraps `root_agent` with `create_app`) |
+| `load_package(config)` | Imports the agent package (`agent`) from the agent directory |
+| `load_app(config)` | The package's `app` (or its `root_agent` wrapped with `create_app`) |
 | `parse_caller("project/agent")` | A `CallerContext` |
 | `Report(stream=sys.stdout, verbose=False)` | Renders ADK events (`adk_event`) and A2A tasks (`a2a_task`); `summary(fail_on_tool_error=False)` prints the result and returns the exit code |
 
