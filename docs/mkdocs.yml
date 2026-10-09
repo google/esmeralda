@@ -106,6 +106,10 @@ nav:
     - 3-agentops-and-lifecycle/index.md
     - Central Agent Gateway: 3-agentops-and-lifecycle/01-central-agent-gateway.md
     - Monitoring, Dashboards & FinOps: 3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md
+  - Esmeralda Library:
+    - 4-esmeralda-library/index.md
+    - Usage Guide: 4-esmeralda-library/guide.md
+    - Package Reference: 4-esmeralda-library/reference.md
   - Reference:
     - Make Targets: reference/make-targets.md
   - Contributing:

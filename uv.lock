@@ -11,6 +11,7 @@ members = [
     "ai-coe-mortgage-specialist",
     "corporate-email",
     "cx-mortgage-orchestrator",
+    "esmeralda",
     "esmeralda-monorepo",
     "income-verification-api",
     "legacy-dms",
@@ -47,6 +48,7 @@ dependencies = [
     { name = "a2a-sdk" },
     { name = "asyncpg" },
     { name = "cloud-sql-python-connector", extra = ["asyncpg"] },
+    { name = "esmeralda" },
     { name = "google-adk", extra = ["a2a", "mcp", "otel-gcp"] },
     { name = "google-auth" },
     { name = "google-cloud-aiplatform", extra = ["adk", "agent-engines"] },
@@ -75,6 +77,7 @@ requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.3.26,<1.0.0" },
     { name = "asyncpg" },
     { name = "cloud-sql-python-connector", extras = ["asyncpg"] },
+    { name = "esmeralda", editable = "packages/esmeralda" },
     { name = "google-adk", extras = ["a2a", "mcp", "otel-gcp"], specifier = ">=2.4.0" },
     { name = "google-auth" },
     { name = "google-cloud-aiplatform", extras = ["adk", "agent-engines"], specifier = ">=1.74.0" },
@@ -657,6 +660,7 @@ version = "0.1.0"
 source = { virtual = "apps/agents/cx-mortgage-orchestrator" }
 dependencies = [
     { name = "a2a-sdk" },
+    { name = "esmeralda" },
     { name = "fsspec", extra = ["gcs"] },
     { name = "google-adk", extra = ["a2a", "otel-gcp"] },
     { name = "google-auth" },
@@ -679,6 +683,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.3.26,<1.0.0" },
+    { name = "esmeralda", editable = "packages/esmeralda" },
     { name = "fsspec", extras = ["gcs"] },
     { name = "google-adk", extras = ["a2a", "otel-gcp"], specifier = ">=2.4.0" },
     { name = "google-auth" },
@@ -758,6 +763,36 @@ sdist = { url = "https://files.pythonhosted.org/packages/f5/22/900cb125c76b7aaa4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/15/545e2b6cf2e3be84bc1ed85613edd75b8aea69807a71c26f4ca6a9258e82/email_validator-2.3.0-py3-none-any.whl", hash = "sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4", size = 35604, upload-time = "2025-08-26T13:09:05.858Z" },
 ]
+
+[[package]]
+name = "esmeralda"
+version = "0.1.0"
+source = { editable = "packages/esmeralda" }
+dependencies = [
+    { name = "certifi" },
+    { name = "google-adk" },
+    { name = "google-auth" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "certifi" },
+    { name = "google-adk", specifier = ">=2.4.0" },
+    { name = "google-auth" },
+    { name = "opentelemetry-api", specifier = ">=1.36.0,<1.46.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.36.0,<1.46.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "esmeralda-monorepo"

@@ -55,52 +55,32 @@ os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
 try:
-    from agent_app import adk_app
+    from vertexai.agent_engines import AdkApp
+
+    from agent import app  # the ADK App (with EsmeraldaTelemetryPlugin) that adk api_server serves
 except ImportError as e:
-    print(f"Error importing adk_app: {e}")
+    print(f"Error importing the agent app: {e}")
     print("Ensure you are running this script from the 'agents/cx-mortgage-orchestrator' directory or have PYTHONPATH set correctly.")
     sys.exit(1)
 
+adk_app = AdkApp(app=app)
+
+# Telemetry-only caller identity, sent the same way remote callers do: temporary session state.
+CALLER_CONTEXT = {"project_id": "team-a-billing-project", "agent_name": "esmeralda-caller-agent"}
+
+
 async def main(user_input: str):
-    print("🚀 Initializing AdkApp configuration...")
-    
-    # Run the setup which configures Cloud Logging and OTel BaggageSpanProcessor
+    print("🚀 Initializing AdkApp...")
     adk_app.set_up()
-    
     print("✅ AdkApp initialized.\n")
     print(f"User Input: {user_input}\n")
 
-    caller_context = {
-        "project_id": "team-a-billing-project",
-        "agent_name": "esmeralda-caller-agent"
-    }
-
-    # 1. Synchronous Query (matching test_observability_v2.py)
-    print("--- 1. INITIATING SYNCHRONOUS QUERY (matching test_observability_v2.py) ---")
+    print("--- ASYNC STREAM QUERY ---")
     try:
-        # Pass `caller_context` directly as a keyword argument
-        response = adk_app.query(
-            input=user_input,
-            caller_context=caller_context
-        )
-        print("\n🤖 Agent Response:")
-        print(response)
-        sys.stdout.flush()
-
-    except Exception as e:
-        print(f"\n❌ An error occurred during synchronous query execution: {e}")
-        import traceback
-        traceback.print_exc()
-    print("-------------------------------------------------------------------------\n")
-
-    # 2. Asynchronous Stream Query (kept as requested)
-    print("--- 2. INITIATING ASYNC STREAM QUERY (kept) ---")
-    try:
-        # Call async_stream_query directly with adk_app
         async for event in adk_app.async_stream_query(
             message=user_input,
             user_id="local-test-user",
-            caller_context=caller_context
+            state_delta={"temp:caller_context": CALLER_CONTEXT},
         ):
             if isinstance(event, dict):
                 content = event.get("content", str(event))
@@ -109,7 +89,7 @@ async def main(user_input: str):
             else:
                 content = str(event)
             print(content, end="", flush=True)
-        
+
         print("\n\n--- STREAM COMPLETED ---")
 
     except Exception as e:

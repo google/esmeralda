@@ -18,6 +18,7 @@ version = "0.1.0"
 description = "ADK mortgage assistant agent with Agent Gateway MCP connections"
 requires-python = ">=3.12"
 dependencies = [
+    "esmeralda",
     "google-cloud-aiplatform[adk,agent_engines]>=1.74.0",
     "google-adk[a2a,otel-gcp]>=2.4.0",
     "google-auth",
@@ -30,6 +31,9 @@ dependencies = [
     "a2a-sdk>=0.3.26,<1.0.0",
     "google-cloud-secret-manager",
 ]
+
+[tool.uv.sources]
+esmeralda = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

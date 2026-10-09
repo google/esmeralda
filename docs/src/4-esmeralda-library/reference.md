@@ -1,0 +1,202 @@
+# Package reference
+
+The reference for `esmeralda` 0.1.0 ([source](../../../packages/esmeralda/src/esmeralda/__init__.py)). For when to use each piece, see the [usage guide](guide.md).
+
+## Top-level API
+
+`import esmeralda` exposes:
+
+| Name | Defined in | Summary |
+|---|---|---|
+| `prepare(steps=PREPARE)` | `esmeralda.lifecycle` | Runs the prepare steps |
+| `finalize(steps=FINALIZE)` | `esmeralda.lifecycle` | Runs the finalize steps |
+| `create_app(root_agent, *, name="agent", plugins=())` | `esmeralda.app` | ADK `App` with `EsmeraldaTelemetryPlugin` |
+| `EsmeraldaTelemetryPlugin` | `esmeralda.plugin` | The per-request ADK plugin |
+
+## `esmeralda.app`
+
+### `create_app(root_agent, *, name="agent", plugins=()) -> google.adk.apps.App`
+
+Returns an ADK `App` whose plugins are `EsmeraldaTelemetryPlugin()` followed by `plugins`.
+
+| Parameter | Description |
+|---|---|
+| `root_agent` | The agent (or any ADK node) the app serves |
+| `name` | App name. Must match the agent package directory and `--gemini_enterprise_app_name` (both `agent` in this repo) |
+| `plugins` | Additional ADK plugins, run after `EsmeraldaTelemetryPlugin` |
+
+## `esmeralda.lifecycle`
+
+Process lifecycle. Each step is a function without arguments (`Step = Callable[[], None]`), is idempotent, and raises on failure.
+
+### `prepare(steps=PREPARE) -> None`
+
+Runs `steps` in order. Call it once, at the top of the agent package, before the agent definition is imported.
+
+### `finalize(steps=FINALIZE) -> None`
+
+Runs `steps` in order. Cheap to call repeatedly: `EsmeraldaTelemetryPlugin` calls it at the start of every run.
+
+### `PREPARE`
+
+Default prepare steps, in this order:
+
+| Step | What it does |
+|---|---|
+| `log_egress_proxy()` | Logs the `*_proxy` environment variables the runtime advertises for gateway egress |
+| `default_environment()` | Sets `GOOGLE_CLOUD_PROJECT` from Application Default Credentials (only if unset; a warning if there are no credentials), and defaults `GOOGLE_CLOUD_LOCATION=global`, `GOOGLE_GENAI_USE_VERTEXAI=True`, `GRPC_DNS_RESOLVER=native`. Never overrides an explicit value |
+| `genai_over_httpx()` | Makes google-genai use httpx instead of aiohttp. aiohttp ignores `https://` proxies, so the Gemini and Vertex session calls would bypass the egress proxy and fail |
+| `aiohttp_trust_env()` | Makes `aiohttp.ClientSession` default to `trust_env=True`, so other aiohttp users honor the proxy env. No-op if aiohttp isn't installed |
+| `genai_client_defaults()` | On every `google.genai.Client`: if `MODEL_LOCATION` is set, uses it as the location; otherwise defaults the location to `global`. Defaults `project` to `GOOGLE_CLOUD_PROJECT` |
+
+### `FINALIZE`
+
+| Step | What it does |
+|---|---|
+| `baggage_span_processor()` | Registers `BaggageSpanProcessor` on the global tracer provider, once per provider. If there is no OpenTelemetry SDK provider, logs a warning once and does nothing |
+
+## `esmeralda.plugin`
+
+### `class EsmeraldaTelemetryPlugin(google.adk.plugins.base_plugin.BasePlugin)`
+
+```python
+EsmeraldaTelemetryPlugin(*, agent_name=None, finalize_steps=lifecycle.FINALIZE, emitter=None)
+```
+
+| Parameter | Description |
+|---|---|
+| `agent_name` | `agent_id` in telemetry events. Defaults to the `AGENT_NAME` environment variable, then `unknown_agent` |
+| `finalize_steps` | The steps passed to `finalize()` at the start of each run |
+| `emitter` | A `TelemetryEmitter`. Defaults to one that writes to stdout |
+
+Plugin name: `esmeralda_telemetry`. Callbacks:
+
+| Callback | Behavior |
+|---|---|
+| `before_run_callback` | Runs `finalize`. Reads the caller context (`context.from_invocation`) and, if present, attaches it as baggage for the run |
+| `after_run_callback` | Detaches the baggage of that invocation |
+| `before_tool_callback` | Records the tool start time |
+| `after_tool_callback` | Emits `mcp_tool_execution` with `status=SUCCESS` |
+| `on_tool_error_callback` | Emits `mcp_tool_execution` with `status=ERROR` and `error_reason`. Returns `None`, so the agent's own error handling still runs |
+| `after_model_callback` | Emits `genai_token_consumption` for complete (non-partial) responses with token counts |
+
+None of the callbacks change the request or the response. Telemetry failures are logged and never break the run. Per-invocation bookkeeping is bounded (1024 entries) for runs that never reach `after_run`.
+
+## `esmeralda.context`
+
+Caller context, for telemetry only.
+
+### `class CallerContext(project_id: str, agent_name: str)`
+
+A frozen dataclass.
+
+| Member | Description |
+|---|---|
+| `CallerContext.from_mapping(value)` | Builds one from untrusted input. Returns `None` unless `value` is a mapping with a non-empty string `project_id` or `agent_name`. Values are trimmed and cut to 128 characters; a missing field becomes `unknown` |
+| `to_dict()` | `{"project_id": ..., "agent_name": ...}` |
+
+### Functions
+
+| Function | Description |
+|---|---|
+| `current_identity() -> CallerContext` | This agent's identity, from `GOOGLE_CLOUD_PROJECT` and `AGENT_NAME` |
+| `outgoing_metadata() -> dict` | `{"caller_context": current_identity().to_dict()}`, for A2A request metadata |
+| `from_invocation(invocation_context)` | Returns a `CallerContext`, or `None`. Reads the session state key `temp:caller_context` first, then `run_config.custom_metadata["a2a_metadata"]["caller_context"]` |
+| `attach_baggage(caller) -> token` | Sets the baggage entries `caller.project_id` and `caller.agent_name` in the current context |
+| `detach_baggage(token) -> None` | Restores the previous context. Skipped if the run was closed from another asyncio task |
+
+### Constants
+
+| Constant | Value |
+|---|---|
+| `CALLER_CONTEXT_KEY` | `caller_context` |
+| `STATE_KEY` | `temp:caller_context` |
+| `A2A_METADATA_KEY` | `a2a_metadata` |
+| `BAGGAGE_PROJECT_ID` | `caller.project_id` |
+| `BAGGAGE_AGENT_NAME` | `caller.agent_name` |
+
+## `esmeralda.telemetry`
+
+### `class TelemetryEmitter(stream=None)`
+
+Writes each event as one JSON line to `stream` (stdout by default). Agent Runtime ingests the line as the log entry's `jsonPayload`.
+
+| Method | Event |
+|---|---|
+| `emit(payload)` | Any payload |
+| `token_consumption(*, agent_id, session_id, user_id, model, prompt_tokens, completion_tokens, total_tokens, thoughts_tokens=0, cached_tokens=0, finish_reason="STOP", execution_path=None, turn_index=1)` | `genai_token_consumption` |
+| `tool_execution(*, agent_id, tool_name, session_id, user_id, status, duration_ms, error_reason=None)` | `mcp_tool_execution` |
+
+### `class BaggageSpanProcessor(opentelemetry.sdk.trace.SpanProcessor)`
+
+When a span starts, copies the baggage entries `caller.project_id` and `caller.agent_name` onto it as attributes.
+
+### Event schemas
+
+The Layer 4 log sinks, log-based metrics and dashboards key on `jsonPayload.event`.
+
+`genai_token_consumption`:
+
+```json
+{
+  "event": "genai_token_consumption",
+  "session_id": "...", "user_id": "...", "agent_id": "cx_mortgage_orchestrator",
+  "execution_path": "cx_mortgage_orchestrator@1", "turn_index": 1,
+  "trace_id": "<32 hex>", "span_id": "<16 hex>",
+  "model": "gemini-...",
+  "tokens": {"prompt_tokens": 100, "completion_tokens": 50, "thoughts_tokens": 20, "cached_tokens": 40, "total_tokens": 170},
+  "implicit_caching": {"cache_hit": true, "cache_hit_ratio": 0.4},
+  "finish_reason": "STOP"
+}
+```
+
+`mcp_tool_execution`:
+
+```json
+{
+  "event": "mcp_tool_execution",
+  "session_id": "...", "user_id": "...", "agent_id": "ai_coe_mortgage_specialist",
+  "tool_name": "search_documents", "status": "SUCCESS", "duration_ms": 182.4,
+  "trace_id": "<32 hex>", "span_id": "<16 hex>",
+  "error_reason": "TimeoutError: ..."
+}
+```
+
+`error_reason` is present only when `status` is `ERROR`. `trace_id` and `span_id` are `unknown_trace` / `unknown_span` outside a span.
+
+## `esmeralda.certs`
+
+Agent Gateway trust.
+
+| Name | Description |
+|---|---|
+| `parse_bundle(raw) -> list[str]` | The PEM certificates in `raw`. Literal `\n` sequences are accepted |
+| `install_gateway_ca(environ=os.environ, *, system_dir=SYSTEM_CA_DIR, certifi_path=None, update_command=UPDATE_COMMAND) -> int` | Writes each certificate to `system_dir/agw-<n>.crt` and runs `update-ca-certificates`, if both exist (otherwise logs a warning). Appends missing certificates to the certifi bundle. Returns the number of certificates; `0` (with a warning) if the variable is unset. Raises `ValueError` if it is set but holds no certificate. Safe to run twice |
+| `ENV_VAR` | `AGENT_GATEWAY_ROOT_CERTIFICATES` |
+| `SYSTEM_CA_DIR` | `/usr/local/share/ca-certificates` |
+| `UPDATE_COMMAND` | `("update-ca-certificates",)` |
+
+## `esmeralda` command line (`esmeralda.cli`)
+
+```text
+esmeralda run -- <command> [args...]
+```
+
+1. Runs `install_gateway_ca()` and prints `✅ Installed N Agent Gateway root certificate(s) from AGENT_GATEWAY_ROOT_CERTIFICATES`.
+2. Replaces itself with `<command>` (`exec`), so the server keeps PID 1 and receives signals directly.
+
+Exit codes (when it doesn't `exec`): `2` for a usage error, `1` if the certificate bundle is invalid. Other failures (for example `update-ca-certificates` failing) stop the container with a traceback.
+
+## Environment variables
+
+| Variable | Read by | Effect |
+|---|---|---|
+| `AGENT_GATEWAY_ROOT_CERTIFICATES` | `esmeralda run` | PEM bundle to trust. Injected by Terraform (Layer 4 output `agw_root_ca_bundle`) |
+| `AGENT_NAME` | Plugin, `current_identity` | Agent name in telemetry and in outgoing caller context |
+| `GOOGLE_CLOUD_PROJECT` | `default_environment`, `genai_client_defaults`, `current_identity` | Set from ADC if missing |
+| `GOOGLE_CLOUD_LOCATION` | `default_environment` | Defaulted to `global` if missing |
+| `GOOGLE_GENAI_USE_VERTEXAI` | `default_environment` | Defaulted to `True` if missing |
+| `GRPC_DNS_RESOLVER` | `default_environment` | Defaulted to `native` if missing |
+| `MODEL_LOCATION` | `genai_client_defaults` | Location for every genai client (for example `global`) |
+| `MODEL_NAME` | Plugin | Fallback `model` in token events, when the response has no model version |
+| `*_PROXY` | `log_egress_proxy` | Logged at startup |
