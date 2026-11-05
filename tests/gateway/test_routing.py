@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Routing (H1, H2, H8; UC1, UC2, UC11, UC12): each host reaches its upstream with path, Host and headers right."""
+"""Routing (H1–H3, H5, H8; UC1, UC2, UC4, UC6, UC11, UC12, UC25): every host and path reaches the right place."""
 
 import pytest
 
@@ -99,3 +99,46 @@ def test_specialist_route_prefixes_engine_a2a_path(gateway, specialist_upstream,
 
     assert specialist_upstream.last.path == "/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a" + path
     assert specialist_upstream.last.headers["host"] == "localhost"
+
+
+APEX_HOST = "esmeralda.internal"
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        ("/legacy-dms/mcp", "/mcp"),
+        ("/agents/legacy-dms/mcp", "/mcp"),
+        ("/legacy-dms", "/"),
+        ("/agents/legacy-dms", "/"),
+    ],
+)
+def test_apex_routes_strip_the_target_prefix(gateway, mcp_upstream, path, expected):
+    response = gateway.post(APEX_HOST, path, json={})
+
+    assert response.status_code == 200
+    assert mcp_upstream.last.path == expected
+
+
+def test_apex_specialist_route_keeps_a2a_prefix(gateway, specialist_upstream):
+    gateway.get(APEX_HOST, "/ai-coe-mortgage-specialist/v1/card")
+
+    assert specialist_upstream.last.path == "/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a/v1/card"
+
+
+def test_unknown_host_returns_404(gateway):
+    assert gateway.get("nope.esmeralda.internal", "/mcp").status_code == 404
+
+
+def test_unknown_apex_path_returns_404(gateway):
+    assert gateway.get(APEX_HOST, "/nope/mcp").status_code == 404
+
+
+def test_healthz_on_apex_returns_200_without_calling_upstreams(gateway, upstreams):
+    for upstream in upstreams.values():
+        upstream.reset()
+
+    response = gateway.get(APEX_HOST, "/healthz")
+
+    assert response.status_code == 200
+    assert all(not upstream.requests for upstream in upstreams.values())

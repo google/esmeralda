@@ -20,6 +20,7 @@ locals {
       port      = coalesce(regex(local.url_pattern, ep.endpoint_url)[2], regex(local.url_pattern, ep.endpoint_url)[0] == "https" ? "443" : "80")
       base_path = trimsuffix(coalesce(regex(local.url_pattern, ep.endpoint_url)[3], "/"), "/")
       streaming = ep.streaming
+      path_map  = ep.path_map
       # Same rule as Kong's gcp-service-account plugin: Google APIs take an OAuth2 access token,
       # everything else (Cloud Run) an ID token for the audience; no audience means no token.
       token = ep.audience == "" ? "none" : (length(regexall("googleapis\\.com", ep.audience)) > 0 ? "access_token" : "id_token")
@@ -46,13 +47,34 @@ locals {
     )
   }
 
-  virtual_hosts = [
+  target_virtual_hosts = [
     for t in values(local.targets) : {
       name    = t.name
       domains = ["${t.name}.${var.apex_domain}"]
       routes  = [{ match = { prefix = "/" }, route = local.target_route[t.name] }]
     }
   ]
+
+  # Kong's path routes on the apex: https://<apex>/<name>/... and /agents/<name>/..., prefix stripped.
+  apex_routes = flatten([
+    for t in values(local.targets) : [
+      for prefix in(length(t.path_map) == 0 ? ["/agents/${t.name}", "/${t.name}"] : []) : [
+        { match = { path = prefix }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}/" }) },
+        { match = { prefix = "${prefix}/" }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}/" }) },
+      ]
+    ]
+  ])
+
+  apex_virtual_host = {
+    name    = "apex"
+    domains = [var.apex_domain]
+    routes = concat(
+      [{ match = { path = "/healthz" }, direct_response = { status = 200, body = { inline_string = "ok" } } }],
+      local.apex_routes,
+    )
+  }
+
+  virtual_hosts = concat(local.target_virtual_hosts, [local.apex_virtual_host])
 
   target_clusters = [
     for t in values(local.targets) : merge(
