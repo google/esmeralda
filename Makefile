@@ -36,7 +36,10 @@ export UV_FROZEN := 1
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
-.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform run-mcp-local \
+# Terraform CLI for validation and the gateway harness: terraform if installed, else OpenTofu.
+TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null || echo terraform)
+
+.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway run-mcp-local \
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
@@ -74,11 +77,15 @@ test-terraform: ## Run syntax validation for all Terraform modules (+ workload i
 	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
 	@set -e; for d in $$(find infrastructure/modules -name main.tf -not -path '*/.terraform/*' -exec dirname {} \; | sort); do \
 		echo "→ $$d"; \
-		(cd $$d && terraform init -upgrade -backend=false -input=false >/dev/null && terraform validate -no-color); \
+		(cd $$d && $(TF) init -upgrade -backend=false -input=false >/dev/null && $(TF) validate -no-color); \
 	done
 	@echo "✅ Terraform validation passed!"
 
-test-all: lock-check test test-terraform ## Run the uv.lock check, all Python unit tests and Terraform validation
+test-gateway: ## Envoy gateway harness: renders the config module and runs it in a real envoy (needs envoy + tofu/terraform)
+	@echo "🧪 Running the Envoy gateway harness..."
+	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/gateway -q
+
+test-all: lock-check test test-terraform test-gateway ## Run the uv.lock check, Python unit tests, Terraform validation and the gateway harness
 
 lock: ## Regenerate uv.lock against public PyPI (in Cloud Build) from your working copy; PKG="a b==1.2" also upgrades those
 	@bash scripts/uv_lock.sh $(PKG)
@@ -214,7 +221,7 @@ build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage speciali
 build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
 	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator,esmeralda)
 
-build-agents: $(if $(SKIP_TESTS),,test-all) ## Run tests, then build both agent images concurrently (SKIP_TESTS=1 if you just ran them)
+build-agents: $(if $(SKIP_TESTS),,lock-check test test-terraform) ## Run tests (not the gateway harness: no envoy needed), then build both agent images concurrently (SKIP_TESTS=1 if you just ran them)
 	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator
 	@echo "✅ All agent images built and pushed!"
 
