@@ -142,3 +142,40 @@ def test_healthz_on_apex_returns_200_without_calling_upstreams(gateway, upstream
 
     assert response.status_code == 200
     assert all(not upstream.requests for upstream in upstreams.values())
+
+
+ORCHESTRATOR_HOST = "cx-mortgage-orchestrator.esmeralda.internal"
+ORCHESTRATOR_STREAM_QUERY = "/v1beta1/projects/p/locations/l/reasoningEngines/456:streamQuery"
+
+
+@pytest.mark.parametrize(
+    "host, path",
+    [
+        (ORCHESTRATOR_HOST, "/api/stream_reasoning_engine"),
+        (APEX_HOST, "/cx-mortgage-orchestrator/api/stream_reasoning_engine"),
+        (APEX_HOST, "/agents/cx-mortgage-orchestrator/api/stream_reasoning_engine"),
+    ],
+)
+def test_orchestrator_stream_path_maps_to_stream_query_sse(gateway, orchestrator_upstream, host, path):
+    """Same path esmeralda serve exposes locally; Agent Runtime serves it as :streamQuery?alt=sse."""
+    response = gateway.post(host, path, json={"class_method": "async_stream_query", "input": {}})
+
+    assert response.status_code == 200
+    assert orchestrator_upstream.last.path == ORCHESTRATOR_STREAM_QUERY
+    assert orchestrator_upstream.last.query == {"alt": ["sse"]}
+
+
+def test_orchestrator_rejects_unmapped_paths(gateway, orchestrator_upstream):
+    assert gateway.post(ORCHESTRATOR_HOST, "/", json={}).status_code == 404
+    assert gateway.post(ORCHESTRATOR_HOST, "/api/reasoning_engine", json={}).status_code == 404
+    assert orchestrator_upstream.requests == []
+
+
+def test_orchestrator_rejects_caller_query_strings(gateway, orchestrator_upstream):
+    """Mapped paths bring their own ?alt=sse; Envoy would append the caller's query after it (?alt=sse?x)."""
+    for host, path in [
+        (ORCHESTRATOR_HOST, "/api/stream_reasoning_engine"),
+        (APEX_HOST, "/cx-mortgage-orchestrator/api/stream_reasoning_engine"),
+    ]:
+        assert gateway.post(host, path, params={"alt": "json"}, json={}).status_code == 400, (host, path)
+    assert orchestrator_upstream.requests == []

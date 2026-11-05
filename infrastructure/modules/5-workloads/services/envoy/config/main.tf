@@ -47,21 +47,43 @@ locals {
     )
   }
 
+  # A target with a path_map serves only those exact paths (e.g. the orchestrator's
+  # /api/stream_reasoning_engine -> <engine>:streamQuery?alt=sse); others serve every path under "/".
+  # Mapped paths bring their own query, and Envoy would append the caller's after it (?alt=sse?x=1),
+  # so a request with a query string on a mapped path gets a 400 instead.
+  has_query      = { name = ":path", string_match = { contains = "?" } }
+  query_rejected = { status = 400, body = { inline_string = "query strings are not supported on this path\n" } }
   target_virtual_hosts = [
     for t in values(local.targets) : {
       name    = t.name
       domains = ["${t.name}.${var.apex_domain}"]
-      routes  = [{ match = { prefix = "/" }, route = local.target_route[t.name] }]
+      routes = concat(
+        [for p in(length(t.path_map) == 0 ? ["/"] : []) : { match = { prefix = p }, route = local.target_route[t.name] }],
+        flatten([for k, v in t.path_map : [
+          { match = { path = k, headers = [local.has_query] }, direct_response = local.query_rejected },
+          { match = { path = k }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}${v}" }) },
+        ]]),
+      )
     }
   ]
 
   # Kong's path routes on the apex: https://<apex>/<name>/... and /agents/<name>/..., prefix stripped.
   apex_routes = flatten([
     for t in values(local.targets) : [
-      for prefix in(length(t.path_map) == 0 ? ["/agents/${t.name}", "/${t.name}"] : []) : [
-        { match = { path = prefix }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}/" }) },
-        { match = { prefix = "${prefix}/" }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}/" }) },
-      ]
+      [
+        for prefix in(length(t.path_map) == 0 ? ["/agents/${t.name}", "/${t.name}"] : []) : [
+          { match = { path = prefix }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}/" }) },
+          { match = { prefix = "${prefix}/" }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}/" }) },
+        ]
+      ],
+      [
+        for k, v in t.path_map : [
+          for prefix in ["/agents/${t.name}", "/${t.name}"] : [
+            { match = { path = "${prefix}${k}", headers = [local.has_query] }, direct_response = local.query_rejected },
+            { match = { path = "${prefix}${k}" }, route = merge(local.target_route[t.name], { prefix_rewrite = "${t.base_path}${v}" }) },
+          ]
+        ]
+      ],
     ]
   ])
 
