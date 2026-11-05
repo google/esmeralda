@@ -31,7 +31,9 @@ import re
 import shutil
 import socket
 import subprocess
+import time
 
+import httpx
 import pytest
 import yaml
 
@@ -138,3 +140,107 @@ def render_config(workdir: pathlib.Path, **inputs) -> RenderedConfig:
     path = workdir / "envoy.yaml"
     path.write_text(text)
     return RenderedConfig(yaml=text, data=yaml.safe_load(text), hostnames=outputs["hostnames"]["value"], path=path)
+
+
+class EnvoyProcess:
+    """Runs ``envoy`` with a rendered config while the context is open; waits for admin ``/ready``.
+
+    One worker thread (``--concurrency 1``) keeps per-worker state such as the token cache deterministic.
+    """
+
+    def __init__(self, config: RenderedConfig, log_file: pathlib.Path):
+        self.config = config
+        self.log_file = log_file
+        self.admin_port = config.data["admin"]["address"]["socket_address"]["port_value"]
+        self.listener_port = config.data["static_resources"]["listeners"][0]["address"]["socket_address"]["port_value"]
+        self._proc: subprocess.Popen | None = None
+        self._log = None
+
+    def __enter__(self) -> EnvoyProcess:
+        self._log = self.log_file.open("w")
+        self._proc = subprocess.Popen(
+            [tool("envoy"), "-c", str(self.config.path), "--disable-hot-restart", "--concurrency", "1"],
+            stdout=self._log,
+            stderr=subprocess.STDOUT,
+        )
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if self._proc.poll() is not None:
+                self._log.close()
+                raise AssertionError(f"envoy exited with {self._proc.returncode}:\n{self.log_file.read_text()}")
+            try:
+                ready = httpx.get(f"http://127.0.0.1:{self.admin_port}/ready", timeout=1, trust_env=False)
+                if ready.status_code == 200:
+                    return self
+            except httpx.HTTPError:
+                pass
+            time.sleep(0.1)
+        self.__exit__()
+        raise AssertionError(f"envoy not ready after 30 s:\n{self.log_file.read_text()}")
+
+    def __exit__(self, *exc) -> None:
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+        if self._log:
+            self._log.close()
+
+    def counter(self, name: str) -> int:
+        """Value of one counter from the admin ``/stats`` endpoint (0 if absent)."""
+        stats = f"http://127.0.0.1:{self.admin_port}/stats"
+        text = httpx.get(stats, params={"filter": f"^{name}$"}, timeout=5, trust_env=False).text
+        for line in text.splitlines():
+            stat, _, value = line.partition(": ")
+            if stat == name:
+                return int(value)
+        return 0
+
+
+@dataclasses.dataclass
+class RawResponse:
+    status: int
+    body: bytes
+
+
+class Gateway:
+    """Client for an ``EnvoyProcess``: requests go to its listener with the given ``Host`` header.
+
+    Proxy settings from the environment are ignored: every request is for 127.0.0.1.
+    """
+
+    def __init__(self, envoy: EnvoyProcess):
+        self.envoy = envoy
+        self._client = httpx.Client(base_url=f"http://127.0.0.1:{envoy.listener_port}", timeout=10, trust_env=False)
+
+    def request(self, method: str, host: str, path: str, **kwargs) -> httpx.Response:
+        headers = {"Host": host, **kwargs.pop("headers", {})}
+        return self._client.request(method, path, headers=headers, **kwargs)
+
+    def get(self, host: str, path: str, **kwargs) -> httpx.Response:
+        return self.request("GET", host, path, **kwargs)
+
+    def post(self, host: str, path: str, **kwargs) -> httpx.Response:
+        return self.request("POST", host, path, **kwargs)
+
+    def stream(self, method: str, host: str, path: str, **kwargs):
+        headers = {"Host": host, **kwargs.pop("headers", {})}
+        return self._client.stream(method, path, headers=headers, **kwargs)
+
+    def raw(self, method: str, host: str, path: str, headers: list[tuple[str, str]] | None = None) -> RawResponse:
+        """Sends ``path`` exactly as given (httpx would normalize it) over a fresh connection."""
+        lines = [f"{method} {path} HTTP/1.1", f"Host: {host}", "Content-Length: 0", "Connection: close"]
+        lines += [f"{name}: {value}" for name, value in headers or []]
+        with socket.create_connection(("127.0.0.1", self.envoy.listener_port), timeout=10) as sock:
+            sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+            data = b""
+            while chunk := sock.recv(65536):
+                data += chunk
+        head, _, body = data.partition(b"\r\n\r\n")
+        return RawResponse(status=int(head.split(b" ", 2)[1]), body=body)
+
+    def close(self) -> None:
+        self._client.close()

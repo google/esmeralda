@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Fixtures for the Envoy gateway harness. Helpers live in ``harness.py``."""
+"""Fixtures for the Envoy gateway harness. Helpers live in ``harness.py``, fakes in ``fakes.py``."""
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import types
 
 import pytest
-from harness import GOOGLE_AUDIENCE, RenderedConfig, free_port, render_config
+from fakes import FakeMetadataServer, MockUpstream, make_ca, make_leaf
+from harness import GOOGLE_AUDIENCE, EnvoyProcess, Gateway, RenderedConfig, free_port, render_config
 
 # Targets the fixture gateway serves, mirroring the real ones (plus two TLS failure cases).
 UPSTREAMS = (
@@ -83,7 +86,17 @@ def endpoints(ports) -> dict[str, dict]:
 
 
 @pytest.fixture(scope="session")
-def standard_config(tmp_path_factory, ports, endpoints) -> RenderedConfig:
+def pki(tmp_path_factory) -> types.SimpleNamespace:
+    """A trusted CA (the bundle Envoy trusts) and an unknown CA, for the TLS failure cases."""
+    directory = tmp_path_factory.mktemp("pki")
+    trusted, unknown = make_ca("Gateway Harness Trusted CA"), make_ca("Gateway Harness Unknown CA")
+    ca_bundle = directory / "ca-bundle.pem"
+    ca_bundle.write_bytes(trusted.pem)
+    return types.SimpleNamespace(directory=directory, trusted=trusted, unknown=unknown, ca_bundle=ca_bundle)
+
+
+@pytest.fixture(scope="session")
+def standard_config(tmp_path_factory, ports, endpoints, pki) -> RenderedConfig:
     return render_config(
         tmp_path_factory.mktemp("standard"),
         agent_endpoints=endpoints,
@@ -91,4 +104,61 @@ def standard_config(tmp_path_factory, ports, endpoints) -> RenderedConfig:
         admin_port=ports.admin,
         metadata_host="127.0.0.1",
         metadata_port=ports.metadata,
+        ca_bundle_path=str(pki.ca_bundle),
     )
+
+
+@pytest.fixture(scope="session")
+def metadata(ports):
+    with FakeMetadataServer(ports.metadata) as server:
+        yield server
+
+
+@pytest.fixture(scope="session")
+def upstreams(ports, pki):
+    """One TLS mock per target: ``untrusted`` uses the unknown CA, ``mismatched`` a certificate for another host."""
+    certificates = {"untrusted": (pki.unknown, "localhost"), "mismatched": (pki.trusted, "wrong.example")}
+    with contextlib.ExitStack() as stack:
+        servers = {}
+        for name in UPSTREAMS:
+            ca, san = certificates.get(name, (pki.trusted, "localhost"))
+            cert_file, key_file = make_leaf(ca, san, pki.directory)
+            servers[name] = stack.enter_context(MockUpstream(ports.upstreams[name], cert_file, key_file))
+        yield servers
+
+
+@pytest.fixture(scope="session")
+def gateway(tmp_path_factory, standard_config, metadata, upstreams):
+    with EnvoyProcess(standard_config, tmp_path_factory.mktemp("envoy") / "envoy.log") as envoy:
+        client = Gateway(envoy)
+        yield client
+        client.close()
+
+
+def _fresh(upstream: MockUpstream):
+    """Resets the upstream before and after the test, so a delay or SSE mode never leaks into the next one."""
+    upstream.reset()
+    yield upstream
+    upstream.reset()
+
+
+@pytest.fixture
+def mcp_upstream(upstreams):
+    yield from _fresh(upstreams["legacy-dms"])
+
+
+@pytest.fixture
+def specialist_upstream(upstreams):
+    yield from _fresh(upstreams["ai-coe-mortgage-specialist"])
+
+
+@pytest.fixture
+def orchestrator_upstream(upstreams):
+    yield from _fresh(upstreams["cx-mortgage-orchestrator"])
+
+
+def pytest_configure(config):
+    """A SIGTERM aimed at pytest alone (CI cancellation, ``kill``) runs the teardowns, so no envoy outlives it."""
+    import signal
+
+    signal.signal(signal.SIGTERM, signal.default_int_handler)

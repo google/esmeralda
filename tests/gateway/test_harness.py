@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The harness's own helpers: tool versions and local ports."""
+"""The harness's own helpers: tool versions, local ports and the strict bearer-token check."""
 
 import pytest
+from fakes import Recorded, bearer
 from harness import MIN_ENVOY_VERSION, envoy_version, free_port
 
 
@@ -42,3 +43,15 @@ def test_harness_requires_an_envoy_with_gcp_authn_access_tokens():
 def test_free_port_never_hands_out_the_same_port_twice():
     ports = [free_port() for _ in range(50)]
     assert len(set(ports)) == len(ports)
+
+
+def _recorded(*authorization: str) -> Recorded:
+    return Recorded("GET", "/", {}, {}, b"", header_lines=[("authorization", value) for value in authorization])
+
+
+def test_bearer_fails_when_a_caller_token_travels_next_to_the_gateway_token():
+    """Both shapes of the leak: values comma-joined into one header, or a second header line."""
+    for leaked in (_recorded("Bearer caller,Bearer gateway"), _recorded("Bearer caller", "Bearer gateway")):
+        with pytest.raises(AssertionError):
+            bearer(leaked)
+    assert bearer(_recorded("Bearer gateway")) == "gateway"
