@@ -16,7 +16,8 @@
 
 import subprocess
 
-from harness import APEX, proxied_routes, tool
+import pytest
+from harness import APEX, proxied_routes, render_config, tool
 
 
 def test_rendered_config_passes_envoy_validate(standard_config):
@@ -48,3 +49,67 @@ def test_every_route_retries_connect_failures_5_times(standard_config):
         policy = route["route"].get("retry_policy", {})
         assert "connect-failure" in policy.get("retry_on", "").split(","), (vhost, route)
         assert policy.get("num_retries") == 5, (vhost, route)
+
+
+def _squash(text: str) -> str:
+    """Terraform wraps long messages to the terminal width; compare them on one line."""
+    return " ".join(text.split())
+
+
+def test_malformed_endpoint_url_is_rejected_with_a_clear_error(tmp_path, endpoints):
+    broken = {"legacy-dms": {**endpoints["legacy-dms"], "endpoint_url": "legacy-dms.a.run.app/mcp"}}
+
+    with pytest.raises(AssertionError) as failure:
+        render_config(tmp_path, agent_endpoints=broken)
+
+    assert "endpoint_url must look like" in _squash(str(failure.value))
+
+
+def test_gateway_tokens_never_travel_in_clear_text(tmp_path, endpoints):
+    plain = {"legacy-dms": {**endpoints["legacy-dms"], "endpoint_url": "http://legacy-dms.internal"}}
+
+    with pytest.raises(AssertionError) as failure:
+        render_config(tmp_path, agent_endpoints=plain)
+
+    assert "must use https:// when it has an audience" in _squash(str(failure.value))
+
+
+def _cluster(config, name: str) -> dict:
+    return next(cluster for cluster in config.data["static_resources"]["clusters"] if cluster["name"] == name)
+
+
+def _port(cluster: dict) -> int:
+    return cluster["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]["address"]["socket_address"][
+        "port_value"
+    ]
+
+
+def test_endpoint_ports_default_to_the_scheme(tmp_path, endpoints):
+    """https:// means TLS on 443; plain http:// (only without an audience) means port 80 and no TLS."""
+    base = endpoints["legacy-dms"]
+    targets = {
+        "secure": {**base, "logical_name": "secure", "endpoint_url": "https://secure.example/base"},
+        "plain": {**base, "logical_name": "plain", "endpoint_url": "http://plain.example", "audience": ""},
+    }
+
+    config = render_config(tmp_path, agent_endpoints=targets)
+
+    secure, plain = _cluster(config, "secure"), _cluster(config, "plain")
+    assert (_port(secure), "transport_socket" in secure) == (443, True)
+    assert (_port(plain), "transport_socket" in plain) == (80, False)
+
+
+def test_target_without_audience_gets_no_gateway_token(tmp_path, endpoints):
+    """Same rule as Kong had: no audience, no token (the caller's own Authorization goes through)."""
+    config = render_config(tmp_path, agent_endpoints={"legacy-dms": {**endpoints["legacy-dms"], "audience": ""}})
+
+    assert "metadata" not in _cluster(config, "legacy-dms")
+
+
+def test_config_too_big_for_one_secret_version_is_rejected(tmp_path, endpoints):
+    many = {f"t{i}": {**endpoints["legacy-dms"], "logical_name": f"t{i}"} for i in range(30)}
+
+    with pytest.raises(AssertionError) as failure:
+        render_config(tmp_path, agent_endpoints=many)
+
+    assert "larger than 64 KiB" in _squash(str(failure.value))

@@ -19,6 +19,18 @@ variable "agent_endpoints" {
     streaming    = optional(bool, false)
   }))
   default = {}
+
+  validation {
+    condition = alltrue([
+      for ep in values(var.agent_endpoints) : can(regex("^(https?)://([^/:?#]+)(?::([0-9]+))?(/[^?#]*)?$", ep.endpoint_url))
+    ])
+    error_message = "Each agent_endpoints endpoint_url must look like https://host[:port][/base/path], with no query string."
+  }
+
+  validation {
+    condition     = alltrue([for ep in values(var.agent_endpoints) : ep.audience == "" || startswith(ep.endpoint_url, "https://")])
+    error_message = "An agent_endpoints endpoint_url must use https:// when it has an audience: the gateway's token must never travel in clear text."
+  }
 }
 
 variable "apex_domain" {

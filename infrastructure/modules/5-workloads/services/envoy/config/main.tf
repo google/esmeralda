@@ -9,24 +9,34 @@ terraform {
 # Objects whose shape depends on a condition use jsondecode(cond ? jsonencode(a) : jsonencode(b)):
 # Terraform requires both branches of a conditional to have the same type, and strings always do.
 locals {
-  url_pattern = "^(https?)://([^/:?#]+)(?::([0-9]+))?(/[^?#]*)?$"
+  url_pattern   = "^(https?)://([^/:?#]+)(?::([0-9]+))?(/[^?#]*)?$" # same as the validation in variables.tf
+  audience_type = "type.googleapis.com/envoy.extensions.filters.http.gcp_authn.v3.Audience"
 
-  # One entry per target, keyed by logical name, with the endpoint URL split into its parts.
-  targets = {
+  # Each endpoint URL split once: [scheme, host, port, base path].
+  parsed = {
     for ep in values(var.agent_endpoints) : ep.logical_name => {
-      name      = ep.logical_name
-      scheme    = regex(local.url_pattern, ep.endpoint_url)[0]
-      host      = regex(local.url_pattern, ep.endpoint_url)[1]
-      port      = coalesce(regex(local.url_pattern, ep.endpoint_url)[2], regex(local.url_pattern, ep.endpoint_url)[0] == "https" ? "443" : "80")
-      base_path = trimsuffix(coalesce(regex(local.url_pattern, ep.endpoint_url)[3], "/"), "/")
-      streaming = ep.streaming
-      path_map  = ep.path_map
+      ep         = ep
+      parts      = regex(local.url_pattern, ep.endpoint_url)
+      google_api = length(regexall("googleapis\\.com", ep.audience)) > 0
+    }
+  }
+
+  # One entry per target, keyed by logical name.
+  targets = {
+    for name, p in local.parsed : name => {
+      name      = name
+      scheme    = p.parts[0]
+      host      = p.parts[1]
+      port      = coalesce(p.parts[2], p.parts[0] == "https" ? "443" : "80")
+      base_path = trimsuffix(coalesce(p.parts[3], "/"), "/")
+      streaming = p.ep.streaming
+      path_map  = p.ep.path_map
       # Same rule as Kong's gcp-service-account plugin: Google APIs take an OAuth2 access token,
       # everything else (Cloud Run) an ID token for the audience; no audience means no token.
-      token = ep.audience == "" ? "none" : (length(regexall("googleapis\\.com", ep.audience)) > 0 ? "access_token" : "id_token")
-      audience_json = (length(regexall("googleapis\\.com", ep.audience)) > 0
-        ? jsonencode({ "@type" = "type.googleapis.com/envoy.extensions.filters.http.gcp_authn.v3.Audience", access_token = {} })
-      : jsonencode({ "@type" = "type.googleapis.com/envoy.extensions.filters.http.gcp_authn.v3.Audience", url = ep.audience }))
+      token = p.ep.audience == "" ? "none" : (p.google_api ? "access_token" : "id_token")
+      audience_json = (p.google_api
+        ? jsonencode({ "@type" = local.audience_type, access_token = {} })
+      : jsonencode({ "@type" = local.audience_type, url = p.ep.audience }))
     }
   }
 
