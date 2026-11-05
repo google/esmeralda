@@ -96,16 +96,45 @@ def pki(tmp_path_factory) -> types.SimpleNamespace:
 
 
 @pytest.fixture(scope="session")
-def standard_config(tmp_path_factory, ports, endpoints, pki) -> RenderedConfig:
+def base_inputs(ports, endpoints, pki) -> dict:
+    """Config module inputs shared by every gateway the harness starts."""
+    return {
+        "agent_endpoints": endpoints,
+        "listener_address": "127.0.0.1",
+        "metadata_host": "127.0.0.1",
+        "metadata_port": ports.metadata,
+        "ca_bundle_path": str(pki.ca_bundle),
+    }
+
+
+@pytest.fixture(scope="session")
+def standard_config(tmp_path_factory, ports, base_inputs) -> RenderedConfig:
     return render_config(
-        tmp_path_factory.mktemp("standard"),
-        agent_endpoints=endpoints,
-        listener_port=ports.listener,
-        admin_port=ports.admin,
-        metadata_host="127.0.0.1",
-        metadata_port=ports.metadata,
-        ca_bundle_path=str(pki.ca_bundle),
+        tmp_path_factory.mktemp("standard"), listener_port=ports.listener, admin_port=ports.admin, **base_inputs
     )
+
+
+@contextlib.contextmanager
+def running_gateway(config: RenderedConfig, log_dir):
+    with EnvoyProcess(config, log_dir / "envoy.log") as envoy:
+        client = Gateway(envoy)
+        try:
+            yield client
+        finally:
+            client.close()
+
+
+@pytest.fixture(scope="session")
+def start_variant(tmp_path_factory, base_inputs, metadata, upstreams):
+    """Starts an extra gateway on its own ports with some inputs overridden; stopped at session end."""
+    with contextlib.ExitStack() as stack:
+
+        def start(name: str, **overrides) -> Gateway:
+            workdir = tmp_path_factory.mktemp(name)
+            inputs = {**base_inputs, "listener_port": free_port(), "admin_port": free_port(), **overrides}
+            return stack.enter_context(running_gateway(render_config(workdir, **inputs), workdir))
+
+        yield start
 
 
 @pytest.fixture(scope="session")
@@ -129,10 +158,14 @@ def upstreams(ports, pki):
 
 @pytest.fixture(scope="session")
 def gateway(tmp_path_factory, standard_config, metadata, upstreams):
-    with EnvoyProcess(standard_config, tmp_path_factory.mktemp("envoy") / "envoy.log") as envoy:
-        client = Gateway(envoy)
+    with running_gateway(standard_config, tmp_path_factory.mktemp("envoy")) as client:
         yield client
-        client.close()
+
+
+@pytest.fixture(scope="session")
+def limited_gateway(start_variant) -> Gateway:
+    """A gateway allowing 5 requests per minute per X-API-Key, so the limit is quick to reach."""
+    return start_variant("limited", rate_limit_per_minute=5)
 
 
 def _fresh(upstream: MockUpstream):

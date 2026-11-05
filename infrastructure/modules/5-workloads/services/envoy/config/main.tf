@@ -169,6 +169,27 @@ locals {
     }
   }
 
+  # Kong's rate-limiting parity: N requests per minute per X-API-Key value, per instance. A descriptor
+  # entry with a key and no value is a wildcard (one bucket per header value). Requests without the
+  # header share the default bucket. filter_enabled/filter_enforced default to 0%, hence 100 here.
+  rate_limit_bucket = { max_tokens = var.rate_limit_per_minute, tokens_per_fill = var.rate_limit_per_minute, fill_interval = "60s" }
+  rate_limit = {
+    name = "envoy.filters.http.local_ratelimit"
+    typed_config = {
+      "@type"                             = "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit"
+      stat_prefix                         = "per_api_key"
+      filter_enabled                      = { default_value = { numerator = 100, denominator = "HUNDRED" } }
+      filter_enforced                     = { default_value = { numerator = 100, denominator = "HUNDRED" } }
+      token_bucket                        = local.rate_limit_bucket
+      always_consume_default_token_bucket = false
+      rate_limits                         = [{ actions = [{ request_headers = { header_name = "x-api-key", descriptor_key = "api_key" } }] }]
+      descriptors                         = [{ entries = [{ key = "api_key" }], token_bucket = local.rate_limit_bucket }]
+      enable_retry_after_header           = true
+      # Per-key buckets are kept in an LRU (20 by default): beyond that, active keys would reset each other.
+      max_dynamic_descriptors = 1000
+    }
+  }
+
   # Replaces the Authorization header with a token for the cluster's audience (cached until expiry).
   gcp_authn = {
     name = "envoy.filters.http.gcp_authn"
@@ -213,7 +234,7 @@ locals {
               stream_idle_timeout = var.stream_idle_timeout
               access_log          = [local.access_log]
               route_config        = { name = "gateway", virtual_hosts = local.virtual_hosts }
-              http_filters        = [local.gcp_authn, local.router]
+              http_filters        = [local.rate_limit, local.gcp_authn, local.router]
             }
           }]
         }]
