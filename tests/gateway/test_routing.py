@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Routing (H1, H8; UC1, UC11, UC12): each host reaches its upstream with path, Host and headers right."""
+"""Routing (H1, H2, H8; UC1, UC2, UC11, UC12): each host reaches its upstream with path, Host and headers right."""
+
+import pytest
 
 MCP_HOST = "legacy-dms.esmeralda.internal"
+SPECIALIST_HOST = "ai-coe-mortgage-specialist.esmeralda.internal"
 TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 
 
@@ -82,3 +85,17 @@ def test_host_with_port_routes_like_bare_host(gateway, mcp_upstream):
 
     assert response.status_code == 200
     assert mcp_upstream.last.path == "/mcp"
+
+
+def test_dot_segments_cannot_leave_the_a2a_base_path(gateway, specialist_upstream):
+    """The gateway's access token only goes below the engine's /a2a path, whatever the caller sends."""
+    assert gateway.raw("GET", SPECIALIST_HOST, "/../../456:streamQuery").status == 200
+    assert specialist_upstream.last.path == "/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a/456:streamQuery"
+
+
+@pytest.mark.parametrize("path", ["/v1/card", "/v1/message:send", "/v1/tasks/task-1"])
+def test_specialist_route_prefixes_engine_a2a_path(gateway, specialist_upstream, path):
+    gateway.post(SPECIALIST_HOST, path, json={})
+
+    assert specialist_upstream.last.path == "/v1beta1/projects/p/locations/l/reasoningEngines/123/a2a" + path
+    assert specialist_upstream.last.headers["host"] == "localhost"

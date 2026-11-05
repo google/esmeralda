@@ -16,7 +16,7 @@
 
 import subprocess
 
-from harness import APEX, tool
+from harness import APEX, proxied_routes, tool
 
 
 def test_rendered_config_passes_envoy_validate(standard_config):
@@ -33,3 +33,18 @@ def test_admin_listens_on_loopback_only(standard_config):
 def test_hostnames_output_lists_apex_and_every_target(standard_config, endpoints):
     expected = [APEX] + [f"{name}.{APEX}" for name in endpoints]
     assert sorted(standard_config.hostnames) == sorted(expected)
+
+
+def test_every_route_sets_an_explicit_timeout(standard_config, endpoints):
+    """Envoy's default route timeout is 15 s; blocking A2A calls need more, SSE routes none at all."""
+    for vhost, route in proxied_routes(standard_config):
+        streaming = endpoints[route["route"]["cluster"]].get("streaming", False)
+        assert route["route"].get("timeout") == ("0s" if streaming else "120s"), (vhost, route)
+
+
+def test_every_route_retries_connect_failures_5_times(standard_config):
+    """Kong services retry a failed upstream connection 5 times by default."""
+    for vhost, route in proxied_routes(standard_config):
+        policy = route["route"].get("retry_policy", {})
+        assert "connect-failure" in policy.get("retry_on", "").split(","), (vhost, route)
+        assert policy.get("num_retries") == 5, (vhost, route)

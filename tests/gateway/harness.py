@@ -244,3 +244,14 @@ class Gateway:
 
     def close(self) -> None:
         self._client.close()
+
+
+def virtual_hosts(config: RenderedConfig) -> list[dict]:
+    """The virtual hosts of the gateway listener's route config."""
+    manager = config.data["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+    return manager["route_config"]["virtual_hosts"]
+
+
+def proxied_routes(config: RenderedConfig) -> list[tuple[str, dict]]:
+    """(virtual host name, route) for every route that proxies to a cluster (not direct responses)."""
+    return [(vhost["name"], route) for vhost in virtual_hosts(config) for route in vhost["routes"] if "route" in route]

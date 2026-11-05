@@ -19,6 +19,7 @@ locals {
       host      = regex(local.url_pattern, ep.endpoint_url)[1]
       port      = coalesce(regex(local.url_pattern, ep.endpoint_url)[2], regex(local.url_pattern, ep.endpoint_url)[0] == "https" ? "443" : "80")
       base_path = trimsuffix(coalesce(regex(local.url_pattern, ep.endpoint_url)[3], "/"), "/")
+      streaming = ep.streaming
       # Same rule as Kong's gcp-service-account plugin: Google APIs take an OAuth2 access token,
       # everything else (Cloud Run) an ID token for the audience; no audience means no token.
       token = ep.audience == "" ? "none" : (length(regexall("googleapis\\.com", ep.audience)) > 0 ? "access_token" : "id_token")
@@ -31,9 +32,16 @@ locals {
   hostnames = concat([var.apex_domain], [for t in values(local.targets) : "${t.name}.${var.apex_domain}"])
 
   # Route action to a target, appending the request path to the target's base path.
+  # Envoy's default route timeout is 15 s: set it explicitly (none for SSE, where stream_idle_timeout
+  # applies). Retries on connection failures match Kong's default of 5 per service.
   target_route = {
     for t in values(local.targets) : t.name => merge(
-      { cluster = t.name, auto_host_rewrite = true },
+      {
+        cluster           = t.name
+        auto_host_rewrite = true
+        timeout           = t.streaming ? "0s" : var.route_timeout
+        retry_policy      = { retry_on = "connect-failure", num_retries = 5 }
+      },
       jsondecode(t.base_path == "" ? "{}" : jsonencode({ prefix_rewrite = "${t.base_path}/" })),
     )
   }
