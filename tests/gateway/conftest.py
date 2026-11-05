@@ -168,6 +168,12 @@ def limited_gateway(start_variant) -> Gateway:
     return start_variant("limited", rate_limit_per_minute=5)
 
 
+@pytest.fixture(scope="session")
+def outage_gateway(start_variant) -> Gateway:
+    """A gateway whose metadata server is unreachable (nothing listens on the port)."""
+    return start_variant("outage", metadata_port=free_port())
+
+
 def _fresh(upstream: MockUpstream):
     """Resets the upstream before and after the test, so a delay or SSE mode never leaks into the next one."""
     upstream.reset()
