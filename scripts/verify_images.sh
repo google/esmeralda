@@ -19,7 +19,8 @@ tg_output() { (cd "$1" && terragrunt output -raw "$2" 2>/dev/null); }
 REGION="$(env_local region)"
 TAG="$(env_local container_tag)"
 REPO_KIND="$(env_local image_repository)"
-GATEWAY_PRODUCT="$(env_local gateway_product)"
+# Gateways listed in `gateways = { enabled = [...] }` (env.yaml)
+ENABLED_GATEWAYS="$(awk '/^  gateways[[:space:]]*=/{f=1} f && /enabled/{print; exit}' "${LIVE_DIR}/env.yaml")"
 
 echo "🔎 Verifying running images for ${ENV_NAME} (tag :${TAG})..."
 if [ "${REPO_KIND:-dev}" = "release" ]; then
@@ -78,7 +79,7 @@ check_engine() { # label engine_name image
 check_cloud_run "corporate-email-${ENV_NAME}"     "${MCPS_PROJECT}" corporate-email
 check_cloud_run "income-verification-${ENV_NAME}" "${MCPS_PROJECT}" income-verification-api
 check_cloud_run "legacy-dms-${ENV_NAME}"          "${MCPS_PROJECT}" legacy-dms
-if [ "${GATEWAY_PRODUCT}" = "kong" ]; then
+if [[ "${ENABLED_GATEWAYS}" == *'"kong"'* ]]; then
   check_cloud_run "kong-gateway-${ENV_NAME}" "${GATEWAY_PROJECT}" kong-gateway
 fi
 check_engine "cx-mortgage-orchestrator"   "${ORCH_ENGINE}" cx-mortgage-orchestrator

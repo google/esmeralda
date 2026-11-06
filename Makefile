@@ -261,9 +261,9 @@ deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasonin
 deploy-agents: ## Deploy both Reasoning Engine agents, in parallel (no deploy-time dependency between them)
 	@$(MAKE) --no-print-directory -j2 deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator
 
-deploy-gateway: ## Deploy Kong API Gateway (re-run after agents are recreated: routes use engine IDs)
+deploy-gateway: ## Deploy the Kong gateway: Cloud Run + backend service (re-run after agents are recreated: routes use engine IDs)
 	@echo "🚀 Deploying Kong API Gateway..."
-	@cd $(LIVE_DIR)/layer-5-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/gateways/kong && terragrunt --non-interactive apply -auto-approve
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
 	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
