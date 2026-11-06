@@ -1,0 +1,73 @@
+# Runs the Envoy gateway harness (tests/gateway): renders the services/envoy/config module with OpenTofu
+# and runs it in the real envoy binary from the production image, against a fake metadata server and
+# TLS mock upstreams. Also validates the sandbox Terraform. No GCP access needed.
+name: Gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/modules/5-workloads/services/envoy/**"
+      - "apps/services/envoy/**"
+      - "tests/gateway/**"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/gateway.yml"
+  pull_request:
+    paths:
+      - "infrastructure/modules/5-workloads/services/envoy/**"
+      - "apps/services/envoy/**"
+      - "tests/gateway/**"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/gateway.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: gateway-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The binary the gateway runs in production: copied out of the digest-pinned image in the Dockerfile.
+      - name: Install envoy from apps/services/envoy/Dockerfile
+        run: |
+          image="$(sed -n 's/^FROM //p' apps/services/envoy/Dockerfile)"
+          docker create --name envoy "${image}" >/dev/null
+          mkdir -p "${RUNNER_TEMP}/bin"
+          docker cp envoy:/usr/local/bin/envoy "${RUNNER_TEMP}/bin/envoy"
+          docker rm envoy >/dev/null
+          "${RUNNER_TEMP}/bin/envoy" --version
+          echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: "1.13.9"
+          tofu_wrapper: false # the harness parses `tofu output -json`
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.9.30" # keep in sync with the uv image in apps/services/*/Dockerfile
+          enable-cache: false
+
+      - name: make test-gateway
+        run: make test-gateway TF=tofu
+
+      # The sandbox isn't deployed here, but it calls services/envoy: catch a module change that breaks it.
+      - name: Validate the GCP sandbox Terraform
+        run: |
+          tofu -chdir=tests/gateway/sandbox init -backend=false -input=false -no-color >/dev/null
+          tofu -chdir=tests/gateway/sandbox validate -no-color

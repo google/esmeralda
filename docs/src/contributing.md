@@ -55,7 +55,10 @@ docker cp envoy-bin:/usr/local/bin/envoy ~/.local/bin/envoy && docker rm envoy-b
 
 The gateway harness (`make test-gateway`) renders the Envoy config module and
 runs it in a real `envoy` against local fakes, so it needs `envoy` and
-`terraform` (or `tofu`) on your `PATH`, but no GCP access.
+`terraform` (or `tofu`) on your `PATH`, but no GCP access. The **Gateway**
+workflow runs it, and validates the sandbox Terraform, on every PR and push to
+`main` that touches the Envoy module or image, `tests/gateway`, the Makefile,
+`pyproject.toml` or `uv.lock`.
 
 If you changed agent or MCP code, also exercise it locally (the targets start
 and stop the three MCP servers on ports 8001-8003 for you):
