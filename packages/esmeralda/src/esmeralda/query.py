@@ -17,7 +17,8 @@
 Targets:
 
 * in-process (default): loads the agent package's ``app`` and runs it through the ADK runner;
-* ``url``: a running server (``esmeralda serve``, or any copy of the container);
+* ``url``: a running server (``esmeralda serve``, or any copy of the container). Remote URLs, e.g.
+  ``https://<agent>.esmeralda.internal`` behind the ingress gateway, get an ID token for their origin;
 * ``engine``: the agent deployed on Agent Runtime (``projects/P/locations/L/reasoningEngines/ID``).
 
 ADK agents are called with ``async_stream_query``; A2A agents with ``message:send``. The caller
@@ -36,7 +37,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from esmeralda import context
+from esmeralda import auth, context
 from esmeralda.config import AgentConfig
 from esmeralda.report import Report
 
@@ -281,6 +282,18 @@ async def run(
         return
 
     base = url.rstrip("/")
+    if not auth.is_local(base):
+        # Behind the ingress gateway, Cloud Run IAM wants an ID token for the gateway hostname.
+        audience = auth.audience_for(base)
+        try:
+            headers["Authorization"] = f"Bearer {await auth.id_token_async(audience)}"
+            report.kv("auth", f"ID token for {audience}")
+        except Exception as exc:  # like the MCP client: a server that needs no token still works
+            report.kv(
+                "auth",
+                f"no ID token for {audience} ({type(exc).__name__}: {exc}); calling without one"
+                " (with user credentials, set SERVICE_ACCOUNT_EMAIL to mint one by impersonation)",
+            )
     if config.is_a2a:
         await query_a2a_http(base, query, report, headers)
     else:

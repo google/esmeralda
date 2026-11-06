@@ -23,7 +23,7 @@ import textwrap
 import httpx
 import pytest
 
-from esmeralda import cli, context
+from esmeralda import auth, cli, context
 from esmeralda import query as q
 from esmeralda.config import AgentConfig
 from esmeralda.report import Report
@@ -251,6 +251,99 @@ def test_adk_url_target_sends_caller_as_state(monkeypatch, tmp_path):
     assert received["body"]["class_method"] == "async_stream_query"
     assert received["body"]["input"]["state_delta"] == {"temp:caller_context": {"project_id": "p", "agent_name": "a"}}
     assert r.answer == "streamed answer"
+
+
+# A remote --url is a server behind the ingress gateway (Cloud Run IAM): it needs an ID token
+# for the gateway hostname, the same audience the agents use when they call through it.
+GATEWAY_URL = "https://cx-mortgage-orchestrator.esmeralda.internal"
+
+
+def _adk_config(tmp_path):
+    (tmp_path / "agent.yaml").write_text("name: x\nframework: google-adk\n")
+    return AgentConfig.load(tmp_path)
+
+
+def _capture_adk_request(monkeypatch):
+    received = {}
+
+    async def server(request: httpx.Request) -> httpx.Response:
+        received["url"] = str(request.url)
+        received["headers"] = request.headers
+        return httpx.Response(200, text=json.dumps({"author": "root", "content": {"parts": [{"text": "ok"}]}}))
+
+    monkeypatch.setattr(q, "http_client", lambda **kw: httpx.AsyncClient(transport=httpx.MockTransport(server), **kw))
+    return received
+
+
+def _run_url(config, url, r=None):
+    r = report() if r is None else r
+    asyncio.run(q.run(config, q.Query("hi", caller=context.CallerContext("p", "a")), r, url=url))
+
+
+@pytest.mark.parametrize(
+    "url, audience, called",
+    [
+        (f"{GATEWAY_URL}/", GATEWAY_URL, f"{GATEWAY_URL}/api/stream_reasoning_engine"),
+        # Apex path form: the audience is the origin, not the whole URL.
+        (
+            "https://esmeralda.internal/agents/cx-mortgage-orchestrator",
+            "https://esmeralda.internal",
+            "https://esmeralda.internal/agents/cx-mortgage-orchestrator/api/stream_reasoning_engine",
+        ),
+    ],
+)
+def test_url_target_sends_id_token_for_remote_urls(monkeypatch, tmp_path, url, audience, called):
+    monkeypatch.setattr(auth, "id_token", lambda audience: f"tok:{audience}")
+    received = _capture_adk_request(monkeypatch)
+
+    _run_url(_adk_config(tmp_path), url)
+
+    assert received["url"] == called
+    assert received["headers"]["authorization"] == f"Bearer tok:{audience}"
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8080", "http://0.0.0.0:8080"])
+def test_url_target_sends_no_token_for_local_urls(monkeypatch, tmp_path, url):
+    monkeypatch.setattr(auth, "id_token", lambda audience: pytest.fail(f"minted an ID token for {audience}"))
+    received = _capture_adk_request(monkeypatch)
+
+    _run_url(_adk_config(tmp_path), url)
+
+    assert "authorization" not in received["headers"]
+
+
+def test_url_target_without_id_token_credentials_calls_without_one(monkeypatch, tmp_path):
+    """Like the MCP client: a server that needs no token still works; the report says why there is none."""
+
+    def no_credentials(audience):
+        raise RuntimeError("no service account credentials")
+
+    monkeypatch.setattr(auth, "id_token", no_credentials)
+    received = _capture_adk_request(monkeypatch)
+    r = report()
+
+    _run_url(_adk_config(tmp_path), GATEWAY_URL, r)
+
+    output = r.stream.getvalue()
+    assert "authorization" not in received["headers"]
+    assert "no ID token" in output and "RuntimeError: no service account credentials" in output
+    assert "SERVICE_ACCOUNT_EMAIL" in output  # how to get one with user credentials
+    assert r.answer == "ok"
+
+
+def test_a2a_url_target_sends_id_token_for_remote_urls(monkeypatch, tmp_path):
+    monkeypatch.setattr(auth, "id_token", lambda audience: f"tok:{audience}")
+    seen = {}
+
+    async def fake_a2a(base_url, query, a2a_report, headers):
+        seen.update(base_url=base_url, headers=dict(headers))
+
+    monkeypatch.setattr(q, "query_a2a_http", fake_a2a)
+    specialist = "https://ai-coe-mortgage-specialist.esmeralda.internal"
+
+    _run_url(AgentConfig(directory=tmp_path, name="x", framework="a2a"), specialist)
+
+    assert seen == {"base_url": specialist, "headers": {"Authorization": f"Bearer tok:{specialist}"}}
 
 
 def test_a2a_url_target_against_a_real_a2a_server(agent_dir, monkeypatch):

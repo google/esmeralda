@@ -70,6 +70,29 @@ def test_audience_and_local():
         auth.audience_for("/relative")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://0.0.0.0:8080",  # what `esmeralda serve` prints
+        "http://127.0.0.2:8080",
+        "http://[::1]:8080",
+        "http://LOCALHOST:8080",
+        "http://localhost.:8080",
+        "http://agent.localhost:8080",
+    ],
+)
+def test_loopback_and_unspecified_addresses_are_local(url):
+    assert auth.is_local(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://x.esmeralda.internal", "http://10.0.0.5:8080", "http://agent:8080", "https://localhost.example.com"],
+)
+def test_other_hosts_are_remote(url):
+    assert not auth.is_local(url)
+
+
 def test_id_tokens_are_cached_until_expiry(minted):
     assert auth.id_token("https://a") == "https://a|runtime-token-1"
     assert auth.id_token("https://a") == "https://a|runtime-token-1"
