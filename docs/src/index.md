@@ -51,7 +51,7 @@ Application developers are further split into teams, and **each team owns its ow
 | **CX team** | User-facing **orchestrator** agents (Google ADK). They talk to the customer and *consume* reusable agents instead of rebuilding them. | `cx-mortgage-orchestrator` ([`apps/agents/cx-mortgage-orchestrator`](../../apps/agents/cx-mortgage-orchestrator/)) | `esm-<env>-cx-agents-<sfx>` |
 | **AI CoE team** | Reusable **specialist** agents published over the **A2A** (Agent-to-Agent) protocol, an open standard where an agent advertises its skills in an *agent card* and receives tasks over HTTP. Any team can call them. | `ai-coe-mortgage-specialist` ([`apps/agents/ai-coe-mortgage-specialist`](../../apps/agents/ai-coe-mortgage-specialist/)), skills: Document Search, Income Verification, Corporate Email | `esm-<env>-ai-coe-agents-<sfx>` |
 
-The specialist's agent card is registered in the central **Agent Registry** (governance project), and the orchestrator reaches it at `https://ai-coe-mortgage-specialist.esmeralda.internal` through the Agent Gateway and Kong. Neither team needs network or IAM access to the other's project.
+The specialist's agent card is registered in the central **Agent Registry** (governance project), and the orchestrator reaches it at `https://ai-coe-mortgage-specialist.esmeralda.internal` through the Agent Gateway, the private entry point and Kong. Neither team needs network or IAM access to the other's project.
 
 ---
 
@@ -66,7 +66,7 @@ sequenceDiagram
     participant Orch as cx-mortgage-orchestrator<br/>(CX team, Agent Runtime)
     participant AGW as Agent Gateway<br/>(Central Egress Proxy)
     participant Gemini as Gemini 3.7 Flash<br/>(Vertex AI API)
-    participant Kong as Kong<br/>(internal HTTPS LB)
+    participant Kong as Entry point → Kong<br/>(internal HTTPS LB + gateway)
     participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE team, A2A)
     participant MCP as MCP Tools<br/>(Cloud Run)
     participant FinOps as Central Governance<br/>(Log Sinks & BigQuery)
@@ -107,7 +107,7 @@ flowchart LR
     L1 --> L2["Layer 2<br/><b>Networking</b><br/>Shared VPC & PSC"]
     L2 --> L3["Layer 3<br/><b>Security & IAM</b><br/>KMS CMEK, Secrets & internal CA"]
     L3 --> L4["Layer 4<br/><b>Governance Hub</b><br/>Agent Gateway, Model Armor & FinOps"]
-    L4 --> L5["Layer 5<br/><b>Workloads</b><br/>MCP servers, agents & Kong"]
+    L4 --> L5["Layer 5<br/><b>Workloads</b><br/>MCP servers, agents,<br/>gateways & entry point"]
 ```
 
 0. **Layer 0: Shared CI/CD (`live/shared/layer-0-cicd`)**:
@@ -115,9 +115,9 @@ flowchart LR
 1. **[Layer 1: Projects & FinOps (`layer-1-projects`)](./1-platform-foundations/01-projects-and-finops.md)**:
    Provisions the isolated GCP projects (`net-host`, `gateway`, `governance`, `mcps`, `ai-coe-agents`, `cx-agents`) and activates required APIs. Agent projects are named after the team that owns them.
 2. **[Layer 2: Private Networking (`layer-2-networking`)](./1-platform-foundations/02-private-networking.md)**:
-   Deploys the central Shared VPC, private subnets, Cloud DNS zones (`*.esmeralda.internal`), and Private Service Connect (PSC) attachments.
+   Deploys the central Shared VPC, private subnets, Cloud DNS zones (`*.esmeralda.internal`), Private Service Connect (PSC) attachments, and the reserved entry point IP that `esmeralda.internal` / `*.esmeralda.internal` resolve to.
 3. **[Layer 3: Security & Secrets (`layer-3-security`)](./1-platform-foundations/03-security-iam-and-telemetry.md)**:
-   Configures Cloud KMS CMEK encryption keyrings, Secret Manager secrets, workload Service Accounts and Agent Identity grants with least-privilege IAM bindings, and the **internal Root CA**: a self-signed certificate authority (Terraform `tls` provider) that signs the certificate Kong presents for `*.esmeralda.internal`.
+   Configures Cloud KMS CMEK encryption keyrings, Secret Manager secrets, workload Service Accounts and Agent Identity grants with least-privilege IAM bindings, and the **internal Root CA**: a self-signed certificate authority (Terraform `tls` provider) that signs, inside Layer 3, the certificate the entry point presents for `*.esmeralda.internal`.
 4. **[Layer 4: Central Governance Hub (`layer-4-governance`)](./3-agentops-and-lifecycle/index.md)**:
    Establishes the enterprise control plane before any workload runs:
    * **Central Agent Gateway**: a Google-managed proxy on every agent's outbound path (`AGENT_TO_ANYWHERE`). It authorizes each call by SPIFFE Agent Identity against the **Agent Registry** allowlist and IAP `roles/iap.egressor`. See the [Central Agent Gateway guide](./3-agentops-and-lifecycle/01-central-agent-gateway.md).
@@ -127,7 +127,8 @@ flowchart LR
    Deploys the runtime applications, bound to the layer-4 gateway and registry:
    * **MCP Microservices** (Cloud Run, internal only): Corporate Email, Income Verification, Legacy DMS, each registered in the Agent Registry.
    * **AI Reasoning Engines** (Vertex AI Agent Engine, BYOC containers bound to the gateway): the CX team's orchestrator (`cx-mortgage-orchestrator`) consuming the AI CoE's reusable A2A specialist (`ai-coe-mortgage-specialist`; a Cloud SQL task store is provisioned but not yet enabled).
-   * **Kong** (Cloud Run behind an internal HTTPS load balancer): the private front door for `*.esmeralda.internal`, routing by Host header to the MCP servers and agents.
+   * **Entry point** (internal HTTPS load balancer on the Layer 2 IP, with the Layer 3 certificate): the private front door for `*.esmeralda.internal`, routing each host to an enabled gateway (`gateways` in `env.yaml`).
+   * **Kong** gateway (Cloud Run behind the entry point): routes by Host header to the MCP servers and agents.
    * **IAP egress grants** and a **test VM** for private smoke tests.
 
 ---

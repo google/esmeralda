@@ -149,7 +149,7 @@ To maintain separation of concerns, Esmeralda maps roles to specific projects an
 | Engineering Team (`team` label) | Primary Role / Responsibility | Owned GCP Project | Target Infrastructure Resources |
 | :--- | :--- | :--- | :--- |
 | **NetOps** (`netops`) | Network architecture, routing, egress security. | `esm-<env>-net-host-<sfx>` | Shared VPC, Subnets, Cloud NAT, Private DNS (`esmeralda.internal.`), optional Secure Web Proxy (disabled in dev/prd). |
-| **PlatformOps** (`platformops`) | Ingress, routing, general automation. | `esm-<env>-gateway-<sfx>` | Kong on Cloud Run + internal HTTPS LB (Apigee optional via `gateway_product`). |
+| **PlatformOps** (`platformops`) | Ingress, routing, general automation. | `esm-<env>-gateway-<sfx>` | Entry point (internal HTTPS LB) + Kong on Cloud Run (gateways selected with the `gateways` block in `env.yaml`). |
 | **SecOps & Governance** (`security-and-platformops`) | Agent egress control, key lifecycle, secrets, telemetry auditing. | `esm-<env>-governance-<sfx>` | Agent Gateway, Agent Registry, Model Armor, Cloud KMS, Secret Manager, BigQuery telemetry dataset, dashboards and alerts. |
 | **Platform Engineering** | CI/CD systems, container registries. | `esm-cicd-<sfx>` (shared, Layer 0) | Artifact Registry (`esmeralda-containers`, `esmeralda-containers-release`), Cloud Build, `sa-esmeralda-builder`, `sa-esmeralda-promoter`. |
 | **AppDev Tools Team** (`appdev-tools`) | Enterprise data connectors, backend integrations. | `esm-<env>-mcps-<sfx>` | Cloud Run MCP tool servers and their Agent Registry entries. |

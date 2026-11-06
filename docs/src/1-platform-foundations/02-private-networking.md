@@ -54,7 +54,7 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 flowchart TD
     subgraph HostProject["esm-env-net-host-sfx (Shared VPC Host)"]
         subgraph VPC["Shared VPC Network (vpc-esmeralda-shared-env)"]
-            SubnetCore["Core Subnet (sb-esmeralda-core-env)<br/>10.0.1.0/24 • Private Google Access<br/>Cloud Run Direct VPC Egress, Kong ILB VIP, test VM"]
+            SubnetCore["Core Subnet (sb-esmeralda-core-env)<br/>10.0.1.0/24 • Private Google Access<br/>Cloud Run Direct VPC Egress, entry point VIP, test VM"]
             SubnetProxy["Proxy-only Subnet (sb-esmeralda-proxy-env)<br/>10.9.0.0/24 • REGIONAL_MANAGED_PROXY"]
             SubnetPSC["PSC Endpoint Subnet (sb-esmeralda-psc-env)<br/>10.10.0.0/24 • reserved"]
             SubnetPSCI["PSC Interface Subnet (sb-esmeralda-psc-interface-env)<br/>10.11.0.0/24 • network attachments"]
@@ -67,7 +67,7 @@ flowchart TD
 
     subgraph ServiceProjects["Attached Service Projects"]
         P_MCP["esm-env-mcps-sfx<br/>(Cloud Run MCP Tools)"]
-        P_GW["esm-env-gateway-sfx<br/>(Kong + Internal HTTPS LB)"]
+        P_GW["esm-env-gateway-sfx<br/>(Entry point internal HTTPS LB + Kong)"]
         P_AICOE["esm-env-ai-coe-agents-sfx<br/>(Specialist Agent & Postgres)"]
         P_CX["esm-env-cx-agents-sfx<br/>(Orchestrator Agent)"]
         P_GOV["esm-env-governance-sfx<br/>(Agent Gateway)"]
@@ -88,8 +88,8 @@ flowchart TD
 
 | Subnet Identifier | CIDR Block | Purpose & Role | Connected Workloads |
 | :--- | :--- | :--- | :--- |
-| **`sb-esmeralda-core-<env>`** | `10.0.1.0/24` | Primary backend subnet with Private Google Access enabled. | Cloud Run Direct VPC Egress (Kong, MCP tools), the Kong internal HTTPS LB forwarding rule, test VM. |
-| **`sb-esmeralda-proxy-<env>`** | `10.9.0.0/24` | `REGIONAL_MANAGED_PROXY` (Active): the Envoy proxies Google runs for regional managed load balancers. | Kong's regional internal HTTPS load balancer (and Apigee, if selected). |
+| **`sb-esmeralda-core-<env>`** | `10.0.1.0/24` | Primary backend subnet with Private Google Access enabled. | Cloud Run Direct VPC Egress (Kong, MCP tools), the entry point reserved IP `ilb-esmeralda-vip-<env>` (internal HTTPS LB forwarding rule), test VM. |
+| **`sb-esmeralda-proxy-<env>`** | `10.9.0.0/24` | `REGIONAL_MANAGED_PROXY` (Active): the Envoy proxies Google runs for regional managed load balancers. | The entry point's regional internal HTTPS load balancer. |
 | **`sb-esmeralda-psc-<env>`** | `10.10.0.0/24` | Range reserved for PSC consumer endpoints. | No endpoint is deployed in it today. |
 | **`sb-esmeralda-psc-interface-<env>`** | `10.11.0.0/24` | Subnet for PSC network attachments (Private Google Access on). | The Agent Gateway attachment `agw-egress-na-<env>` (Layer 4). |
 | **`sql-peering-range-<env>`** | `/16` (Google-allocated) | Private Services Access (PSA) range peered with `servicenetworking.googleapis.com`. | Private Cloud SQL PostgreSQL instance in `esm-<env>-ai-coe-agents-<sfx>`. |
@@ -102,10 +102,10 @@ Also created: Cloud Router `cr-esmeralda-nat-<env>` with Cloud NAT `nat-esmerald
 
 **What it is:** a Cloud DNS *private zone* answers queries only for the VPC networks it is bound to; it is invisible from the internet.
 
-**In Esmeralda:** Layer 2 creates the zone `esmeralda-private-dns-<env>` for `esmeralda.internal.`, bound to the Shared VPC. It starts empty. In Layer 5, the [Kong module](../../../infrastructure/modules/5-workloads/services/kong/main.tf) adds `esmeralda.internal` and `*.esmeralda.internal` A records pointing at Kong's internal load balancer, so every private service (`legacy-dms`, `income-verification`, `corporate-email`, `ai-coe-mortgage-specialist`, ...) is reached through Kong, which routes by `Host` header. The Agent Gateway resolves these names by DNS-peering this zone (never `googleapis.com.`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#37-agent-connectivity-template-act).
+**In Esmeralda:** Layer 2 creates the zone `esmeralda-private-dns-<env>` for `esmeralda.internal.`, bound to the Shared VPC. Layer 2 also reserves the internal entry point IP `ilb-esmeralda-vip-<env>` (gateway project, `core` subnet) and writes the `esmeralda.internal` and `*.esmeralda.internal` A records (TTL 300) pointing at it ([`main.tf`](../../../infrastructure/modules/2-networking/main.tf) §7). In Layer 5, the [entry point](../../../infrastructure/modules/5-workloads/entrypoint/main.tf) listens on that IP and routes each host to an enabled gateway (Kong by default), which routes by `Host` header, so every private service (`legacy-dms`, `income-verification`, `corporate-email`, `ai-coe-mortgage-specialist`, ...) is reached through the entry point. Because the IP and records live in Layer 2, they outlive any gateway. See [Ingress Gateways](../2-workloads-and-catalog/01-ingress-gateways.md). The Agent Gateway resolves these names by DNS-peering this zone (never `googleapis.com.`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#37-agent-connectivity-template-act).
 
 > [!NOTE]
-> `.internal` can't get a public certificate, which is why Kong's `*.esmeralda.internal` certificate is signed by the internal Root CA from [Layer 3](./03-security-iam-and-telemetry.md). See [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
+> `.internal` can't get a public certificate, which is why the entry point's `*.esmeralda.internal` certificate is signed by the internal Root CA from [Layer 3](./03-security-iam-and-telemetry.md). See [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
 
 ---
 
@@ -147,9 +147,9 @@ When `enable_psc_interface = true` (the default), the same identities also get `
 # SSH into the test VM (it lives in the CX agents project) via IAP tunnel
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
-# Inside VM: verify internal DNS resolves to the Kong internal LB VIP
+# Inside VM: verify internal DNS resolves to the entry point VIP
 dig +short ai-coe-mortgage-specialist.esmeralda.internal
-# Output: the private IP of Kong's internal HTTPS load balancer
+# Output: the entry point IP (layer-2 output entrypoint_address)
 ```
 
 ### Inspect the Agent Gateway Network Attachment
