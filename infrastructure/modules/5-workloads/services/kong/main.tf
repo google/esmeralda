@@ -21,6 +21,9 @@ locals {
   kong_config = templatefile("${path.module}/templates/kong.yml.tpl", {
     agent_endpoints = var.agent_endpoints
   })
+
+  # Kong status API port (health checks only; distinct from the 8000 proxy listener)
+  kong_status_port = 8100
 }
 
 # Securely store the compiled Kong declarative configuration inside Secret Manager
@@ -120,9 +123,36 @@ resource "google_cloud_run_v2_service" "kong_gateway" {
         name  = "KONG_PLUGINS"
         value = "bundled,gcp-service-account"
       }
+      # One nginx worker per vCPU. With more workers than vCPUs (and CPU throttled between
+      # requests), workers can fail to reach the shared worker-events socket and stall.
+      env {
+        name  = "KONG_NGINX_WORKER_PROCESSES"
+        value = "1"
+      }
+      # Status API (read-only health endpoints), used by the liveness probe below.
+      # Not exposed through Cloud Run ingress, which only routes to the container port.
+      env {
+        name  = "KONG_STATUS_LISTEN"
+        value = "0.0.0.0:${local.kong_status_port}"
+      }
       env {
         name  = "FORCE_REDEPLOY"
         value = google_secret_manager_secret_version.kong_config.version
+      }
+
+      # Restart the instance when Kong stops answering. /status/ready (Kong >= 3.3) is served
+      # by the nginx worker and returns 200 only once the declarative config, router and
+      # plugins are loaded, so a hung worker or a lost config both fail the probe.
+      # The default TCP startup probe on the container port still gates the first traffic.
+      liveness_probe {
+        initial_delay_seconds = 10
+        period_seconds        = 15
+        timeout_seconds       = 5
+        failure_threshold     = 3
+        http_get {
+          path = "/status/ready"
+          port = local.kong_status_port
+        }
       }
       volume_mounts {
         name       = "kong-config"
