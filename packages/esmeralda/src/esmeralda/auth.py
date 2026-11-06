@@ -25,6 +25,7 @@ handle the expiry), so a tool call or an A2A request doesn't pay one or two IAM 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import threading
@@ -48,9 +49,16 @@ def audience_for(url: str) -> str:
 
 
 def is_local(url: str) -> bool:
-    """Local servers (workstation runs) take no ID token."""
-    host = urllib.parse.urlsplit(url).hostname or ""
-    return host in ("localhost", "127.0.0.1", "::1")
+    """Local servers (workstation runs) take no ID token: ``localhost`` and ``*.localhost``, and loopback
+    or unspecified addresses (``esmeralda serve`` prints ``http://0.0.0.0:8080``)."""
+    host = (urllib.parse.urlsplit(url).hostname or "").rstrip(".")
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
 
 
 def _new_credentials(audience: str, service_account: str) -> Any:
