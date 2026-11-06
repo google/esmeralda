@@ -70,7 +70,7 @@ variable "tools_spec_path" {
 }
 
 variable "internal_hostname" {
-  description = "Internal hostname served by Kong for this MCP server"
+  description = "Internal hostname served by the ingress gateway for this MCP server"
   type        = string
   default     = "income-verification.esmeralda.internal"
 }

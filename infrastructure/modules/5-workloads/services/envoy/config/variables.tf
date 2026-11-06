@@ -4,7 +4,7 @@
 
 variable "agent_endpoints" {
   description = <<-EOT
-    Targets served under <logical_name>.<apex_domain>, same contract as the Kong module:
+    Targets served under <logical_name>.<apex_domain>, same contract the Kong module had (#73):
       endpoint_url: upstream base URL, scheme://host[:port][/base/path], no query string
       audience:     contains "googleapis.com" => OAuth2 access token; "" => no token; else ID token for it
       path_map:     optional exact request path => suffix appended to the base path (may carry a query)
@@ -76,7 +76,7 @@ variable "ca_bundle_path" {
 }
 
 variable "rate_limit_per_minute" {
-  description = "Requests per minute per X-API-Key value, per Envoy instance (Kong parity: 120)"
+  description = "Requests per minute per X-API-Key value, per Envoy instance (120, as under Kong)"
   type        = number
   default     = 120
 }

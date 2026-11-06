@@ -1,5 +1,6 @@
 # --- INPUT VARIABLES CONTRACT ---
-# Same contract as services/kong (selected with gateway_product), plus the gateway service account.
+# Selected with gateway_product in env.yaml (the other option is services/apigee). Same inputs the Kong
+# module took before #73, plus the gateway service account and optional path_map/streaming per target.
 
 variable "project_id" {
   description = "The GCP project ID allocated for gateway ingress (esm-<env>-gateway-<sfx>)"

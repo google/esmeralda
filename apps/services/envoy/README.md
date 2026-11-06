@@ -8,7 +8,7 @@
 
 That token is an **OIDC ID token** for Cloud Run upstreams and an **OAuth2 access token** for `*.googleapis.com`. It comes from Envoy's built-in [`gcp_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/gcp_authn_filter) filter and is cached until it expires. Envoy also rate-limits per `X-API-Key`.
 
-This directory holds only the image. It replaces `apps/services/kong` (issue #73).
+This directory holds only the image. It replaced the Kong image and its Lua token plugin (issue #73).
 
 ## Contents
 

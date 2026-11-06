@@ -14,9 +14,10 @@
 
 """Service-to-service authentication: Google-signed ID tokens, cached per audience.
 
-Calls through the gateway (MCP servers, other agents behind Kong) carry an OIDC ID token for the
-target's audience. With ``SERVICE_ACCOUNT_EMAIL`` set, the token is minted for that service account
-through IAM impersonation; otherwise for the runtime identity (metadata server or ADC).
+Calls through the ingress gateway (MCP servers and other agents at ``*.esmeralda.internal``) carry an
+OIDC ID token for the target's audience. With ``SERVICE_ACCOUNT_EMAIL`` set, the token is minted for
+that service account through IAM impersonation; otherwise for the runtime identity (metadata server
+or ADC).
 
 Tokens are cached per audience and refreshed shortly before they expire (google-auth credentials
 handle the expiry), so a tool call or an A2A request doesn't pay one or two IAM round trips.

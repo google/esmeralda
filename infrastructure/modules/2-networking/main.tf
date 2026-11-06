@@ -91,7 +91,7 @@ resource "google_compute_subnetwork" "core" {
   private_ip_google_access = true
 }
 
-# Proxy-only Subnet for regional load balancing (Internal Load Balancer/Kong/Apigee)
+# Proxy-only Subnet for regional load balancing (the ingress gateway's internal HTTPS LB / Apigee)
 resource "google_compute_subnetwork" "proxy" {
   count         = var.byo_networking ? 0 : 1
   name          = "sb-esmeralda-proxy-${var.environment}"

@@ -31,7 +31,7 @@ locals {
       base_path = trimsuffix(coalesce(p.parts[3], "/"), "/")
       streaming = p.ep.streaming
       path_map  = p.ep.path_map
-      # Same rule as Kong's gcp-service-account plugin: Google APIs take an OAuth2 access token,
+      # Same rule as Kong's gcp-service-account plugin had: Google APIs take an OAuth2 access token,
       # everything else (Cloud Run) an ID token for the audience; no audience means no token.
       token = p.ep.audience == "" ? "none" : (p.google_api ? "access_token" : "id_token")
       audience_json = (p.google_api
@@ -44,7 +44,7 @@ locals {
 
   # Route action to a target, appending the request path to the target's base path.
   # Envoy's default route timeout is 15 s: set it explicitly (none for SSE, where stream_idle_timeout
-  # applies). Retries on connection failures match Kong's default of 5 per service.
+  # applies). Retries on connection failures match Kong's default of 5 per service (before #73).
   target_route = {
     for t in values(local.targets) : t.name => merge(
       {
@@ -77,7 +77,7 @@ locals {
     }
   ]
 
-  # Kong's path routes on the apex: https://<apex>/<name>/... and /agents/<name>/..., prefix stripped.
+  # Path routes on the apex, as under Kong: https://<apex>/<name>/... and /agents/<name>/..., prefix stripped.
   apex_routes = flatten([
     for t in values(local.targets) : [
       [
@@ -179,7 +179,7 @@ locals {
     }
   }
 
-  # Kong's rate-limiting parity: N requests per minute per X-API-Key value, per instance. A descriptor
+  # Rate limiting as under Kong: N requests per minute per X-API-Key value, per instance. A descriptor
   # entry with a key and no value is a wildcard (one bucket per header value). Requests without the
   # header share the default bucket. filter_enabled/filter_enforced default to 0%, hence 100 here.
   rate_limit_bucket = { max_tokens = var.rate_limit_per_minute, tokens_per_fill = var.rate_limit_per_minute, fill_interval = "60s" }

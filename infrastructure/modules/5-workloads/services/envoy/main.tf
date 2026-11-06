@@ -12,7 +12,7 @@ terraform {
   }
 }
 
-# Envoy gateway behind the internal HTTPS LB for *.esmeralda.internal (replaces services/kong).
+# Envoy gateway behind the internal HTTPS LB for *.esmeralda.internal (replaced Kong in #73).
 # The Envoy bootstrap comes from ./config, which tests/gateway renders and runs in a real envoy.
 module "config" {
   source = "./config"
