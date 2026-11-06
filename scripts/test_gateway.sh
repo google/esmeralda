@@ -39,7 +39,9 @@ DOMAIN="$(tg_output "${LIVE_DIR}/layer-2-networking" entrypoint_domain)"
 
 CA_SECRET="$(tg_output "${LIVE_DIR}/layer-3-security" internal_ca_secret_id)"
 [ -n "${CA_SECRET}" ] || die "No internal_ca_secret_id output in layer 3."
-CA_PEM="$(gcloud secrets versions access latest --secret="${CA_SECRET}")"
+# projects/<project>/secrets/<name>: gcloud wants the short name plus --project
+CA_SECRET_PROJECT="$(echo "${CA_SECRET}" | cut -d/ -f2)"
+CA_PEM="$(gcloud secrets versions access latest --secret="${CA_SECRET##*/}" --project="${CA_SECRET_PROJECT}")"
 
 # "<host> <probe>" for every route of every deployed gateway (deduplicated by host).
 ROUTES=""
