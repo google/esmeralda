@@ -58,7 +58,7 @@ inputs = {
   gateway_mcp_url = ""
   # The specialist is reached by name through DNS + the Agent Gateway, so there is no deploy-time
   # dependency on it (only a runtime one): both agents can be deployed in parallel.
-  a2a_agent_url   = "https://ai-coe-mortgage-specialist.esmeralda.internal"
+  a2a_agent_url = "https://ai-coe-mortgage-specialist.esmeralda.internal"
 
   agent_config_path = "${get_repo_root()}/apps/agents/cx-mortgage-orchestrator/agent.yaml"
 }

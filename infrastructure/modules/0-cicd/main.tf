@@ -26,11 +26,11 @@ locals {
 }
 
 resource "google_project" "cicd" {
-  name                = local.project_id
-  project_id          = local.project_id
-  folder_id           = var.folder_id != "" ? var.folder_id : null
-  org_id              = var.folder_id == "" && var.org_id != "" ? var.org_id : null
-  billing_account     = var.billing_account
+  name            = local.project_id
+  project_id      = local.project_id
+  folder_id       = var.folder_id != "" ? var.folder_id : null
+  org_id          = var.folder_id == "" && var.org_id != "" ? var.org_id : null
+  billing_account = var.billing_account
   # Same as the layer-1 projects. "false" makes the provider enable Compute right after
   # creation (to delete the default VPC), which fails before Service Usage is bootstrapped.
   # Compute is never enabled here, so no default VPC is ever created.

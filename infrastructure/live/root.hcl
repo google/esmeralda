@@ -38,7 +38,7 @@ remote_state {
     prefix   = "${path_relative_to_include()}/terraform.tfstate"
     project  = local.state_project
     location = local.region
-  } : {
+    } : {
     path = "${get_parent_terragrunt_dir()}/.local_states/${path_relative_to_include()}/terraform.tfstate"
   }
   generate = {
