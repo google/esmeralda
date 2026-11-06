@@ -46,7 +46,8 @@ resource "google_monitoring_slo" "reasoning_latency_slo" {
 
   request_based_sli {
     distribution_cut {
-      distribution_filter = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\""
+      # Not the ingress gateway: its latencies include SSE streams that stay open for minutes.
+      distribution_filter = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\" AND resource.labels.service_name != \"${local.gateway_service_name}\""
       range {
         max = 8000
       }

@@ -28,6 +28,22 @@ variable "runaway_loop_token_threshold" {
   description = "Single-request token threshold cap triggering runaway loop alert"
 }
 
+# env.yaml's monitoring_config. Only error_rate_threshold_pct is wired so far (the ingress gateway 5xx
+# alert); the other attributes there are dropped on type conversion until something uses them.
+variable "monitoring_config" {
+  type = object({
+    error_rate_threshold_pct = optional(number, 2.0)
+  })
+  default     = {}
+  nullable    = false
+  description = "Per-environment monitoring settings (env.yaml monitoring_config)"
+
+  validation {
+    condition     = var.monitoring_config.error_rate_threshold_pct > 0 && var.monitoring_config.error_rate_threshold_pct <= 100
+    error_message = "monitoring_config.error_rate_threshold_pct is a percentage: above 0, at most 100."
+  }
+}
+
 variable "enable_analytics_views" {
   type        = bool
   default     = false

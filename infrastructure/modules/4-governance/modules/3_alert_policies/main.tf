@@ -329,7 +329,8 @@ EOF
   conditions {
     display_name = "Cloud Run & Vertex AI Latency Threshold"
     condition_threshold {
-      filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\""
+      # Not the ingress gateway: its latencies include SSE streams that stay open for minutes.
+      filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\" AND resource.labels.service_name != \"${local.gateway_service_name}\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
       threshold_value = 10000
@@ -343,27 +344,129 @@ EOF
   notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
 }
 
-# 8. Synthetic Uptime Probe (Active Ingress Health Check)
-resource "google_monitoring_uptime_check_config" "gateway_health" {
-  project      = var.governance_project_id
-  display_name = "[Esmeralda ${var.environment}] Ingress Gateway Synthetic Uptime Probe"
-  timeout      = "10s"
-  period       = "60s"
+# 8. Alert Policy: Ingress Gateway 5xx Ratio
+# Public uptime checks can't reach the gateway's internal LB (a private uptime check, with VPC checkers and
+# an OIDC token, could: a follow-up). Operators can GET https://esmeralda.internal/healthz from inside the
+# VPC. This alert watches what callers see instead: the share of 5xx among the requests Cloud Run served
+# for the gateway service (envoy-gateway-<env>, modules/5-workloads/services/envoy) in the last 5 minutes.
+# It is silent without traffic, and blind to failures before Cloud Run (LB, certificate, DNS).
+locals {
+  gateway_service_name = "envoy-gateway-${var.environment}"
+  gateway_requests = join(" AND ", [
+    "resource.type = \"cloud_run_revision\"",
+    "resource.labels.service_name = \"${local.gateway_service_name}\"",
+    "metric.type = \"run.googleapis.com/request_count\"",
+  ])
+}
 
-  http_check {
-    path         = "/healthz"
-    port         = "443"
-    use_ssl      = true
-    validate_ssl = true
+resource "google_monitoring_alert_policy" "gateway_5xx_ratio" {
+  project      = var.governance_project_id
+  display_name = "[Esmeralda ${var.environment}] Ingress Gateway 5xx Ratio (>${var.gateway_error_rate_threshold_pct}%)"
+  combiner     = "OR"
+
+  documentation {
+    content   = <<EOF
+### 🚨 INGRESS GATEWAY 5XX RATIO ABOVE ${var.gateway_error_rate_threshold_pct}%
+**Alert Trigger**: More than ${var.gateway_error_rate_threshold_pct}% of the requests to `${local.gateway_service_name}` (`*.esmeralda.internal`) returned 5xx over 5 minutes.
+
+#### 🛠️ Immediate On-Call Action Plan:
+1. Find the failing routes in the Envoy access logs (gateway project):
+   `resource.type="cloud_run_revision" AND resource.labels.service_name="${local.gateway_service_name}" AND jsonPayload.status>=500`
+   `upstream_cluster` names the target (MCP server or Reasoning Engine).
+2. Read `response_flags`: `UF`/`URX`/`UH` = Envoy could not connect (upstream down, DNS, upstream TLS verification);
+   `UT` = upstream timeout (120 s per route); `UC` = upstream closed the connection; no flag = the upstream itself
+   returned the 5xx (check that MCP server's or Reasoning Engine's logs).
+3. 5xx in the Cloud Run request logs without a matching Envoy log line: Cloud Run could not serve the request
+   (crash loop, failed revision). Check the revision's logs and the latest `make deploy-gateway`.
+EOF
+    mime_type = "text/markdown"
   }
 
-  monitored_resource {
-    type = "uptime_url"
-    labels = {
-      project_id = var.governance_project_id
-      host       = "gateway.esmeralda.internal"
+  conditions {
+    display_name = "${local.gateway_service_name}: 5xx / all requests"
+    condition_threshold {
+      filter             = "${local.gateway_requests} AND metric.labels.response_code_class = \"5xx\""
+      denominator_filter = local.gateway_requests
+      # A 5-minute window, so one burst of errors stays visible long enough for the 60 s duration: gateway
+      # traffic is sparse, and "5 bad 1-minute windows in a row" would rarely happen even during an outage.
+      duration                = "60s"
+      comparison              = "COMPARISON_GT"
+      threshold_value         = var.gateway_error_rate_threshold_pct / 100
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+      denominator_aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+      }
     }
   }
+
+  notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
+}
+
+# 8b. Log-Based Metric + Alert Policy: Ingress Gateway Token Fetch Failures
+# When Envoy can't fetch a token from the metadata server it fails open, as Kong did: the request goes on
+# with the caller's own Authorization. MCP calls may still succeed (as the caller) and Vertex AI answers
+# 401, a 4xx the alert above never counts. Envoy logs every failed fetch ("Failed to fetch token").
+resource "google_logging_metric" "gateway_token_fetch_failures" {
+  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
+  name        = "gateway/token_fetch_failures"
+  project     = each.value
+  filter      = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${local.gateway_service_name}\" AND textPayload:\"Failed to fetch token\""
+  description = "Token fetches that failed in the ingress gateway (Envoy forwarded the caller's token instead)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_monitoring_alert_policy" "gateway_token_fetch_failures" {
+  project      = var.governance_project_id
+  display_name = "[Esmeralda ${var.environment}] Ingress Gateway Token Fetch Failures"
+  combiner     = "OR"
+
+  documentation {
+    content   = <<EOF
+### 🚨 INGRESS GATEWAY COULD NOT FETCH GOOGLE TOKENS
+**Alert Trigger**: `${local.gateway_service_name}` failed to fetch a token from the metadata server in the last 5 minutes.
+
+The gateway fails open: those requests went upstream with the caller's own `Authorization`. MCP calls may have succeeded as the caller; Vertex AI calls failed with 401.
+
+#### 🛠️ Immediate On-Call Action Plan:
+1. Read the failures in the gateway project's logs:
+   `resource.type="cloud_run_revision" AND resource.labels.service_name="${local.gateway_service_name}" AND textPayload:"Failed to fetch token"`
+2. Check that `sa-esmeralda-gateway-${var.environment}` still exists and is the service's identity.
+3. Check the Google Cloud status page for a Compute Engine metadata server incident.
+EOF
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "${local.gateway_service_name}: failed token fetches"
+    condition_threshold {
+      filter                  = "resource.type = \"cloud_run_revision\" AND metric.type = \"logging.googleapis.com/user/gateway/token_fetch_failures\""
+      duration                = "60s"
+      comparison              = "COMPARISON_GT"
+      threshold_value         = 0
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
+
+  depends_on = [google_logging_metric.gateway_token_fetch_failures]
 }
 
 # 9. Alert Policy: Token Rate-of-Change Anomaly Alert (>300% Spike in 5 Mins)

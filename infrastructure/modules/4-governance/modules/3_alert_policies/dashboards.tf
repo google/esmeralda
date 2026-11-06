@@ -87,20 +87,22 @@ resource "google_monitoring_dashboard" "agent_golden_signals" {
         }
       },
       {
-        "title": "Ingress Gateway Synthetic Uptime Check Status",
+        "title": "Ingress Gateway Requests by Response Class",
         "xyChart": {
           "dataSets": [
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\"",
+                  "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"envoy-gateway-${var.environment}\" AND metric.type=\"run.googleapis.com/request_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_NEXT_OLDER"
+                    "perSeriesAligner": "ALIGN_RATE",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": ["metric.label.\"response_code_class\""]
                   }
                 }
               },
-              "plotType": "LINE"
+              "plotType": "STACKED_BAR"
             }
           ]
         }

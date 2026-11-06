@@ -25,3 +25,9 @@ variable "spoke_project_ids" {
   description = "List of spoke GCP project IDs to deploy log-based metrics to"
   default     = []
 }
+
+variable "gateway_error_rate_threshold_pct" {
+  type        = number
+  description = "Alert when more than this percentage of the ingress gateway's requests (Cloud Run service envoy-gateway-<env>) return 5xx over 5 minutes"
+  default     = 2.0
+}

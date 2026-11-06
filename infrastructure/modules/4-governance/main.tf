@@ -43,12 +43,13 @@ module "dlp_inspection" {
 
 # 4. Submodule 3: Alert Policies & Pub/Sub notification channel
 module "alert_policies" {
-  source                       = "./modules/3_alert_policies"
-  environment                  = var.environment
-  governance_project_id        = var.governance_project_id
-  spoke_project_ids            = var.spoke_project_ids
-  alert_email_address          = var.alert_email_address
-  runaway_loop_token_threshold = var.runaway_loop_token_threshold
+  source                           = "./modules/3_alert_policies"
+  environment                      = var.environment
+  governance_project_id            = var.governance_project_id
+  spoke_project_ids                = var.spoke_project_ids
+  alert_email_address              = var.alert_email_address
+  runaway_loop_token_threshold     = var.runaway_loop_token_threshold
+  gateway_error_rate_threshold_pct = var.monitoring_config.error_rate_threshold_pct
 }
 
 # 5. Submodule 4: FinOps Analytics (Token Events Table & Chargeback View)
