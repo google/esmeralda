@@ -2,7 +2,7 @@
 # Layer 5: CX mortgage orchestrator Reasoning Engine (CX team), bound to the layer-4 Agent Gateway.
 # Calls the AI CoE mortgage specialist (A2A) at runtime through the gateway and Kong (ai-coe-mortgage-specialist.esmeralda.internal).
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

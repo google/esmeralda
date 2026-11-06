@@ -1,7 +1,7 @@
 # infrastructure/live/dev/layer-5-workloads/agents/ai-coe-mortgage-specialist/terragrunt.hcl
 # Layer 5: AI CoE mortgage specialist (A2A) Reasoning Engine, bound to the layer-4 Agent Gateway.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

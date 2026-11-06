@@ -1,7 +1,7 @@
 # infrastructure/live/dev/layer-5-workloads/services/income-verification/terragrunt.hcl
 # Layer 5: MCP server on Cloud Run + its entry in the central governance Agent Registry.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

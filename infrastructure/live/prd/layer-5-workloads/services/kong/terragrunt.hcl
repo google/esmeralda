@@ -3,7 +3,7 @@
 # Applied after the MCP services and agents, so routes get the real engine IDs on the first apply.
 # Mocks below only serve `validate`/`plan` of a not-yet-deployed env; `apply` requires real outputs.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 locals {

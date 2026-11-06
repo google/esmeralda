@@ -2,7 +2,7 @@
 # Layer 0: shared CI/CD project, dev + release Artifact Registry repositories,
 # builder and promoter service accounts. Consumed by every env via `dependency "cicd"`.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

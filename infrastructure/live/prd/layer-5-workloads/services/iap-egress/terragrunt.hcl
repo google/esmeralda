@@ -2,7 +2,7 @@
 # Layer 5 (final step): grant roles/iap.egressor on every Agent Registry entry once the MCP
 # services and the A2A agent have registered themselves. Keeps deploy-all single-pass.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

@@ -2,7 +2,7 @@
 # Layer 4: Central Agent Gateway (ACT + IAP), Agent Registry, Model Armor, telemetry, alerts.
 # Depends only on layers 1-3; layer 5 workloads consume its gateway ID and CA bundle.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

@@ -1,6 +1,6 @@
 # infrastructure/live/dev/layer-3-security/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
