@@ -16,8 +16,16 @@
 set -e
 
 GATEWAY_HOST="${1:-ai-coe-mortgage-specialist.esmeralda.internal}"
-GATEWAY_URL="http://${GATEWAY_HOST}"
+GATEWAY_URL="https://${GATEWAY_HOST}"
 AUDIENCE="${GATEWAY_URL}"
+# The gateway's internal LB only serves HTTPS, with a leaf signed by the internal Root CA
+# (secret esmeralda-internal-root-ca-<env> in the gateway project).
+CA_CERT="${CA_CERT:-/tmp/root-ca.pem}"
+if [ ! -r "${CA_CERT}" ] || [ ! -s "${CA_CERT}" ]; then
+  echo "Error: internal Root CA certificate missing or empty at ${CA_CERT}."
+  echo "Copy secret esmeralda-internal-root-ca-<env> from the gateway project to that path, or set CA_CERT."
+  exit 1
+fi
 
 echo "========================================================================="
 echo "🧪 Esmeralda A2A Gateway E2E Verification Script (Internal VM)"
@@ -34,7 +42,7 @@ echo "OK (${#TOKEN} chars)"
 
 echo ""
 echo "[2/4] Verifying AgentCard at ${GATEWAY_URL}/v1/card..."
-CARD_STATUS=$(curl -s -o /tmp/a2a_card.json -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "${GATEWAY_URL}/v1/card")
+CARD_STATUS=$(curl -sS --cacert "${CA_CERT}" -o /tmp/a2a_card.json -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "${GATEWAY_URL}/v1/card")
 if [ "${CARD_STATUS}" != "200" ]; then
   echo "❌ Error: Failed to fetch AgentCard (HTTP ${CARD_STATUS})"
   cat /tmp/a2a_card.json
@@ -66,7 +74,7 @@ PAYLOAD=$(cat <<EOF
 EOF
 )
 
-SEND_STATUS=$(curl -s -o /tmp/a2a_send_res.json -w "%{http_code}" -X POST \
+SEND_STATUS=$(curl -sS --cacert "${CA_CERT}" -o /tmp/a2a_send_res.json -w "%{http_code}" -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d "${PAYLOAD}" \
@@ -95,7 +103,7 @@ SLEEP_SEC=3
 
 while [ ${ATTEMPT} -le ${MAX_ATTEMPTS} ]; do
   echo -n "      Polling attempt ${ATTEMPT}/${MAX_ATTEMPTS}... "
-  TASK_STATUS_CODE=$(curl -s -o /tmp/a2a_task_res.json -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "${GATEWAY_URL}/v1/tasks/${TASK_ID}")
+  TASK_STATUS_CODE=$(curl -sS --cacert "${CA_CERT}" -o /tmp/a2a_task_res.json -w "%{http_code}" -H "Authorization: Bearer ${TOKEN}" "${GATEWAY_URL}/v1/tasks/${TASK_ID}")
   
   if [ "${TASK_STATUS_CODE}" != "200" ]; then
     echo "FAILED (HTTP ${TASK_STATUS_CODE})"
