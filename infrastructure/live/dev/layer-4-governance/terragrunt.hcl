@@ -2,7 +2,7 @@
 # Layer 4: Central Agent Gateway (ACT + IAP), Agent Registry, Model Armor, telemetry, alerts.
 # Depends only on layers 1-3; layer 5 workloads consume its gateway ID and CA bundle.
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -39,10 +39,6 @@ inputs = {
   alert_email_address          = "esmeralda.secops@google.com"
   runaway_loop_token_threshold = 50000
   monitoring_config            = local.env_vars.locals.monitoring_config
-  # BigQuery views query log tables that only exist once agents have served traffic, so they
-  # can't be created on a fresh env. `make deploy-governance-views` sets ENABLE_ANALYTICS_VIEWS=true;
-  # set enable_analytics_views = true in env.yaml afterwards to keep them on plain re-applies.
-  enable_analytics_views = tobool(get_env("ENABLE_ANALYTICS_VIEWS", tostring(lookup(local.env_vars.locals, "enable_analytics_views", false))))
 
   # Central Agent Gateway
   enable_agent_gateway = true

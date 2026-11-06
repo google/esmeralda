@@ -8,12 +8,12 @@ locals {
   suffix = random_id.project_suffix.hex
 
   # Resolve Project IDs dynamically: Use existing ID if BYO, otherwise generate unique name
-  net_host_id   = var.byo_net_host_project ? var.existing_net_host_project : "${var.project_prefix}-net-host-${local.suffix}"
-  gateway_id    = var.byo_gateway_project ? var.existing_gateway_project : "${var.project_prefix}-gateway-${local.suffix}"
-  governance_id = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
-  mcps_id       = "${var.project_prefix}-mcps-${local.suffix}"
-  ai_coe_agents_id        = "${var.project_prefix}-ai-coe-agents-${local.suffix}"
-  cx_agents_id = "${var.project_prefix}-cx-agents-${local.suffix}"
+  net_host_id      = var.byo_net_host_project ? var.existing_net_host_project : "${var.project_prefix}-net-host-${local.suffix}"
+  gateway_id       = var.byo_gateway_project ? var.existing_gateway_project : "${var.project_prefix}-gateway-${local.suffix}"
+  governance_id    = var.byo_governance_project ? var.existing_governance_project : "${var.project_prefix}-governance-${local.suffix}"
+  mcps_id          = "${var.project_prefix}-mcps-${local.suffix}"
+  ai_coe_agents_id = "${var.project_prefix}-ai-coe-agents-${local.suffix}"
+  cx_agents_id     = "${var.project_prefix}-cx-agents-${local.suffix}"
 
   # Systematic project-specific labeling mapping for FinOps and Cost Center attribution
   common_labels = {
@@ -263,11 +263,11 @@ resource "google_project" "governance" {
 
 resource "null_resource" "serviceusage_bootstrap" {
   triggers = {
-    net_host_id   = local.net_host_id
-    mcps_id       = local.mcps_id
-    ai_coe_agents_id        = local.ai_coe_agents_id
-    cx_agents_id = local.cx_agents_id
-    governance_id = local.governance_id
+    net_host_id      = local.net_host_id
+    mcps_id          = local.mcps_id
+    ai_coe_agents_id = local.ai_coe_agents_id
+    cx_agents_id     = local.cx_agents_id
+    governance_id    = local.governance_id
   }
   depends_on = [
     google_project.net_host,

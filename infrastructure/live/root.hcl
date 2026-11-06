@@ -1,4 +1,4 @@
-# infrastructure/live/terragrunt.hcl
+# infrastructure/live/root.hcl (root configuration included by every unit via find_in_parent_folders("root.hcl"))
 locals {
   env_vars    = read_terragrunt_config(find_in_parent_folders("env.yaml"))
   region      = local.env_vars.locals.region
@@ -38,7 +38,7 @@ remote_state {
     prefix   = "${path_relative_to_include()}/terraform.tfstate"
     project  = local.state_project
     location = local.region
-  } : {
+    } : {
     path = "${get_parent_terragrunt_dir()}/.local_states/${path_relative_to_include()}/terraform.tfstate"
   }
   generate = {

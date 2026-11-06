@@ -1,6 +1,6 @@
 # infrastructure/live/prd/layer-5-workloads/services/test-vm/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {

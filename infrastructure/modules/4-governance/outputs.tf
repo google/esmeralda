@@ -55,12 +55,12 @@ output "model_armor_response_template_name" {
 }
 
 output "governance_status" {
-  value       = var.enable_analytics_views ? "✅ Full Governance, Telemetry Sinks & FinOps SQL Views Deployed." : "✅ Core Governance, Telemetry Sinks & Guardrails Deployed (Day-0 Bootstrap)."
+  value       = "✅ Full Governance, Telemetry Sinks & FinOps SQL Views Deployed."
   description = "Status of the Layer 5 Governance deployment"
 }
 
 output "next_steps" {
-  value       = var.enable_analytics_views ? "All FinOps BigQuery views and monitoring dashboards are active." : "BigQuery sinks are active. Run agent verification tests to stream initial logs, then enable views via: make deploy-governance-views ENV=${var.environment}"
+  value       = "All FinOps BigQuery views and monitoring dashboards are active; they return rows once the agents have served traffic."
   description = "Recommended next steps for governance and analytics"
 }
 

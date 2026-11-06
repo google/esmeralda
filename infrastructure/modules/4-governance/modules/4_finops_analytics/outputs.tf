@@ -1,5 +1,5 @@
 output "chargeback_view_id" {
-  value       = try(google_bigquery_table.vw_monthly_chargeback[0].table_id, "pending_initial_agent_traffic")
+  value       = google_bigquery_table.vw_monthly_chargeback.table_id
   description = "BigQuery FinOps monthly chargeback view ID"
 }
 

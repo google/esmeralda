@@ -28,17 +28,46 @@ import os
 import random
 import re
 import subprocess
-import sys
 import threading
 import time
 
+import gevent
 from locust import HttpUser, between, events, task
+from locust.stats import StatsCSVFileWriter
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("esmeralda_locust_loadtest")
+
+
+# ------------------------------------------------------------------------------
+# 0. Clean shutdown of the --csv writer
+# ------------------------------------------------------------------------------
+# Locust runs StatsCSVFileWriter.stats_writer in a greenlet that rewrites the CSV
+# files every second, but at shutdown it only calls close_files() and never kills
+# that greenlet. If anything yields to the gevent hub after the files are closed
+# (e.g. teardown of in-flight streaming connections), the writer wakes up and dies
+# with "ValueError: I/O operation on closed file". The results are complete; only
+# the traceback is noise. Fix: remember the writer greenlet and kill it before the
+# files are closed.
+_original_stats_writer = StatsCSVFileWriter.stats_writer
+_original_close_files = StatsCSVFileWriter.close_files
+
+
+def _stats_writer(self: StatsCSVFileWriter) -> None:
+    self._writer_greenlet = gevent.getcurrent()
+    _original_stats_writer(self)
+
+
+def _close_files(self: StatsCSVFileWriter) -> None:
+    writer = getattr(self, "_writer_greenlet", None)
+    if writer is not None:
+        writer.kill(block=True)
+    _original_close_files(self)
+
+
+StatsCSVFileWriter.stats_writer = _stats_writer
+StatsCSVFileWriter.close_files = _close_files
 
 # Try to load remote_agent_engine_id from env, fallback to parsing root .env file
 remote_agent_engine_id = os.getenv("REMOTE_AGENT_ENGINE_ID")
@@ -59,10 +88,7 @@ if not remote_agent_engine_id:
 if not remote_agent_engine_id:
     remote_agent_engine_id = "projects/esm-dev-cx-agents/locations/us-central1/reasoningEngines/1234567890123456789"
 
-match = re.search(
-    r"projects/([^/]+)/locations/([^/]+)/reasoningEngines/([^/]+)",
-    remote_agent_engine_id
-)
+match = re.search(r"projects/([^/]+)/locations/([^/]+)/reasoningEngines/([^/]+)", remote_agent_engine_id)
 if match:
     PROJECT_ID = match.group(1)
     LOCATION = match.group(2)
@@ -85,9 +111,7 @@ def resolve_gcp_access_token() -> str:
         import google.auth.transport.requests
 
         logger.info("Resolving Google Cloud credentials natively via google.auth.default()...")
-        credentials, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
+        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
         auth_request = google.auth.transport.requests.Request()
         credentials.refresh(auth_request)
         if credentials.token:
@@ -97,10 +121,7 @@ def resolve_gcp_access_token() -> str:
         logger.warning("Native GCP credential resolution failed: %s. Falling back to gcloud CLI...", e)
 
     try:
-        token = subprocess.check_output(
-            ["gcloud", "auth", "print-access-token"],
-            text=True
-        ).strip()
+        token = subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()
         logger.info("Successfully fetched GCP access token via gcloud CLI.")
         return token
     except Exception as ex:
@@ -124,6 +145,7 @@ except Exception as err:
 # ------------------------------------------------------------------------------
 class SlidingWindowRPMTracker:
     """Tracks actual outbound HTTP requests to Vertex AI in a rolling 60-second window."""
+
     def __init__(self, window_seconds: int = 60):
         self.window_seconds = window_seconds
         self.timestamps = collections.deque()
@@ -153,12 +175,14 @@ def on_request(request_type, name, response_time, response_length, exception, **
         if current_rpm >= 90:
             logger.error(
                 "🚨 [QUOTA EXCEEDED] Sliding Window Rate: %d RPM in the last 60s! "
-                "Exceeded the 90 RPM regional quota limit!", current_rpm
+                "Exceeded the 90 RPM regional quota limit!",
+                current_rpm,
             )
         elif current_rpm >= 80:
             logger.warning(
                 "⚠️ [TRAFFIC WARNING] Sliding Window Rate: %d RPM in the last 60s! "
-                "(Quota Limit: 90 RPM - High risk of HTTP 429 Resource Exhausted)", current_rpm
+                "(Quota Limit: 90 RPM - High risk of HTTP 429 Resource Exhausted)",
+                current_rpm,
             )
         elif current_rpm % 10 == 0:
             logger.info(
@@ -181,14 +205,16 @@ class EsmeraldaAgentUser(HttpUser):
         self.session_id = None
         self.headers = {
             "Authorization": f"Bearer {GCP_ACCESS_TOKEN}" if GCP_ACCESS_TOKEN else "",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
         self.max_turns = random.randint(1, 5)
         self.turns_executed = 0
-        self.team = random.choice([
-            {"project_id": "fictional-team-alpha", "agent_name": "alpha-coordinator"},
-            {"project_id": "fictional-team-beta", "agent_name": "beta-coordinator"}
-        ])
+        self.team = random.choice(
+            [
+                {"project_id": "fictional-team-alpha", "agent_name": "alpha-coordinator"},
+                {"project_id": "fictional-team-beta", "agent_name": "beta-coordinator"},
+            ]
+        )
 
     @task
     def execute_turn(self):
@@ -201,10 +227,7 @@ class EsmeraldaAgentUser(HttpUser):
             session_url = f"/v1/projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{ENGINE_ID}:query"
             session_payload = {
                 "class_method": "async_create_session",
-                "input": {
-                    "user_id": self.user_id,
-                    "state": {"caller_context": self.team}
-                }
+                "input": {"user_id": self.user_id, "state": {"caller_context": self.team}},
             }
             session_start = time.time()
             try:
@@ -213,7 +236,7 @@ class EsmeraldaAgentUser(HttpUser):
                     json=session_payload,
                     headers=self.headers,
                     catch_response=True,
-                    name="/query async_create_session"
+                    name="/query async_create_session",
                 ) as response:
                     if response.status_code != 200:
                         response.failure(f"Session Creation HTTP {response.status_code}: {response.text}")
@@ -233,10 +256,10 @@ class EsmeraldaAgentUser(HttpUser):
                         name="0. Create Session Latency",
                         response_time=session_latency,
                         response_length=len(response.text),
-                        exception=None
+                        exception=None,
                     )
                     response.success()
-            except Exception as e:
+            except Exception:
                 self.turns_executed -= 1
                 return
 
@@ -245,17 +268,13 @@ class EsmeraldaAgentUser(HttpUser):
             "Can you verify Julian Sterling's income?",
             "I'm reviewing the Rivera family's $700K loan application. Can you summarize their W2 earnings?",
             "Verify employment status and income for City General Hospital employees.",
-            "Calculate debt-to-income ratio for application #88214."
+            "Calculate debt-to-income ratio for application #88214.",
         ]
         query = random.choice(queries)
 
         query_payload = {
             "class_method": "async_stream_query",
-            "input": {
-                "message": query,
-                "user_id": self.user_id,
-                "session_id": self.session_id
-            }
+            "input": {"message": query, "user_id": self.user_id, "session_id": self.session_id},
         }
 
         stream_url = f"/v1/projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{ENGINE_ID}:streamQuery?alt=sse"
@@ -274,7 +293,7 @@ class EsmeraldaAgentUser(HttpUser):
                 headers=self.headers,
                 stream=True,
                 catch_response=True,
-                name="/streamQuery async_stream_query"
+                name="/streamQuery async_stream_query",
             ) as response:
                 if response.status_code != 200:
                     response.failure(f"HTTP {response.status_code}: {response.text}")
@@ -295,14 +314,14 @@ class EsmeraldaAgentUser(HttpUser):
                                     name="1. Time to First Event (TTFE) - Overall",
                                     response_time=ttfe,
                                     response_length=0,
-                                    exception=None
+                                    exception=None,
                                 )
                                 events.request.fire(
                                     request_type="AgentSSE",
                                     name=f"1. Time to First Event (TTFE) - {turn_str}",
                                     response_time=ttfe,
                                     response_length=0,
-                                    exception=None
+                                    exception=None,
                                 )
 
                             # Extract & Parse Function Calls / Responses
@@ -328,7 +347,7 @@ class EsmeraldaAgentUser(HttpUser):
                                                     name=f"2. Tool Latency ({tool_name})",
                                                     response_time=tool_latency,
                                                     response_length=0,
-                                                    exception=None
+                                                    exception=None,
                                                 )
                                                 tool_start_time = None
                             except (json.JSONDecodeError, Exception):
@@ -340,14 +359,14 @@ class EsmeraldaAgentUser(HttpUser):
                             name="3. Total Turn Latency - Overall",
                             response_time=total_latency,
                             response_length=bytes_read,
-                            exception=None
+                            exception=None,
                         )
                         events.request.fire(
                             request_type="AgentSSE",
                             name=f"3. Total Turn Latency - {turn_str}",
                             response_time=total_latency,
                             response_length=bytes_read,
-                            exception=None
+                            exception=None,
                         )
                         response.success()
                     except Exception as e:
