@@ -32,13 +32,46 @@ import sys
 import threading
 import time
 
+import gevent
 from locust import HttpUser, between, events, task
+from locust.stats import StatsCSVFileWriter
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("esmeralda_locust_loadtest")
+
+
+# ------------------------------------------------------------------------------
+# 0. Clean shutdown of the --csv writer
+# ------------------------------------------------------------------------------
+# Locust runs StatsCSVFileWriter.stats_writer in a greenlet that rewrites the CSV
+# files every second, but at shutdown it only calls close_files() and never kills
+# that greenlet. If anything yields to the gevent hub after the files are closed
+# (e.g. teardown of in-flight streaming connections), the writer wakes up and dies
+# with "ValueError: I/O operation on closed file". The results are complete; only
+# the traceback is noise. Fix: remember the writer greenlet and kill it before the
+# files are closed.
+_original_stats_writer = StatsCSVFileWriter.stats_writer
+_original_close_files = StatsCSVFileWriter.close_files
+
+
+def _stats_writer(self: StatsCSVFileWriter) -> None:
+    self._writer_greenlet = gevent.getcurrent()
+    _original_stats_writer(self)
+
+
+def _close_files(self: StatsCSVFileWriter) -> None:
+    writer = getattr(self, "_writer_greenlet", None)
+    if writer is not None:
+        writer.kill(block=True)
+    _original_close_files(self)
+
+
+StatsCSVFileWriter.stats_writer = _stats_writer
+StatsCSVFileWriter.close_files = _close_files
+
 
 # Try to load remote_agent_engine_id from env, fallback to parsing root .env file
 remote_agent_engine_id = os.getenv("REMOTE_AGENT_ENGINE_ID")
