@@ -28,7 +28,8 @@ dependency "networking" {
 
   # Satisfy parser during evaluation with mock variables
   mock_outputs = {
-    subnet_id = local.env_vars.locals.existing_subnet_id
+    subnet_id         = local.env_vars.locals.existing_subnet_id
+    dns_zone_dns_name = "esmeralda.internal."
   }
 }
 
@@ -51,6 +52,9 @@ inputs = {
   org_id      = lookup(local.env_vars.locals, "org_id", "")
 
   backend_subnet_id = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
+
+  # Entry point certificate (<domain> + *.<domain>), derived from the layer-2 private zone
+  internal_domain = trimsuffix(dependency.networking.outputs.dns_zone_dns_name, ".")
 
   ai_coe_agents_sql_service_agent  = dependency.projects.outputs.ai_coe_agents_sql_service_agent
   governance_secrets_service_agent = dependency.projects.outputs.governance_secrets_service_agent

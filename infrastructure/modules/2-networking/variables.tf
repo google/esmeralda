@@ -88,6 +88,12 @@ variable "enable_secure_web_proxy" {
   default     = true
 }
 
+variable "entrypoint_ip_address" {
+  description = "Optional fixed internal IP for the entry point VIP (must be free in the core subnet); null lets GCP pick one"
+  type        = string
+  default     = null
+}
+
 variable "environment" {
   description = "The environment classification (e.g., dev, qa, prod)"
   type        = string

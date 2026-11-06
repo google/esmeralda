@@ -71,3 +71,8 @@ output "internal_ca_secret_id" {
   description = "Secret Manager secret (gateway project) publishing the internal Root CA certificate."
   value       = google_secret_manager_secret.internal_ca.id
 }
+
+output "entrypoint_ssl_certificate_id" {
+  description = "Regional SSL certificate (gateway project) for <internal_domain> + *.<internal_domain>, loaded on the layer-5 entry point."
+  value       = google_compute_region_ssl_certificate.entrypoint.id
+}
