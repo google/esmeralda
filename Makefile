@@ -41,7 +41,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
-	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint deploy-iap-egress deploy-all destroy-all status-release \
+	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	promote-patch promote-minor promote test-governance-chaos load-test docs-serve docs-build clean preflight
 
 help: ## Show this help message
@@ -268,6 +268,9 @@ deploy-gateway: ## Deploy the Kong gateway: Cloud Run + backend service (re-run 
 deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, forwarding rule) after the gateways
 	@echo "🚪 Deploying the internal entry point..."
 	@cd $(LIVE_DIR)/layer-5-workloads/entrypoint && terragrunt --non-interactive apply -auto-approve
+
+test-gateway: ## Probe every gateway route host through the entry point from the test VM (IAP SSH): ENV=<env>
+	@bash scripts/test_gateway.sh $(ENV)
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
 	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve

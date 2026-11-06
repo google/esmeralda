@@ -12,3 +12,8 @@ output "instance_ip" {
   value       = google_compute_instance.test_vm.network_interface[0].network_ip
   description = "The internal IP of the test VM"
 }
+
+output "project_id" {
+  value       = google_compute_instance.test_vm.project
+  description = "The project of the test VM (used by `make test-gateway` for IAP SSH)"
+}
