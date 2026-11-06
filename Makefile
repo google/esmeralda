@@ -38,7 +38,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
 .PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform run-mcp-local \
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
-	query deploy-foundations deploy-governance deploy-governance-views build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
+	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
@@ -176,11 +176,6 @@ deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy 
 deploy-governance: ## Deploy Layer 4: Governance, Agent Gateway, Observability & Alerts for $(ENV)
 	@echo "🏛️  Deploying Layer 4: Governance for $(ENV)..."
 	@cd $(LIVE_DIR)/layer-4-governance && terragrunt --non-interactive apply -auto-approve
-
-deploy-governance-views: ## Deploy Layer 4 BigQuery FinOps & Telemetry SQL Views (after agent traffic generated logs)
-	@echo "📊 Deploying BigQuery FinOps & Telemetry SQL Views for $(ENV)..."
-	@cd $(LIVE_DIR)/layer-4-governance && ENABLE_ANALYTICS_VIEWS=true terragrunt --non-interactive apply -auto-approve
-	@echo "👉 Set enable_analytics_views = true in $(LIVE_DIR)/env.yaml to keep the views on plain re-applies."
 
 # ==============================================================================
 # Image builds: env-neutral, always pushed to the shared dev repository

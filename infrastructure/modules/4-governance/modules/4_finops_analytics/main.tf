@@ -73,9 +73,64 @@ EOF
   }
 }
 
+# Partitioned BigQuery Table for Reasoning Engine stdout (the agents' structured token events).
+# The central sinks would create it on the first agent log, but the chargeback and per-request
+# views query it, so it is pre-created here with the columns they read. The sinks add the
+# remaining LogEntry columns on write; numeric jsonPayload values are exported as FLOAT.
+resource "google_bigquery_table" "reasoning_engine_stdout" {
+  dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
+  table_id            = "aiplatform_googleapis_com_reasoning_engine_stdout"
+  project             = var.governance_project_id
+  deletion_protection = false
+
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+
+  schema = <<EOF
+[
+  {"name": "timestamp", "type": "TIMESTAMP", "mode": "NULLABLE"},
+  {"name": "logName", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "severity", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "trace", "type": "STRING", "mode": "NULLABLE"},
+  {
+    "name": "jsonPayload",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {"name": "event", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "agent_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "model", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "session_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "trace_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "user_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "execution_path", "type": "STRING", "mode": "NULLABLE"},
+      {
+        "name": "tokens",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "prompt_tokens", "type": "FLOAT", "mode": "NULLABLE"},
+          {"name": "completion_tokens", "type": "FLOAT", "mode": "NULLABLE"},
+          {"name": "thoughts_tokens", "type": "FLOAT", "mode": "NULLABLE"},
+          {"name": "cached_tokens", "type": "FLOAT", "mode": "NULLABLE"},
+          {"name": "total_tokens", "type": "FLOAT", "mode": "NULLABLE"}
+        ]
+      }
+    ]
+  }
+]
+EOF
+
+  # The sinks extend the schema as new log fields arrive.
+  lifecycle {
+    ignore_changes = [schema]
+  }
+}
+
 # Monthly Agent Chargeback View
 resource "google_bigquery_table" "vw_monthly_chargeback" {
-  count      = var.enable_analytics_views ? 1 : 0
   dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "vw_monthly_agent_chargeback"
   project    = var.governance_project_id
@@ -87,12 +142,14 @@ resource "google_bigquery_table" "vw_monthly_chargeback" {
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.unified_telemetry_events]
+  depends_on = [
+    google_bigquery_table.unified_telemetry_events,
+    google_bigquery_table.reasoning_engine_stdout,
+  ]
 }
 
 # Per-Request Level Telemetry View (Lists every individual request & session)
 resource "google_bigquery_table" "vw_request_level_telemetry" {
-  count      = var.enable_analytics_views ? 1 : 0
   dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "vw_request_level_telemetry"
   project    = var.governance_project_id
@@ -104,7 +161,10 @@ resource "google_bigquery_table" "vw_request_level_telemetry" {
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.unified_telemetry_events]
+  depends_on = [
+    google_bigquery_table.unified_telemetry_events,
+    google_bigquery_table.reasoning_engine_stdout,
+  ]
 }
 
 # Security & Compliance Audit Trail View (IAM changes, secret accesses, deployments)
@@ -121,4 +181,15 @@ resource "google_bigquery_table" "vw_security_audit_trail" {
   }
 
   depends_on = [google_bigquery_table.cloudaudit_activity]
+}
+
+# The two views above used to be gated by enable_analytics_views (count = 0/1); keep their state.
+moved {
+  from = google_bigquery_table.vw_monthly_chargeback[0]
+  to   = google_bigquery_table.vw_monthly_chargeback
+}
+
+moved {
+  from = google_bigquery_table.vw_request_level_telemetry[0]
+  to   = google_bigquery_table.vw_request_level_telemetry
 }

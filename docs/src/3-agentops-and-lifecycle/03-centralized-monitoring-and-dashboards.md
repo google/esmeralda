@@ -89,13 +89,15 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **`genai_telemetry_events`** | Terraform | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Unified JSON Event Envelope storing `timestamp`, `event_type`, `session_id`, `user_id`, `agent_id`, `execution_path`, and `payload` (`JSON`). |
 | **`cloudaudit_googleapis_com_activity`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Cloud Audit Activity logs for IAM, Secret Manager, and Reasoning Engine operations. |
-| **`aiplatform_googleapis_com_reasoning_engine_stdout`** | The sinks, on first log | Partitioned `DAY` | Reasoning Engine stdout from both agent projects, including the agents' structured `genai_token_consumption` and `mcp_tool_execution` events. |
+| **`aiplatform_googleapis_com_reasoning_engine_stdout`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Reasoning Engine stdout from both agent projects, including the agents' structured `genai_token_consumption` and `mcp_tool_execution` events. |
 | **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (Kong and the MCP servers). |
 
 ### Analytical Views
 
-> [!IMPORTANT]
-> `vw_monthly_agent_chargeback` and `vw_request_level_telemetry` query the stdout table, which only exists after the agents have served traffic. They are therefore **off on a fresh environment**. Run `make deploy-governance-views ENV=<env>` after the first agent traffic, then set `enable_analytics_views = true` in `infrastructure/live/<env>/env.yaml` to keep them on later re-applies. `vw_security_audit_trail` is always created.
+> [!NOTE]
+> All three views are created by `make deploy-governance`, including on a fresh environment. `vw_monthly_agent_chargeback` and `vw_request_level_telemetry` read the stdout table, which Terraform pre-creates with the columns they query (the sinks add the remaining log columns on write), so they return rows as soon as the agents have served traffic.
+>
+> Upgrading an environment where the sinks already created the stdout table: import it once before applying, e.g. `cd infrastructure/live/<env>/layer-4-governance && terragrunt import module.finops_analytics.google_bigquery_table.reasoning_engine_stdout projects/<governance-project>/datasets/esmeralda_telemetry_logs_<env>/tables/aiplatform_googleapis_com_reasoning_engine_stdout`.
 
 #### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
 Calculates monthly agent cost and context-caching savings. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:
