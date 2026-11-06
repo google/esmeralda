@@ -14,7 +14,7 @@ The foundations exist to give each team its own boundary. Two teams build agents
 | Team | Builds | Lives in | Example |
 | :--- | :--- | :--- | :--- |
 | **CX team** | User-facing **orchestrator** agents (ADK). They *consume* reusable agents and tools; they don't re-implement them. | `esm-<env>-cx-agents-<sfx>` | `cx-mortgage-orchestrator` |
-| **AI CoE team** | **Reusable A2A specialist** agents that any team can call over the [A2A protocol](https://a2a-protocol.org/) through the Agent Gateway and Kong. | `esm-<env>-ai-coe-agents-<sfx>` | `ai-coe-mortgage-specialist` |
+| **AI CoE team** | **Reusable A2A specialist** agents that any team can call over the [A2A protocol](https://a2a-protocol.org/) through the Agent Gateway and the Envoy ingress gateway. | `esm-<env>-ai-coe-agents-<sfx>` | `ai-coe-mortgage-specialist` |
 
 Platform teams own the shared projects around them: NetOps (`net-host`), PlatformOps (`gateway`), AppDev Tools (`mcps`), Security & PlatformOps (`governance`) and Platform Engineering (shared `cicd`).
 
@@ -26,7 +26,7 @@ Platform teams own the shared projects around them: NetOps (`net-host`), Platfor
 * **The Problem:** In monolith deployments, all workloads share a single GCP project. This leads to **FinOps attribution blackouts** (inability to distinguish which business unit consumed Vertex AI tokens), **IAM privilege bleeding** (tool developers can inspect platform security keys), and **API quota starvation** (one rogue agent loop kills all corporate workloads).
 * **The Decision:** Segregate workloads across **seven specialized GCP projects** (six per environment, plus one shared CI/CD project). Each per-environment project ID is `esm-<env>-<name>-<sfx>`, where `<sfx>` is a random 4-hex suffix:
   * `net-host`: Network Operations boundary (Shared VPC, Cloud NAT, private DNS).
-  * `gateway`: Platform ingress boundary (Kong by default; Apigee optional).
+  * `gateway`: Platform ingress boundary (Envoy by default; Apigee optional).
   * `mcps`: Reusable corporate MCP tool servers on Cloud Run.
   * `ai-coe-agents`: AI CoE team's reusable A2A specialist agents and their Cloud SQL task store.
   * `cx-agents`: CX team's user-facing orchestrator agents.
@@ -40,7 +40,7 @@ Platform teams own the shared projects around them: NetOps (`net-host`), Platfor
 * **The Problem:** Traditional VPC Peering is non-transitive (Spoke A cannot reach Spoke B via Host) and leads to IP address (CIDR) exhaustion and subnet overlap issues across large enterprise networks.
 * **The Decision:** Deploy a single **Shared VPC** in `esm-<env>-net-host-<sfx>` and attach the workload projects as service projects. Google-managed runtimes that don't live in the VPC (the Agent Gateway) reach it through a **Private Service Connect (PSC) network attachment**.
 * **The Benefit:**
-  * Cloud Run MCP tools, Kong and Cloud SQL communicate over private internal IPs; agent egress to private services goes through the Agent Gateway into the same VPC.
+  * Cloud Run MCP tools, the Envoy ingress gateway and Cloud SQL communicate over private internal IPs; agent egress to private services goes through the Agent Gateway into the same VPC.
   * One IP plan owned by NetOps, so no subnet overlap conflicts.
   * Central firewall, routing and DNS policy.
 

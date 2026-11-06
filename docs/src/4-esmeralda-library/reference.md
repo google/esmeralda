@@ -223,7 +223,7 @@ esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE] [--user ID] [-
 | Option | Default | Description |
 |---|---|---|
 | `--agent-dir` | `.` | Agent directory, with `agent.yaml` and the `agent` package |
-| `--url` | | A running server. ADK: `POST <url>/api/stream_reasoning_engine`. A2A: card at `<url>/v1/card` (or `/.well-known/agent-card.json`), then `message:send` |
+| `--url` | | A running server. ADK: `POST <url>/api/stream_reasoning_engine`. A2A: card at `<url>/v1/card` (or `/.well-known/agent-card.json`), then `message:send`. Remote URLs, such as `https://<agent>.esmeralda.internal` behind the ingress gateway, get an ID token for their origin (sent without one if none can be minted); local URLs get none |
 | `--engine` | | `projects/P/locations/L/reasoningEngines/ID`. ADK: `:streamQuery`. A2A: `<engine>/a2a`. Authenticated with ADC, else `gcloud auth print-access-token` |
 | `--user` | `esmeralda-cli` | User id |
 | `--session` | new session | Session id (ADK) or context id (A2A) to continue |

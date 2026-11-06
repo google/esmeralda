@@ -46,14 +46,14 @@ The reference use case is a mortgage-underwriting assistant, split across two ag
 | **CX team** | User-facing **orchestrator** agents (ADK) that *consume* reusable agents | `cx-mortgage-orchestrator` | `esm-<env>-cx-agents-<sfx>` |
 | **AI CoE team** | Reusable **specialist** agents exposed over the **A2A** (Agent-to-Agent) protocol, which any team can call | `ai-coe-mortgage-specialist` (Document Search, Income Verification, Corporate Email skills via MCP tools) | `esm-<env>-ai-coe-agents-<sfx>` |
 
-The orchestrator never calls the specialist directly: every call goes through the Central Agent Gateway and the Kong internal gateway, so each team stays isolated and every hop is authorized.
+The orchestrator never calls the specialist directly: every call goes through the Central Agent Gateway and the Envoy ingress gateway, so each team stays isolated and every hop is authorized.
 
 ---
 
 #### Architectural Pillars
 
 * **Enterprise Standard:** Zero-trust security by default, SecOps audit trails, and strict enterprise compliance.
-* **Multi-Agent Engine:** Seamless agent-to-agent (A2A) collaboration and orchestration governed by the Central Agent Gateway and a private Kong gateway.
+* **Multi-Agent Engine:** Seamless agent-to-agent (A2A) collaboration and orchestration governed by the Central Agent Gateway and a private Envoy ingress gateway.
 * **Reasoning & Action Layer:** Advanced reasoning powered by Gemini models and open tool standards with MCP.
 * **Deployment Accelerator:** End-to-end automation from local development to production through reproducible CI/CD pipelines and built-in observability.
 
@@ -83,7 +83,7 @@ flowchart TD
     end
 
     subgraph Private["🔐 Private Ingress (Layer 5)"]
-        Kong["Kong on Cloud Run\n(internal HTTPS LB, *.esmeralda.internal)"]
+        Envoy["Envoy on Cloud Run\n(internal HTTPS LB, *.esmeralda.internal)"]
     end
 
     subgraph Tools["🔌 MCP Tool Microservices (Layer 5)"]
@@ -102,17 +102,17 @@ flowchart TD
     AGW -. allowlist .-> AR
     AGW -. optional .-> MA
     AGW -->|Authorized egress| Gemini
-    AGW -->|PSC attachment + private DNS| Kong
-    TestVM -->|Private DNS| Kong
-    Kong -->|A2A| Spec
-    Kong -->|MCP| DMS
-    Kong -->|MCP| Income
-    Kong -->|MCP| Email
+    AGW -->|PSC attachment + private DNS| Envoy
+    TestVM -->|Private DNS| Envoy
+    Envoy -->|A2A| Spec
+    Envoy -->|MCP| DMS
+    Envoy -->|MCP| Income
+    Envoy -->|MCP| Email
     Spec -->|IAM DB Auth| TaskDB
     Agents -.->|Log sinks| FinOps
 ```
 
-Both agents are **bring-your-own-container (BYOC)** images running on **Vertex AI Agent Engine** (Agent Runtime), each with its own SPIFFE Agent Identity. Every outbound call they make (Gemini, MCP tools, other agents) is transparently routed through the **Central Agent Gateway**, which only allows destinations registered in the **Agent Registry**. Private destinations under `*.esmeralda.internal` are served by **Kong** behind an internal HTTPS load balancer whose certificate is signed by Esmeralda's own internal Root CA. See the [Central Agent Gateway guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md) for the full request path and certificate chain.
+Both agents are **bring-your-own-container (BYOC)** images running on **Vertex AI Agent Engine** (Agent Runtime), each with its own SPIFFE Agent Identity. Every outbound call they make (Gemini, MCP tools, other agents) is transparently routed through the **Central Agent Gateway**, which only allows destinations registered in the **Agent Registry**. Private destinations under `*.esmeralda.internal` are served by an **Envoy** gateway behind an internal HTTPS load balancer whose certificate is signed by Esmeralda's own internal Root CA. See the [Central Agent Gateway guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md) for the full request path and certificate chain.
 
 ---
 
@@ -123,7 +123,7 @@ Both agents are **bring-your-own-container (BYOC)** images running on **Vertex A
 | :--- | :--- | :--- |
 | **Multi-Agent Engine** | **Agent-to-Agent (A2A) Protocols** | Standard inter-agent protocol: the CX orchestrator delegates to the AI CoE's reusable specialist through its published agent card. A Cloud SQL task store is provisioned but not yet enabled (`USE_CLOUD_SQL = "0"`; tasks are kept in memory). |
 | **Zero-Trust Governance** | **Central Agent Gateway & SPIFFE Identity** | Google-managed egress proxy that checks *who* is calling (SPIFFE Agent Identity), *where* it is going (Agent Registry allowlist + IAP `roles/iap.egressor`), and optionally *what* is sent (Model Armor, wired but disabled by default). |
-| **Tool Ecosystem** | **Model Context Protocol (MCP)** | Decoupled, serverless tool microservices exposing corporate systems (DMS, email, payroll) via standardized MCP endpoints, reachable only privately at `https://<svc>.esmeralda.internal/mcp` through Kong. |
+| **Tool Ecosystem** | **Model Context Protocol (MCP)** | Decoupled, serverless tool microservices exposing corporate systems (DMS, email, payroll) via standardized MCP endpoints, reachable only privately at `https://<svc>.esmeralda.internal/mcp` through the Envoy ingress gateway. |
 | **Observability & FinOps** | **OpenTelemetry & BQ Analytics** | OpenTelemetry instrumentation in the agents, per-request token usage tracking, central log sinks, automated chargeback SQL views, and Cloud Monitoring golden signal dashboards. |
 | **Declarative Platform** | **Layered Terragrunt Progression** | Modular infrastructure stack built from the ground up: shared CI/CD (L0), then per environment Projects (L1), Networking (L2), Security (L3), Governance (L4), and Workloads (L5). |
 
@@ -132,11 +132,11 @@ Both agents are **bring-your-own-container (BYOC)** images running on **Vertex A
 <a id="quick-start"></a>
 ### Quick Start
 
-Requires `gcloud`, `terraform`, `terragrunt` and [`uv`](https://docs.astral.sh/uv/). Set your billing account and organization in `infrastructure/live/<env>/env.yaml` first.
+Requires `gcloud`, `terraform`, `terragrunt`, [`uv`](https://docs.astral.sh/uv/) and `envoy` 1.40.x (for the gateway harness in `make test-all`; install steps in [Contributing](docs/src/contributing.md)). Set your billing account and organization in `infrastructure/live/<env>/env.yaml` first.
 
 ```bash
 make bootstrap                 # preflight checks + uv workspace sync
-make test-all                  # Python unit tests + Terraform validation
+make test-all                  # Python unit tests + Terraform validation + Envoy gateway harness
 make deploy-all ENV=dev        # Layer 0 -> 1-3 -> 4 -> build images -> 5
 make test-e2e ENV=dev          # specialist, then orchestrator -> specialist through the gateway
 ```

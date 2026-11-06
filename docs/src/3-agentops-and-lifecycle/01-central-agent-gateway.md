@@ -73,7 +73,7 @@ flowchart LR
 
     subgraph NET["Shared VPC (net-host project)"]
         DNS["Private DNS zone esmeralda.internal"]
-        ILB["Kong internal HTTPS LB (*.esmeralda.internal cert)"]
+        ILB["Envoy ingress gateway internal HTTPS LB (*.esmeralda.internal cert)"]
     end
 
     GAPI["Google APIs (Gemini, Telemetry, ...)"]
@@ -95,7 +95,7 @@ flowchart LR
 There are two kinds of destination:
 
 - **Public Google APIs** such as `us-central1-aiplatform.googleapis.com`. The gateway reaches them directly, and they present publicly trusted certificates.
-- **Private services** under `*.esmeralda.internal`, meaning the MCP tool servers and the A2A specialist. The gateway reaches them through a network attachment into the Shared VPC, where Kong's internal load balancer presents a certificate signed by **our own private Root CA**.
+- **Private services** under `*.esmeralda.internal`, meaning the MCP tool servers and the A2A specialist. The gateway reaches them through a network attachment into the Shared VPC, where the internal load balancer of the ingress gateway (Envoy) presents a certificate signed by **our own private Root CA**.
 
 The second kind is why this guide spends so much time on certificates.
 
@@ -184,7 +184,7 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 
 **In Agent Gateway:**
 - The gateway itself runs in Google's network, not yours.
-- To reach private destinations, such as Kong's internal load balancer in the core subnet (`10.0.1.x`), it needs a network attachment in your Shared VPC.
+- To reach private destinations, such as the ingress gateway's internal load balancer in the core subnet (`10.0.1.x`), it needs a network attachment in your Shared VPC.
 
 **Esmeralda:**
 - `google_compute_network_attachment.agent_gateway` (`agw-egress-na-<env>`) is in the governance project and references a Shared VPC subnet.
@@ -219,7 +219,7 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 
 **In Agent Gateway:**
 - The ACT's `tls_config` points at a TrustConfig.
-- When the gateway re-encrypts traffic to `legacy-dms.esmeralda.internal`, it validates Kong's certificate against these anchors (plus public roots).
+- When the gateway re-encrypts traffic to `legacy-dms.esmeralda.internal`, it validates the ingress gateway's certificate against these anchors (plus public roots).
 - Without it, the gateway would reject our self-signed chain.
 
 **Esmeralda:**
@@ -239,7 +239,7 @@ When it is created, it publishes its own **TLS-inspection root certificates** in
 
 **Esmeralda:** `esmeralda-agent-egress-gateway-<env>` in the governance project.
 
-### 3.10 Our private PKI: internal Root CA and Kong's leaf certificate
+### 3.10 Our private PKI: internal Root CA and the ingress gateway's leaf certificate
 
 **What it is:**
 - A **PKI** (public key infrastructure) is the set of CAs and certificates that establishes trust.
@@ -254,8 +254,8 @@ When it is created, it publishes its own **TLS-inspection root certificates** in
 | :--- | :--- | :--- |
 | Root CA key + self-signed cert ("Esmeralda Internal Root CA", 10 years) | `tls_private_key.internal_ca`, `tls_self_signed_cert.internal_ca` | [3-security/pki.tf](../../../infrastructure/modules/3-security/pki.tf) |
 | Public CA cert published for operators | Secret `esmeralda-internal-root-ca-<env>` (certificate only, **never** the key) | same |
-| Kong leaf for `*.esmeralda.internal` (1 year), signed by the Root CA | `tls_cert_request` + `tls_locally_signed_cert.kong_ilb_cert` | [kong/main.tf](../../../infrastructure/modules/5-workloads/services/kong/main.tf) |
-| Leaf + CA chain loaded on the internal HTTPS LB | `google_compute_region_ssl_certificate.kong_ilb_cert` → `google_compute_region_target_https_proxy` | same |
+| Ingress gateway leaf for `*.esmeralda.internal` (1 year), signed by the Root CA | `tls_cert_request` + `tls_locally_signed_cert.gateway` | [envoy/main.tf](../../../infrastructure/modules/5-workloads/services/envoy/main.tf) |
+| Leaf + CA chain loaded on the internal HTTPS LB | `google_compute_region_ssl_certificate.gateway` → `google_compute_region_target_https_proxy` | same |
 | DNS: `esmeralda.internal` and `*.esmeralda.internal` → LB IP | `google_dns_record_set` in the Shared VPC private zone | same |
 
 ### 3.11 The agent's trust bundle
@@ -301,7 +301,7 @@ sequenceDiagram
     G-->>A: Response
 ```
 
-### 4.2 Orchestrator → specialist (private, through Kong)
+### 4.2 Orchestrator → specialist (private, through the ingress gateway)
 
 ```mermaid
 sequenceDiagram
@@ -309,23 +309,23 @@ sequenceDiagram
     participant O as cx-mortgage-orchestrator
     participant G as Agent Gateway
     participant D as Cloud DNS (esmeralda.internal, via DNS peering)
-    participant K as Kong internal HTTPS LB
+    participant E as Envoy ingress gateway (internal HTTPS LB)
     participant S as ai-coe-mortgage-specialist
 
     O->>G: HTTPS to ai-coe-mortgage-specialist.esmeralda.internal
     G-->>O: TLS cert signed by the gateway inspection root
     G->>G: Registry lookup + IAP iap.egressor check
     G->>D: Resolve host (dns_peering_config)
-    D-->>G: 10.0.1.x (Kong ILB)
-    G->>K: Private IP, egress through the PSC network attachment
-    K-->>G: *.esmeralda.internal leaf signed by the internal Root CA
+    D-->>G: 10.0.1.x (ingress gateway ILB)
+    G->>E: Private IP, egress through the PSC network attachment
+    E-->>G: *.esmeralda.internal leaf signed by the internal Root CA
     Note over G: Validates with the ACT tls_config TrustConfig
-    G->>K: Forward request
-    K->>S: Route by Host header, adds a Google ID token for the upstream
+    G->>E: Forward request
+    E->>S: Route by Host header, swaps in a Google access token for the upstream
     S-->>O: A2A response (back along the same path)
 ```
 
-The MCP tool calls (`legacy-dms`, `income-verification`, `corporate-email`) follow the same path as 4.2.
+The MCP tool calls (`legacy-dms`, `income-verification`, `corporate-email`) follow the same path as 4.2; for those Cloud Run upstreams, Envoy swaps in an ID token instead of an access token.
 
 ---
 
@@ -356,8 +356,8 @@ The gateway decrypts traffic in order to inspect and authorize it, so every conn
 
 - `esmeralda.internal` is a **private** DNS zone. It exists only inside the Shared VPC, and `.internal` is reserved and will never be a public TLD.
 - **No public CA will issue a certificate for it**, and Google-managed public certificates need a publicly resolvable domain.
-- Leg 2 to Kong still has to be real, verified TLS. The gateway won't skip verification, and it shouldn't.
-- So we run **our own CA**: Terraform creates a self-signed Root CA (layer 3) and uses it to sign Kong's `*.esmeralda.internal` leaf (layer 5).
+- Leg 2 to the ingress gateway still has to be real, verified TLS. The gateway won't skip verification, and it shouldn't.
+- So we run **our own CA**: Terraform creates a self-signed Root CA (layer 3) and uses it to sign the ingress gateway's `*.esmeralda.internal` leaf (layer 5).
 
 ### 5.4 What changes compared with a "public-only" gateway
 
@@ -368,10 +368,10 @@ The gateway decrypts traffic in order to inspect and authorize it, so every conn
 | — | **Root CA** (layer 3) and a **leaf cert** on the internal LB (layer 5), with A records in the private zone |
 | — | The Agent Gateway service agent needs `compute.networkUser` and `dns.peer` on the net-host project |
 | — | Every private host is registered **exactly** in Agent Registry and granted `iap.egressor` |
-| Agents trust the AGW inspection root (always required) | Same. The bundle also carries the internal Root CA, so operators, the test VM and local tests can verify Kong with one file |
+| Agents trust the AGW inspection root (always required) | Same. The bundle also carries the internal Root CA, so operators, the test VM and local tests can verify the ingress gateway with one file |
 
 > [!CAUTION]
-> The Root CA **private key** is generated by Terraform, so it is stored in Terraform state. It is passed to layer 5 to sign the Kong leaf. Treat the state bucket as secret material. For production, consider moving the root to **Certificate Authority Service (CAS)**, where the key never leaves Google's HSMs. The TrustConfig and ACT design stays the same; only the place where the root and leaf are issued changes.
+> The Root CA **private key** is generated by Terraform, so it is stored in Terraform state. It is passed to layer 5 to sign the ingress gateway's leaf. Treat the state bucket as secret material. For production, consider moving the root to **Certificate Authority Service (CAS)**, where the key never leaves Google's HSMs. The TrustConfig and ACT design stays the same; only the place where the root and leaf are issued changes.
 
 ---
 
@@ -446,7 +446,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 | 3 | L2 networking | Shared VPC, subnets (core, proxy-only, PSC), Cloud NAT | The network the gateway attaches to |
 | 4 | L2 networking | Private DNS zone `esmeralda.internal.` | Private hostnames for the MCPs and A2A agents |
 | 5 | L3 security | Agent Identity grants + `roles/iap.egressor` per team `principalSet` | "Who" may egress |
-| 6 | L3 security | Internal Root CA (`tls_self_signed_cert`) + public cert in Secret Manager | Signs Kong's leaf; anchor for the TrustConfig |
+| 6 | L3 security | Internal Root CA (`tls_self_signed_cert`) + public cert in Secret Manager | Signs the ingress gateway's leaf; anchor for the TrustConfig |
 | 7 | L4 governance | PSC network attachment `agw-egress-na-<env>` | Gateway → Shared VPC |
 | 8 | L4 governance | Agent Gateway service agent: `compute.networkUser` + `dns.peer` on net-host | Allows the attachment and DNS peering |
 | 9 | L4 governance | TrustConfig `esmeralda-internal-trust-<env>` | Gateway trusts our Root CA on leg 2 |
@@ -458,11 +458,11 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 | 15 | L4 governance | `roles/iap.egressor` on the registry (`grant_iap_egress.sh`) | Authorizes the agents on the registered entries |
 | 16 | L4 governance | Trust bundle `agw_root_ca_bundle` + secret `agw-root-ca-cert-<env>` | What the agents must trust on leg 1 |
 | 17 | L5 workloads | MCP services on Cloud Run (internal-LB ingress) + registry entries `https://<svc>.esmeralda.internal/mcp` | Private tools, registered exactly |
-| 18 | L5 workloads | Kong on Cloud Run + internal HTTPS LB + leaf cert signed by the Root CA + A records | The TLS endpoint behind `*.esmeralda.internal` |
+| 18 | L5 workloads | Envoy ingress gateway on Cloud Run + internal HTTPS LB + leaf cert signed by the Root CA + A records | The TLS endpoint behind `*.esmeralda.internal` |
 | 19 | L5 workloads | A2A specialist engine + its registry agent card | Reusable agent, callable through the gateway |
 | 20 | L5 workloads | Engines with `agent_gateway_config` + `AGENT_GATEWAY_ROOT_CERTIFICATES` env | Binds BYOC agents to the gateway with the right trust |
 | 21 | L5 workloads | `services/iap-egress` stack (runs `grant_iap_egress.sh` again) | Grants on the entries registered in L5 |
-| 22 | — | `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist through gateway and Kong |
+| 22 | — | `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist through the Agent Gateway and the ingress gateway |
 
 ---
 
@@ -474,7 +474,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 - **ACT first, gateway second.** The ACT can't be added afterwards, and changing it replaces the gateway.
 - **The Network Security service agent is created lazily.** `google_project_service_identity.networksecurity` forces it to exist before the Model Armor grant on a fresh project.
 - **The Agent Identity API is `agentidentity.googleapis.com`.** The legacy `iamconnectors.googleapis.com` can't be enabled on new projects.
-- **The Kong leaf certificate is valid for 1 year.** Re-applying layer 5 re-issues it. The root is valid for 10 years. The TrustConfig and agent bundle only change when the root changes.
+- **The ingress gateway's leaf certificate is valid for 1 year.** An apply of layer 5 in its last 30 days re-issues it (`early_renewal_hours`); if nobody applies, it expires and every `*.esmeralda.internal` call fails TLS. The root is valid for 10 years. The TrustConfig and agent bundle only change when the root changes.
 
 ---
 
@@ -485,7 +485,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 | `SSLCertVerificationError` / `CERTIFICATE_VERIFY_FAILED: self-signed certificate in certificate chain` in the agent | Leg 1: the container doesn't trust the gateway inspection root | Check that the engine has `AGENT_GATEWAY_ROOT_CERTIFICATES`; look for `✅ Installed N Agent Gateway root certificate(s)` in the agent logs; check the trust env vars in the Dockerfile |
 | Same error, only on gRPC clients | `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` not set, or the client started before the entrypoint installed certs | Set the env var in the image; keep the entrypoint as `ENTRYPOINT` |
 | `403` from the gateway | Host not registered (exact match), or the identity lacks `roles/iap.egressor` on that entry | Register the exact URL; rerun the `services/iap-egress` stack; check the gateway logs (section 10) |
-| `5xx` / connection errors for `*.esmeralda.internal` only (Google APIs work) | Leg 2: gateway can't validate Kong's cert, can't resolve the name or can't route | Check the ACT `tls_config` TrustConfig contains the **same** root that signed the Kong leaf; DNS peering for `esmeralda.internal.`; service agent `dns.peer`/`networkUser`; A records → LB IP |
+| `5xx` / connection errors for `*.esmeralda.internal` only (Google APIs work) | Leg 2: gateway can't validate the ingress gateway's cert, can't resolve the name or can't route | Check the ACT `tls_config` TrustConfig contains the **same** root that signed the ingress gateway's leaf; DNS peering for `esmeralda.internal.`; service agent `dns.peer`/`networkUser`; A records → LB IP |
 | `Network is unreachable` | Code overrides DNS or sockets, or uses a proxy variable | Remove the override; let normal DNS and the runtime redirection work |
 | `HTTP 498` / session or token errors at start-up | Platform endpoints (aiplatform, telemetry, iamcredentials, ...) not registered | Add the missing hostname variants to the Google APIs list in layer 4 |
 

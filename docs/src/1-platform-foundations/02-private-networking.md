@@ -42,7 +42,7 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 ### ADR-02.2: Direct VPC Egress & PSC Network Attachments vs. Serverless VPC Access Connector
 * **Context:** Traditional Serverless VPC Access Connectors require dedicated `/28` subnets with underlying VM instances that incur fixed hourly costs and have scaling bottlenecks during bursty agent traffic.
 * **Decision:**
-  * **Cloud Run** services that need private egress (Kong, the `income-verification` and `corporate-email` MCP servers, and the specialist's Cloud SQL bootstrap job) use **Direct VPC Egress**: their instances get an IP straight from the `core` subnet.
+  * **Cloud Run** services that need private egress (the Envoy ingress gateway, the `income-verification` and `corporate-email` MCP servers, and the specialist's Cloud SQL bootstrap job) use **Direct VPC Egress**: their instances get an IP straight from the `core` subnet.
   * Google-managed services that can't join the VPC use a **PSC network attachment**. *What it is:* a resource in a VPC subnet that lets a managed service plug a network interface into that subnet (PSC-Interface). *In Esmeralda:* the Agent Gateway's attachment `agw-egress-na-<env>` (created in Layer 4 in the governance project) uses the dedicated `psc-interface` subnet created here.
 * **Benefit:** No connector VMs to run, and a single, auditable private entry point into the VPC for all agent egress.
 
@@ -54,7 +54,7 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 flowchart TD
     subgraph HostProject["esm-env-net-host-sfx (Shared VPC Host)"]
         subgraph VPC["Shared VPC Network (vpc-esmeralda-shared-env)"]
-            SubnetCore["Core Subnet (sb-esmeralda-core-env)<br/>10.0.1.0/24 • Private Google Access<br/>Cloud Run Direct VPC Egress, Kong ILB VIP, test VM"]
+            SubnetCore["Core Subnet (sb-esmeralda-core-env)<br/>10.0.1.0/24 • Private Google Access<br/>Cloud Run Direct VPC Egress, gateway ILB VIP, test VM"]
             SubnetProxy["Proxy-only Subnet (sb-esmeralda-proxy-env)<br/>10.9.0.0/24 • REGIONAL_MANAGED_PROXY"]
             SubnetPSC["PSC Endpoint Subnet (sb-esmeralda-psc-env)<br/>10.10.0.0/24 • reserved"]
             SubnetPSCI["PSC Interface Subnet (sb-esmeralda-psc-interface-env)<br/>10.11.0.0/24 • network attachments"]
@@ -67,7 +67,7 @@ flowchart TD
 
     subgraph ServiceProjects["Attached Service Projects"]
         P_MCP["esm-env-mcps-sfx<br/>(Cloud Run MCP Tools)"]
-        P_GW["esm-env-gateway-sfx<br/>(Kong + Internal HTTPS LB)"]
+        P_GW["esm-env-gateway-sfx<br/>(Envoy + Internal HTTPS LB)"]
         P_AICOE["esm-env-ai-coe-agents-sfx<br/>(Specialist Agent & Postgres)"]
         P_CX["esm-env-cx-agents-sfx<br/>(Orchestrator Agent)"]
         P_GOV["esm-env-governance-sfx<br/>(Agent Gateway)"]
@@ -88,8 +88,8 @@ flowchart TD
 
 | Subnet Identifier | CIDR Block | Purpose & Role | Connected Workloads |
 | :--- | :--- | :--- | :--- |
-| **`sb-esmeralda-core-<env>`** | `10.0.1.0/24` | Primary backend subnet with Private Google Access enabled. | Cloud Run Direct VPC Egress (Kong, MCP tools), the Kong internal HTTPS LB forwarding rule, test VM. |
-| **`sb-esmeralda-proxy-<env>`** | `10.9.0.0/24` | `REGIONAL_MANAGED_PROXY` (Active): the Envoy proxies Google runs for regional managed load balancers. | Kong's regional internal HTTPS load balancer (and Apigee, if selected). |
+| **`sb-esmeralda-core-<env>`** | `10.0.1.0/24` | Primary backend subnet with Private Google Access enabled. | Cloud Run Direct VPC Egress (Envoy gateway, MCP tools), the gateway's internal HTTPS LB forwarding rule, test VM. |
+| **`sb-esmeralda-proxy-<env>`** | `10.9.0.0/24` | `REGIONAL_MANAGED_PROXY` (Active): the Envoy proxies Google runs for regional managed load balancers (not the Envoy gateway on Cloud Run). | The ingress gateway's regional internal HTTPS load balancer (and Apigee, if selected). |
 | **`sb-esmeralda-psc-<env>`** | `10.10.0.0/24` | Range reserved for PSC consumer endpoints. | No endpoint is deployed in it today. |
 | **`sb-esmeralda-psc-interface-<env>`** | `10.11.0.0/24` | Subnet for PSC network attachments (Private Google Access on). | The Agent Gateway attachment `agw-egress-na-<env>` (Layer 4). |
 | **`sql-peering-range-<env>`** | `/16` (Google-allocated) | Private Services Access (PSA) range peered with `servicenetworking.googleapis.com`. | Private Cloud SQL PostgreSQL instance in `esm-<env>-ai-coe-agents-<sfx>`. |
@@ -102,10 +102,10 @@ Also created: Cloud Router `cr-esmeralda-nat-<env>` with Cloud NAT `nat-esmerald
 
 **What it is:** a Cloud DNS *private zone* answers queries only for the VPC networks it is bound to; it is invisible from the internet.
 
-**In Esmeralda:** Layer 2 creates the zone `esmeralda-private-dns-<env>` for `esmeralda.internal.`, bound to the Shared VPC. It starts empty. In Layer 5, the [Kong module](../../../infrastructure/modules/5-workloads/services/kong/main.tf) adds `esmeralda.internal` and `*.esmeralda.internal` A records pointing at Kong's internal load balancer, so every private service (`legacy-dms`, `income-verification`, `corporate-email`, `ai-coe-mortgage-specialist`, ...) is reached through Kong, which routes by `Host` header. The Agent Gateway resolves these names by DNS-peering this zone (never `googleapis.com.`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#37-agent-connectivity-template-act).
+**In Esmeralda:** Layer 2 creates the zone `esmeralda-private-dns-<env>` for `esmeralda.internal.`, bound to the Shared VPC. It starts empty. In Layer 5, the [Envoy gateway module](../../../infrastructure/modules/5-workloads/services/envoy/main.tf) adds `esmeralda.internal` and `*.esmeralda.internal` A records pointing at the gateway's internal load balancer, so every private service (`legacy-dms`, `income-verification`, `corporate-email`, `ai-coe-mortgage-specialist`, ...) is reached through Envoy, which routes by `Host` header. The Agent Gateway resolves these names by DNS-peering this zone (never `googleapis.com.`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#37-agent-connectivity-template-act).
 
 > [!NOTE]
-> `.internal` can't get a public certificate, which is why Kong's `*.esmeralda.internal` certificate is signed by the internal Root CA from [Layer 3](./03-security-iam-and-telemetry.md). See [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
+> `.internal` can't get a public certificate, which is why the ingress gateway's `*.esmeralda.internal` certificate is signed by the internal Root CA from [Layer 3](./03-security-iam-and-telemetry.md). See [TLS and certificates](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
 
 ---
 
@@ -147,9 +147,9 @@ When `enable_psc_interface = true` (the default), the same identities also get `
 # SSH into the test VM (it lives in the CX agents project) via IAP tunnel
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id) --tunnel-through-iap
 
-# Inside VM: verify internal DNS resolves to the Kong internal LB VIP
+# Inside VM: verify internal DNS resolves to the gateway's internal LB VIP
 dig +short ai-coe-mortgage-specialist.esmeralda.internal
-# Output: the private IP of Kong's internal HTTPS load balancer
+# Output: the private IP of the Envoy gateway's internal HTTPS load balancer
 ```
 
 ### Inspect the Agent Gateway Network Attachment

@@ -60,18 +60,18 @@ sequenceDiagram
     participant Client as User / test client
     participant Orch as cx-mortgage-orchestrator (CX)
     participant AGW as Agent Gateway
-    participant Kong as Kong (*.esmeralda.internal)
+    participant GW as Envoy ingress gateway (*.esmeralda.internal)
     participant Spec as ai-coe-mortgage-specialist (AI CoE)
     participant DMS as legacy-dms (Cloud Run)
 
     Client->>Orch: 1. streamQuery ("Process mortgage for Julian Sterling")
     Orch->>Orch: 2. transfer_to_agent → mortgage_tools_agent (RemoteA2aAgent)
     Orch->>AGW: 3. A2A to ai-coe-mortgage-specialist.esmeralda.internal
-    AGW->>Kong: 4. Registry + iap.egressor check, then PSC to internal LB
-    Kong->>Spec: 5. Route by Host, inject Google access token
+    AGW->>GW: 4. Registry + iap.egressor check, then PSC to internal LB
+    GW->>Spec: 5. Route by Host, inject Google access token
     Spec->>AGW: 6. MCP tools/call search_documents (legacy-dms.esmeralda.internal/mcp)
-    AGW->>Kong: 7. Same checks and path
-    Kong->>DMS: 8. Route by Host, inject Google ID token
+    AGW->>GW: 7. Same checks and path
+    GW->>DMS: 8. Route by Host, inject Google ID token
     DMS-->>Spec: 9. Documents: W2, tax return, bank statement
     Spec-->>Orch: 10. A2A task result
     Orch-->>Client: 11. Final response stream
@@ -88,7 +88,7 @@ How each hop is authorized and how TLS works on it is detailed in [Central Agent
 * **Agent Identity:** `identity_type = AGENT_IDENTITY` gives each engine a SPIFFE identity. Grants go to the team project's `principalSet://agents.global.org-<ORG>.system.id.goog/attribute.platformContainer/aiplatform/projects/<PROJECT_NUMBER>`, so CX and AI CoE agents are authorized independently.
 * **Agent Gateway binding:** `deployment_spec.agent_gateway_config.agent_to_anywhere_config.agent_gateway` points at the Layer 4 gateway. When it is set, the module does **not** attach `psc_interface_config`; all egress (Gemini, Google APIs, MCPs, A2A) goes through the Agent Gateway.
 * **Trust bundle:** the Layer 4 bundle (gateway inspection roots + internal Root CA) is injected as `AGENT_GATEWAY_ROOT_CERTIFICATES` and installed by the `esmeralda run` entrypoint at start-up (see [Central Agent Gateway §6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
-* **Calling Kong:** `SERVICE_ACCOUNT_EMAIL` is set to `sa-mcp-invoker-<env>`. The agent impersonates it to mint the ID token that Kong's Cloud Run IAM check requires.
+* **Calling the ingress gateway:** `SERVICE_ACCOUNT_EMAIL` is set to `sa-mcp-invoker-<env>`. The agent impersonates it to mint the ID token that the gateway's Cloud Run IAM check requires.
 * **Per-agent resources:** staging, artifacts and logs buckets, and a BigQuery dataset `<agent>_logs_<env>` for event analytics.
 * **Configuration:** `apps/agents/<agent>/agent.yaml` supplies the name, resources (CPU, memory, min/max instances, concurrency) and env vars. Terraform runtime values (bucket, dataset, URLs, certificates) override the YAML.
 
@@ -118,7 +118,7 @@ How each hop is authorized and how TLS works on it is detailed in [Central Agent
 
 ### End-to-End Multi-Agent Test
 ```bash
-# Specialist alone, then orchestrator → specialist through the Agent Gateway and Kong
+# Specialist alone, then orchestrator → specialist through the Agent Gateway and the ingress gateway
 make test-e2e ENV=dev
 
 # Or individually
@@ -126,7 +126,9 @@ make test-ai-coe-mortgage-specialist-remote ENV=dev
 make test-cx-mortgage-orchestrator-remote ENV=dev   # TEST_VERBOSE=1 dumps raw objects
 ```
 
-### Test the Specialist through Kong from the Test VM
+### Test the Specialist through the Ingress Gateway from the Test VM
+The script calls `https://ai-coe-mortgage-specialist.esmeralda.internal` with `--cacert /tmp/root-ca.pem` (override with `CA_CERT`), so copy the internal Root CA to the VM first, as shown in [Ingress Gateways → Verification & Runbook](./01-ingress-gateways.md).
+
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap \

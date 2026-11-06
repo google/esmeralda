@@ -1,12 +1,12 @@
 # Workloads & Catalog (Layer 5)
 
-This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads: the swappable ingress gateway (Kong by default), the composable MCP tool servers, and the two AI agents.
+This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads: the swappable ingress gateway (Envoy by default), the composable MCP tool servers, and the two AI agents.
 
 Layer 5 is deployed with `make deploy-workloads ENV=<env>` (Terragrunt `run --all` over `infrastructure/live/<env>/layer-5-workloads/`). Terragrunt dependencies give this order:
 
 1. **MCP services** (`services/{legacy-dms,income-verification,corporate-email}`) and their Agent Registry entries.
 2. **Agents**: `agents/ai-coe-mortgage-specialist`, then `agents/cx-mortgage-orchestrator`.
-3. **Kong** (`services/kong`): its routes point at the agents' engine IDs, so re-run `make deploy-gateway` whenever an agent engine is recreated.
+3. **Ingress gateway** (`services/gateway`, Envoy): its routes point at the agents' engine IDs, so re-run `make deploy-gateway` whenever an agent engine is recreated.
 4. **IAP egress** (`services/iap-egress`): grants `roles/iap.egressor` on the registry entries created above.
 5. **Test VM** (`services/test-vm`).
 
@@ -21,9 +21,9 @@ Esmeralda separates **agents that talk to customers** from **agents that are reu
 | **CX team** | User-facing **orchestrator** agents (ADK). They own the conversation and *consume* reusable agents. | `esm-<env>-cx-agents-<sfx>` | `cx-mortgage-orchestrator` |
 | **AI CoE team** | Reusable **A2A specialist** agents that any orchestrator (CX or other teams) can call. | `esm-<env>-ai-coe-agents-<sfx>` | `ai-coe-mortgage-specialist` |
 | **AppDev tools team** | MCP tool servers used by the specialists. | `esm-<env>-mcps-<sfx>` | `legacy-dms`, `income-verification`, `corporate-email` |
-| **PlatformOps** | The ingress gateway (Kong) and its internal load balancer. | `esm-<env>-gateway-<sfx>` | `kong-gateway-<env>` |
+| **PlatformOps** | The ingress gateway (Envoy) and its internal load balancer. | `esm-<env>-gateway-<sfx>` | `envoy-gateway-<env>` |
 
-The orchestrator never calls MCP tools directly: it delegates to the specialist over **A2A**, and the specialist calls the tools over **MCP**. Every agent-to-agent and agent-to-tool call leaves the agent through the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and enters the target through Kong.
+The orchestrator never calls MCP tools directly: it delegates to the specialist over **A2A**, and the specialist calls the tools over **MCP**. Every agent-to-agent and agent-to-tool call leaves the agent through the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and enters the target through the Envoy ingress gateway.
 
 ---
 
@@ -65,8 +65,8 @@ flowchart TB
 
     AGW["Central Agent Gateway<br/>(governance project, Layer 4)"]
 
-    subgraph Gateway["Gateway project (modules/5-workloads/services/kong or apigee)"]
-        Kong["Kong on Cloud Run<br/>behind internal HTTPS LB<br/>*.esmeralda.internal"]
+    subgraph Gateway["Gateway project (modules/5-workloads/services/envoy or apigee)"]
+        Envoy["Envoy on Cloud Run<br/>behind internal HTTPS LB<br/>*.esmeralda.internal"]
     end
 
     subgraph CoE["AI CoE team project (modules/5-workloads/agents/a2a-agent)"]
@@ -83,9 +83,9 @@ flowchart TB
 
     Orch ==>|"A2A: ai-coe-mortgage-specialist.esmeralda.internal"| AGW
     Spec ==>|"MCP: #60;svc#62;.esmeralda.internal/mcp"| AGW
-    AGW ==> Kong
-    Kong ==>|Host-based route + Google ID token| Spec
-    Kong ==>|Host-based route + Google ID token| MCPServers
+    AGW ==> Envoy
+    Envoy ==>|Host-based route + Google access token| Spec
+    Envoy ==>|Host-based route + Google ID token| MCPServers
 ```
 
 ---
@@ -93,7 +93,7 @@ flowchart TB
 ## Workloads Catalog Detailed Guides
 
 1. **[Swappable Ingress Gateways](./01-ingress-gateways.md)**
-   * Kong Gateway on Cloud Run behind an internal HTTPS load balancer (default in dev and prd)
+   * Envoy on Cloud Run behind an internal HTTPS load balancer (default in dev and prd)
    * Apigee X (alternative module, selected with `gateway_product`)
 2. **[Composable MCP Tool Servers](./02-mcp-tool-servers.md)**
    * Corporate Email Server (`apps/services/corporate-email/`)

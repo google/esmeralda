@@ -53,7 +53,7 @@ flowchart TD
     AGW["Central Agent Gateway<br/>(registry allowlist + iap.egressor)"]
 
     subgraph Gateway["Gateway project"]
-        ILB["Kong internal HTTPS LB<br/>*.esmeralda.internal"]
+        ILB["Envoy ingress gateway (internal HTTPS LB)<br/>*.esmeralda.internal"]
     end
 
     subgraph Tools["esm-#60;env#62;-mcps-#60;sfx#62; (Cloud Run)"]
@@ -69,7 +69,7 @@ flowchart TD
     A2AAgent -->|"1. https://#60;svc#62;.esmeralda.internal/mcp + ID token"| AGW
     AGW -->|2. PSC network attachment| ILB
     TestVM -->|1. Direct, inside the Shared VPC| ILB
-    ILB -->|"3. Kong routes by Host, injects its own ID token"| DMS & Income & Email
+    ILB -->|"3. Envoy routes by Host, injects its own ID token"| DMS & Income & Email
     Registry -.->|checked by| AGW
 ```
 
@@ -90,11 +90,11 @@ Images are built with `make build-service-<name>` (or `make build-services`) thr
 ---
 
 ### 2. Cloud Run Service Configuration (`modules/5-workloads/services/<tool>/`)
-* **Private Network Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` restricts access to internal load balancers. In practice every call arrives through Kong.
+* **Private Network Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` restricts access to internal load balancers. In practice every call arrives through the Envoy ingress gateway.
 * **Direct VPC Egress:** `vpc_access { egress = "ALL_TRAFFIC" }` on the Shared VPC core subnet (`sb-esmeralda-core-<env>`) for private backend access.
-* **Custom Audiences:** each service accepts ID tokens for its `*.esmeralda.internal` hostname (and the legacy `*.internal.gateway` names) in addition to its default `run.app` URI. Kong uses the `run.app` URI as the audience when it injects its token.
-* **IAM Least Privilege:** only the identities in `invoker_service_accounts` hold `roles/run.invoker`: `sa-esmeralda-kong-<env>` (the normal path), `sa-esmeralda-test-vm-<env>` and `sa-cx-mortgage-orch-<env>`.
-* **End-to-end identity:** the specialist runs with Agent Identity and mints an ID token by impersonating `sa-mcp-invoker-<env>` (see [Layer 3 security](../1-platform-foundations/03-security-iam-and-telemetry.md)). That token authorizes the call **to Kong**; Kong then authorizes the call **to the MCP service** with its own service account.
+* **Custom Audiences:** each service accepts ID tokens for its `*.esmeralda.internal` hostname (and the legacy `*.internal.gateway` names) in addition to its default `run.app` URI. Envoy uses the `run.app` URI as the audience when it injects its token.
+* **IAM Least Privilege:** only the identities in `invoker_service_accounts` hold `roles/run.invoker`: `sa-esmeralda-gateway-<env>` (the normal path), `sa-esmeralda-test-vm-<env>` and `sa-cx-mortgage-orch-<env>`.
+* **End-to-end identity:** the specialist runs with Agent Identity and mints an ID token by impersonating `sa-mcp-invoker-<env>` (see [Layer 3 security](../1-platform-foundations/03-security-iam-and-telemetry.md)). That token authorizes the call **to the ingress gateway**; Envoy then authorizes the call **to the MCP service** with its own service account.
 
 > [!NOTE]
 > The Cloud Run services don't set a runtime `service_account`, so they run as the MCPs project's default compute service account. Layer 3 creates `sa-esmeralda-mcps-<env>`, but the service modules don't attach it yet.
@@ -131,13 +131,13 @@ Each module also runs `apps/services/register_mcp.py`, which only records the Cl
 ## Verification & Runbook
 
 ### Test an MCP Server via the Test VM
-The test VM calls Kong directly inside the Shared VPC (no Agent Gateway on this path). Copy the internal Root CA to the VM first, as shown in [Ingress Gateways → Verification & Runbook](./01-ingress-gateways.md).
+The test VM calls the ingress gateway directly inside the Shared VPC (no Agent Gateway on this path). Copy the internal Root CA to the VM first, as shown in [Ingress Gateways → Verification & Runbook](./01-ingress-gateways.md).
 
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap
 
-# Inside VM: call Legacy DMS through Kong via FastMCP JSON-RPC
+# Inside VM: call Legacy DMS through Envoy via FastMCP JSON-RPC
 HOST=legacy-dms.esmeralda.internal
 TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://${HOST}")
@@ -149,4 +149,4 @@ curl -s --cacert /tmp/root-ca.pem -X POST https://${HOST}/mcp \
     -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "search_documents", "arguments": {"applicant_last_name": "Sterling", "document_type": "tax_return"}}, "id": 1}' | jq .
 ```
 
-`scripts/test_mcp_on_vm.sh` wraps the same call (`--service`, `--method`, `--params`).
+`scripts/test_mcp_on_vm.sh` wraps the same call (`--service`, `--method`, `--params`) and reads the internal Root CA from `/tmp/root-ca.pem` (override with `CA_CERT`).

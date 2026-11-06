@@ -11,7 +11,7 @@ flowchart TD
     subgraph Spokes["Workload Spoke Projects"]
         CX["esm-ENV-cx-agents<br/>(CX orchestrator Reasoning Engine)"]
         AICOE["esm-ENV-ai-coe-agents<br/>(AI CoE A2A specialist Reasoning Engine)"]
-        GW["esm-ENV-gateway<br/>(Kong / Ingress Gateway)"]
+        GW["esm-ENV-gateway<br/>(Envoy Ingress Gateway)"]
         MCP["esm-ENV-mcps<br/>(Cloud Run MCP Tools)"]
         NET["esm-ENV-net-host<br/>(Shared VPC)"]
     end
@@ -90,7 +90,7 @@ flowchart TD
 | **`genai_telemetry_events`** | Terraform | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Unified JSON Event Envelope storing `timestamp`, `event_type`, `session_id`, `user_id`, `agent_id`, `execution_path`, and `payload` (`JSON`). |
 | **`cloudaudit_googleapis_com_activity`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Cloud Audit Activity logs for IAM, Secret Manager, and Reasoning Engine operations. |
 | **`aiplatform_googleapis_com_reasoning_engine_stdout`** | The sinks, on first log | Partitioned `DAY` | Reasoning Engine stdout from both agent projects, including the agents' structured `genai_token_consumption` and `mcp_tool_execution` events. |
-| **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (Kong and the MCP servers). |
+| **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (the Envoy ingress gateway and the MCP servers). |
 
 ### Analytical Views
 
@@ -152,7 +152,7 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
   6. **MCP Tool Execution Frequency per Microservice** (grouped by `metric.label.tool_name`)
 
 ### 2. `[Esmeralda <env>] Agent Platform - Golden Signals & Health`
-* **Widgets**: Cloud Run latencies (P50/P95/P99), Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, Ingress Gateway synthetic uptime check status.
+* **Widgets**: Cloud Run latencies (P50/P95/P99), Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, Ingress Gateway requests by response class (`envoy-gateway-<env>` request rate per response code class).
 
 ---
 
@@ -168,7 +168,9 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 | :--- | :--- | :--- |
 | **Runaway Agent Loop - Token Budget Exceeded** | P99 of `genai/realtime_token_consumption` > `runaway_loop_token_threshold` (50,000 in dev) for 60s | Email + Pub/Sub |
 | **Reasoning Engine High Query Rate / 429 Quota** | Reasoning Engine `request_count` rate > 80 for 3 min | Email + Pub/Sub |
-| **High P95 Latency (>10s)** | Cloud Run `request_latencies` P95 > 10,000 ms for 5 min | Email |
+| **High P95 Latency (>10s)** | Cloud Run `request_latencies` P95 > 10,000 ms for 5 min, ingress gateway excluded (its SSE streams stay open for minutes) | Email |
+| **Ingress Gateway 5xx Ratio (>N%)** | 5xx share of the `envoy-gateway-<env>` Cloud Run requests (`run.googleapis.com/request_count`) over the last 5 minutes > N%. N is `monitoring_config.error_rate_threshold_pct` in `env.yaml` (2 in dev, 0.5 in prd). Silent without traffic, and blind to failures before Cloud Run (LB, certificate, DNS); a private uptime check is a follow-up | Email |
+| **Ingress Gateway Token Fetch Failures** | Any `Failed to fetch token` line from `envoy-gateway-<env>` in 5 min (log-based metric `gateway/token_fetch_failures`). Envoy fails open, so these requests went upstream with the caller's own token | Email |
 | **Token Rate-of-Change Anomaly (>300% Spike)** | P99 of `genai/realtime_token_consumption` > 500,000 over 5 min | Email + Pub/Sub |
 | **SecOps - Privilege Escalation & IAM Modification Alert** | Any `security/iam_privilege_changes` event | Email + Pub/Sub |
 
@@ -181,7 +183,7 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 
 **In Esmeralda:** a custom monitored service `esmeralda-agent-platform-<env>` carries two SLOs, both on a 30-day rolling window:
 * **Availability SLO**: 99.5% success rate (`platform-availability-995`).
-* **Latency SLO**: 95% of Cloud Run requests served under 8,000 ms (`reasoning-latency-95-8s`).
+* **Latency SLO**: 95% of Cloud Run requests served under 8,000 ms (`reasoning-latency-95-8s`), ingress gateway excluded (SSE streams).
 
 ### Cloud Data Loss Prevention (DLP) PII Template
 
