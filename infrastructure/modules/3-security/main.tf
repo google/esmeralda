@@ -402,14 +402,16 @@ resource "google_service_account" "test_vm_sa" {
   project      = var.cx_agents_project_id
 }
 
-# Dedicated Service Account for Kong API Gateway
-resource "google_service_account" "kong_sa" {
-  account_id   = "sa-esmeralda-kong-${var.environment}"
-  display_name = "Kong Gateway Service Account"
+# Dedicated Service Account for the ingress gateway (Envoy). Upstreams see this identity: Layer 5 makes it
+# an invoker of each MCP service and grants it aiplatform.user on the agent projects. The roles below
+# apply to the gateway project itself.
+resource "google_service_account" "gateway_sa" {
+  account_id   = "sa-esmeralda-gateway-${var.environment}"
+  display_name = "Ingress Gateway (Envoy) Service Account"
   project      = var.gateway_project_id
 }
 
-resource "google_project_iam_member" "kong_roles" {
+resource "google_project_iam_member" "gateway_roles" {
   for_each = toset([
     "roles/aiplatform.user",
     "roles/run.invoker",
@@ -419,7 +421,7 @@ resource "google_project_iam_member" "kong_roles" {
   ])
   project = var.gateway_project_id
   role    = each.key
-  member  = "serviceAccount:${google_service_account.kong_sa.email}"
+  member  = "serviceAccount:${google_service_account.gateway_sa.email}"
 }
 
 # Standard VM logging and Vertex user permissions in local project

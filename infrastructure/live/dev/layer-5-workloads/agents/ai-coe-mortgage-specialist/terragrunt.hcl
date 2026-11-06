@@ -51,7 +51,7 @@ inputs = {
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
     dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-    dependency.security.outputs.kong_sa_email
+    dependency.security.outputs.gateway_sa_email
   ]
 
   # BYOC image from the shared layer-0 CI/CD project (resolved to a digest by the module)

@@ -78,8 +78,8 @@ check_engine() { # label engine_name image
 check_cloud_run "corporate-email-${ENV_NAME}"     "${MCPS_PROJECT}" corporate-email
 check_cloud_run "income-verification-${ENV_NAME}" "${MCPS_PROJECT}" income-verification-api
 check_cloud_run "legacy-dms-${ENV_NAME}"          "${MCPS_PROJECT}" legacy-dms
-if [ "${GATEWAY_PRODUCT}" = "kong" ]; then
-  check_cloud_run "kong-gateway-${ENV_NAME}" "${GATEWAY_PROJECT}" kong-gateway
+if [ "${GATEWAY_PRODUCT}" = "envoy" ]; then
+  check_cloud_run "envoy-gateway-${ENV_NAME}" "${GATEWAY_PROJECT}" envoy-gateway
 fi
 check_engine "cx-mortgage-orchestrator"   "${ORCH_ENGINE}" cx-mortgage-orchestrator
 check_engine "ai-coe-mortgage-specialist" "${SPEC_ENGINE}" ai-coe-mortgage-specialist

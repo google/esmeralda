@@ -116,3 +116,9 @@ variable "agent_gateway_root_certificates" {
   type        = string
   default     = ""
 }
+
+variable "invoker_service_accounts" {
+  description = "Service accounts allowed to query this agent (roles/aiplatform.user on the project), e.g. the ingress gateway's"
+  type        = list(string)
+  default     = []
+}

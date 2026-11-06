@@ -37,9 +37,9 @@ output "test_vm_sa_email" {
   value       = google_service_account.test_vm_sa.email
 }
 
-output "kong_sa_email" {
-  description = "The email address of the Kong Gateway service account"
-  value       = google_service_account.kong_sa.email
+output "gateway_sa_email" {
+  description = "The email address of the ingress gateway (Envoy) service account"
+  value       = google_service_account.gateway_sa.email
 }
 
 output "telemetry_dataset_id" {
@@ -62,7 +62,7 @@ output "internal_ca_cert_pem" {
 }
 
 output "internal_ca_key_pem" {
-  description = "Private key of the internal Root CA, used by layer 5 (Kong) to sign its *.esmeralda.internal leaf."
+  description = "Private key of the internal Root CA, used by layer 5 (the gateway) to sign its *.esmeralda.internal leaf."
   value       = tls_private_key.internal_ca.private_key_pem
   sensitive   = true
 }

@@ -32,7 +32,7 @@ TARGET_TAG=""
 ACTION="promote"
 
 IMAGES=(
-  "kong-gateway"
+  "envoy-gateway"
   "legacy-dms"
   "income-verification-api"
   "corporate-email"

@@ -40,6 +40,9 @@ inputs = {
   agent_service_account = dependency.security.outputs.cx_mortgage_orchestrator_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
 
+  # The ingress gateway queries this engine for cx-mortgage-orchestrator.esmeralda.internal
+  invoker_service_accounts = [dependency.security.outputs.gateway_sa_email]
+
   # Agent Gateway binding + the CA bundle the env-neutral image installs at start-up
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle

@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------
 # Owned by the security layer so both consumers depend on it explicitly:
 #   - layer 4 governance: Agent Gateway TrustConfig + agent CA bundle
-#   - layer 5 workloads:  Kong signs its *.esmeralda.internal ILB leaf with it
+#   - layer 5 workloads:  the gateway signs its *.esmeralda.internal ILB leaf with it
 # ====================================================================
 
 resource "tls_private_key" "internal_ca" {

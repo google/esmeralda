@@ -1,6 +1,6 @@
-# infrastructure/live/prd/layer-5-workloads/services/kong/terragrunt.hcl
-# Layer 5 (last workload): Kong API gateway behind the internal HTTPS LB for *.esmeralda.internal.
-# Applied after the MCP services and agents, so routes get the real engine IDs on the first apply.
+# infrastructure/live/dev/layer-5-workloads/services/gateway/terragrunt.hcl
+# Layer 5 (last workload): the ingress gateway (Envoy, see gateway_product) behind the internal HTTPS LB
+# for *.esmeralda.internal. Applied after the MCP services and agents, so routes get the real engine IDs.
 # Mocks below only serve `validate`/`plan` of a not-yet-deployed env; `apply` requires real outputs.
 include "root" {
   path = find_in_parent_folders()
@@ -84,7 +84,8 @@ inputs = {
   subnet_id           = dependency.networking.outputs.subnet_id
   net_host_project_id = dependency.projects.outputs.net_host_project_id
   dns_zone_name       = dependency.networking.outputs.dns_zone_name
-  kong_image          = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/kong-gateway:${local.env_vars.locals.container_tag}"
+  gateway_image       = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/envoy-gateway:${local.env_vars.locals.container_tag}"
+  gateway_sa_email    = dependency.security.outputs.gateway_sa_email
 
   # *.esmeralda.internal leaf is signed by the layer-3 internal Root CA
   internal_ca_cert_pem = dependency.security.outputs.internal_ca_cert_pem
@@ -108,8 +109,11 @@ inputs = {
     cx-mortgage-orchestrator = {
       logical_name = "cx-mortgage-orchestrator"
       engine_id    = dependency.cx_mortgage_orchestrator.outputs.engine_id
-      endpoint_url = "${dependency.cx_mortgage_orchestrator.outputs.endpoint_url}:streamQuery?alt=sse"
+      endpoint_url = dependency.cx_mortgage_orchestrator.outputs.endpoint_url
       audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
+      # Same path `esmeralda serve` exposes locally; Agent Runtime serves it as :streamQuery over SSE.
+      path_map  = { "/api/stream_reasoning_engine" = ":streamQuery?alt=sse" }
+      streaming = true
     }
     # MCP Servers
     corporate-email = {
