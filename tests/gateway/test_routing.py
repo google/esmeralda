@@ -87,6 +87,23 @@ def test_host_with_port_routes_like_bare_host(gateway, mcp_upstream):
     assert mcp_upstream.last.path == "/mcp"
 
 
+def test_access_log_records_what_the_caller_sent(gateway, specialist_upstream):
+    """The path and host the caller asked for (not the upstream rewrite), even when it forges them."""
+    traceparent = "00-6e0c63257de34c926f9efcd03899b72d-0f1c2b3a4d5e6f70-01"
+    forged = {"x-envoy-original-path": "/forged", "x-envoy-original-host": "forged.example"}
+
+    gateway.get(SPECIALIST_HOST, "/v1/card", headers={"traceparent": traceparent, **forged})
+
+    entry = gateway.envoy.access_log_entry(traceparent)
+    assert (entry["path"], entry["authority"]) == ("/v1/card", SPECIALIST_HOST)
+    assert entry["upstream_cluster"] == "ai-coe-mortgage-specialist"
+    assert specialist_upstream.last.headers.get("x-envoy-original-path") != "/forged"
+
+
+def test_responses_do_not_reveal_upstream_timing(gateway, mcp_upstream):
+    assert "x-envoy-upstream-service-time" not in gateway.post(MCP_HOST, "/mcp", json={}).headers
+
+
 def test_dot_segments_cannot_leave_the_a2a_base_path(gateway, specialist_upstream):
     """The gateway's access token only goes below the engine's /a2a path, whatever the caller sends."""
     assert gateway.raw("GET", SPECIALIST_HOST, "/../../456:streamQuery").status == 200

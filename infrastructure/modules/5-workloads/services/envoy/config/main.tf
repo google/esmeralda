@@ -155,7 +155,7 @@ locals {
         json_format = {
           severity         = "INFO"
           method           = "%REQ(:METHOD)%"
-          authority        = "%REQ(:AUTHORITY)%"
+          authority        = "%REQ(X-ENVOY-ORIGINAL-HOST?:AUTHORITY)%"
           path             = "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
           status           = "%RESPONSE_CODE%"
           response_flags   = "%RESPONSE_FLAGS%"
@@ -204,8 +204,10 @@ locals {
   router = {
     name = "envoy.filters.http.router"
     typed_config = {
-      "@type"                = "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
-      suppress_envoy_headers = true
+      "@type" = "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
+      # false: rewrites keep the caller's host and path in x-envoy-original-host/-path, which the access
+      # log reads (caller-sent copies are dropped in route_config).
+      suppress_envoy_headers = false
     }
   }
 
@@ -233,8 +235,15 @@ locals {
               # Close streams that stay idle for longer than this.
               stream_idle_timeout = var.stream_idle_timeout
               access_log          = [local.access_log]
-              route_config        = { name = "gateway", virtual_hosts = local.virtual_hosts }
-              http_filters        = [local.rate_limit, local.gcp_authn, local.router]
+              route_config = {
+                name          = "gateway"
+                virtual_hosts = local.virtual_hosts
+                # Only Envoy writes these: callers can't forge what the access log records, and callers
+                # don't see how long the upstream took.
+                request_headers_to_remove  = ["x-envoy-original-path", "x-envoy-original-host"]
+                response_headers_to_remove = ["x-envoy-upstream-service-time"]
+              }
+              http_filters = [local.rate_limit, local.gcp_authn, local.router]
             }
           }]
         }]

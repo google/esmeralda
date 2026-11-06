@@ -159,7 +159,11 @@ class EnvoyProcess:
     def __enter__(self) -> EnvoyProcess:
         self._log = self.log_file.open("w")
         self._proc = subprocess.Popen(
-            [tool("envoy"), "-c", str(self.config.path), "--disable-hot-restart", "--concurrency", "1"],
+            [
+                tool("envoy"),
+                *("-c", str(self.config.path), "--disable-hot-restart", "--concurrency", "1"),
+                *("--file-flush-interval-msec", "100"),  # access-log lines reach the file within 0.1 s
+            ],
             stdout=self._log,
             stderr=subprocess.STDOUT,
         )
@@ -198,6 +202,17 @@ class EnvoyProcess:
             if stat == name:
                 return int(value)
         return 0
+
+    def access_log_entry(self, traceparent: str, timeout_s: float = 5) -> dict:
+        """The JSON access-log line of the request that carried ``traceparent`` (waits for the flush)."""
+        deadline = time.monotonic() + timeout_s
+        while True:
+            for line in self.log_file.read_text().splitlines():
+                if line.startswith("{") and traceparent in line:
+                    return json.loads(line)
+            if time.monotonic() > deadline:
+                raise AssertionError(f"no access-log line with traceparent {traceparent}")
+            time.sleep(0.1)
 
 
 @dataclasses.dataclass
