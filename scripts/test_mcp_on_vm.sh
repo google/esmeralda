@@ -19,13 +19,17 @@ SERVICE="legacy-dms"
 METHOD="tools/list"
 PARAMS=""
 VERBOSE=0
+CA_CERT="${CA_CERT:-/tmp/root-ca.pem}"
 
 usage() {
   cat <<EOF
 Usage: $0 [OPTIONS]
 
-Tests FastMCP tool discovery or tool calling over Private DNS (via Kong Gateway ILB).
+Tests FastMCP tool discovery or tool calling over Private DNS (via the ingress gateway's internal HTTPS LB).
 Intended to be executed on a VM inside the shared VPC (e.g. test-vm-dev).
+
+Environment:
+  CA_CERT                Internal Root CA certificate that signs *.esmeralda.internal (default: /tmp/root-ca.pem)
 
 Options:
   -s, --service <name>   Service hostname prefix (default: legacy-dms)
@@ -74,8 +78,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 HOSTNAME="${SERVICE}.esmeralda.internal"
-TARGET_URL="http://${HOSTNAME}/mcp"
-AUDIENCE="http://${HOSTNAME}"
+TARGET_URL="https://${HOSTNAME}/mcp"
+AUDIENCE="https://${HOSTNAME}"
+
+if [ ! -r "${CA_CERT}" ] || [ ! -s "${CA_CERT}" ]; then
+  echo "❌ Error: internal Root CA certificate missing or empty at ${CA_CERT} (the gateway's internal LB only serves HTTPS)."
+  echo "Copy secret esmeralda-internal-root-ca-<env> from the gateway project to that path, or set CA_CERT."
+  exit 1
+fi
 
 if [ "$VERBOSE" -eq 1 ]; then
   echo "🔌 Fetching OIDC Identity Token for audience: ${AUDIENCE} ..."
@@ -101,7 +111,7 @@ if [ "$VERBOSE" -eq 1 ]; then
   echo "----------------------------------------"
 fi
 
-RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST \
+RESPONSE=$(curl -sS --cacert "${CA_CERT}" -w "\nHTTP_STATUS:%{http_code}\n" -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
