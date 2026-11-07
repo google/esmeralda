@@ -93,3 +93,9 @@ output "iap_egress_members" {
   value       = module.agent_gateway.iap_egress_members
   description = "IAM members granted roles/iap.egressor on the central Agent Registry (reused by layer 5 iap-egress)."
 }
+
+output "semantic_governance_manifest" {
+  value       = module.semantic_governance.manifest
+  description = "Compiled GEAP Semantic Governance (Natural Language Constraints) and Unified Access Policy (UAP) manifest for the Central Agent Gateway."
+}
+

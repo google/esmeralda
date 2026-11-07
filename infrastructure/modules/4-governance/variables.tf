@@ -97,3 +97,34 @@ variable "internal_root_ca_pem" {
   description = "PEM of the internal Root CA (*.esmeralda.internal), owned by layer 3 security"
 }
 
+variable "enable_semantic_governance" {
+  type        = bool
+  default     = false
+  description = "Toggle to publish the compiled GEAP Semantic Governance (Natural Language Constraints) and Unified Access Policy (UAP) bundle to Secret Manager in the governance project"
+}
+
+variable "semantic_governance_enforcement_mode" {
+  type        = string
+  default     = "ENFORCE"
+  description = "Default GEAP Semantic Governance enforcement mode across Natural Language Constraints (ENFORCE or DRY_RUN)"
+
+  validation {
+    condition     = contains(["ENFORCE", "DRY_RUN"], var.semantic_governance_enforcement_mode)
+    error_message = "semantic_governance_enforcement_mode must be either \"ENFORCE\" or \"DRY_RUN\"."
+  }
+}
+
+variable "custom_semantic_governance_policies" {
+  type = map(object({
+    target_mcp_server            = string
+    tools                        = list(string)
+    principal                    = string
+    enforcement_mode             = optional(string)
+    natural_language_constraints = list(string)
+  }))
+  default     = {}
+  nullable    = false
+  description = "Optional custom Natural Language Constraint (NLC) policies merged with the default mortgage underwriting policies"
+}
+
+
