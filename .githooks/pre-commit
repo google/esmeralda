@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Blocks a commit whose staged changes add secrets, key material, state/tfvars/.env files, or text
+# matching your local patterns file (see scripts/sensitive_scan.py). This repository is public.
+# Installed by `make bootstrap` / `make hooks` (git config core.hooksPath .githooks).
+# Bypass once with SKIP_SENSITIVE_SCAN=1 git commit ...
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 scripts/sensitive_scan.py
+fi
+exec uv run --no-project -q python scripts/sensitive_scan.py

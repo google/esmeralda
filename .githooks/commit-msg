@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Applies the sensitive-content rules (built-in + local patterns) to the commit message.
+# Installed by `make bootstrap` / `make hooks`. Bypass once with SKIP_SENSITIVE_SCAN=1.
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 scripts/sensitive_scan.py --message-file "$1"
+fi
+exec uv run --no-project -q python scripts/sensitive_scan.py --message-file "$1"
