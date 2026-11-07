@@ -21,6 +21,8 @@
   and in the container. ``--local`` applies ``local_env`` from ``agent.yaml``.
 * ``esmeralda query [options] MESSAGE``: queries an agent (ADK or A2A) in-process, on a running
   server (``--url``) or on Agent Runtime (``--engine``), and exits non-zero if the run failed.
+* ``esmeralda mcp [--repo PATH]``: a read-only MCP server (stdio) to operate the checkout: status,
+  plans, agent queries, gateway probes and agent logs (see ``esmeralda.ops``).
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ import sys
 
 from esmeralda import certs
 
-USAGE = "usage: esmeralda {run,serve,query} ...  (esmeralda run -- <command> [args...])"
+USAGE = "usage: esmeralda {run,serve,query,mcp} ...  (esmeralda run -- <command> [args...])"
 
 
 def _run(command: list[str]) -> int:
@@ -136,6 +138,9 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument("--timeout", type=float, default=300.0, help="HTTP timeout in seconds (default: 300)")
     query.add_argument("--fail-on-tool-error", action="store_true", help="exit non-zero if a tool call errored")
     query.add_argument("--verbose", "-v", action="store_true", help="print raw events")
+
+    mcp = sub.add_parser("mcp", help="read-only MCP server (stdio) to operate this checkout")
+    mcp.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO, else the checkout containing cwd)")
     return parser
 
 
@@ -149,6 +154,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run(args.command)
     if args.cmd == "serve":
         return _serve(args)
+    if args.cmd == "mcp":
+        from esmeralda.ops import server
+
+        return server.main(args.repo)
     return _query(args)
 
 
