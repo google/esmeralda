@@ -53,7 +53,7 @@ flowchart TD
     AGW["Central Agent Gateway<br/>(registry allowlist + iap.egressor)"]
 
     subgraph Gateway["Gateway project"]
-        ILB["Kong internal HTTPS LB<br/>*.esmeralda.internal"]
+        ILB["Entry point internal HTTPS LB → Kong<br/>*.esmeralda.internal"]
     end
 
     subgraph Tools["esm-#60;env#62;-mcps-#60;sfx#62; (Cloud Run)"]

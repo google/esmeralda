@@ -9,10 +9,6 @@ terraform {
       source  = "hashicorp/google-beta"
       version = ">= 5.0"
     }
-    tls = {
-      source  = "hashicorp/tls"
-      version = ">= 4.0"
-    }
   }
 }
 
@@ -194,10 +190,14 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
 }
 
 # ====================================================================
-# Internal HTTP Load Balancer & Cloud DNS Integration for esmeralda.internal
+# Gateway contract: a regional INTERNAL_MANAGED backend service
+# --------------------------------------------------------------------
+# Kong does not own a load balancer, certificate or DNS record. The layer-5 `entrypoint` unit
+# owns the URL map, HTTPS proxy and forwarding rule on the layer-2 reserved IP, and routes
+# hosts to this backend service (output `backend_service_id`).
 # ====================================================================
 
-# 1. Serverless NEG fronting the Kong Gateway Cloud Run service
+# Serverless NEG fronting the Kong Gateway Cloud Run service
 resource "google_compute_region_network_endpoint_group" "kong_neg" {
   name                  = "neg-kong-${var.environment}"
   project               = var.project_id
@@ -208,7 +208,7 @@ resource "google_compute_region_network_endpoint_group" "kong_neg" {
   }
 }
 
-# 2. Regional Internal Backend Service
+# Regional internal backend service (the gateway contract output)
 resource "google_compute_region_backend_service" "kong_backend" {
   name                  = "backend-kong-${var.environment}"
   project               = var.project_id
@@ -219,106 +219,4 @@ resource "google_compute_region_backend_service" "kong_backend" {
   backend {
     group = google_compute_region_network_endpoint_group.kong_neg.id
   }
-}
-
-# 3. Regional Internal URL Map
-resource "google_compute_region_url_map" "kong_url_map" {
-  name            = "ilb-kong-url-map-${var.environment}"
-  project         = var.project_id
-  region          = var.region
-  default_service = google_compute_region_backend_service.kong_backend.id
-}
-
-# 4. Wildcard TLS leaf for *.esmeralda.internal, signed by the internal Root CA owned by
-#    layer 3 security (the same CA the Agent Gateway TrustConfig and the agents trust).
-resource "tls_private_key" "kong_ilb_key" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-resource "tls_cert_request" "kong_ilb_csr" {
-  private_key_pem = tls_private_key.kong_ilb_key.private_key_pem
-
-  subject {
-    common_name  = "*.esmeralda.internal"
-    organization = "Esmeralda Dev"
-  }
-
-  dns_names = [
-    "*.esmeralda.internal",
-    "esmeralda.internal",
-    "legacy-dms.esmeralda.internal",
-    "income-verification.esmeralda.internal",
-    "corporate-email.esmeralda.internal",
-    "ai-coe-mortgage-specialist.esmeralda.internal",
-    "cx-mortgage-orchestrator.esmeralda.internal",
-  ]
-}
-
-resource "tls_locally_signed_cert" "kong_ilb_cert" {
-  cert_request_pem   = tls_cert_request.kong_ilb_csr.cert_request_pem
-  ca_private_key_pem = var.internal_ca_key_pem
-  ca_cert_pem        = var.internal_ca_cert_pem
-
-  validity_period_hours = 8760 # 1 year (complies with Chromium <= 398 days check)
-
-  allowed_uses = [
-    "key_encipherment",
-    "digital_signature",
-    "server_auth",
-  ]
-}
-
-resource "google_compute_region_ssl_certificate" "kong_ilb_cert" {
-  name_prefix = "cert-kong-ilb-"
-  project     = var.project_id
-  region      = var.region
-  private_key = tls_private_key.kong_ilb_key.private_key_pem
-  certificate = "${tls_locally_signed_cert.kong_ilb_cert.cert_pem}${var.internal_ca_cert_pem}"
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "google_compute_region_target_https_proxy" "kong_https_proxy" {
-  name             = "ilb-kong-https-proxy-${var.environment}"
-  project          = var.project_id
-  region           = var.region
-  url_map          = google_compute_region_url_map.kong_url_map.id
-  ssl_certificates = [google_compute_region_ssl_certificate.kong_ilb_cert.id]
-}
-
-# Regional Internal Forwarding Rule for HTTPS (port 443)
-resource "google_compute_forwarding_rule" "kong_forwarding_rule" {
-  name                  = "ilb-kong-rule-${var.environment}"
-  project               = var.project_id
-  region                = var.region
-  ip_protocol           = "TCP"
-  port_range            = "443"
-  load_balancing_scheme = "INTERNAL_MANAGED"
-  network               = var.vpc_id
-  subnetwork            = var.subnet_id
-  target                = google_compute_region_target_https_proxy.kong_https_proxy.id
-}
-
-# 5. Cloud DNS A Records in Shared VPC Private Zone mapping esmeralda.internal to ILB VIP
-resource "google_dns_record_set" "esmeralda_internal_apex" {
-  count        = var.net_host_project_id != "" && var.dns_zone_name != "" ? 1 : 0
-  project      = var.net_host_project_id
-  managed_zone = var.dns_zone_name
-  name         = "esmeralda.internal."
-  type         = "A"
-  ttl          = 300
-  rrdatas      = [google_compute_forwarding_rule.kong_forwarding_rule.ip_address]
-}
-
-resource "google_dns_record_set" "esmeralda_internal_wildcard" {
-  count        = var.net_host_project_id != "" && var.dns_zone_name != "" ? 1 : 0
-  project      = var.net_host_project_id
-  managed_zone = var.dns_zone_name
-  name         = "*.esmeralda.internal."
-  type         = "A"
-  ttl          = 300
-  rrdatas      = [google_compute_forwarding_rule.kong_forwarding_rule.ip_address]
 }

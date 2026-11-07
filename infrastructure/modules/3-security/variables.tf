@@ -117,4 +117,8 @@ variable "governance_secrets_service_agent" {
   type        = string
 }
 
-
+variable "internal_domain" {
+  description = "Private domain served by the entry point, without trailing dot; the entry point certificate covers it and *.<internal_domain>"
+  type        = string
+  default     = "esmeralda.internal"
+}

@@ -10,12 +10,12 @@ variable "region" {
 }
 
 variable "vpc_id" {
-  description = "The self-link of the central Shared VPC network"
+  description = "The self-link of the central Shared VPC network (Kong's Direct VPC egress)"
   type        = string
 }
 
 variable "subnet_id" {
-  description = "The self-link of the gateway/backend subnetwork"
+  description = "The self-link of the subnetwork used for Kong's Direct VPC egress"
   type        = string
 }
 
@@ -26,8 +26,16 @@ variable "agent_endpoints" {
     engine_id    = string
     endpoint_url = string
     audience     = string
+    # How `make test-gateway` checks the route: "mcp" (MCP initialize, POST /mcp),
+    # "a2a" (agent card, GET /v1/card) or "none" (TLS + routing only, any HTTP answer).
+    probe = optional(string, "none")
   }))
   default = {}
+
+  validation {
+    condition     = alltrue([for e in values(var.agent_endpoints) : contains(["mcp", "a2a", "none"], e.probe)])
+    error_message = "agent_endpoints[*].probe must be one of: mcp, a2a, none."
+  }
 }
 
 variable "environment" {
@@ -46,18 +54,6 @@ variable "invoker_service_accounts" {
   description = "A list of service accounts allowed to invoke the Kong gateway"
   type        = list(string)
   default     = []
-}
-
-variable "net_host_project_id" {
-  description = "The project ID of the Shared VPC Host for DNS record management"
-  type        = string
-  default     = ""
-}
-
-variable "dns_zone_name" {
-  description = "The name of the Cloud DNS private zone"
-  type        = string
-  default     = ""
 }
 
 variable "min_instances" {
@@ -82,15 +78,4 @@ variable "memory_limit" {
   description = "Memory resource limit allocated to the container"
   type        = string
   default     = "512Mi"
-}
-
-variable "internal_ca_cert_pem" {
-  description = "PEM of the internal Root CA (layer 3 security) that signs the Kong ILB leaf"
-  type        = string
-}
-
-variable "internal_ca_key_pem" {
-  description = "Private key of the internal Root CA (layer 3 security)"
-  type        = string
-  sensitive   = true
 }

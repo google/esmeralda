@@ -39,3 +39,18 @@ output "secure_web_proxy_ip" {
   description = "The private IP address of the Secure Web Proxy"
   value       = var.enable_secure_web_proxy && !var.byo_networking ? "10.0.1.100" : ""
 }
+
+output "entrypoint_address_id" {
+  description = "Resource ID of the reserved internal IP of the entry point"
+  value       = google_compute_address.entrypoint.id
+}
+
+output "entrypoint_address" {
+  description = "The reserved internal IP that <domain> and *.<domain> resolve to (the layer-5 entrypoint forwarding rule listens on it)"
+  value       = google_compute_address.entrypoint.address
+}
+
+output "entrypoint_domain" {
+  description = "The private domain served by the entry point, without trailing dot (e.g. esmeralda.internal)"
+  value       = local.entrypoint_domain
+}

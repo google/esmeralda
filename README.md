@@ -46,7 +46,7 @@ The reference use case is a mortgage-underwriting assistant, split across two ag
 | **CX team** | User-facing **orchestrator** agents (ADK) that *consume* reusable agents | `cx-mortgage-orchestrator` | `esm-<env>-cx-agents-<sfx>` |
 | **AI CoE team** | Reusable **specialist** agents exposed over the **A2A** (Agent-to-Agent) protocol, which any team can call | `ai-coe-mortgage-specialist` (Document Search, Income Verification, Corporate Email skills via MCP tools) | `esm-<env>-ai-coe-agents-<sfx>` |
 
-The orchestrator never calls the specialist directly: every call goes through the Central Agent Gateway and the Kong internal gateway, so each team stays isolated and every hop is authorized.
+The orchestrator never calls the specialist directly: every call goes through the Central Agent Gateway and the private entry point + Kong gateway, so each team stays isolated and every hop is authorized.
 
 ---
 
@@ -83,7 +83,8 @@ flowchart TD
     end
 
     subgraph Private["🔐 Private Ingress (Layer 5)"]
-        Kong["Kong on Cloud Run\n(internal HTTPS LB, *.esmeralda.internal)"]
+        EP["Entry point\n(internal HTTPS LB, *.esmeralda.internal)"]
+        Kong["Kong gateway\n(Cloud Run)"]
     end
 
     subgraph Tools["🔌 MCP Tool Microservices (Layer 5)"]
@@ -102,8 +103,9 @@ flowchart TD
     AGW -. allowlist .-> AR
     AGW -. optional .-> MA
     AGW -->|Authorized egress| Gemini
-    AGW -->|PSC attachment + private DNS| Kong
-    TestVM -->|Private DNS| Kong
+    AGW -->|PSC attachment + private DNS| EP
+    TestVM -->|Private DNS| EP
+    EP -->|Host routing| Kong
     Kong -->|A2A| Spec
     Kong -->|MCP| DMS
     Kong -->|MCP| Income
@@ -112,7 +114,7 @@ flowchart TD
     Agents -.->|Log sinks| FinOps
 ```
 
-Both agents are **bring-your-own-container (BYOC)** images running on **Vertex AI Agent Engine** (Agent Runtime), each with its own SPIFFE Agent Identity. Every outbound call they make (Gemini, MCP tools, other agents) is transparently routed through the **Central Agent Gateway**, which only allows destinations registered in the **Agent Registry**. Private destinations under `*.esmeralda.internal` are served by **Kong** behind an internal HTTPS load balancer whose certificate is signed by Esmeralda's own internal Root CA. See the [Central Agent Gateway guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md) for the full request path and certificate chain.
+Both agents are **bring-your-own-container (BYOC)** images running on **Vertex AI Agent Engine** (Agent Runtime), each with its own SPIFFE Agent Identity. Every outbound call they make (Gemini, MCP tools, other agents) is transparently routed through the **Central Agent Gateway**, which only allows destinations registered in the **Agent Registry**. Private destinations under `*.esmeralda.internal` reach an internal HTTPS load balancer (the **entry point**) that routes them to the **Kong** gateway; its certificate is signed by Esmeralda's own internal Root CA. See the [Central Agent Gateway guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md) for the full request path and certificate chain.
 
 ---
 

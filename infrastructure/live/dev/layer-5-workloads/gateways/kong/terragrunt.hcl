@@ -1,5 +1,6 @@
-# infrastructure/live/prd/layer-5-workloads/services/kong/terragrunt.hcl
-# Layer 5 (last workload): Kong API gateway behind the internal HTTPS LB for *.esmeralda.internal.
+# infrastructure/live/dev/layer-5-workloads/gateways/kong/terragrunt.hcl
+# Layer 5 gateway: Kong on Cloud Run + serverless NEG + regional backend service (backend_service_id).
+# It owns no load balancer, certificate or DNS record: the layer-5 entrypoint routes hosts to it.
 # Applied after the MCP services and agents, so routes get the real engine IDs on the first apply.
 # Mocks below only serve `validate`/`plan` of a not-yet-deployed env; `apply` requires real outputs.
 include "root" {
@@ -7,12 +8,17 @@ include "root" {
 }
 
 locals {
-  env_vars        = read_terragrunt_config(find_in_parent_folders("env.yaml"))
-  gateway_product = local.env_vars.locals.gateway_product
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
 }
 
 terraform {
-  source = "../../../../../modules//5-workloads/services/${local.gateway_product}"
+  source = "../../../../../modules//5-workloads/gateways/kong"
+}
+
+# Skipped by `run --all` when kong is not in gateways.enabled (env.yaml).
+exclude {
+  if      = !contains(local.env_vars.locals.gateways.enabled, "kong")
+  actions = ["all"]
 }
 
 dependency "cicd" {
@@ -50,7 +56,7 @@ dependency "cx_mortgage_orchestrator" {
 }
 
 dependency "corporate_email" {
-  config_path = "../corporate-email"
+  config_path = "../../services/corporate-email"
   mock_outputs = {
     service_name = "mock-service"
     service_uri  = "https://mock-service.a.run.app"
@@ -59,7 +65,7 @@ dependency "corporate_email" {
 }
 
 dependency "income_verification" {
-  config_path = "../income-verification"
+  config_path = "../../services/income-verification"
   mock_outputs = {
     service_name = "mock-service"
     service_uri  = "https://mock-service.a.run.app"
@@ -68,7 +74,7 @@ dependency "income_verification" {
 }
 
 dependency "legacy_dms" {
-  config_path = "../legacy-dms"
+  config_path = "../../services/legacy-dms"
   mock_outputs = {
     service_name = "mock-service"
     service_uri  = "https://mock-service.a.run.app"
@@ -77,18 +83,12 @@ dependency "legacy_dms" {
 }
 
 inputs = {
-  project_id          = dependency.projects.outputs.gateway_project_id
-  environment         = local.env_vars.locals.environment
-  region              = local.env_vars.locals.region
-  vpc_id              = dependency.networking.outputs.network_id
-  subnet_id           = dependency.networking.outputs.subnet_id
-  net_host_project_id = dependency.projects.outputs.net_host_project_id
-  dns_zone_name       = dependency.networking.outputs.dns_zone_name
-  kong_image          = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/kong-gateway:${local.env_vars.locals.container_tag}"
-
-  # *.esmeralda.internal leaf is signed by the layer-3 internal Root CA
-  internal_ca_cert_pem = dependency.security.outputs.internal_ca_cert_pem
-  internal_ca_key_pem  = dependency.security.outputs.internal_ca_key_pem
+  project_id  = dependency.projects.outputs.gateway_project_id
+  environment = local.env_vars.locals.environment
+  region      = local.env_vars.locals.region
+  vpc_id      = dependency.networking.outputs.network_id
+  subnet_id   = dependency.networking.outputs.subnet_id
+  kong_image  = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/kong-gateway:${local.env_vars.locals.container_tag}"
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,
@@ -104,12 +104,14 @@ inputs = {
       engine_id    = dependency.ai_coe_mortgage_specialist.outputs.engine_id
       endpoint_url = "${dependency.ai_coe_mortgage_specialist.outputs.endpoint_url}/a2a"
       audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
+      probe        = "a2a"
     }
     cx-mortgage-orchestrator = {
       logical_name = "cx-mortgage-orchestrator"
       engine_id    = dependency.cx_mortgage_orchestrator.outputs.engine_id
       endpoint_url = "${dependency.cx_mortgage_orchestrator.outputs.endpoint_url}:streamQuery?alt=sse"
       audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
+      probe        = "none" # streamQuery only answers a real query: TLS + routing check only
     }
     # MCP Servers
     corporate-email = {
@@ -117,18 +119,21 @@ inputs = {
       engine_id    = dependency.corporate_email.outputs.service_name
       endpoint_url = dependency.corporate_email.outputs.service_uri
       audience     = dependency.corporate_email.outputs.service_uri
+      probe        = "mcp"
     }
     income-verification = {
       logical_name = "income-verification"
       engine_id    = dependency.income_verification.outputs.service_name
       endpoint_url = dependency.income_verification.outputs.service_uri
       audience     = dependency.income_verification.outputs.service_uri
+      probe        = "mcp"
     }
     legacy-dms = {
       logical_name = "legacy-dms"
       engine_id    = dependency.legacy_dms.outputs.service_name
       endpoint_url = dependency.legacy_dms.outputs.service_uri
       audience     = dependency.legacy_dms.outputs.service_uri
+      probe        = "mcp"
     }
   }
 }

@@ -61,13 +61,12 @@ output "internal_ca_cert_pem" {
   value       = tls_self_signed_cert.internal_ca.cert_pem
 }
 
-output "internal_ca_key_pem" {
-  description = "Private key of the internal Root CA, used by layer 5 (Kong) to sign its *.esmeralda.internal leaf."
-  value       = tls_private_key.internal_ca.private_key_pem
-  sensitive   = true
-}
-
 output "internal_ca_secret_id" {
   description = "Secret Manager secret (gateway project) publishing the internal Root CA certificate."
   value       = google_secret_manager_secret.internal_ca.id
+}
+
+output "entrypoint_ssl_certificate_id" {
+  description = "Regional SSL certificate (gateway project) for <internal_domain> + *.<internal_domain>, loaded on the layer-5 entry point."
+  value       = google_compute_region_ssl_certificate.entrypoint.id
 }

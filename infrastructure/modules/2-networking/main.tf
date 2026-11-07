@@ -379,6 +379,49 @@ module "psc_interface_dns_zone" {
   }
 }
 
+# ====================================================================
+# 7. INTERNAL ENTRY POINT: RESERVED VIP + DNS RECORDS
+# --------------------------------------------------------------------
+# Every private hostname (<domain> and *.<domain>) resolves to one reserved internal IP.
+# The IP lives in the gateway project, on the shared core subnet, and is used by the layer-5
+# `entrypoint` unit (URL map, HTTPS proxy, forwarding rule). Keeping the address and the
+# records here means the hostnames outlive any gateway: destroying or swapping layer-5
+# gateways never changes what *.<domain> resolves to.
+# ====================================================================
 
+resource "google_compute_address" "entrypoint" {
+  name         = "ilb-esmeralda-vip-${var.environment}"
+  project      = var.gateway_project_id
+  region       = var.region
+  subnetwork   = local.target_subnet_id
+  address_type = "INTERNAL"
+  address      = var.entrypoint_ip_address
+  # Shareable by several internal forwarding rules (e.g. a future HTTP->HTTPS redirect on :80)
+  # without replacing the address, which would change the IP every hostname resolves to.
+  purpose     = "SHARED_LOADBALANCER_VIP"
+  description = "Internal entry point VIP for ${local.entrypoint_domain} and *.${local.entrypoint_domain}"
 
+  depends_on = [google_compute_shared_vpc_service_project.gateway]
+}
 
+locals {
+  entrypoint_domain = trimsuffix(google_dns_managed_zone.private_dns.dns_name, ".")
+}
+
+resource "google_dns_record_set" "entrypoint_apex" {
+  project      = var.net_host_project_id
+  managed_zone = google_dns_managed_zone.private_dns.name
+  name         = google_dns_managed_zone.private_dns.dns_name
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.entrypoint.address]
+}
+
+resource "google_dns_record_set" "entrypoint_wildcard" {
+  project      = var.net_host_project_id
+  managed_zone = google_dns_managed_zone.private_dns.name
+  name         = "*.${google_dns_managed_zone.private_dns.dns_name}"
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.entrypoint.address]
+}

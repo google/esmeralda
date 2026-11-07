@@ -41,7 +41,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
-	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-iap-egress deploy-all destroy-all status-release \
+	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	promote-patch promote-minor promote test-governance-chaos load-test docs-serve docs-build clean preflight
 
 help: ## Show this help message
@@ -232,10 +232,10 @@ build-services: ## Build all MCP service + Kong images concurrently
 build-images: build-services build-agents ## Build every image deployed by Layer 5
 
 # ==============================================================================
-# Layer 5: workloads (MCP services -> agents -> Kong -> IAP egress), Terragrunt DAG
+# Layer 5: workloads (MCP services -> agents -> gateways -> entry point -> IAP egress), Terragrunt DAG
 # ==============================================================================
 
-deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, Kong, IAP egress, test VM)
+deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, gateways, entry point, IAP egress, test VM)
 	@echo "🚀 Deploying Layer 5 workloads for $(ENV)..."
 	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all apply
 	@echo "✨ Layer 5 workloads deployed!"
@@ -261,9 +261,16 @@ deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasonin
 deploy-agents: ## Deploy both Reasoning Engine agents, in parallel (no deploy-time dependency between them)
 	@$(MAKE) --no-print-directory -j2 deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator
 
-deploy-gateway: ## Deploy Kong API Gateway (re-run after agents are recreated: routes use engine IDs)
+deploy-gateway: ## Deploy the Kong gateway: Cloud Run + backend service (re-run after agents are recreated: routes use engine IDs)
 	@echo "🚀 Deploying Kong API Gateway..."
-	@cd $(LIVE_DIR)/layer-5-workloads/services/kong && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/gateways/kong && terragrunt --non-interactive apply -auto-approve
+
+deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, forwarding rule) after the gateways
+	@echo "🚪 Deploying the internal entry point..."
+	@cd $(LIVE_DIR)/layer-5-workloads/entrypoint && terragrunt --non-interactive apply -auto-approve
+
+test-gateway: ## Probe every gateway route host through the entry point from the test VM (IAP SSH): ENV=<env>
+	@bash scripts/test_gateway.sh $(ENV)
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
 	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
