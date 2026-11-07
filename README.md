@@ -8,7 +8,7 @@
     <a href="#architecture">Architecture</a> &nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="#capabilities">Capabilities</a> &nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="#quick-start">Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="#docs">The Esmeralda Book</a>
+    <a href="#docs">Documentation</a>
   </p>
 
   <p>
@@ -42,7 +42,7 @@ When architecture is tightly coupled, every change turns into a cross-team bottl
 
 ---
 
-### The Running Story: Julian Sterling's Mortgage Application
+### End-to-End Scenario: Julian Sterling's Mortgage Application
 
 Throughout the repository and documentation, we follow a single end-to-end scenario: a loan officer asks Esmeralda, ***"Can you verify Julian Sterling's income?"***
 
@@ -178,25 +178,25 @@ Run `uv run esmeralda --help` or `make help` for the complete command reference.
 ---
 
 <a id="docs"></a>
-### The Esmeralda Book (Documentation Hub)
+### Documentation
 
-**Read the full documentation online: <https://google.github.io/esmeralda/>** (organized as a cohesive, four-part book from Page 1 to Page N). The source pages live in [`docs/src/`](docs/src/index.md):
+**Read the full documentation online: <https://google.github.io/esmeralda/>**. The source pages live in [`docs/src/`](docs/src/index.md):
 
-* **[Prologue: Architecture & Documentation Hub](docs/src/index.md)** — Why enterprise agents stall, how Esmeralda's decoupled layers enable multi-track parallelism, and Julian Sterling's end-to-end request tour.
-* **[Part I — The Cast: Agents, Tools & Gateways (Layer 5)](docs/src/2-workloads-and-catalog/index.md)**
-  * [Ch 1: Two Teams, Two Agents — Orchestration vs. Specialization](docs/src/2-workloads-and-catalog/03-ai-agents-and-database.md)
-  * [Ch 2: Wrapping Enterprise Systems as MCP Tool Servers](docs/src/2-workloads-and-catalog/02-mcp-tool-servers.md)
-  * [Ch 3: The Private Front Door & Pluggable Gateways](docs/src/2-workloads-and-catalog/01-ingress-gateways.md)
-  * [Ch 3B: Partner API Management & Token Monetization with Apigee X](docs/src/2-workloads-and-catalog/04-apigee-partner-gateway.md)
-* **[Part II — The Trust Boundary: Governance, Security & Operations (Layer 4)](docs/src/3-agentops-and-lifecycle/index.md)**
-  * [Ch 4: The Central Agent Gateway & Private PKI](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md)
-  * [Ch 5: Capability-Based Governance](docs/src/3-agentops-and-lifecycle/04-capability-based-governance.md)
-  * [Ch 6: Centralized Monitoring, Dashboards & FinOps Chargeback](docs/src/3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)
-  * [Ch 7: Operating with Agents & the Esmeralda CLI](docs/src/3-agentops-and-lifecycle/04-operating-with-agents.md)
-* **[Part III — The Stage: Platform Foundations (Layers 0–3)](docs/src/1-platform-foundations/index.md)**
-  * [Ch 8: Projects, APIs & FinOps Isolation (Layer 1)](docs/src/1-platform-foundations/01-projects-and-finops.md)
-  * [Ch 9: Private Networking, Shared VPC & DNS (Layer 2)](docs/src/1-platform-foundations/02-private-networking.md)
-  * [Ch 10: Security, SPIFFE IAM, CMEK & Internal CA (Layer 3)](docs/src/1-platform-foundations/03-security-iam-and-telemetry.md)
-* **[Part IV — The Developer Toolkit: Esmeralda Library & CLI](docs/src/4-esmeralda-library/index.md)**
-  * [Ch 11: Developer Usage Guide](docs/src/4-esmeralda-library/guide.md) & [Ch 12: Package & CLI Reference](docs/src/4-esmeralda-library/reference.md)
-* **[Reference & Community](docs/src/contributing.md)** — [Make Targets](docs/src/reference/make-targets.md), [Contributing Guide](docs/src/contributing.md), [AGENTS.md](AGENTS.md), [`llms.txt`](docs/src/llms.txt), and [Code of Conduct](docs/src/code-of-conduct.md).
+* **[Overview: Architecture & Documentation](docs/src/index.md)** — Why enterprise agents stall, how Esmeralda's decoupled layers enable multi-track parallelism, and Julian Sterling's end-to-end request tour.
+* **[1. Workloads, Catalog & Gateways (Layer 5)](docs/src/2-workloads-and-catalog/index.md)**
+  * [1.1 Two Teams, Two Agents — Orchestration vs. Specialization (ADK & A2A)](docs/src/2-workloads-and-catalog/03-ai-agents-and-database.md)
+  * [1.2 Wrapping Enterprise Systems as MCP Tool Servers](docs/src/2-workloads-and-catalog/02-mcp-tool-servers.md)
+  * [1.3 The Private Front Door & Pluggable Gateways](docs/src/2-workloads-and-catalog/01-ingress-gateways.md)
+  * [1.4 Partner API Management & Token Monetization with Apigee X](docs/src/2-workloads-and-catalog/04-apigee-partner-gateway.md)
+* **[2. Governance, Identity & AgentOps (Layer 4)](docs/src/3-agentops-and-lifecycle/index.md)**
+  * [2.1 Central Agent Gateway & Private PKI](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md)
+  * [2.2 Capability-Based & Semantic Governance](docs/src/3-agentops-and-lifecycle/04-capability-based-governance.md)
+  * [2.3 FinOps, Telemetry & Cross-Team Chargeback](docs/src/3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)
+  * [2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server](docs/src/3-agentops-and-lifecycle/04-operating-with-agents.md)
+* **[3. Platform Foundations (Layers 1–3)](docs/src/1-platform-foundations/index.md)**
+  * [3.1 Projects, APIs & FinOps Isolation (Layer 1)](docs/src/1-platform-foundations/01-projects-and-finops.md)
+  * [3.2 Private Networking, Shared VPC & DNS (Layer 2)](docs/src/1-platform-foundations/02-private-networking.md)
+  * [3.3 Security, SPIFFE Identity, CMEK & Internal PKI (Layer 3)](docs/src/1-platform-foundations/03-security-iam-and-telemetry.md)
+* **[4. Esmeralda Library & CLI](docs/src/4-esmeralda-library/index.md)**
+  * [4.1 Developer Usage Guide](docs/src/4-esmeralda-library/guide.md) & [4.2 Package & CLI Reference](docs/src/4-esmeralda-library/reference.md)
+* **[5. Reference & Contributing](docs/src/contributing.md)** — [5.1 Make Targets](docs/src/reference/make-targets.md), [5.2 Contributing Guide](docs/src/contributing.md), [AGENTS.md](AGENTS.md), [`llms.txt`](docs/src/llms.txt), and [5.3 Code of Conduct](docs/src/code-of-conduct.md).

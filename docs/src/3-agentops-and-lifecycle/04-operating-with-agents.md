@@ -1,4 +1,4 @@
-# Chapter 7: Day-2 Operations with the `esmeralda` CLI & MCP Server
+# 2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server
 
 Building an enterprise multi-agent platform is only half the story. What happens on **Day 2**, when six independent tracks—NetOps, SecOps, FinOps, AppDev Tools, AI CoE, and CX—are shipping updates in parallel, and both human platform engineers and **AI coding assistants** are operating the repository?
 
@@ -190,8 +190,8 @@ You can also add local, untracked regex patterns (one case-insensitive regex per
 
 ---
 
-## Where to Go Next: Part III (Workloads & The `esmeralda` Runtime Library)
+## Where to Go Next: Section 3 (Platform Foundations) & Section 4 (`esmeralda` Library)
 
-In **Part II**, we saw how Layer 4 surrounds our platform with a zero-trust **Central Agent Gateway** ([Chapter 4](./01-central-agent-gateway.md)), enforces **Capability-Based & Semantic Governance (GEAP UAP/NLC)** ([Chapter 5](./04-capability-based-governance.md)), attributes **FinOps token costs and Golden Signals across team projects** ([Chapter 6](./03-centralized-monitoring-and-dashboards.md)), and empowers human operators and AI assistants with **safe Day-2 operations** ([Chapter 7](./04-operating-with-agents.md)).
+In **Section 2**, we saw how Layer 4 surrounds our platform with a zero-trust **Central Agent Gateway** ([2.1](./01-central-agent-gateway.md)), enforces **Capability-Based & Semantic Governance (GEAP UAP/NLC)** ([2.2](./04-capability-based-governance.md)), attributes **FinOps token costs and Golden Signals across team projects** ([2.3](./03-centralized-monitoring-and-dashboards.md)), and empowers human operators and AI assistants with **safe Day-2 operations** ([2.4](./04-operating-with-agents.md)).
 
-In **Part III**, we move into **Layer 5 (`Workloads & Catalog`)** and the **[Esmeralda Runtime Library](../4-esmeralda-library/index.md)** to see how the private internal HTTPS entry point, stateless Cloud Run MCP tool servers, `ai-coe-mortgage-specialist` (with its zero-bastion private Cloud SQL database), and `cx-mortgage-orchestrator` are built, configured, and deployed on top of this trust boundary.
+Next, turn to **[3.0 Platform Foundations — Overview (Layers 1–3)](../1-platform-foundations/index.md)** to see how the cloud landing zone beneath the trust boundary is bootstrapped, or jump to **[4.0 The `esmeralda` Runtime & Operations Library](../4-esmeralda-library/index.md)** to explore the Python SDK and CLI.

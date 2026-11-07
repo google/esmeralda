@@ -1,6 +1,6 @@
-# Chapter 11: Developer Usage Guide (`esmeralda-platform`)
+# 4.1 Developer Usage Guide (`esmeralda-platform`)
 
-## The Story & Business Why: From Local Workstation to Zero-Trust Production Without Changing a Line of Code
+## From Local Workstation to Zero-Trust Production Without Changing a Line of Code
 
 When a developer on the CX or AI CoE team builds a mortgage underwriting agent for applicants like **Julian Sterling**, they need two seemingly contradictory things:
 1. **Frictionless local inner-loop speed:** Running `esmeralda query` or `esmeralda serve --local` on a laptop against local MCP servers (`http://localhost:8001/mcp`) with zero certificates, proxies, or load balancers in the way.

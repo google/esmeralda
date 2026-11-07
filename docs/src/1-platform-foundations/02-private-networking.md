@@ -1,6 +1,6 @@
-# Chapter 9: Private Networking, Shared VPC & Private DNS (Layer 2)
+# 3.2 Private Networking, Shared VPC & Private DNS (Layer 2)
 
-## 1. The Story & Business Why: How Tenant-Hosted Agents Reach Private Bank Services with Zero Public IPs
+## 1. How Tenant-Hosted Agents Reach Private Bank Services with Zero Public IPs
 
 Consider what happens the moment `ai-coe-mortgage-specialist` begins verifying **Julian Sterling's** mortgage application. To inspect Julian's uploaded W-2s and paystubs, the specialist agent must call `https://legacy-dms.esmeralda.internal/mcp` and `https://income-verification.esmeralda.internal/mcp`, and persist its A2A task state in a private Cloud SQL PostgreSQL database.
 
@@ -42,25 +42,7 @@ Historically, teams tried two flawed workarounds:
 
 ---
 
-## 4. Architecture Decision Records (ADRs): The "Why"
-
-### ADR-02.1: Shared VPC Hub-and-Spoke vs. VPC Peering Mesh
-* **Context:** Interconnecting the workload projects via standard VPC Peering requires many bilateral peering links, cannot route transitively, and risks overlapping IP space.
-* **Decision:** Provision a single, authoritative **Shared VPC** (`vpc-esmeralda-shared-<env>`) in `esm-<env>-net-host-<sfx>` and attach the `mcps`, `ai-coe-agents`, `cx-agents`, `gateway` and `governance` projects as **Service Projects** via `google_compute_shared_vpc_service_project`.
-* **Benefit:** Centralizes firewall and routing policies under NetOps while allowing workload runtimes in spoke projects to bind to host subnets via `roles/compute.networkUser`.
-
----
-
-### ADR-02.2: Direct VPC Egress & PSC Network Attachments vs. Serverless VPC Access Connector
-* **Context:** Traditional Serverless VPC Access Connectors require dedicated `/28` subnets with underlying VM instances that incur fixed hourly costs and have scaling bottlenecks during bursty agent traffic.
-* **Decision:**
-  * **Cloud Run** services that need private egress (the `income-verification` and `corporate-email` MCP servers, the optional Envoy adapter, and the specialist's Cloud SQL bootstrap job) use **Direct VPC Egress**: their instances get an IP straight from the `core` subnet.
-  * Google-managed services that can't join the VPC use a **PSC network attachment**. *What it is:* a resource in a VPC subnet that lets a managed service plug a network interface into that subnet (PSC-Interface). *In Esmeralda:* the Agent Gateway's attachment `agw-egress-na-<env>` (created in Layer 4 in the governance project) uses the dedicated `psc-interface` subnet created here.
-* **Benefit:** No connector VMs to run, and a single, auditable private entry point into the VPC for all agent egress.
-
----
-
-## 5. Shared VPC Network Topology
+## 4. Shared VPC Network Topology
 
 ```mermaid
 flowchart TD
@@ -94,7 +76,7 @@ flowchart TD
 
 ---
 
-## 6. Technical Architecture & In Practice (`modules/2-networking/`)
+## 5. Technical Architecture & In Practice (`modules/2-networking/`)
 
 ### 1. Subnet Classifications & CIDR Allocations
 
@@ -152,7 +134,7 @@ When `enable_psc_interface = true` (the default), the same identities also get `
 
 ---
 
-## 7. Verification & Runbook
+## 6. Verification & Runbook
 
 ### Inspect Layer 2 State & Verify Private Routing via the `esmeralda` CLI
 ```bash

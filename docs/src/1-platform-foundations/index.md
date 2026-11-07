@@ -1,6 +1,6 @@
-# Part III: The Cloud Foundation (Layers 1, 2, and 3)
+# 3.0 Platform Foundations — Overview (Layers 1, 2, and 3)
 
-## 1. The Story & Business Why: How Layered Contracts Unlock Parallel Teams
+## 1. How Layered Contracts Unlock Parallel Teams
 
 Imagine a bank preparing to launch its AI-assisted mortgage underwriting assistant for applicants like **Julian Sterling**. Before the Customer Experience (CX) team's orchestrator agent can answer a single question—or delegate a task to the AI Center of Excellence (AI CoE) specialist agent to inspect Julian's W-2s and tax returns—dozens of foundational questions must be answered:
 
@@ -39,17 +39,18 @@ Because each layer exposes a stable contract:
 * **Multiple Agent & Tool Teams (Layer 5)**—such as the CX team, the AI CoE team, and the AppDev Tools team—can build, test, and ship agents and MCP servers in parallel without ever waiting for infrastructure tickets.
 
 > [!NOTE]
-> Layer 0 (`infrastructure/live/shared/layer-0-cicd`) is a single CI/CD project shared across every environment. Layers 1–5 are instantiated once per environment (`dev`, `prd`) from `infrastructure/live/<env>/layer-N-*`, driven entirely by a single declarative manifest: `infrastructure/live/<env>/env.yaml`. Part III covers **Layers 1, 2, and 3**—the cloud landing zone beneath the governance plane and workloads.
+> Layer 0 (`infrastructure/live/shared/layer-0-cicd`) is a single CI/CD project shared across every environment. Layers 1–5 are instantiated once per environment (`dev`, `prd`) from `infrastructure/live/<env>/layer-N-*`, driven entirely by a single declarative manifest: `infrastructure/live/<env>/env.yaml`. Section 3 covers **Layers 1, 2, and 3**—the cloud landing zone beneath the governance plane and workloads.
 
 ---
 
-## 2. Why We Built It This Way (Key Decisions & Rationale)
+## 2. Key Architectural Decisions & Rationale
 
 | Decision | Alternative Considered | Why We Chose This |
 | :--- | :--- | :--- |
 | **6-Layer Upward-Only DAG (`L0`–`L5`)** | Single monolithic Terraform root module | Prevents blast-radius coupling; lets NetOps (`L2`), SecOps (`L3`), Governance (`L4`), and Agent teams (`L5`) plan and apply their own units in parallel (`uv run esmeralda plan <unit> --env <env>`). |
 | **7 Isolated GCP Projects (6 per env + 1 shared CI/CD)** | Single shared GCP project per environment | Eliminates **FinOps attribution blackouts** (mixing CX and AI CoE token bills), **IAM privilege bleeding** (developers accessing KMS keys), and **API quota starvation** (one runaway agent loop exhausting project-wide Vertex AI quota). |
 | **Centralized Shared VPC + PSC Network Attachment** | Mesh of bilateral VPC Peerings or public endpoints | VPC Peering is non-transitive and exhausts enterprise CIDR blocks. A single Shared VPC in `net-host` paired with Private Service Connect (PSC) gives Google-hosted agents private egress into `*.esmeralda.internal` with zero public IPs. |
+| **Centralized CMEK Keys & Secrets in `governance`** | Creating KMS keys and secrets inside workload projects | Enforces Separation of Duties (SoD) between SecOps and AppDev, with a single project (`esm-<env>-governance-<sfx>`) to audit key rotation and secret access. |
 | **Single `env.yaml` with `byo_*` Brownfield Toggles** | Hardcoded variables scattered across `.tfvars` files | Gives operators one file per environment (`infrastructure/live/<env>/env.yaml`) to configure project prefixes, service catalogs, gateway routing, and greenfield vs. brownfield (`byo_net_host_project`, `byo_networking`, `byo_security`) adoption. |
 
 ---
@@ -78,40 +79,7 @@ Every unit across Layers 1–5 reads `infrastructure/live/<env>/env.yaml` throug
 
 ---
 
-## 5. Architecture Decision Records (ADRs): The "Why" Behind Foundations
-
-### 1. ADR-01: Why 7 Isolated GCP Projects Instead of a Monolith?
-* **The Problem:** In monolith deployments, all workloads share a single GCP project. This leads to **FinOps attribution blackouts** (inability to distinguish which business unit consumed Vertex AI tokens), **IAM privilege bleeding** (tool developers can inspect platform security keys), and **API quota starvation** (one rogue agent loop kills all corporate workloads).
-* **The Decision:** Segregate workloads across **seven specialized GCP projects** (six per environment, plus one shared CI/CD project). Each per-environment project ID is `esm-<env>-<name>-<sfx>`, where `<sfx>` is a random 4-hex suffix:
-  * `net-host`: Network Operations boundary (Shared VPC, Cloud NAT, private DNS).
-  * `gateway`: Platform ingress boundary (the entry point with its built-in `direct` backend; optional adapters such as Envoy or Apigee).
-  * `mcps`: Reusable corporate MCP tool servers on Cloud Run.
-  * `ai-coe-agents`: AI CoE team's reusable A2A specialist agents and their Cloud SQL task store.
-  * `cx-agents`: CX team's user-facing orchestrator agents.
-  * `governance`: Agent Gateway, Agent Registry, KMS keys, secrets, telemetry and FinOps hub.
-  * `cicd` (shared, `esm-cicd-<sfx>`, Layer 0): Cloud Build and the dev/release Artifact Registry repositories.
-* **The Benefit:** Blast-radius containment, per-project billing attribution, and API quota isolation.
-
----
-
-### 2. ADR-02: Why a Shared VPC Over VPC Peering?
-* **The Problem:** Traditional VPC Peering is non-transitive (Spoke A cannot reach Spoke B via Host) and leads to IP address (CIDR) exhaustion and subnet overlap issues across large enterprise networks.
-* **The Decision:** Deploy a single **Shared VPC** in `esm-<env>-net-host-<sfx>` and attach the workload projects as service projects. Google-managed runtimes that don't live in the VPC (the Agent Gateway) reach it through a **Private Service Connect (PSC) network attachment**.
-* **The Benefit:**
-  * Cloud Run MCP tools, the entry point and Cloud SQL communicate over private internal IPs; agent egress to private services goes through the Agent Gateway into the same VPC.
-  * One IP plan owned by NetOps, so no subnet overlap conflicts.
-  * Central firewall, routing and DNS policy.
-
----
-
-### 3. ADR-03: Why Centralized Keys & Secrets in a Dedicated Governance Project?
-* **The Problem:** When KMS encryption keys and secrets are created locally within workload projects, rotating keys, auditing access logs, and proving compliance (SOC 2, ISO 27001) requires querying dozens of separate project perimeters.
-* **The Decision:** Create the Cloud KMS key ring, **Customer-Managed Encryption Keys (CMEK)** and platform secrets in `esm-<env>-governance-<sfx>`, and grant workload identities narrowly scoped roles on them.
-* **The Benefit:** Separation of duties between Security Administrators (SecOps) and Application Developers (AppDev), with one place to audit key and secret access. See [Layer 3](./03-security-iam-and-telemetry.md) for what currently consumes these keys.
-
----
-
-## 6. Foundations 3-Layer Progression Pipeline
+## 5. Foundations 3-Layer Progression Pipeline
 
 ```mermaid
 flowchart TD
@@ -145,7 +113,7 @@ flowchart TD
 
 ---
 
-## 7. Operating Foundations in Practice (`esmeralda` CLI)
+## 6. Operating Foundations in Practice (`esmeralda` CLI)
 
 You can inspect, plan, and apply the foundational layers using the `esmeralda` CLI (or the `make` wrappers):
 
@@ -166,16 +134,16 @@ make deploy-foundations ENV=dev
 
 ---
 
-## 8. Foundations Detailed Guides
+## 7. Subsections in Section 3
 
-1. **[Layer 1: Foundational Projects, Billing (FinOps), and APIs](./01-projects-and-finops.md)**
-   * Project Isolation Story, Blast Radius & FinOps Attribution Deep-Dive
+1. **[3.1 Projects & FinOps Isolation (Layer 1)](./01-projects-and-finops.md)**
+   * Project Isolation, Blast Radius & FinOps Attribution Deep-Dive
    * Technical Specifications (`modules/1-projects/`)
-2. **[Layer 2: Private Networking, DNS, and Private Service Connect (PSC)](./02-private-networking.md)**
-   * Zero-Public-IP Connectivity Story & Shared VPC Topology
+2. **[3.2 Private Networking, PSC & DNS (Layer 2)](./02-private-networking.md)**
+   * Zero-Public-IP Connectivity & Shared VPC Topology
    * Technical Specifications (`modules/2-networking/`)
-3. **[Layer 3: Security, CMEK Keys, Secrets, Identities, and Internal PKI](./03-security-iam-and-telemetry.md)**
+3. **[3.3 Security, SPIFFE Identity & PKI (Layer 3)](./03-security-iam-and-telemetry.md)**
    * Three-Identity Delegation Architecture (`User`, `Agent SPIFFE`, `Delegated`), CMEK, and Internal PKI
    * Technical Specifications (`modules/3-security/`)
 
-**Next:** Layer 4 builds the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and [centralized monitoring & FinOps](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md) on top of these foundations; Layer 5 deploys the [workloads catalog](../2-workloads-and-catalog/index.md).
+**Next:** **[3.1 Project Isolation, Blast Radius & FinOps (Layer 1)](./01-projects-and-finops.md)**.

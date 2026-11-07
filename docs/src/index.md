@@ -1,51 +1,51 @@
-# Prologue & Book Index: The Esmeralda Architecture Book
+# Esmeralda Architecture & Documentation
 
 <img src="assets/esmeralda-banner.jpg" alt="Esmeralda" class="esmeralda-banner" width="360" />
 
 Welcome to **Esmeralda**—an opinionated, commercial-grade reference blueprint for taking autonomous AI agents and Model Context Protocol (MCP) tool servers from a developer's laptop into zero-trust enterprise production on **Google Cloud**.
 
-This documentation is written to be read like a cohesive book, from **Page 1 to Page N**, following a single real-world scenario (**Julian Sterling's mortgage underwriting application**). Use the **collapsible Part I–IV drop-down menus in the left sidebar** (or the interactive Book Index right below) to jump to any chapter, or read straight through using the **Next / Previous** links at the bottom of each page.
+Throughout the documentation, we follow a single real-world scenario (**Julian Sterling's mortgage underwriting application**) from the front-door request down to the cloud foundation and developer SDK. Expand any section in the **left sidebar** (or in the **Contents** right below) to jump directly to a topic, or use the **Next / Previous** links at the bottom of each page.
 
 ---
 
-## Book Index: All Parts & Chapters (Page 1 to Page N)
+## Contents
 
-???+ abstract "Part I — The Cast: Agents, Tools & Gateways (Layer 5)"
+??? abstract "1. Workloads, Catalog & Gateways (Layer 5)"
     *Best for AI Engineers, Application Architects, and Product & Engineering Leaders.*
 
-    * **[Part I Overview — Four Teams, One Seamless Conversation](./2-workloads-and-catalog/index.md)** — How the Layer 5 workloads and the declarative `catalog` in `env.yaml` fit together.
-    * **[Chapter 1: Two Teams, Two Agents — Orchestration vs. Specialization](./2-workloads-and-catalog/03-ai-agents-and-database.md)** — Why `cx-mortgage-orchestrator` (Google ADK) and `ai-coe-mortgage-specialist` (A2A) live in separate team GCP projects, run as BYOC on Vertex AI Agent Runtime with SPIFFE Agent Identity, and use a private Cloud SQL task store.
-    * **[Chapter 2: Wrapping Enterprise Systems as MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md)** — Turning `legacy-dms`, `income-verification`, and `corporate-email` into private Cloud Run FastMCP microservices with `tools.json` registration and end-to-end caller/user claims verification.
-    * **[Chapter 3: The Private Front Door & Pluggable Gateways](./2-workloads-and-catalog/01-ingress-gateways.md)** — Why `*.esmeralda.internal` uses an internal HTTPS load balancer with built-in `direct` routing by default (zero proxy VMs) and how Envoy or Apigee X adapters plug in per host.
-    * **[Chapter 3B: Partner API Management & Token Monetization with Apigee X](./2-workloads-and-catalog/04-apigee-partner-gateway.md)** — Complete deep dive into how Apigee X (`partner.esmeralda.internal` / `10.0.1.3`) works: PSC NEG plumbing, tiered API Products (`bronze`, `silver`, `gold`), `partner-agents` and `partner-mcp` proxy policies, two-phase `<LLMTokenQuota>` enforcement (`EnforceOnly` + SSE `EventFlow` `CountOnly`), and how Apigee hands off to GEAP Agent Identity and the Central Agent Gateway.
+    * **[1.0 Overview — Four Teams, One Seamless Conversation](./2-workloads-and-catalog/index.md)** — How the Layer 5 workloads and the declarative `catalog` in `env.yaml` fit together.
+    * **[1.1 Two Teams, Two Agents — Orchestration vs. Specialization (ADK & A2A)](./2-workloads-and-catalog/03-ai-agents-and-database.md)** — Why `cx-mortgage-orchestrator` (Google ADK) and `ai-coe-mortgage-specialist` (A2A) live in separate team GCP projects, run as BYOC on Vertex AI Agent Runtime with SPIFFE Agent Identity, and use a private Cloud SQL task store.
+    * **[1.2 Wrapping Enterprise Systems as MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md)** — Turning `legacy-dms`, `income-verification`, and `corporate-email` into private Cloud Run FastMCP microservices with `tools.json` registration and end-to-end caller/user claims verification.
+    * **[1.3 The Private Front Door & Pluggable Gateways](./2-workloads-and-catalog/01-ingress-gateways.md)** — Why `*.esmeralda.internal` uses an internal HTTPS load balancer with built-in `direct` routing by default (zero proxy VMs) and how Envoy or Apigee X adapters plug in per host.
+    * **[1.4 Partner API Management & Token Monetization with Apigee X](./2-workloads-and-catalog/04-apigee-partner-gateway.md)** — Complete deep dive into how Apigee X (`partner.esmeralda.internal` / `10.0.1.3`) works: PSC NEG plumbing, tiered API Products (`bronze`, `silver`, `gold`), `partner-agents` and `partner-mcp` proxy policies, two-phase `<LLMTokenQuota>` enforcement (`EnforceOnly` + SSE `EventFlow` `CountOnly`), and how Apigee hands off to GEAP Agent Identity and the Central Agent Gateway.
 
-???+ abstract "Part II — The Trust Boundary: Governance, Identity & Operations (Layer 4)"
+??? abstract "2. Governance, Identity & AgentOps (Layer 4)"
     *Best for CISOs, SecOps, Governance Leads, FinOps, and SRE / Platform Operators.*
 
-    * **[Part II Overview — Multi-Track Release Lifecycle & Governance](./3-agentops-and-lifecycle/index.md)** — How six independent engineering tracks ship in parallel and promote immutable container digests (`release/prd.yaml`) from `dev` to `prd`.
-    * **[Chapter 4: Zero-Trust Egress & The Central Agent Gateway](./3-agentops-and-lifecycle/01-central-agent-gateway.md)** — How Google's Central Agent Gateway (`AGENT_TO_ANYWHERE`), Agent Registry, per-target SPIFFE `roles/iap.egressor` bindings, and the internal Root CA govern every outbound packet (includes the **Complete Technical Deep Dive & Reference**).
-    * **[Chapter 5: Capability-Based & Semantic Governance — Preventing the "Confused Deputy"](./3-agentops-and-lifecycle/04-capability-based-governance.md)** — Division of responsibilities across **Apigee X**, **GEAP Agent Identity & Auth Manager (3LO)**, and **Central Agent Gateway**; Unified Access Policies (UAPs), Semantic Governance (Natural Language Constraints, NLC), and removable Apigee X partner modules.
-    * **[Chapter 6: FinOps, Telemetry & Cross-Team Chargeback](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)** — Attributing every Gemini token across team boundaries via OpenTelemetry `BaggageSpanProcessor`, hub-and-spoke Cloud Logging sinks, BigQuery views (`vw_monthly_agent_chargeback`), and Golden Signals.
-    * **[Chapter 7: Day-2 Operations with the `esmeralda` CLI & MCP Server](./3-agentops-and-lifecycle/04-operating-with-agents.md)** — Operating and verifying environments safely with `uv run esmeralda doctor/status/units/plan/apply/verify/logs/guard` and the read-only `esmeralda mcp` server.
+    * **[2.0 Overview & Release Lifecycle](./3-agentops-and-lifecycle/index.md)** — How six independent engineering tracks ship in parallel and promote immutable container digests (`release/prd.yaml`) from `dev` to `prd`.
+    * **[2.1 Zero-Trust Egress & The Central Agent Gateway](./3-agentops-and-lifecycle/01-central-agent-gateway.md)** — How Google's Central Agent Gateway (`AGENT_TO_ANYWHERE`), Agent Registry, per-target SPIFFE `roles/iap.egressor` bindings, and the internal Root CA govern every outbound packet (includes the **Complete Technical Deep Dive & Reference**).
+    * **[2.2 Capability-Based & Semantic Governance — Preventing the "Confused Deputy"](./3-agentops-and-lifecycle/04-capability-based-governance.md)** — Division of responsibilities across **Apigee X**, **GEAP Agent Identity & Auth Manager (3LO)**, and **Central Agent Gateway**; Unified Access Policies (UAPs), Semantic Governance (Natural Language Constraints, NLC), and removable Apigee X partner modules.
+    * **[2.3 FinOps, Telemetry & Cross-Team Chargeback](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)** — Attributing every Gemini token across team boundaries via OpenTelemetry `BaggageSpanProcessor`, hub-and-spoke Cloud Logging sinks, BigQuery views (`vw_monthly_agent_chargeback`), and Golden Signals.
+    * **[2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server](./3-agentops-and-lifecycle/04-operating-with-agents.md)** — Operating and verifying environments safely with `uv run esmeralda doctor/status/units/plan/apply/verify/logs/guard` and the read-only `esmeralda mcp` server.
 
-???+ abstract "Part III — The Stage: Cloud Foundations (Layers 0–3)"
+??? abstract "3. Platform Foundations (Layers 1–3)"
     *Best for Cloud Architects, NetOps, SecOps, and Infrastructure Engineers.*
 
-    * **[Part III Overview — How Layered Contracts Unlock Parallel Teams](./1-platform-foundations/index.md)** — How Layers 0–3 bootstrap greenfield or brownfield (`byo_*`) enterprise landing zones.
-    * **[Chapter 8: Project Isolation, Blast Radius & FinOps (Layer 1)](./1-platform-foundations/01-projects-and-finops.md)** — Why Esmeralda provisions six per-environment projects (`net-host`, `gateway`, `mcps`, `ai-coe-agents`, `cx-agents`, `governance`) plus shared Layer 0 `cicd`, and eagerly bootstraps service identities.
-    * **[Chapter 9: Private Networking, Shared VPC & Private DNS (Layer 2)](./1-platform-foundations/02-private-networking.md)** — How tenant-hosted Reasoning Engines reach private `*.esmeralda.internal` endpoints with zero public IPs via Shared VPC, Direct VPC Egress, PSC attachments, and DNS peering.
-    * **[Chapter 10: Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)](./1-platform-foundations/03-security-iam-and-telemetry.md)** — The Three-Identity Delegation Architecture (`User Identity`, `Agent SPIFFE Identity`, `Delegated Identity`), centralized KMS CMEK keys, and the internal Root CA.
+    * **[3.0 Overview — How Layered Contracts Unlock Parallel Teams](./1-platform-foundations/index.md)** — How Layers 0–3 bootstrap greenfield or brownfield (`byo_*`) enterprise landing zones.
+    * **[3.1 Project Isolation, Blast Radius & FinOps (Layer 1)](./1-platform-foundations/01-projects-and-finops.md)** — Why Esmeralda provisions six per-environment projects (`net-host`, `gateway`, `mcps`, `ai-coe-agents`, `cx-agents`, `governance`) plus shared Layer 0 `cicd`, and eagerly bootstraps service identities.
+    * **[3.2 Private Networking, Shared VPC & Private DNS (Layer 2)](./1-platform-foundations/02-private-networking.md)** — How tenant-hosted Reasoning Engines reach private `*.esmeralda.internal` endpoints with zero public IPs via Shared VPC, Direct VPC Egress, PSC attachments, and DNS peering.
+    * **[3.3 Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)](./1-platform-foundations/03-security-iam-and-telemetry.md)** — The Three-Identity Delegation Architecture (`User Identity`, `Agent SPIFFE Identity`, `Delegated Identity`), centralized KMS CMEK keys, and the internal Root CA.
 
-???+ abstract "Part IV — The Developer Toolkit: `esmeralda` Library & CLI (`esmeralda-platform`)"
+??? abstract "4. Esmeralda Library & CLI (`esmeralda-platform`)"
     *Best for Application Developers, Platform Engineers, and AI Coding Agents.*
 
-    * **[Part IV Overview — Keeping Every Agent at ~30 Lines of Pure Domain Logic](./4-esmeralda-library/index.md)** — How `packages/esmeralda` (`esmeralda-platform` on PyPI) handles certificates, proxy routing, auth, telemetry, and CLI operations.
-    * **[Chapter 11: Developer Usage Guide](./4-esmeralda-library/guide.md)** — Recipes for serving ADK/A2A agents, calling MCP servers and remote agents, propagating 3LO user tokens, and running local full-stack queries.
-    * **[Chapter 12: Package & CLI Reference](./4-esmeralda-library/reference.md)** — Complete specification of every module (`esmeralda.app`, `auth`, `auth_manager`, `mcp`, `mcp_authz`, `a2a`, `telemetry`, `certs`, `ops`, `cli`), CLI flag, and environment variable.
+    * **[4.0 Overview — Keeping Every Agent at ~30 Lines of Pure Domain Logic](./4-esmeralda-library/index.md)** — How `packages/esmeralda` (`esmeralda-platform` on PyPI) handles certificates, proxy routing, auth, telemetry, and CLI operations.
+    * **[4.1 Developer Usage Guide](./4-esmeralda-library/guide.md)** — Recipes for serving ADK/A2A agents, calling MCP servers and remote agents, propagating 3LO user tokens, and running local full-stack queries.
+    * **[4.2 Package & CLI Reference](./4-esmeralda-library/reference.md)** — Complete specification of every module (`esmeralda.app`, `auth`, `auth_manager`, `mcp`, `mcp_authz`, `a2a`, `telemetry`, `certs`, `ops`, `cli`), CLI flag, and environment variable.
 
 ---
 
-## 1. The Story & Why It Matters: Why 90% of Enterprise Agents Stall
+## 1. Why 90% of Enterprise Agents Stall
 
 In almost every enterprise today, building a compelling AI agent demo takes a single afternoon. A developer wires an LLM prompt to a few Python helper functions on a laptop, runs a sample query, and the prototype works.
 
@@ -83,7 +83,7 @@ Because these boundaries are strict and stable, **seven independent tracks and t
 
 ## 2. Architecture at a Glance: Julian Sterling's Mortgage Application
 
-To make every architectural concept concrete, this book follows a single real-world thread from start to finish: a loan officer or external partner application asks Esmeralda,
+To make every architectural concept concrete, we trace a single real-world request from start to finish: a loan officer or external partner application asks Esmeralda,
 
 > ***"Can you verify Julian Sterling's income?"***
 
@@ -208,16 +208,16 @@ flowchart LR
 
 ---
 
-## 4. How to Read This Book & Quick Start
+## 4. Section Guide & Quick Start
 
-We have structured the documentation into **four parts** that follow Julian Sterling's request from the application surface down to the cloud foundation and developer tooling:
+The documentation is organized into **four numbered sections (`1.`–`4.`)** that follow Julian Sterling's request from the application surface down to the cloud foundation and developer tooling:
 
-| Part | Focus | Chapters | Best For |
+| Section | Focus | Subsections | Best For |
 | :--- | :--- | :--- | :--- |
-| **[Part I — The Cast: Agents, Tools & Gateways](./2-workloads-and-catalog/index.md)** | The runtime workloads in **Layer 5** and the declarative service catalog that connects them. | • [Ch 1: Two Teams, Two Agents (ADK & A2A)](./2-workloads-and-catalog/03-ai-agents-and-database.md)<br/>• [Ch 2: Wrapping Systems as MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md)<br/>• [Ch 3: The Private Front Door & Gateways](./2-workloads-and-catalog/01-ingress-gateways.md) | AI Engineers, Application Architects, Product & Engineering Leaders |
-| **[Part II — The Trust Boundary: Governance & Operations](./3-agentops-and-lifecycle/index.md)** | How **Layer 4** governs every outbound call, inspects content, tracks FinOps costs, and powers day-2 operations. | • [Ch 4: Central Agent Gateway & Private PKI](./3-agentops-and-lifecycle/01-central-agent-gateway.md)<br/>• [Ch 5: Capability-Based Governance](./3-agentops-and-lifecycle/04-capability-based-governance.md)<br/>• [Ch 6: Monitoring, Dashboards & FinOps](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)<br/>• [Ch 7: Operating with Agents & CLI](./3-agentops-and-lifecycle/04-operating-with-agents.md) | SecOps, Governance Leads, FinOps, SRE / Platform Operators |
-| **[Part III — The Stage: Platform Foundations](./1-platform-foundations/index.md)** | The zero-trust landing zone (**Layers 0–3**) that makes Parts I and II possible. | • [Ch 8: Projects & FinOps (Layer 1)](./1-platform-foundations/01-projects-and-finops.md)<br/>• [Ch 9: Private Networking & DNS (Layer 2)](./1-platform-foundations/02-private-networking.md)<br/>• [Ch 10: Security, IAM, CMEK & PKI (Layer 3)](./1-platform-foundations/03-security-iam-and-telemetry.md) | Cloud Architects, NetOps, Infrastructure Engineers |
-| **[Part IV — The Developer Toolkit: Esmeralda Library & CLI](./4-esmeralda-library/index.md)** | The `esmeralda` Python runtime package, CLI, and read-only MCP server. | • [Ch 11: Developer Usage Guide](./4-esmeralda-library/guide.md)<br/>• [Ch 12: Package & CLI Reference](./4-esmeralda-library/reference.md) | All Developers & AI Coding Agents |
+| **[1. Workloads, Catalog & Gateways](./2-workloads-and-catalog/index.md)** | The runtime workloads in **Layer 5** and the declarative service catalog that connects them. | • [1.1 Two Teams, Two Agents (ADK & A2A)](./2-workloads-and-catalog/03-ai-agents-and-database.md)<br/>• [1.2 MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md)<br/>• [1.3 Private Front Door & Gateways](./2-workloads-and-catalog/01-ingress-gateways.md)<br/>• [1.4 Apigee X Partner Gateway & Monetization](./2-workloads-and-catalog/04-apigee-partner-gateway.md) | AI Engineers, Application Architects, Product & Engineering Leaders |
+| **[2. Governance, Identity & AgentOps](./3-agentops-and-lifecycle/index.md)** | How **Layer 4** governs every outbound call, inspects content, tracks FinOps costs, and powers day-2 operations. | • [2.1 Central Agent Gateway & Private PKI](./3-agentops-and-lifecycle/01-central-agent-gateway.md)<br/>• [2.2 Capability & Semantic Governance](./3-agentops-and-lifecycle/04-capability-based-governance.md)<br/>• [2.3 FinOps, Telemetry & Chargeback](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)<br/>• [2.4 Day-2 Operations (CLI & MCP)](./3-agentops-and-lifecycle/04-operating-with-agents.md) | SecOps, Governance Leads, FinOps, SRE / Platform Operators |
+| **[3. Platform Foundations (Layers 1–3)](./1-platform-foundations/index.md)** | The zero-trust landing zone (**Layers 0–3**) that makes Sections 1 and 2 possible. | • [3.1 Projects & FinOps Isolation (Layer 1)](./1-platform-foundations/01-projects-and-finops.md)<br/>• [3.2 Private Networking, PSC & DNS (Layer 2)](./1-platform-foundations/02-private-networking.md)<br/>• [3.3 Security, SPIFFE Identity & PKI (Layer 3)](./1-platform-foundations/03-security-iam-and-telemetry.md) | Cloud Architects, NetOps, Infrastructure Engineers |
+| **[4. Esmeralda Library & CLI](./4-esmeralda-library/index.md)** | The `esmeralda` Python runtime package, CLI, and read-only MCP server. | • [4.1 Developer Usage Guide](./4-esmeralda-library/guide.md)<br/>• [4.2 Package & CLI Reference](./4-esmeralda-library/reference.md) | All Developers & AI Coding Agents |
 
 ### Try It Now with the `esmeralda` CLI
 
@@ -236,4 +236,4 @@ uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
 uv run esmeralda verify --env dev
 ```
 
-Ready to meet the cast of workloads that answer Julian Sterling's request? Turn the page to **[Part I — The Cast: Agents, Tools & Gateways](./2-workloads-and-catalog/index.md)**.
+Next: **[1.0 Workloads, Catalog & Gateways — Overview](./2-workloads-and-catalog/index.md)**.

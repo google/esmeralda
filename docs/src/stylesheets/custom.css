@@ -30,7 +30,7 @@
   font-size: 0.72rem;
 }
 
-/* Book-style collapsible Part dropdown headers in the left navigation sidebar */
+/* Collapsible section dropdown headers in the left navigation sidebar */
 .md-nav--primary > .md-nav__list > .md-nav__item--nested > .md-nav__link {
   font-weight: 700;
   color: var(--md-typeset-color);

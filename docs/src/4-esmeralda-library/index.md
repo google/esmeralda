@@ -1,6 +1,6 @@
-# Part IV: The `esmeralda` Runtime & Operations Library (`esmeralda-platform`)
+# 4.0 The `esmeralda` Runtime & Operations Library (`esmeralda-platform`)
 
-## 1. The Story & Business Why: Keeping Every Agent at ~30 Lines of Pure Domain Logic
+## 1. Keeping Every Agent at ~30 Lines of Pure Domain Logic
 
 Suppose an AI engineer on the CX team wants to add a new skill to `cx-mortgage-orchestrator` to help **Julian Sterling** compare mortgage rates, or the AI CoE team wants to launch a second specialist agent. What should that engineer's workday look like?
 

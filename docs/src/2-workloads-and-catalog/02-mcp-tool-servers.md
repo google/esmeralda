@@ -1,14 +1,14 @@
-# Chapter 2: Wrapping Enterprise Systems as MCP Tool Servers
+# 1.2 Wrapping Enterprise Systems as MCP Tool Servers
 
-In [Chapter 1](./03-ai-agents-and-database.md), the CX orchestrator handed Julian Sterling's underwriting request over to the AI CoE's **Mortgage Specialist** (`ai-coe-mortgage-specialist`). Now the specialist needs real facts—Julian's tax returns, his verified annual salary, and any recent correspondence with the loan officer.
+In [1.1 Two Teams, Two Agents](./03-ai-agents-and-database.md), the CX orchestrator handed Julian Sterling's underwriting request over to the AI CoE's **Mortgage Specialist** (`ai-coe-mortgage-specialist`). Now the specialist needs real facts—Julian's tax returns, his verified annual salary, and any recent correspondence with the loan officer.
 
 In a quick laptop prototype, a developer would write three Python functions—`search_documents()`, `verify_applicant()`, and `read_email()`—directly inside the agent's codebase. In an enterprise, that shortcut quickly becomes a bottleneck: backend teams can't update a database query without forcing the AI team to redeploy their agent, other departments can't reuse the connectors, and the agent container accumulates broad credentials to every core system in the company.
 
-This chapter explains how Esmeralda wraps enterprise systems as standalone **Model Context Protocol (MCP)** microservices on private **Cloud Run** (`esm-<env>-mcps-<sfx>`), how their schemas (`tools.json`) register in the central **Agent Registry**, and how developers can still run the entire stack on a laptop with a single `uv run esmeralda query` command.
+This section explains how Esmeralda wraps enterprise systems as standalone **Model Context Protocol (MCP)** microservices on private **Cloud Run** (`esm-<env>-mcps-<sfx>`), how their schemas (`tools.json`) register in the central **Agent Registry**, and how developers can still run the entire stack on a laptop with a single `uv run esmeralda query` command.
 
 ---
 
-## 1. The Story & Why It Matters: Turning Legacy Backends into Governed Building Blocks
+## 1. Turning Legacy Backends into Governed Building Blocks
 
 ### What is MCP (and FastMCP)?
 
@@ -84,10 +84,10 @@ flowchart TD
 Each MCP microservice is built via Cloud Build into the shared Layer 0 Artifact Registry (`make build-services` or `make build-service-<name>`) and deployed by immutable digest (`make deploy-services ENV=<env>` or `uv run esmeralda apply layer-5-workloads/services/<name> --env <env>`):
 
 * **Internal-Only Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` ensures the Cloud Run service cannot be reached from the public internet; all traffic arrives through the private entry point (`*.esmeralda.internal`).
-* **Cross-Project Serverless NEG (`direct` Backend):** With the default `direct` backend, Terraform creates a serverless Network Endpoint Group (NEG) and a regional backend service **inside the MCPs project** (since a serverless NEG must reside in the same project as its Cloud Run service) and attaches it cross-project to the entry point's URL map in the gateway project. See [Chapter 3: Entry Point → The `direct` Backend](./01-ingress-gateways.md#4-the-direct-backend-gatewaysdirect-default).
+* **Cross-Project Serverless NEG (`direct` Backend):** With the default `direct` backend, Terraform creates a serverless Network Endpoint Group (NEG) and a regional backend service **inside the MCPs project** (since a serverless NEG must reside in the same project as its Cloud Run service) and attaches it cross-project to the entry point's URL map in the gateway project. See [1.3 Entry Point → The `direct` Backend](./01-ingress-gateways.md#4-the-direct-backend-gatewaysdirect-default).
 * **Direct VPC Egress:** Sets `vpc_access { egress = "ALL_TRAFFIC" }` on the Shared VPC core subnet (`sb-esmeralda-core-<env>`) so the tool can reach private enterprise databases or internal APIs.
 * **Custom OIDC Audiences:** Each service registers `https://<name>.esmeralda.internal` (plus legacy `*.internal.gateway` names) as a custom audience alongside its default `run.app` URI. Callers routed via `direct` mint an ID token for `https://<name>.esmeralda.internal`; an optional adapter like Envoy uses the `run.app` audience when injecting its own token.
-* **Least-Privilege IAM & End-to-End Identity:** Only identities listed in `invoker_service_accounts`—derived automatically from the service's `callers` list in `env.yaml`—receive `roles/run.invoker`. At runtime, the specialist impersonates `sa-mcp-invoker-<env>` (see [Chapter 10: Security & IAM](../1-platform-foundations/03-security-iam-and-telemetry.md)) to mint its ID token, which traverses the Agent Gateway and entry point untouched.
+* **Least-Privilege IAM & End-to-End Identity:** Only identities listed in `invoker_service_accounts`—derived automatically from the service's `callers` list in `env.yaml`—receive `roles/run.invoker`. At runtime, the specialist impersonates `sa-mcp-invoker-<env>` (see [3.3 Security, SPIFFE Identity & PKI](../1-platform-foundations/03-security-iam-and-telemetry.md)) to mint its ID token, which traverses the Agent Gateway and entry point untouched.
 
 > [!NOTE]
 > The Cloud Run service modules currently run under the MCPs project's default compute service account. Layer 3 provisions a dedicated `sa-esmeralda-mcps-<env>` account ready for attachment when backend-specific IAM roles are added.
@@ -96,7 +96,7 @@ Each MCP microservice is built via Cloud Build into the shared Layer 0 Artifact 
 
 ### Registering Tools in the Central Agent Registry
 
-**What the Agent Registry Does:** The Central Agent Registry in the governance project (`esm-<env>-governance-<sfx>`) is the organization's authoritative catalog of approved MCP servers and A2A agents. The Central Agent Gateway treats it as a **deny-by-default allowlist**: an agent can only egress to a hostname registered there with an exact URL match (see [Chapter 4: Central Agent Gateway §3.3](../3-agentops-and-lifecycle/01-central-agent-gateway.md#33-agent-registry)).
+**What the Agent Registry Does:** The Central Agent Registry in the governance project (`esm-<env>-governance-<sfx>`) is the organization's authoritative catalog of approved MCP servers and A2A agents. The Central Agent Gateway treats it as a **deny-by-default allowlist**: an agent can only egress to a hostname registered there with an exact URL match (see [2.1 Central Agent Gateway §3.3](../3-agentops-and-lifecycle/01-central-agent-gateway.md#33-agent-registry)).
 
 **Deploy-Time Registration in Terraform:** Each MCP service module registers its `https://<svc>.esmeralda.internal/mcp` endpoint and its `apps/services/<tool>/tools.json` schema in the governance project at deploy time:
 
@@ -146,7 +146,7 @@ uv run esmeralda verify --env dev
 
 #### 2. Manual JSON-RPC Probe from the Private Test VM
 
-To inspect raw FastMCP JSON-RPC responses over the Shared VPC entry point (copy the internal Root CA to the VM first, as shown in [Chapter 3: Entry Point → Verification and Runbook](./01-ingress-gateways.md#verification-and-runbook)):
+To inspect raw FastMCP JSON-RPC responses over the Shared VPC entry point (copy the internal Root CA to the VM first, as shown in [1.3 Entry Point → Verification and Runbook](./01-ingress-gateways.md#verification-and-runbook)):
 
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
@@ -168,4 +168,4 @@ You can also use the helper script `scripts/test_mcp_on_vm.sh` (`--service`, `--
 
 ---
 
-Now that we have met the two agents (Chapter 1) and the three MCP tool servers (Chapter 2), how do friendly hostnames like `ai-coe-mortgage-specialist.esmeralda.internal` and `legacy-dms.esmeralda.internal` actually route to the right backend without extra proxy VMs? Turn to **[Chapter 3: The Private Front Door & Pluggable Gateways](./01-ingress-gateways.md)**.
+Now that we have met the two agents (1.1) and the three MCP tool servers (1.2), how do friendly hostnames like `ai-coe-mortgage-specialist.esmeralda.internal` and `legacy-dms.esmeralda.internal` actually route to the right backend without extra proxy VMs? Turn to **[1.3 The Private Front Door & Pluggable Gateways](./01-ingress-gateways.md)**.
