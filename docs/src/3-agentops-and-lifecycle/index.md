@@ -1,57 +1,134 @@
-# AgentOps, Lifecycle & Platform Governance
+# Part II: The Trust Boundary, Multi-Track Release Lifecycle & Platform Governance
 
-**AgentOps** is the operational discipline for AI agents: how they are built, released, secured, observed and paid for once several teams run them in production. It extends the classic **Software Development Lifecycle (SDLC)** with agent-specific concerns such as egress control, token cost attribution and prompt-safety screening. Esmeralda enforces an opinionated AgentOps and SDLC strategy so that the platform stays scalable, secure and resilient as more teams onboard.
+In **Part I**, we laid down the physical foundations of our enterprise city: isolated GCP projects with FinOps cost attribution labels (Layer 1), a zero-trust Shared VPC with a private internal DNS zone `esmeralda.internal.` (Layer 2), and hardware-backed KMS keys, cryptographic SPIFFE Agent Identities, and an internal Root Certificate Authority (Layer 3).
 
-### Guides in this section
-
-| Guide | What it covers |
-| :--- | :--- |
-| **[01. Central Agent Gateway: How It Works and How to Deploy It](./01-central-agent-gateway.md)** | The featured deep-dive. How Agent Gateway intercepts, inspects and authorizes agent traffic; every component (Agent Registry, IAP authz, ACT, TrustConfig, PSC attachment); why the gateway needs our self-signed internal Root CA; how BYOC agents get the gateway's trust bundle at deploy time. |
-| **[03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)** | Layer 4 telemetry: log sinks, the BigQuery dataset and views, Cloud Monitoring dashboards, alert policies, SLOs and the DLP template. |
-| **[04. Capability-Based Governance: Agent Gateway & Optional Apigee Modules](./04-capability-based-governance.md)** | How `governance.capabilities` in `env.yaml` selects providers (`agent_gateway`, `apigee`, `none`) per governance capability, Layer 4 validation rules, Apigee environment tier requirements (`BASE` vs `INTERMEDIATE`), and repository contract guards (`make test-guards`). |
-| **[05. Operating with Agents & the `esmeralda` CLI](./04-operating-with-agents.md)** | First-class operational CLI (`esmeralda status`, `doctor`, `units`, `plan`, `apply`, `verify`, `logs`, `contracts`, `guard`), slim `make` wrappers, and the read-only `esmeralda mcp` server. |
+Now, in **Part II**, we step into **Layer 4 (`layer-4-governance`)** and the day-to-day operational rhythm of **AgentOps**. Before a single line of agent or MCP tool code is allowed to handle a customer conversation in Layer 5, Layer 4 establishes the **Trust Boundary**: the central egress control plane, semantic policy guardrails, and cross-project FinOps telemetry hub that govern every action an agent takes.
 
 ---
 
-## Who Owns What: CX Team vs AI CoE Team
+## Reading Roadmap for Part II
 
-Esmeralda separates agent work between two application teams, each with its **own GCP project** (and therefore its own Agent Identity `principalSet`):
+| Chapter | Title & Focus | Who Should Read This |
+| :--- | :--- | :--- |
+| **[Chapter 4: Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)** | Follows Julian Sterling's mortgage request as `cx-mortgage-orchestrator` and `ai-coe-mortgage-specialist` make outbound calls. Explains why enterprise AI requires a deny-by-default egress proxy (`AGENT_TO_ANYWHERE`), per-target SPIFFE `principal://` IAP authorization, and an internal Root CA—followed by the complete, preserved technical deep dive and reference. | Security Architects, NetOps, Platform Engineers, Agent Developers |
+| **[Chapter 5: Capability-Based & Semantic Governance](./04-capability-based-governance.md)** | Explains how Esmeralda prevents the "Confused Deputy" problem at the tool layer using **GEAP Unified Access Policies (UAPs)** and **Natural Language Constraints (NLC)**, why governance is declared by capability (`governance.capabilities` in `env.yaml`), and how optional **Apigee X** capabilities (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`) plug in when external B2B partner APIs are needed. | CISOs, Governance Leads, API Product Managers, SecOps |
+| **[Chapter 6: FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)** | Tells the story of how a CFO and Engineering VP trace the exact token cost, cache savings, and latency of Julian Sterling's mortgage inquiry across two separate teams' GCP projects using OpenTelemetry baggage (`caller.project_id`, `caller.agent_name`), central Cloud Logging sinks, BigQuery views (`vw_monthly_agent_chargeback`), and Golden Signals dashboards. | FinOps Leads, CFO / Engineering Leadership, SREs |
+| **[Chapter 7: Day-2 Operations with the `esmeralda` CLI & MCP Server](./04-operating-with-agents.md)** | Walks through day-to-day platform operations—both for human engineers and AI coding assistants—using `uv run esmeralda` (`status`, `doctor`, `units`, `plan`, `apply` with the destroy guard, `verify`, `logs`, `contracts`, `guard`) and the read-only `uv run esmeralda mcp` server. | Platform Operators, SREs, Developers using AI Coding Assistants |
 
-| Team | Builds | Example | Project |
+---
+
+## Why Multi-Track Layered Parallelism Matters
+
+In many organizations, the first AI agent prototype succeeds in a single notebook—and then stalls for six months on the road to production. Why? Because every team gets locked into a single, serialized delivery queue:
+
+* The **Customer Experience (CX) team** wants to iterate on conversational prompts every afternoon.
+* The **AI Center of Excellence (AI CoE)** is refining underwriting rules and database schemas for reusable specialist agents.
+* The **AppDev Tools team** is wrapping legacy banking systems into Model Context Protocol (MCP) microservices.
+* **SecOps and Governance** need cryptographic proof that a prompt injection cannot exfiltrate Social Security Numbers or call unauthorized endpoints.
+* **FinOps** needs to know which business unit is spending tokens when a front-door agent delegates work to a shared specialist agent.
+* **Partner API teams** want to package selected capabilities for external mortgage brokers with rate limits and monetization.
+
+If these six tracks are coupled into a single project or a single deployment step, the fastest team moves at the speed of the slowest approval gate.
+
+Esmeralda replaces serialized bottlenecks with **Multi-Track Layered Parallelism**. Each team works in its own dedicated GCP project (and, in production, its own Git repository), connected only through **explicit, versioned platform contracts**:
+
+```mermaid
+flowchart LR
+    subgraph Track1["Track 1: NetOps & PlatformOps"]
+        T1["Shared VPC, Private DNS\n(*.esmeralda.internal)\n& Internal HTTPS Entry Point"]
+    end
+
+    subgraph Track2["Track 2: SecOps & Governance"]
+        T2["Central Agent Gateway,\nAgent Registry, IAP Egress,\nGEAP UAP/NLC & Model Armor"]
+    end
+
+    subgraph Track3["Track 3: FinOps & Observability"]
+        T3["Hub-and-Spoke Log Sinks,\nOTel Baggage Attribution &\nBigQuery Chargeback Views"]
+    end
+
+    subgraph Track4["Track 4: AppDev Tools Team"]
+        T4["Cloud Run MCP Servers\n(legacy-dms, corporate-email,\nincome-verification)"]
+    end
+
+    subgraph Track5["Track 5: AI CoE Team"]
+        T5["Reusable A2A Specialist\n(ai-coe-mortgage-specialist)\n& Private Cloud SQL"]
+    end
+
+    subgraph Track6["Track 6: CX & Partner Teams"]
+        T6["User-Facing ADK Orchestrator\n(cx-mortgage-orchestrator)\n& Optional Apigee Partner APIs"]
+    end
+
+    Track1 -->|"DNS + TLS Contract"| Track2
+    Track2 -->|"SPIFFE + Registry Contract"| Track4 & Track5 & Track6
+    Track4 & Track5 & Track6 -->|"OTel + Stdout Contract"| Track3
+```
+
+### Who Owns What: Engineering Roles and Project Boundaries
+
+Every track maps cleanly to a dedicated GCP project and `team` cost-allocation label:
+
+| Engineering Track (`team` label) | Primary Responsibility | Owned GCP Project | Contract Surface With Other Tracks |
 | :--- | :--- | :--- | :--- |
-| **CX team** | User-facing **orchestrator** agents (ADK). They own the conversation and *consume* reusable agents. | `cx-mortgage-orchestrator` | `esm-<env>-cx-agents-<sfx>` (label `team=cx`) |
-| **AI CoE team** | Reusable **A2A specialist** agents that any orchestrator can call over the A2A protocol. | `ai-coe-mortgage-specialist` | `esm-<env>-ai-coe-agents-<sfx>` (label `team=ai-coe`) |
+| **NetOps** (`netops`) | Shared VPC, subnets, Cloud NAT, Private DNS (`esmeralda.internal.`). | `esm-<env>-net-host-<sfx>` | Publishes the reserved internal VIP (`ilb-esmeralda-vip-<env>`) and wildcard DNS (`*.esmeralda.internal`). |
+| **PlatformOps** (`platformops`) | Private internal HTTPS entry point and optional gateway adapters (`direct`, `envoy`). | `esm-<env>-gateway-<sfx>` | Routes `https://<service>.esmeralda.internal` to the target backend based on the `catalog` block in `env.yaml`. |
+| **SecOps & Governance** (`security-and-platformops`) | Central Agent Gateway, Agent Registry, GEAP UAP/NLC policies, Model Armor, KMS, Secret Manager, BigQuery telemetry hub. | `esm-<env>-governance-<sfx>` | Publishes the `agw_root_ca_bundle`, evaluates SPIFFE `principal://` identities against Agent Registry & IAP, and collects spoke logs. |
+| **Platform Engineering** | Shared CI/CD pipelines and container registries (Layer 0). | `esm-cicd-<sfx>` | Builds environment-neutral container images (`esmeralda-containers`) and promotes immutable `sha256` digests (`esmeralda-containers-release`). |
+| **AppDev Tools Team** (`appdev-tools`) | Enterprise data connectors and MCP tool servers on Cloud Run. | `esm-<env>-mcps-<sfx>` | Exposes stateless MCP servers (`legacy-dms`, `income-verification`, `corporate-email`) behind `https://<svc>.esmeralda.internal/mcp`. |
+| **AI CoE Team** (`ai-coe`) | Reusable A2A domain specialists and private relational state. | `esm-<env>-ai-coe-agents-<sfx>` | Publishes `ai-coe-mortgage-specialist` and its A2A Agent Card at `https://ai-coe-mortgage-specialist.esmeralda.internal`. |
+| **CX Team** (`cx`) | User-facing conversational orchestrators (ADK). | `esm-<env>-cx-agents-<sfx>` | Consumes the specialist via `A2A_AGENT_URL` without ever knowing its underlying engine ID, database IP, or MCP tool implementation. |
 
-The orchestrator never calls the specialist directly: it calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and the private **entry point** (see [01. Central Agent Gateway §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). This lets the AI CoE team redeploy or scale its specialist without any change on the CX side.
-
----
-
-## Architecture Decision Records (ADRs): The "Why" Behind Governance
-
-### 1. ADR-07: Why Central Agent Gateway (AGENT_TO_ANYWHERE) + SPIFFE Identity Over Direct Public NAT Egress?
-* **The Problem:** Allowing AI agents to directly access external Foundation Models or public endpoints via standard Cloud NAT creates critical enterprise vulnerabilities:
-  * **Prompt Injection & Data Exfiltration:** Malicious user inputs can hijack agent execution and exfiltrate customer databases to untrusted third-party servers.
-  * **PII Leaks:** Unsanitized prompts containing Social Security Numbers, credit cards, or passwords leak into external model providers.
-  * **Uncontrolled Token Spend:** Finance teams have zero centralized visibility into per-request token consumption or rogue runaway agent loops.
-* **The Decision:** Deploy the **Central Agent Gateway** (a Google-managed egress proxy) in the governance project `esm-<env>-governance-<sfx>`, authorize every agent by its **SPIFFE Agent Identity** through **IAP**, and keep **Model Armor** templates ready for inline payload inspection.
-* **The Benefit:**
-  1. **Zero-Trust Workload Authorization:** Every Reasoning Engine runs with its own Agent Identity. The gateway is deny-by-default: it only forwards a request if the destination is registered in Agent Registry **and** IAP confirms the identity holds `roles/iap.egressor` on that entry.
-  2. **Content Sanitization (ready to enable):** Model Armor templates (PII, prompt injection, jailbreak, malicious URLs) are deployed in Layer 4. The gateway's `CONTENT_AUTHZ` hook that sends decrypted payloads to Model Armor is written but **disabled** today; enabling it is a one-line change (see [01. Central Agent Gateway §3.5](./01-central-agent-gateway.md#35-model-armor-optional-content_authz)).
-  3. **Granular FinOps:** Agents emit structured per-request token events (`genai_token_consumption`) to stdout. Central log sinks stream them into BigQuery, where views such as `vw_monthly_agent_chargeback` attribute cost per agent, and alert policies catch runaway loops (see [03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)).
+Notice the decoupling between the **CX Team** and the **AI CoE Team**: `cx-mortgage-orchestrator` never calls `ai-coe-mortgage-specialist` by a raw Vertex AI Reasoning Engine resource ID, and it never calls MCP tools directly. It calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and the private **entry point** (see [Chapter 4 §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). The AI CoE team can redeploy, scale, or replace its specialist engine at 2:00 PM without requiring a single configuration change or redeployment from the CX team.
 
 ---
 
-### 2. ADR-08: Why Decoupled Multi-Repository SDLC for Enterprise Production?
-* **The Problem:** Monolithic codebases with multiple collaborating teams create severe operational friction:
-  * **Release Coupling:** Updating a minor corporate email tool forces a recalculation and test cycle of all downstream reasoning engines.
-  * **IAM Privilege Bleeding:** Tool developers should not have permission to modify platform KMS keys or Shared VPC subnets.
-* **The Decision:** Structure production development across **three decoupled repository classes** (Platform IaC, MCP Tool Microservices, and AI Reasoning Engines) bound via **Artifact Registry immutable SHA256 image digests**.
+## Why We Built the AgentOps Lifecycle This Way
+
+Before diving into the repository layout and release pipeline, here are the core architectural decisions that shape Part II:
+
+| Architectural Decision | The Problem It Solves | Why Esmeralda Chose This Approach |
+| :--- | :--- | :--- |
+| **ADR-07: Central Agent Gateway (`AGENT_TO_ANYWHERE`) + SPIFFE Identity over Direct Cloud NAT** | Standard Cloud NAT allows a prompt-injected agent to exfiltrate customer PII to arbitrary external servers or enter runaway token loops without per-agent visibility. | Every Reasoning Engine runs with an attested SPIFFE `AGENT_IDENTITY`. All outbound calls traverse the Central Agent Gateway in `esm-<env>-governance-<sfx>`, which enforces deny-by-default Agent Registry allowlisting, IAP `roles/iap.egressor` checks, GEAP Semantic Governance (NLC), and optional Model Armor inspection. |
+| **ADR-08: Decoupled Multi-Track Repositories Bound by Immutable `sha256` Digests** | Putting platform Terraform, MCP microservices, and multiple teams' agents into a single monolithic release cycle means a tiny email tool tweak forces a full re-test of every agent—or worse, gives application developers IAM access to KMS and VPC state. | Production teams work in decoupled repositories (Platform IaC, MCP Tools, Specialist Agents, Orchestrator Agents) that publish environment-neutral containers to Layer 0 Artifact Registry and bind into environments exclusively via immutable `@sha256:...` digests. |
+| **Environment-Neutral BYOC Containers + Deploy-Time CA Injection** | Baking `dev` certificates or URLs into a container image makes it impossible to promote the exact same binary artifact to `prd`. | Images contain zero certificates or environment URLs. Layer 4 assembles the gateway inspection roots + internal Root CA into `AGENT_GATEWAY_ROOT_CERTIFICATES`, and `esmeralda run` installs them into the container's system trust store at startup (see [Chapter 4 §6](./01-central-agent-gateway.md#6-bring-your-own-container-byoc)). |
+
+---
+
+## Multi-Track Coordination in Action
+
+How do these independent teams collaborate when Julian Sterling's mortgage experience needs a new capability? Let's trace a realistic cross-team workflow where the CX team needs a reusable mortgage specialist backed by a new MCP document connector:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor CX as "CX Team (cx-mortgage-orchestrator)"
+    participant PlatformOps as "PlatformOps / NetOps"
+    participant SecOps as "SecOps & Governance"
+    participant AppDev as "AppDev Tools Team (MCPs)"
+    participant AICoE as "AI CoE Team (A2A specialists)"
+
+    CX->>PlatformOps: 1. Request a reusable specialist dependency
+    PlatformOps->>SecOps: 2. Check billing & IAM policies
+    SecOps-->>PlatformOps: 3. Approve project boundary attachment
+    PlatformOps->>AICoE: 4. Provision ai-coe-mortgage-specialist buckets & Cloud SQL
+    AICoE->>CX: 5. Hand over gateway-abstracted URL (https://ai-coe-mortgage-specialist.esmeralda.internal)
+    CX->>AppDev: 6. Request new backend data connector (MCP tool)
+    AppDev->>PlatformOps: 7. Deploy new tool container to the mcps project
+    PlatformOps->>SecOps: 8. Register tool in Agent Registry, grant run.invoker + iap.egressor
+    SecOps-->>CX: 9. Access granted to new MCP tool
+```
+
+1. **Workload Request**: The CX team requests a domain specialist capable of underwriting mortgages.
+2. **Platform & Security Review**: PlatformOps and SecOps verify project boundaries, budget alerts, and identity separation.
+3. **Infrastructure Provisioning**: PlatformOps provisions the private Cloud SQL PostgreSQL instance (with its zero-bastion schema bootstrap job), GCS buckets, and service accounts in `esm-<env>-ai-coe-agents-<sfx>`.
+4. **Stable Endpoint Handoff**: The AI CoE team deploys `ai-coe-mortgage-specialist`, which registers its **agent card** in the governance Agent Registry. PlatformOps applies `gateways/direct` (`make deploy-gateway`) and `entrypoint` (`make deploy-entrypoint`) so `ai-coe-mortgage-specialist.esmeralda.internal` routes to the new engine. The CX team receives only the stable URL `https://ai-coe-mortgage-specialist.esmeralda.internal` (`A2A_AGENT_URL`).
+5. **Tool Request & Deployment**: When the specialist needs access to legacy loan files, the AppDev Tools team builds `legacy-dms` in `esm-cicd-<sfx>` and deploys it as an internal-LB Cloud Run service in `esm-<env>-mcps-<sfx>`, registered in Agent Registry as `https://legacy-dms.esmeralda.internal/mcp`.
+6. **Least-Privilege Access Grant**: PlatformOps lists the allowed `callers` in the `catalog` block of `env.yaml` and runs the `services/iap-egress` unit (`make deploy-iap-egress`), granting `roles/run.invoker` and per-target `roles/iap.egressor` only to the authorized agent identity.
 
 ---
 
 ## The Decoupled Multi-Repository Strategy
 
-While the Esmeralda blueprint is presented as a centralized codebase for easy distribution, running a production-grade agent platform with multiple teams inside a single monorepo introduces operational bottlenecks. Esmeralda recommends a **Decoupled Multi-Repository Strategy** for production:
+While this open-source blueprint lives in a single repository so you can clone, explore, and deploy it in one sitting, running a multi-team enterprise platform inside a single monorepo creates release coupling and IAM privilege creep. For enterprise production, Esmeralda is designed to split cleanly across **decoupled repository classes** bound together by Layer 0 Artifact Registry digests:
 
 ```mermaid
 flowchart TD
@@ -91,7 +168,7 @@ flowchart TD
 
 ### Directory-to-Repository Migration Map
 
-When migrating from this monorepo developer blueprint to a production-ready decoupled multi-repository architecture, map files and folders as follows:
+When transitioning from this reference repository to decoupled team repositories, split folders along these exact boundaries:
 
 | Blueprint Folder (Monorepo) | Target Production Git Repository | Deployment Endpoint |
 | :--- | :--- | :--- |
@@ -103,21 +180,19 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 | `apps/agents/ai-coe-mortgage-specialist/` | **`agent-ai-coe-mortgage-specialist.git`** | Vertex AI Reasoning Engine in `esm-<env>-ai-coe-agents-<sfx>` |
 | `apps/agents/cx-mortgage-orchestrator/` | **`agent-cx-mortgage-orchestrator.git`** | Vertex AI Reasoning Engine in `esm-<env>-cx-agents-<sfx>` |
 
----
-
 ### The Parameter Linkage Pattern
 
-Decoupling repositories requires a clear mechanism to link them. Rather than allowing application repos to directly execute Terraform, the platform infrastructure repository (`platform-infra-iac.git`) acts as the central binder. Each environment declares **which images to run** in one place, `infrastructure/live/<env>/env.yaml`:
+Application repositories never execute Terraform against cloud projects directly. Instead, `platform-infra-iac.git` acts as the declarative binder. Each environment declares **which images to run** in `infrastructure/live/<env>/env.yaml`:
 
 ```hcl
 # infrastructure/live/<env>/env.yaml (HCL locals, read by Terragrunt)
 image_repository = "dev"         # dev → esmeralda-containers; prd uses "release" → esmeralda-containers-release
 container_tag    = "dev-latest"  # prd: fallback only, used while release/prd.yaml does not exist
-# prd only: every image pinned by digest from the release manifest (see "Releases and promotion")
+# prd only: every image pinned by digest from the release manifest (see "From dev to prd: Immutable Digest Promotion")
 image_digests    = try(yamldecode(file("${get_repo_root()}/release/prd.yaml")).images, {})
 ```
 
-Terragrunt then builds every image URI from the Layer 0 repository outputs plus the digest listed in `image_digests` (`<repo>/<image>@sha256:...`) or, when the image is not listed, the tag (`<repo>/<image>:<container_tag>`):
+Terragrunt constructs each workload's container URI from the Layer 0 repository outputs plus either the immutable digest in `image_digests` (`<repo>/<image>@sha256:...`) or the tag (`<repo>/<image>:<container_tag>`):
 
 #### 1. Tool Container Image (`live/<env>/layer-5-workloads/services/corporate-email/terragrunt.hcl`)
 ```hcl
@@ -141,7 +216,7 @@ inputs = {
 ```
 
 #### 2. Agent Container Digest Pinning (`live/<env>/layer-5-workloads/agents/ai-coe-mortgage-specialist/terragrunt.hcl`)
-To prevent container drift and guarantee that the Vertex AI Reasoning Engine runs exactly the code validated by the owning team, the agent modules always deploy `image@sha256:...`: a digest from the release manifest is used as-is, and a tag is resolved to its **immutable digest** at plan time (`data.google_artifact_registry_docker_image`):
+To prevent silent container drift and guarantee that Vertex AI Agent Runtime executes the exact binary validated by the owning team, the agent modules always deploy `image@sha256:...`. A digest from `release/prd.yaml` is passed straight through, while a mutable `dev` tag is resolved to its **immutable SHA256 digest** at plan time (`data.google_artifact_registry_docker_image`):
 ```hcl
 inputs = {
   agent_image_uri       = "${<dev or release repository_url>}/${local.image_ref}" # ai-coe-mortgage-specialist@sha256:... or :<tag>
@@ -151,79 +226,11 @@ inputs = {
 
 ---
 
-## Cross-Team Governance & Coordination Model
+## From `dev` to `prd`: Immutable Digest Promotion Pipeline
 
-Decoupling source repositories requires a clear cross-team governance model to coordinate changes. Without explicit boundaries, platform updates can break downstream agents, and agent developers might request changes that violate corporate security policy.
+In traditional software delivery, rebuilding an image from a Git branch for `prd` risks subtle dependency drift. In AI agent systems, where a minor library update can alter tool serialization or prompt formatting, rebuilding for production is even riskier.
 
-### Engineering Roles and Project Boundaries
-
-To maintain separation of concerns, Esmeralda maps roles to specific projects and resources (the `team` column matches the project's `team` label):
-
-| Engineering Team (`team` label) | Primary Role / Responsibility | Owned GCP Project | Target Infrastructure Resources |
-| :--- | :--- | :--- | :--- |
-| **NetOps** (`netops`) | Network architecture, routing, egress security. | `esm-<env>-net-host-<sfx>` | Shared VPC, Subnets, Cloud NAT, Private DNS (`esmeralda.internal.`), optional Secure Web Proxy (disabled in dev/prd). |
-| **PlatformOps** (`platformops`) | Ingress, routing, general automation. | `esm-<env>-gateway-<sfx>` | Entry point (internal HTTPS LB) with the built-in `direct` backend, plus optional adapters such as Envoy on Cloud Run (`catalog` and `gateways` blocks in `env.yaml`). |
-| **SecOps & Governance** (`security-and-platformops`) | Agent egress control, key lifecycle, secrets, telemetry auditing. | `esm-<env>-governance-<sfx>` | Agent Gateway, Agent Registry, Model Armor, Cloud KMS, Secret Manager, BigQuery telemetry dataset, dashboards and alerts. |
-| **Platform Engineering** | CI/CD systems, container registries. | `esm-cicd-<sfx>` (shared, Layer 0) | Artifact Registry (`esmeralda-containers`, `esmeralda-containers-release`), Cloud Build, `sa-esmeralda-builder`, `sa-esmeralda-promoter`. |
-| **AppDev Tools Team** (`appdev-tools`) | Enterprise data connectors, backend integrations. | `esm-<env>-mcps-<sfx>` | Cloud Run MCP tool servers and their Agent Registry entries. |
-| **AI CoE Team** (`ai-coe`) | Reusable A2A specialist agents and their data stores. | `esm-<env>-ai-coe-agents-<sfx>` | `ai-coe-mortgage-specialist` Reasoning Engine, Cloud SQL, buckets, BigQuery dataset, Agent Registry agent card. |
-| **CX Team** (`cx`) | User-facing orchestrator agents. | `esm-<env>-cx-agents-<sfx>` | `cx-mortgage-orchestrator` Reasoning Engine and its prompts. |
-
----
-
-### Cross-Team Workflows & Coordination Sequence
-
-When the CX team needs a new capability that requires platform integration, the teams coordinate through a standard routing workflow:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor CX as "CX Team (cx-mortgage-orchestrator)"
-    participant PlatformOps as "PlatformOps / NetOps"
-    participant SecOps as "SecOps & Governance"
-    participant AppDev as "AppDev Tools Team (MCPs)"
-    participant AICoE as "AI CoE Team (A2A specialists)"
-
-    CX->>PlatformOps: 1. Request a reusable specialist dependency
-    PlatformOps->>SecOps: 2. Check billing & IAM policies
-    SecOps-->>PlatformOps: 3. Approve project boundary attachment
-    PlatformOps->>AICoE: 4. Provision ai-coe-mortgage-specialist buckets & Cloud SQL
-    AICoE->>CX: 5. Hand over gateway-abstracted URL (https://ai-coe-mortgage-specialist.esmeralda.internal)
-    CX->>AppDev: 6. Request new backend data connector (MCP tool)
-    AppDev->>PlatformOps: 7. Deploy new tool container to the mcps project
-    PlatformOps->>SecOps: 8. Register tool in Agent Registry, grant run.invoker + iap.egressor
-    SecOps-->>CX: 9. Access granted to new MCP tool
-```
-
-1.  **Workload Request**: The CX team opens an architectural request for a new reusable specialist agent.
-2.  **Platform & Security Check**: PlatformOps and SecOps review billing allocations and verify the security posture of the new specialist.
-3.  **Infrastructure Provisioning**: PlatformOps uses Terragrunt to provision GCS buckets, the Cloud SQL PostgreSQL database (schema bootstrapped by a private Cloud Run job) and service accounts in `esm-<env>-ai-coe-agents-<sfx>`.
-4.  **Endpoint Handoff**: The AI CoE team deploys the specialist Reasoning Engine, which registers its **agent card** in the governance Agent Registry. PlatformOps re-runs `make deploy-gateway` (applies `gateways/direct`) and `make deploy-entrypoint` so the `ai-coe-mortgage-specialist.esmeralda.internal` route points at the new engine ID. The CX team receives only the stable URL `https://ai-coe-mortgage-specialist.esmeralda.internal` (set as `A2A_AGENT_URL` on the orchestrator).
-5.  **Tool Request**: The CX team requests access to legacy data systems via an MCP tool.
-6.  **Tool Compilation & Deployment**: The AppDev Tools team writes the tool code, builds the container in `esm-cicd-<sfx>` and deploys it as a private Cloud Run service (internal-LB ingress) in `esm-<env>-mcps-<sfx>`, registered in Agent Registry as `https://<svc>.esmeralda.internal/mcp`.
-7.  **IAM Access Grant**: PlatformOps adds the tool to the service catalog (`catalog` in `env.yaml`, with its `callers`), which drives the least-privilege `roles/run.invoker` bindings and the entry point route, and re-runs the `services/iap-egress` stack (`make deploy-iap-egress`) so the agents' identities hold `roles/iap.egressor` on the new registry entry.
-
----
-
-## AgentOps CI/CD & Image Promotion Pipeline
-
-To ensure that only tested container images run in production, Esmeralda builds images **once**, in an environment-neutral form, and promotes the exact same bytes from dev to prd by digest. Images contain no environment-specific configuration or certificates; those are injected at deploy time (see [01. Central Agent Gateway §6](./01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
-
-### 1. Developer Workspaces & Local Iteration
-*   Developers run unit tests and local servers with `make test-agents`, `make test-terraform`, `make run-mcp-local` and the `make test-*-local` targets.
-*   Once tests pass, code is committed and a Pull Request is opened against the main branch of the service repository (e.g., `mcp-corporate-email.git`).
-
-### 2. Build & Registry Push (dev)
-*   `make build-*` (e.g. `make build-cx-mortgage-orchestrator`, `make build-images`) submits a Cloud Build job in the shared CI/CD project `esm-cicd-<sfx>`, running as `sa-esmeralda-builder`.
-*   The image is pushed to the **mutable dev repository** `esmeralda-containers` with two tags: `:dev-latest` and `:dev-<gitsha>`.
-
-### 3. Deploy to dev
-*   `make deploy-workloads ENV=dev` (or the per-component `make deploy-*` targets) applies Layer 5. The modules resolve the tag to its SHA256 digest, so every workload runs a pinned image.
-*   The AI CoE specialist module also runs its database schema bootstrap as a private Cloud Run job.
-
-### 4. Releases and promotion
-
-prd never builds and never follows a tag: it deploys the exact digests listed in a **release manifest**, `release/prd.yaml`, which is reviewed and merged like any other change.
+Esmeralda enforces a strict **Build Once, Promote by Digest** lifecycle. Container images are built once in an environment-neutral form, verified end-to-end in `dev`, and promoted byte-for-byte into `prd` through an auditable Git release manifest (`release/prd.yaml`):
 
 ```mermaid
 flowchart LR
@@ -234,34 +241,43 @@ flowchart LR
     PR --> PRD["deploy prd<br/>make deploy-workloads ENV=prd"]
 ```
 
-1.  **Build once.** `make build-images` pushes every image to the dev repository as `:dev-<gitsha>` (and `:dev-latest`).
-2.  **Verify in dev.** Deploy dev on those images, then `make verify ENV=dev`: gateway probes through the entry point (`make test-gateway`) and a real query to each agent (`make test-e2e`). Both must pass.
-3.  **Promote by digest.** `make promote VERSION=vX.Y.Z SOURCE=dev-<gitsha> VERIFIED=<date dev passed>` runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh). It resolves the digest of every image tagged `dev-<gitsha>`, copies each digest into the **immutable release repository** `esmeralda-containers-release` as `vX.Y.Z` (writable by `sa-esmeralda-promoter`), and writes `release/prd.yaml`. It refuses a `vX.Y.Z` that already exists with a different digest; re-running the same promotion is a no-op. It never deploys and never edits `env.yaml`.
-4.  **Manifest PR.** Commit `release/prd.yaml` on a branch and open a PR. The diff shows exactly which images change, from which commit, and when dev verified them.
-5.  **Deploy prd.** After the merge, `make deploy-workloads ENV=prd`. prd units read the manifest (`image_digests` in `infrastructure/live/prd/env.yaml`) and deploy `<release repository>/<image>@sha256:...`; `make verify-images ENV=prd` checks the running digests against the manifest.
-6.  **Roll back** = revert the manifest PR and deploy prd again. The previous digests are still in the release repository, because release tags are immutable.
+### Step-by-Step Release Lifecycle
 
-The manifest stores image names and digests only; the registry URL comes from the Layer 0 outputs, so the file holds no project ids. Its schema is documented in its own header (written by [`scripts/release_manifest.py`](../../../scripts/release_manifest.py)). `make status-release` prints the current manifest. Until a first promotion creates `release/prd.yaml`, prd units fall back to `container_tag`.
+1. **Local Iteration & Unit Testing**:
+   * Developers iterate locally using `make test-agents`, `make test-terraform`, `make run-mcp-local`, and `make test-*-local` (or `uv run esmeralda serve --local`).
+   * Before committing, `.githooks/pre-commit` runs `uv run esmeralda guard --staged` to verify repo hygiene.
+2. **Build Once in Shared CI/CD (`dev`)**:
+   * `make build-*` (e.g., `make build-cx-mortgage-orchestrator` or `make build-images`) submits a Cloud Build job in the shared Layer 0 project `esm-cicd-<sfx>` using `sa-esmeralda-builder`.
+   * The image is pushed to the **mutable dev repository** (`esmeralda-containers`) with two tags: `:dev-latest` and `:dev-<gitsha>`.
+3. **Deploy and Verify in `dev`**:
+   * `make deploy-workloads ENV=dev` (or `uv run esmeralda apply <unit> --env dev`) deploys Layer 5, resolving each tag to its `sha256` digest and running the serverless Cloud SQL schema bootstrap job.
+   * `uv run esmeralda verify --env dev` (`make verify ENV=dev`) executes all gateway conformance probes through the internal entry point (`make test-gateway`) **plus** live end-to-end queries against both `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` (`make test-e2e`).
+4. **Promote by Digest (`make promote`)**:
+   * Once `dev` verification passes, `make promote VERSION=vX.Y.Z SOURCE=dev-<gitsha> VERIFIED=<YYYY-MM-DD>` runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh).
+   * It resolves the `sha256` digest of every workload image tagged `dev-<gitsha>`, copies those exact digests into the **immutable release repository** (`esmeralda-containers-release`) as `vX.Y.Z` (writable only by `sa-esmeralda-promoter`), and writes `release/prd.yaml`.
+   * Re-running the same promotion is an idempotent no-op, while attempting to overwrite an existing `vX.Y.Z` tag with different bytes is rejected by both the script and Artifact Registry's immutable tag policy.
+5. **Review and Merge the Release Manifest (`release/prd.yaml`)**:
+   * The promoter opens a Pull Request with `release/prd.yaml`. Because the manifest stores only logical image names and `sha256` digests (never hardcoded project IDs; the registry URL comes from Layer 0 outputs, as documented in [`scripts/release_manifest.py`](../../../scripts/release_manifest.py)), reviewers see a crisp diff of which components changed, from which commit, and when `dev` verified them.
+6. **Deploy and Audit `prd` (`make verify-images`)**:
+   * After merging `release/prd.yaml`, `make deploy-workloads ENV=prd` reads `image_digests` from `infrastructure/live/prd/env.yaml` and deploys `<release_repository>/<image>@sha256:...`.
+   * `make verify-images ENV=prd` inspects the live Cloud Run revisions and Vertex AI Reasoning Engines in `prd` and verifies that every running container digest matches `release/prd.yaml` (and `make status-release` displays the active manifest at any time).
+7. **Instant, Deterministic Rollback**:
+   * Rolling back `prd` is simply `git revert` on the `release/prd.yaml` PR followed by `make deploy-workloads ENV=prd`. Because `esmeralda-containers-release` is immutable, every historical release digest remains permanently available.
 
-**Follow-ups (not automated yet):**
-
-*   **CI automation:** run build → dev deploy → `make verify ENV=dev` → promote in a pipeline, with the pipeline opening the manifest PR, and deploy prd on merge.
-*   **Binary Authorization:** have prd admit only attested digests from the release repository, so a workload can't run an image that skipped the manifest.
+> [!TIP]
+> **Production Roadmap Extensions:** In your enterprise CI/CD pipeline, you can wire Steps 1–4 into an automated post-merge workflow that opens the `release/prd.yaml` PR automatically after `make verify ENV=dev` succeeds, and pair `esmeralda-containers-release` with **Binary Authorization** so `prd` admits only cryptographically attested digests.
 
 ---
 
-## Operational Observability & Telemetry Governance
+## Preview: Hub-and-Spoke Observability
 
-Centralized governance requires collecting telemetry from all workloads without exposing data to unauthorized users. Esmeralda implements this using a hub-and-spoke telemetry model (full detail in [03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)):
+How does Layer 4 observe all of these decoupled projects without giving developers direct access to production databases or raw infrastructure logs? Esmeralda uses a **hub-and-spoke telemetry model** (covered in full in [Chapter 6: FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)):
 
-### Spoke Sources (Log and Metric Generation)
-*   **MCP Tool Servers**: Cloud Run containers write stdout/stderr and request logs natively, and export OpenTelemetry metrics to the Cloud Telemetry API (`telemetry.googleapis.com`).
-*   **AI Agent Reasoning Engines**: both agents print structured JSON events (`genai_token_consumption`, `mcp_tool_execution`) with token counts, execution path and session context to stdout, alongside the platform's own Reasoning Engine logs.
-*   **Agent Gateway**: request logs (`logName:"gateway_requests"`: host, status, allow/deny decision) land in the governance project.
+* **Spoke Sources**:
+  * **MCP Tool Servers** on Cloud Run emit structured HTTP request logs and export OpenTelemetry metrics to the Cloud Telemetry API (`telemetry.googleapis.com`).
+  * **AI Agent Reasoning Engines** emit single-line JSON events (`genai_token_consumption`, `mcp_tool_execution`) to `stdout` alongside OpenTelemetry trace spans enriched with `caller.project_id` and `caller.agent_name` baggage.
+  * **Central Agent Gateway** records every outbound allow/deny decision (`logName:"gateway_requests"`) directly in the governance project.
+* **Central Governance Hub (`esm-<env>-governance-<sfx>`)**:
+  * Layer 4 installs a project-level log sink (`google_logging_project_sink`) in each of the five spoke projects (`net-host`, `gateway`, `mcps`, `ai-coe-agents`, `cx-agents`) that streams logs into the central BigQuery dataset `esmeralda_telemetry_logs_<env>`, and attaches all spoke projects to the governance Cloud Monitoring metrics scope.
 
-### Hub Dataset (Centralized Audit Platform)
-*   Layer 4 deploys a project-level log sink (`google_logging_project_sink`) in each of the five workload projects: net-host, gateway, mcps, ai-coe-agents and cx-agents.
-*   These sinks route Reasoning Engine logs, Cloud Run logs and Cloud Audit logs into the central BigQuery dataset `esmeralda_telemetry_logs_<env>` inside `esm-<env>-governance-<sfx>`. Spoke projects are also added to the governance project's Cloud Monitoring metrics scope.
-*   Because logs are centralized in the governance project:
-    *   CX and AI CoE developers can analyze agent trajectories without accessing underlying database systems.
-    *   Security auditors can track token spend, prompt performance, and API calls across the entire enterprise.
+Let's begin our tour of Layer 4 in **[Chapter 4: Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)**, where we follow Julian Sterling's mortgage application across the trust boundary.

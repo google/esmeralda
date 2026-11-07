@@ -1,93 +1,56 @@
-# Workloads & Catalog (Layer 5)
+# Part I — The Cast: Agents, Tools & Gateways (Layer 5)
 
-This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads: the private entry point with its service catalog (built-in `direct` backend by default, optional bring-your-own adapters), the composable MCP tool servers, and the two AI agents.
+In the [Prologue](../index.md), our loan officer asked a simple question: ***"Can you verify Julian Sterling's income?"***
 
-Layer 5 is deployed with `make deploy-workloads ENV=<env>` (Terragrunt `run --all` over `infrastructure/live/<env>/layer-5-workloads/`). Terragrunt dependencies give this order:
-
-1. **MCP services** (`services/{legacy-dms,income-verification,corporate-email}`) and their Agent Registry entries.
-2. **Agents**: `agents/ai-coe-mortgage-specialist`, then `agents/cx-mortgage-orchestrator`.
-3. **Gateway backends**: `gateways/direct` (always) plus one unit per adapter in `gateways.enabled` (e.g. `gateways/envoy`). Agent routes point at the agents' engine IDs, so re-run `make deploy-gateway` (applies `gateways/direct`) and the entry point whenever an agent engine is recreated.
-4. **Entry point** (`entrypoint`): the internal HTTPS load balancer routing every catalog host under `*.esmeralda.internal` to `direct` or an adapter (`make deploy-entrypoint`). Its IP and DNS records come from Layer 2 and its certificate from Layer 3.
-5. **IAP egress** (`services/iap-egress`): grants `roles/iap.egressor` on the registry entries created above.
-6. **Test VM** (`services/test-vm`).
+Before we look at the security checkpoints (Part II) or the cloud landing zone beneath the floor (Part III), **Part I introduces the cast of workloads on stage (`layer-5-workloads`)**—the agents, tool microservices, and private front door that collaborate to answer that question—and shows how a single declarative **service catalog** (`catalog` in `env.yaml`) wires them together without coupling the teams that build them.
 
 ---
 
-## Who Builds What: CX Team vs. AI CoE Team
+## 1. The Story & Why It Matters: Four Teams, One Seamless Conversation
 
-Esmeralda separates **agents that talk to customers** from **agents that are reused across the business**. Each team has its own GCP project, service account and Agent Identity:
+Imagine how a traditional bank processes Julian Sterling's mortgage application. A customer relationship manager takes the borrower's request, hands the file to a specialized mortgage underwriter, and the underwriter checks three internal systems: the document vault (W-2s and tax returns), the payroll verification service, and corporate email.
 
-| Team | Builds | Project | Agent in this repo |
+Esmeralda mirrors that exact organizational structure in software. Instead of cramming every prompt, database credential, and API integration into one giant "Mega-Agent," **Layer 5 splits the work across four independent tracks**, each living in its own isolated GCP project:
+
+| Track / Team | Role in Julian Sterling's Story | GCP Project | Layer 5 Units |
 | :--- | :--- | :--- | :--- |
-| **CX team** | User-facing **orchestrator** agents (ADK). They own the conversation and *consume* reusable agents. | `esm-<env>-cx-agents-<sfx>` | `cx-mortgage-orchestrator` |
-| **AI CoE team** | Reusable **A2A specialist** agents that any orchestrator (CX or other teams) can call. | `esm-<env>-ai-coe-agents-<sfx>` | `ai-coe-mortgage-specialist` |
-| **AppDev tools team** | MCP tool servers used by the specialists. | `esm-<env>-mcps-<sfx>` | `legacy-dms`, `income-verification`, `corporate-email` |
-| **PlatformOps** | The entry point (internal load balancer), the service catalog, and any optional adapter behind it. | `esm-<env>-gateway-<sfx>` | `entrypoint`, `gateways/direct` |
+| **CX Product Team** | Owns the customer conversation. Builds the **orchestrator** agent (`cx-mortgage-orchestrator`, Google ADK) that greets the loan officer and delegates specialized work. | `esm-<env>-cx-agents-<sfx>` | `agents/cx-mortgage-orchestrator` |
+| **AI CoE Team** | Owns reusable domain intelligence. Builds the **mortgage specialist** (`ai-coe-mortgage-specialist`), published over the **Agent-to-Agent (A2A)** protocol so any business unit can invoke it. | `esm-<env>-ai-coe-agents-<sfx>` | `agents/ai-coe-mortgage-specialist` |
+| **Backend / MCP Tools Team** | Wraps core enterprise systems as standardized **Model Context Protocol (MCP)** microservices on private Cloud Run. | `esm-<env>-mcps-<sfx>` | `services/legacy-dms`, `services/income-verification`, `services/corporate-email` |
+| **Gateway / PlatformOps Team** | Operates the private front door (**entry point** at `*.esmeralda.internal`), routing traffic via the built-in `direct` backend or optional adapters (`envoy`, `apigee`). | `esm-<env>-gateway-<sfx>` | `entrypoint`, `gateways/direct`, `gateways/envoy` |
 
-The orchestrator never calls MCP tools directly: it delegates to the specialist over **A2A**, and the specialist calls the tools over **MCP**. Every agent-to-agent and agent-to-tool call leaves the agent through the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and enters the target through the entry point.
-
----
-
-## Architecture Decision Records (ADRs): The "Why" Behind Workloads
-
-### 1. ADR-04: Why Standalone MCP Microservices Instead of Embedded Python Tools?
-* **The Problem:** In traditional agent projects, tool functions (`get_payroll()`, `search_dms()`) are hardcoded as internal Python functions within the agent process. If a backend API changes, the entire AI agent must be re-tested, re-evaluated with LLM-as-judge, and redeployed. Furthermore, tools cannot scale independently or be shared across different business unit agents.
-* **The Decision:** Expose every corporate tool as a standalone **Model Context Protocol (MCP)** server (an open protocol that lets an LLM agent discover and call tools over JSON-RPC) on Cloud Run, reachable only through the internal load balancer.
-* **The Benefit:**
-  * **Polyglot & Decoupled:** Tools can be implemented in Python (FastMCP), TypeScript, or Go.
-  * **Zero-Downtime Agent Upgrades:** Tools scale to zero when idle and can be updated without touching agent code.
-  * **Fine-Grained Security:** Each tool has its own Cloud Run IAM invoker list and its own exact entry in Agent Registry.
-
----
-
-### 2. ADR-05: Why Multi-Agent Delegation (A2A Protocol) Over a Single Mega-Prompt?
-* **The Problem:** Cramming dozens of tool definitions and hundreds of instruction rules into a single "Mega-Agent" degrades LLM reasoning accuracy, inflates token costs, and creates context pollution.
-* **The Decision:** Implement the **Agent-to-Agent (A2A) protocol** (an open protocol in which an agent publishes an *agent card* describing its skills and accepts tasks over HTTP):
-  * **CX Orchestrator Agent (`cx-mortgage-orchestrator`, CX team)**: Interacts with the user, determines intent, and delegates mortgage tasks.
-  * **Specialist Agent (`ai-coe-mortgage-specialist`, AI CoE team)**: Reusable mortgage underwriting assistant with tool access (DMS, Income, Email) over MCP.
-* **The Benefit:** Clean separation of concerns and team ownership, modular prompt engineering, reduced token consumption, independent evaluation loops, and one specialist reusable by many orchestrators.
-
----
-
-### 3. ADR-06: Why Automated VPC-Internal Database Bootstrapping?
-* **The Problem:** In a zero-trust architecture, Cloud SQL PostgreSQL instances have **no public IP address** and are accessible only from within the Shared VPC. Running `psql` from local developer laptops is impossible.
-* **The Decision:** The agent module provisions an ephemeral **Cloud Run DB Bootstrap Job** on the Shared VPC that grants the agent's IAM database user its privileges automatically during `layer-5-workloads` deployment.
-* **The Benefit:** 100% automated, deterministic, zero-touch greenfield deployments with zero exposed public IPs.
-
----
-
-## Composable AI Workloads Matrix
+Neither agent team needs network peering or IAM admin rights in the other's project. Every call from an agent leaves through the **Central Agent Gateway** (Layer 4) and arrives at the target through the **private entry point** (`*.esmeralda.internal`):
 
 ```mermaid
 flowchart TB
-    subgraph CX["CX team project (modules/5-workloads/agents/adk-agent)"]
+    subgraph CX["CX Team Project (modules/5-workloads/agents/adk-agent)"]
         Orch["cx-mortgage-orchestrator<br/>(Reasoning Engine, BYOC)"]
     end
 
-    AGW["Central Agent Gateway<br/>(governance project, Layer 4)"]
+    AGW["Central Agent Gateway<br/>(Governance Project, Layer 4)"]
 
-    subgraph Gateway["Gateway project (modules/5-workloads/entrypoint + gateways/direct)"]
-        EP["Entry point<br/>internal HTTPS LB<br/>*.esmeralda.internal"]
+    subgraph Gateway["Gateway Project (modules/5-workloads/entrypoint + gateways/direct)"]
+        EP["Entry Point<br/>internal HTTPS LB<br/>*.esmeralda.internal"]
         PSC["PSC NEG<br/>(region-aiplatform.googleapis.com)"]
-        Adapter["Optional adapter<br/>(e.g. Envoy, off by default)"]
+        Adapter["Optional Adapter<br/>(e.g. Envoy, off by default)"]
         EP ==> PSC
         EP -.-> Adapter
     end
 
-    subgraph CoE["AI CoE team project (modules/5-workloads/agents/a2a-agent)"]
+    subgraph CoE["AI CoE Team Project (modules/5-workloads/agents/a2a-agent)"]
         Spec["ai-coe-mortgage-specialist<br/>(Reasoning Engine, BYOC)"]
         DB[(Cloud SQL Postgres)]
         Spec -.-> DB
     end
 
-    subgraph MCPServers["MCPs project (modules/5-workloads/services/* + serverless NEGs)"]
+    subgraph MCPServers["MCPs Project (modules/5-workloads/services/* + serverless NEGs)"]
         M1["corporate-email"]
         M2["income-verification"]
         M3["legacy-dms"]
     end
 
-    Orch ==>|"A2A: ai-coe-mortgage-specialist.esmeralda.internal"| AGW
-    Spec ==>|"MCP: #60;svc#62;.esmeralda.internal/mcp"| AGW
+    Orch ==>|"1. A2A: ai-coe-mortgage-specialist.esmeralda.internal"| AGW
+    Spec ==>|"2. MCP: #60;svc#62;.esmeralda.internal/mcp"| AGW
     AGW ==> EP
     PSC ==>|"Host + path rewrite, caller's access token"| Spec
     EP ==>|"Serverless NEG, caller's ID token"| MCPServers
@@ -95,21 +58,68 @@ flowchart TB
 
 ---
 
-## Workloads Catalog Detailed Guides
+## 2. Why We Designed It This Way: Key Decisions & Trade-offs
 
-1. **[Entry point, service catalog and gateways](./01-ingress-gateways.md)**
-   * The entry point (internal HTTPS load balancer), the `catalog` and `gateways` blocks in `env.yaml`
-   * The built-in `direct` backend (default in dev and prd) and token kinds
-   * Envoy (optional adapter), Apigee X (stub) and moving hosts between backends
-2. **[Composable MCP Tool Servers](./02-mcp-tool-servers.md)**
-   * Corporate Email Server (`apps/services/corporate-email/`)
-   * Income Verification Server (`apps/services/income-verification/`)
-   * Legacy DMS Server (`apps/services/legacy-dms/`)
-   * Agent Registry cataloging
-3. **[AI Agents & Database Bootstrapping](./03-ai-agents-and-database.md)**
-   * AI CoE Mortgage Specialist, A2A (`modules/5-workloads/agents/a2a-agent/`)
-   * CX Mortgage Orchestrator, ADK (`modules/5-workloads/agents/adk-agent/`)
-   * Database Bootstrap & SQL Lifecycle
-   * Live configurations (`infrastructure/live/<env>/layer-5-workloads/agents/`)
+Why separate orchestrators, specialists, MCP tools, and gateways into distinct Layer 5 units? Here is the summary of the architectural decisions behind Part I:
 
-For how agent egress is authorized, how the private certificates work and how BYOC images trust them, see [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md).
+| Decision | Why We Made It | What We Avoided |
+| :--- | :--- | :--- |
+| **ADR-04: Standalone MCP Microservices Instead of In-Process Python Functions** | Exposes every enterprise connector (`legacy-dms`, `income-verification`, `corporate-email`) as an independent FastMCP service on Cloud Run that scales to zero and has its own IAM invoker list and `Agent Registry` entry. | Redeploying and re-evaluating the entire AI agent every time a backend SQL query or API schema changes; granting the agent raw database credentials. |
+| **ADR-05: Multi-Agent Delegation (A2A) Over a Single Mega-Prompt** | Splits customer conversation (`cx-mortgage-orchestrator`) from domain underwriting (`ai-coe-mortgage-specialist`) using the open A2A protocol and published Agent Cards. | Context-window pollution, inflated token costs, degraded tool-selection accuracy, and duplicate underwriting logic across multiple customer channels. |
+| **ADR-06: Automated VPC-Internal Database Bootstrapping** | Provisions the specialist's private Cloud SQL PostgreSQL instance alongside an ephemeral VPC-bound Cloud Run Job (`<agent>-db-bootstrap-<env>`) that grants IAM database privileges automatically during deployment. | Public database IPs, manual `psql` steps from developer laptops, or long-lived bastion VMs. |
+| **Declarative Service Catalog (`catalog` in `env.yaml`)** | Defines every private host, its workload kind (`mcp`, `a2a`, `adk`), its credential type (`id` vs `access`), its health probe, and its authorized `callers` in one file. | Scattering hostname mappings, IAM invoker bindings, and smoke-test scripts across dozens of unrelated Terraform files. |
+
+---
+
+## 3. How It Works & CLI in Practice
+
+### The Layer 5 Deployment Order
+
+When you deploy Layer 5 (`make deploy-workloads ENV=dev` or unit-by-unit via `uv run esmeralda apply <unit> --env dev`), Terragrunt resolves the dependency graph in six deterministic stages:
+
+1. **MCP Tool Services** (`services/{legacy-dms,income-verification,corporate-email}`) — Deploys the private Cloud Run containers and registers their `TOOL_SPEC` schemas (`tools.json`) in the central **Agent Registry**.
+2. **AI Reasoning Engines** (`agents/ai-coe-mortgage-specialist`, then `agents/cx-mortgage-orchestrator`) — Deploys the BYOC containers on Vertex AI Agent Runtime, binds them to the Layer 4 Central Agent Gateway, and registers the specialist's `A2A_AGENT_CARD`.
+3. **Gateway Backends** (`gateways/direct` always, plus any enabled adapter in `gateways.enabled` such as `gateways/envoy`) — Creates the serverless NEGs and Private Service Connect NEGs pointing at the deployed services and agent engine IDs.
+4. **Private Entry Point** (`entrypoint`) — Configures the internal HTTPS load balancer (`*.esmeralda.internal`) using the reserved IP and DNS zone from Layer 2 and the internal Root CA leaf certificate from Layer 3.
+5. **IAP Egress Grants** (`services/iap-egress`) — Grants `roles/iap.egressor` on the Agent Registry entries so the agents' SPIFFE identities are authorized to egress through the Central Agent Gateway.
+6. **Verification Test VM** (`services/test-vm`) — Provisions the private IAP-tunneled runner VM used by `uv run esmeralda verify` (`make test-gateway`) to probe every catalog route from inside the Shared VPC.
+
+### Operating Layer 5 with the `esmeralda` CLI
+
+You can inspect, test, deploy, and verify every Layer 5 workload directly from the CLI:
+
+```bash
+# List all Layer 5 units and live catalog routing
+uv run esmeralda units --env dev
+uv run esmeralda status --env dev
+
+# Run Julian Sterling's underwriting query locally (starts local MCP servers automatically)
+uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
+  -q "Can you verify Julian Sterling's income?"
+
+# Plan or apply a specific Layer 5 workload unit (with destroy-guard protection)
+uv run esmeralda plan layer-5-workloads/services/income-verification --env dev
+uv run esmeralda apply layer-5-workloads/services/income-verification --env dev
+
+# Verify all *.esmeralda.internal routes and run a live end-to-end orchestrator query
+uv run esmeralda verify --env dev
+```
+
+---
+
+## Chapters in Part I
+
+Follow Julian Sterling's request through the three chapters of Part I:
+
+1. **[Chapter 1: Two Teams, Two Agents — Orchestration vs. Specialization](./03-ai-agents-and-database.md)**
+   * Meet `cx-mortgage-orchestrator` (Google ADK) and `ai-coe-mortgage-specialist` (A2A).
+   * Why they live in separate GCP projects, how BYOC on Vertex AI Agent Runtime works, and how the zero-bastion Cloud SQL task store is bootstrapped.
+2. **[Chapter 2: Wrapping Enterprise Systems as MCP Tool Servers](./02-mcp-tool-servers.md)**
+   * Meet `legacy-dms`, `income-verification`, and `corporate-email` on private Cloud Run.
+   * How `tools.json` contracts register in the Agent Registry, how caller ID tokens flow end-to-end, and how developers test tools locally.
+3. **[Chapter 3: The Private Front Door & Pluggable Gateways](./01-ingress-gateways.md)**
+   * How the `*.esmeralda.internal` entry point routes traffic with the built-in `direct` backend (zero extra proxy VMs).
+   * How teams can plug in **Envoy** or **Apigee X** via `gateways` in `env.yaml` and migrate hosts one at a time without touching agent code.
+
+> [!TIP]
+> Curious how the outbound **Central Agent Gateway** verifies SPIFFE identities and private TLS certificates on every hop? After finishing Part I, head to **[Part II — Ch 4: Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md)**.

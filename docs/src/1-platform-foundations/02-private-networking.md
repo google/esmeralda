@@ -1,26 +1,38 @@
 # Layer 2: Private Networking, DNS & Private Service Connect (PSC)
 
-Welcome to the technical deep-dive for **Layer 2 (Private Networking & Connectivity)**.
+## 1. The Story & Business Why: How Tenant-Hosted Agents Reach Private Bank Services with Zero Public IPs
 
-Layer 2 deploys an enterprise Shared VPC network inside `esm-<env>-net-host-<sfx>`, attaches the workload projects to it, establishes the private subnet topology, prepares the subnet that Private Service Connect (PSC) network attachments use, and creates the private Cloud DNS zone `esmeralda.internal.`.
+Consider what happens the moment `ai-coe-mortgage-specialist` begins verifying **Julian Sterling's** mortgage application. To inspect Julian's uploaded W-2s and paystubs, the specialist agent must call `https://legacy-dms.esmeralda.internal/mcp` and `https://income-verification.esmeralda.internal/mcp`, and persist its A2A task state in a private Cloud SQL PostgreSQL database.
+
+Here is the architectural puzzle every enterprise faces when adopting managed AI runtimes: **agents deployed on Vertex AI Agent Engine (Agent Runtime) execute inside Google-managed tenant networks, not inside your corporate VPC.** How does an agent running in Google's tenant network reach an internal bank service (`*.esmeralda.internal`) without exposing database or tool ports to the public internet?
+
+Historically, teams tried two flawed workarounds:
+1. **Exposing public endpoints with IP allowlists or IAM checks:** A non-starter for regulated financial institutions where internal underwriting APIs and document stores must never have public IP addresses.
+2. **Sprawling VPC Peering meshes and Serverless VPC Access Connectors:** VPC Peering is non-transitive (Spoke A cannot reach Spoke B through a hub) and rapidly exhausts enterprise RFC 1918 IP ranges, while legacy Serverless VPC Access Connectors run fixed-size VMs in `/28` subnets that become bottlenecks during bursty agent calls.
+
+**Layer 2 solves this cleanly with three building blocks owned by NetOps in `esm-<env>-net-host-<sfx>`:**
+* **One Shared VPC (`vpc-esmeralda-shared-<env>`):** Every workload project (`mcps`, `gateway`, `ai-coe-agents`, `cx-agents`, `governance`) attaches to this single network as a Service Project. Cloud Run MCP servers join the `core` subnet (`10.0.1.0/24`) directly via **Direct VPC Egress**—zero connector VMs required.
+* **Private Service Connect (PSC) Network Attachments (`10.11.0.0/24`):** In Layer 4, the Central Agent Gateway plugs a virtual network interface (`agw-egress-na-<env>`) into Layer 2's `psc-interface` subnet, creating a single, governed private bridge from Google's managed agent runtime into the Shared VPC.
+* **Private Cloud DNS (`esmeralda.internal.`) & Reserved Entry Point VIP (`10.0.1.2`):** Layer 2 reserves the internal load balancer IP (`ilb-esmeralda-vip-<env>`) and maps `*.esmeralda.internal` to it. When an agent calls `https://legacy-dms.esmeralda.internal/mcp`, DNS peering resolves that hostname to `10.0.1.2`, and traffic flows entirely over private internal IPs.
 
 * **Module:** [`infrastructure/modules/2-networking/`](../../../infrastructure/modules/2-networking/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-2-networking/`
-* **Deploy:** `make deploy-networking ENV=<env>`
+* **Deploy:** `uv run esmeralda apply layer-2-networking --env <env>` (or `make deploy-networking ENV=<env>`)
 
 ---
 
-## The 60-Second Mental Model: Why Layer 2 Exists
+## 2. Why We Built It This Way (Key Decisions & Rationale)
 
-AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Google-managed tenant networks, not in your VPC. By default, letting them reach private databases (Cloud SQL) or corporate tools (Cloud Run MCPs) would require either:
-1. Exposing database and tool ports to the public internet (a severe enterprise security violation).
-2. Complex VPC Peering meshes that exhaust IP address space (CIDR) and suffer from non-transitive routing.
-
-**Layer 2 creates one centralized Shared VPC. In Layer 4, the Agent Gateway attaches to it with a PSC network attachment, so agents reach private tools and other agents over private IPs with zero public endpoints.**
+| Decision | Alternative Considered | Why We Chose This |
+| :--- | :--- | :--- |
+| **Single Shared VPC in `net-host` + Attached Service Projects** | Multi-VPC Peering mesh across 6 projects | Centralizes CIDR planning, firewall rules, and Cloud NAT under NetOps (`esm-<env>-net-host-<sfx>`) while letting spoke projects run Cloud Run and load balancers on shared subnets via `roles/compute.networkUser`. |
+| **PSC Network Attachment (`psc-interface` subnet) for Agent Egress** | Public HTTPS endpoints or per-engine VPC peering | Gives the Layer 4 Central Agent Gateway a single, auditable private entry point (`10.11.0.0/24`) into the Shared VPC so tenant-hosted agents reach `*.esmeralda.internal` with zero public IPs. |
+| **Cloud Run Direct VPC Egress (`core` subnet)** | Legacy Serverless VPC Access Connector VMs | Eliminates hourly VM connector charges and `/28` throughput bottlenecks; Cloud Run instances draw IPs directly from `sb-esmeralda-core-<env>` (`10.0.1.0/24`). |
+| **Layer 2 Owns the Entry Point VIP (`10.0.1.2`) and `*.esmeralda.internal` DNS** | Creating the IP and DNS records inside Layer 5 gateway modules | Decouples the stable internal address (`*.esmeralda.internal` → `10.0.1.2`) from the Layer 5 ingress implementation, so switching or upgrading gateway backends never changes DNS or IP addresses. |
 
 ---
 
-## Persona & Role Breakdown: Who Owns Layer 2?
+## 3. Persona & Role Breakdown: Who Owns Layer 2?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
@@ -30,7 +42,7 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 
 ---
 
-## Architecture Decision Records (ADRs): The "Why"
+## 4. Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-02.1: Shared VPC Hub-and-Spoke vs. VPC Peering Mesh
 * **Context:** Interconnecting the workload projects via standard VPC Peering requires many bilateral peering links, cannot route transitively, and risks overlapping IP space.
@@ -48,7 +60,7 @@ AI agents running on Vertex AI Agent Engine (Agent Runtime) execute inside Googl
 
 ---
 
-## Shared VPC Network Topology
+## 5. Shared VPC Network Topology
 
 ```mermaid
 flowchart TD
@@ -82,7 +94,7 @@ flowchart TD
 
 ---
 
-## Technical Implementation Breakdown (`modules/2-networking/`)
+## 6. Technical Architecture & In Practice (`modules/2-networking/`)
 
 ### 1. Subnet Classifications & CIDR Allocations
 
@@ -140,7 +152,16 @@ When `enable_psc_interface = true` (the default), the same identities also get `
 
 ---
 
-## Verification & Runbook
+## 7. Verification & Runbook
+
+### Inspect Layer 2 State & Verify Private Routing via the `esmeralda` CLI
+```bash
+# Inspect Layer 2 networking outputs (VPC ID, subnet IDs, entrypoint_address)
+uv run esmeralda status --env dev --unit layer-2-networking
+
+# Run end-to-end gateway conformance probes + live orchestrator query across the private VPC
+uv run esmeralda verify --env dev
+```
 
 ### Test Private DNS Resolution from the Test VM
 ```bash

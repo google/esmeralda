@@ -1,45 +1,44 @@
 # Esmeralda
 
-> Reference blueprint for running AI agents (Google ADK, A2A) and MCP tool servers in production on Google Cloud: layered Terragrunt/Terraform infrastructure (L0 CI/CD, L1 projects, L2 networking, L3 security, L4 governance with the Central Agent Gateway, L5 workloads), agents on Vertex AI Agent Engine with SPIFFE Agent Identity, private ingress through an internal entry point (`*.esmeralda.internal`) with a built-in `direct` backend and swappable gateway adapters (Envoy, Apigee), and a Python runtime library (`esmeralda`). Everything runs through the root Makefile (`make help`).
+> Reference blueprint for running AI agents (Google ADK, A2A) and MCP tool servers in production on Google Cloud: a decoupled 6-layer Terragrunt/Terraform architecture (L0 CI/CD, L1 projects, L2 networking, L3 security & PKI, L4 governance with the Central Agent Gateway, L5 workloads) that enables multi-track parallelism across independent engineering teams. Agents run as BYOC images on Vertex AI Agent Engine with SPIFFE Agent Identity; private ingress flows through an internal HTTPS entry point (`*.esmeralda.internal`) with a built-in `direct` backend and swappable gateway adapters (Envoy, Apigee); and the `esmeralda` Python package provides both the agent runtime SDK and the operational CLI (`uv run esmeralda --help`) and MCP server (`uv run esmeralda mcp`).
 
-The sample use case is a mortgage-underwriting assistant built with synthetic data: a CX orchestrator (ADK) delegates to an AI CoE specialist (A2A), which calls three MCP servers. Source code: https://github.com/google/esmeralda
+The running narrative follows a loan officer asking *"Can you verify Julian Sterling's income?"*: a CX orchestrator (`cx-mortgage-orchestrator`, Google ADK) delegates over A2A to an AI CoE specialist (`ai-coe-mortgage-specialist`), which invokes three Cloud Run MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`). Source code: https://github.com/google/esmeralda
 
-## Overview
+## Prologue
 
-- [Architecture & Documentation Hub](https://google.github.io/esmeralda/): mental model, team ownership, request lifecycle and the layered blueprint.
+- [Prologue: The Esmeralda Architecture Book](https://google.github.io/esmeralda/): why enterprise agents stall, how decoupled layers enable multi-track parallelism, Julian Sterling's end-to-end request tour, and the 6 infrastructure layers.
 
-## Platform Foundations (Layers 1-3)
+## Part I — The Cast: Agents, Tools & Gateways (Layer 5)
 
-- [Platform Foundations](https://google.github.io/esmeralda/1-platform-foundations/): overview of the foundational layers, ADRs and how env.yaml drives them.
-- [Layer 1: Projects & FinOps](https://google.github.io/esmeralda/1-platform-foundations/01-projects-and-finops/): per-environment projects, APIs, billing links, cost labels and service identities.
-- [Layer 2: Private Networking](https://google.github.io/esmeralda/1-platform-foundations/02-private-networking/): Shared VPC, subnets, PSC, private DNS zone and the reserved entry point address.
-- [Layer 3: Security, IAM & PKI](https://google.github.io/esmeralda/1-platform-foundations/03-security-iam-and-telemetry/): service accounts, Agent Identity grants, CMEK, secrets, internal Root CA and the entry point certificate.
+- [Part I Overview: Workloads & Service Catalog](https://google.github.io/esmeralda/2-workloads-and-catalog/): meet the cast of Layer 5 workloads, the declarative `catalog` in `env.yaml`, and the dependency graph.
+- [Ch 1: Two Teams, Two Agents — Orchestration vs. Specialization](https://google.github.io/esmeralda/2-workloads-and-catalog/03-ai-agents-and-database/): `cx-mortgage-orchestrator` (ADK) and `ai-coe-mortgage-specialist` (A2A) on Vertex AI Agent Runtime (BYOC, SPIFFE Agent Identity, Agent Gateway binding) and the private Cloud SQL task store.
+- [Ch 2: Wrapping Enterprise Systems as MCP Tool Servers](https://google.github.io/esmeralda/2-workloads-and-catalog/02-mcp-tool-servers/): FastMCP microservices on private Cloud Run (`legacy-dms`, `income-verification`, `corporate-email`), custom audiences, `tools.json` registration in Agent Registry, and local testing with `uv run esmeralda query`.
+- [Ch 3: The Private Front Door & Pluggable Gateways](https://google.github.io/esmeralda/2-workloads-and-catalog/01-ingress-gateways/): the `*.esmeralda.internal` entry point, service catalog, built-in `direct` routing backend, pluggable gateway adapter contract (`envoy`, `apigee`), host-by-host migration, and verification (`uv run esmeralda verify`).
 
-## Workloads & Catalog (Layer 5)
+## Part II — The Trust Boundary: Governance & Operations (Layer 4)
 
-- [Workloads & Catalog](https://google.github.io/esmeralda/2-workloads-and-catalog/): Layer 5 overview and deploy order (services, agents, gateways, entry point, IAP egress).
-- [Ingress Gateways](https://google.github.io/esmeralda/2-workloads-and-catalog/01-ingress-gateways/): entry point, service catalog, built-in `direct` backend, gateway adapter contract (backend_service_id + routes), host-by-host migration and make test-gateway.
-- [MCP Tool Servers](https://google.github.io/esmeralda/2-workloads-and-catalog/02-mcp-tool-servers/): FastMCP servers on Cloud Run, custom audiences, IAM and Agent Registry entries.
-- [AI Agents & Database](https://google.github.io/esmeralda/2-workloads-and-catalog/03-ai-agents-and-database/): ADK and A2A agents on Agent Engine (BYOC, Agent Identity, Agent Gateway binding) and the Cloud SQL task store.
+- [Part II Overview: AgentOps & Governance](https://google.github.io/esmeralda/3-agentops-and-lifecycle/): multi-track SDLC, image promotion by digest, and central governance overview.
+- [Ch 4: Central Agent Gateway & Private PKI](https://google.github.io/esmeralda/3-agentops-and-lifecycle/01-central-agent-gateway/): how outbound agent egress, SPIFFE identity, the Agent Registry allowlist, private certificates, and BYOC containers fit together.
+- [Ch 5: Capability-Based Governance](https://google.github.io/esmeralda/3-agentops-and-lifecycle/04-capability-based-governance/): capability-based access control across agents and MCP tool servers.
+- [Ch 6: Monitoring, Dashboards & FinOps](https://google.github.io/esmeralda/3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards/): telemetry sinks, alerts, SLOs, Cloud Monitoring dashboards, and BigQuery token chargeback views.
+- [Ch 7: Operating with Agents & the Esmeralda CLI](https://google.github.io/esmeralda/3-agentops-and-lifecycle/04-operating-with-agents/): day-2 operations with `uv run esmeralda`, destroy guards, contract checks, and the read-only `esmeralda mcp` server.
 
-## AgentOps & Governance (Layer 4)
+## Part III — The Stage: Platform Foundations (Layers 0–3)
 
-- [AgentOps & Lifecycle](https://google.github.io/esmeralda/3-agentops-and-lifecycle/): agent SDLC, releases and governance overview.
-- [Central Agent Gateway](https://google.github.io/esmeralda/3-agentops-and-lifecycle/01-central-agent-gateway/): how agent egress, the Agent Registry, private certificates and BYOC agents fit together, with the full request path.
-- [Monitoring, Dashboards & FinOps](https://google.github.io/esmeralda/3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards/): telemetry sinks, alerts, SLOs, dashboards and BigQuery chargeback views.
+- [Part III Overview: Platform Foundations](https://google.github.io/esmeralda/1-platform-foundations/): overview of the foundational layers, architectural decisions, and how `env.yaml` drives them.
+- [Ch 8: Projects & FinOps (Layer 1)](https://google.github.io/esmeralda/1-platform-foundations/01-projects-and-finops/): per-team GCP projects, APIs, billing links, cost labels, and service identities.
+- [Ch 9: Private Networking (Layer 2)](https://google.github.io/esmeralda/1-platform-foundations/02-private-networking/): Shared VPC, subnets, PSC attachments, `*.esmeralda.internal` private DNS zone, and the reserved entry point IP.
+- [Ch 10: Security, IAM & PKI (Layer 3)](https://google.github.io/esmeralda/1-platform-foundations/03-security-iam-and-telemetry/): least-privilege service accounts, SPIFFE Agent Identity grants, CMEK encryption, Secret Manager, and the internal Root CA.
 
-## Esmeralda Library
+## Part IV — The Developer Toolkit: Esmeralda Library & CLI
 
-- [Esmeralda Library](https://google.github.io/esmeralda/4-esmeralda-library/): what the runtime library does for every agent and why.
-- [Usage Guide](https://google.github.io/esmeralda/4-esmeralda-library/guide/): adding the library to an agent, serving (ADK or A2A), calling MCP servers and other agents, caller context, local runs and troubleshooting.
-- [Package Reference](https://google.github.io/esmeralda/4-esmeralda-library/reference/): modules, functions, CLI, environment variables and event schemas.
+- [Part IV Overview: Esmeralda Library](https://google.github.io/esmeralda/4-esmeralda-library/): what the `esmeralda` runtime library and CLI do for every agent and operator.
+- [Ch 11: Developer Usage Guide](https://google.github.io/esmeralda/4-esmeralda-library/guide/): building ADK and A2A agents, calling MCP servers, local execution, and operating a checkout with `esmeralda mcp`.
+- [Ch 12: Package & CLI Reference](https://google.github.io/esmeralda/4-esmeralda-library/reference/): Python modules, CLI subcommands, environment variables, and telemetry schemas.
 
-## Reference
+## Reference & Community
 
 - [Make Targets](https://google.github.io/esmeralda/reference/make-targets/): every Make target, generated from the Makefile.
-- [Contributing Guide](https://google.github.io/esmeralda/contributing/): CLA, local testing, docs build, dependency and uv.lock workflow, conventions.
-
-## Optional
-
-- [AGENTS.md](https://github.com/google/esmeralda/blob/main/AGENTS.md): rules for AI coding agents working in the repository (repo map, invariants, commands, testing and safety).
+- [Contributing Guide](https://google.github.io/esmeralda/contributing/): CLA, local testing, docs build, dependency workflow, and conventions.
+- [AGENTS.md](https://github.com/google/esmeralda/blob/main/AGENTS.md): rules for AI coding agents working in the repository.
 - [Code of Conduct](https://google.github.io/esmeralda/code-of-conduct/): community standards.
