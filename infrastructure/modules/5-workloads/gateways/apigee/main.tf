@@ -1,65 +1,32 @@
-resource "google_apigee_organization" "apigee_org" {
-  analytics_region   = var.region
-  project_id         = var.project_id
-  authorized_network = var.vpc_id
-}
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-resource "google_apigee_environment" "apigee_env" {
-  name         = var.environment
-  org_id       = google_apigee_organization.apigee_org.id
-  description  = "Esmeralda ${var.environment} Apigee Environment"
-  display_name = var.environment
-}
+# Delegates to `modules/5-workloads/apigee/platform`, which implements the
+# non-VPC-peering Private Service Connect Apigee X platform and entrypoint
+# gateway contract.
 
-resource "google_apigee_envgroup" "apigee_envgroup" {
-  name      = "esmeralda-group-${var.environment}"
-  org_id    = google_apigee_organization.apigee_org.id
-  hostnames = ["*.esmeralda.internal"]
-}
+module "platform" {
+  source = "../../apigee/platform"
 
-resource "google_apigee_envgroup_attachment" "env_to_group" {
-  envgroup_id = google_apigee_envgroup.apigee_envgroup.id
-  environment = google_apigee_environment.apigee_env.name
-}
-
-resource "google_apigee_instance" "apigee_instance" {
-  name               = "apigee-instance-${var.environment}"
-  org_id             = google_apigee_organization.apigee_org.id
-  location           = var.region
-  peering_cidr_range = "10.12.0.0/22"
-}
-
-resource "google_apigee_instance_attachment" "env_to_instance" {
-  instance_id = google_apigee_instance.apigee_instance.id
-  environment = google_apigee_environment.apigee_env.name
-}
-
-# Key Value Map to store logical-to-dynamic engine endpoint mappings
-resource "google_apigee_environment_keyvaluemaps" "agent_routes" {
-  env_id = google_apigee_environment.apigee_env.id
-  name   = "agent-routes"
-}
-
-# Dynamically populate KVM entries using local-exec (since the Google API doesn't expose standard keyvaluemap entries as separate Terraform resources)
-resource "null_resource" "populate_apigee_kvm" {
-  for_each   = var.agent_endpoints
-  depends_on = [google_apigee_environment_keyvaluemaps.agent_routes]
-
-  triggers = {
-    engine_id    = each.value.engine_id
-    endpoint_url = each.value.endpoint_url
-  }
-
-  provisioner "local-exec" {
-    command = <<EOT
-      curl -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-        -H "Content-Type: application/json" \
-        "https://apigee.googleapis.com/v1/organizations/${google_apigee_organization.apigee_org.name}/environments/${google_apigee_environment.apigee_env.name}/keyvaluemaps/agent-routes/entries" \
-        -d '{"name": "${each.value.logical_name}", "value": "${each.value.endpoint_url}"}' \
-        || curl -X PUT -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-        -H "Content-Type: application/json" \
-        "https://apigee.googleapis.com/v1/organizations/${google_apigee_organization.apigee_org.name}/environments/${google_apigee_environment.apigee_env.name}/keyvaluemaps/agent-routes/entries/${each.value.logical_name}" \
-        -d '{"name": "${each.value.logical_name}", "value": "${each.value.endpoint_url}"}'
-    EOT
-  }
+  project_id                           = var.project_id
+  region                               = var.region
+  environment                          = var.environment
+  vpc_id                               = var.vpc_id
+  subnet_id                            = var.subnet_id
+  apigee_env_name                      = "esmeralda-${var.environment}"
+  environment_type                     = var.environment_type
+  byo_apigee_org                       = var.byo_apigee_org
+  existing_org_id                      = var.existing_org_id
+  existing_instance_service_attachment = var.existing_instance_service_attachment
 }
