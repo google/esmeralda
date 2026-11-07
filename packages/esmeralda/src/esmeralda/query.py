@@ -51,11 +51,24 @@ class Query:
     user_id: str = "esmeralda-cli"
     session_id: str | None = None
     caller: context.CallerContext | None = None
+    user_token: str | None = None
     timeout: float = 300.0
 
     def caller_context(self) -> dict[str, str]:
         caller = self.caller or context.CallerContext(project_id=_default_project(), agent_name="esmeralda_cli")
         return caller.to_dict()
+
+    def state_delta(self) -> dict[str, Any]:
+        delta: dict[str, Any] = {context.STATE_KEY: self.caller_context()}
+        if self.user_token:
+            delta[context.user_token_state_key()] = self.user_token
+        return delta
+
+    def request_metadata(self) -> dict[str, Any]:
+        meta: dict[str, Any] = {context.CALLER_CONTEXT_KEY: self.caller_context()}
+        if self.user_token:
+            meta[context.USER_TOKEN_KEY] = self.user_token
+        return meta
 
 
 def _default_project() -> str:
@@ -154,7 +167,7 @@ async def query_in_process(config: AgentConfig, query: Query, report: Report) ->
         user_id=query.user_id,
         session_id=session_id,
         new_message=types.Content(role="user", parts=[types.Part(text=query.message)]),
-        state_delta={context.STATE_KEY: query.caller_context()},
+        state_delta=query.state_delta(),
     ):
         report.adk_event(event.model_dump(mode="json", exclude_none=True))
 
@@ -168,7 +181,7 @@ async def query_adk_http(url: str, query: Query, report: Report, headers: dict[s
     payload_input: dict[str, Any] = {
         "message": query.message,
         "user_id": query.user_id,
-        "state_delta": {context.STATE_KEY: query.caller_context()},
+        "state_delta": query.state_delta(),
     }
     if query.session_id:
         payload_input["session_id"] = query.session_id
@@ -232,7 +245,7 @@ async def query_a2a_http(base_url: str, query: Query, report: Report, headers: d
         report.section("📡 Events")
         task = None
         async for item in client.send_message(
-            message, request_metadata={context.CALLER_CONTEXT_KEY: query.caller_context()}
+            message, request_metadata=query.request_metadata()
         ):
             if isinstance(item, tuple):
                 task = item[0]
@@ -243,6 +256,9 @@ async def query_a2a_http(base_url: str, query: Query, report: Report, headers: d
                 report.adk_event({"author": "agent", "content": {"parts": [{"text": t} for t in texts]}})
         if task is not None:
             report.a2a_task(task)
+
+
+query_a2a = query_a2a_http
 
 
 # ------------------------------------------------------------------------------------------

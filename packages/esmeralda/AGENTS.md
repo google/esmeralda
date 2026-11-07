@@ -13,7 +13,9 @@ care, and update both agents and the docs in the same PR):
 | `prepare()`, `finalize()` | `lifecycle.py` | Process lifecycle; `prepare()` must run before the agent creates its clients |
 | `create_app(root_agent, *, name="agent", plugins=())` | `app.py` | ADK `App` with `EsmeraldaTelemetryPlugin` first |
 | `EsmeraldaTelemetryPlugin` | `plugin.py` | Caller context and telemetry per request |
-| `mcp.toolset(url, prefix=...)`, `mcp.headers_for(...)` | `mcp.py` | MCP toolset with ID token, user token and `X-API-Key` |
+| `mcp.toolset(url, prefix=...)`, `mcp.headers_for(...)` | `mcp.py` | MCP toolset with ID token, user token (`User-Auth-Token`), `X-Agent-Spiffe-Id`, and `X-API-Key` |
+| `auth_manager.resolve_user_token(ctx, ...)`, `auth_manager.DelegatedContext`, `auth_manager.spiffe_id()` | `auth_manager.py` | Agent Identity Auth Manager client (3LO/2LO delegation & SPIFFE identity) |
+| `mcp_authz.verify_request(headers, ...)` | `mcp_authz.py` | Zero-latency MCP end-user & agent delegation claim guard |
 | `a2a.remote_agent(name, url=..., description=...)` | `a2a.py` | `RemoteA2aAgent` pinned to the gateway URL, card from `<url>/v1/card` |
 | `auth.id_token(audience)`, `auth.access_token()`, `auth.token_kind(url)`, `auth.bearer_token(url)` | `auth.py` | Cached ID and OAuth2 access tokens (plus `*_async`); impersonates `SERVICE_ACCOUNT_EMAIL` when set; skipped for local URLs |
 | `context.user_token(ctx)`, `context.CallerContext` | `context.py` | End-user token and caller identity propagation |

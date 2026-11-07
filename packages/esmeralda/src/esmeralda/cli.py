@@ -85,11 +85,13 @@ def _query(args: argparse.Namespace) -> int:
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     try:
         config = AgentConfig.load(args.agent_dir)
+        user_token = getattr(args, "user_token", None) or os.environ.get("ESMERALDA_USER_TOKEN") or None
         request = q.Query(
             message=args.message,
             user_id=args.user,
             session_id=args.session,
             caller=q.parse_caller(args.caller) if args.caller else None,
+            user_token=user_token,
             timeout=args.timeout,
         )
     except (FileNotFoundError, ValueError) as exc:
@@ -437,6 +439,11 @@ def _parser() -> argparse.ArgumentParser:
     query.add_argument("--user", default="esmeralda-cli", help="user id (default: esmeralda-cli)")
     query.add_argument("--session", help="session id (ADK) or context id (A2A) to continue")
     query.add_argument("--caller", help="caller context as project/agent (default: <project>/esmeralda_cli)")
+    query.add_argument(
+        "--user-token",
+        default=os.environ.get("ESMERALDA_USER_TOKEN"),
+        help="end-user OAuth token forwarded as temp:user_auth_token / A2A metadata (default: $ESMERALDA_USER_TOKEN)",
+    )
     query.add_argument("--timeout", type=float, default=300.0, help="HTTP timeout in seconds (default: 300)")
     query.add_argument("--fail-on-tool-error", action="store_true", help="exit non-zero if a tool call errored")
     query.add_argument("--verbose", "-v", action="store_true", help="print raw events")

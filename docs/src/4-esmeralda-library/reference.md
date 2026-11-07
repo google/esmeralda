@@ -137,8 +137,27 @@ A frozen dataclass.
 
 | Name | Description |
 |---|---|
-| `toolset(url, *, prefix, api_key=None, timeout=30.0, sse_read_timeout=300.0, token=None, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. `token` (`"id"` or `"access"`) overrides `auth.token_kind(url)`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
-| `headers_for(url, ctx=None, *, api_key=None, token=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `context.user_token(ctx)` has one) |
+| `toolset(url, *, prefix, api_key=None, auth_provider=None, timeout=30.0, sse_read_timeout=300.0, token=None, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. `token` (`"id"` or `"access"`) overrides `auth.token_kind(url)`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
+| `headers_for(url, ctx=None, *, api_key=None, token=None, auth_provider=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `auth_manager.resolve_user_token(ctx, auth_provider=...)` resolves one), and `X-Agent-Spiffe-Id` (when `auth_manager.spiffe_id()` is present) |
+
+## `esmeralda.auth_manager`
+
+| Name | Description |
+|---|---|
+| `DelegatedContext(user_identity=None, agent_spiffe_id=None, auth_provider=None, scopes=())` | Frozen dataclass representing the Three-Identity Delegation tuple (`User identity + Agent SPIFFE identity = Delegated identity`) |
+| `spiffe_id() -> str \| None` | Returns the agent's runtime SPIFFE / `principal://` ID from `AGENT_SPIFFE_ID` or `AGENT_WORKLOAD_CERT_PATH` |
+| `delegated_context(ctx=None, *, auth_provider=None, scopes=()) -> DelegatedContext` | Builds a `DelegatedContext` for an invocation |
+| `acquire_token(auth_provider, *, user_id=None, session_id=None, scopes=(), base_url=None, timeout=10.0) -> str` | Acquires a 3LO/2LO token or API key from Agent Identity Auth Manager (`{auth_provider}:acquireToken`) |
+| `resolve_user_token(ctx=None, *, auth_provider=None, scopes=()) -> str \| None` | Returns `context.user_token(ctx)` if present, else acquires a delegated token via `acquire_token` when `auth_provider` or `AGENT_AUTH_PROVIDER` is configured |
+
+## `esmeralda.mcp_authz`
+
+| Name | Description |
+|---|---|
+| `verify_request(headers=None, *, enforce=None, allowed_domains=None) -> VerifiedCaller` | Verifies `User-Auth-Token` and `X-Agent-Spiffe-Id` without network I/O; rejects `*.gserviceaccount.com` tokens and fails closed when `MCP_ENFORCE_USER_AUTH=true` |
+| `decode_jwt_claims(token) -> dict \| None` | Decodes the JSON payload of a 3-part JWT locally |
+| `is_service_account_email(value) -> bool` | `True` when `value` is a `*.gserviceaccount.com` service account identifier |
+| `AuthorizationError(reason, *, status_code=403)` | Raised when verification fails |
 
 ## `esmeralda.a2a`
 
