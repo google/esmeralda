@@ -75,7 +75,7 @@ variable "database_name" {
 
 # BYOC Container Image URI
 variable "agent_image_uri" {
-  description = "The Artifact Registry URI of the pre-built BYOC container image for the agent"
+  description = "Artifact Registry URI of the pre-built BYOC image: <image>:<tag> (resolved to its digest at plan time) or <image>@sha256:... (used as-is, e.g. from release/prd.yaml)"
   type        = string
 }
 
