@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<AssignMessage name="AM-Propagate-Cross-Cloud-Principal" continueOnError="false" enabled="true">
+  <DisplayName>AM-Propagate-Cross-Cloud-Principal</DisplayName>
+  <AssignVariable>
+    <Name>caller.identity</Name>
+    <Ref>jwt.VJ-Verify-Cross-Cloud-JWT.claim.sub</Ref>
+    <Value>anonymous</Value>
+  </AssignVariable>
+  <Remove>
+    <Headers>
+      <Header name="x-cross-cloud-token"/>
+    </Headers>
+  </Remove>
+  <Set>
+    <Headers>
+      <Header name="x-verified-identity">{caller.identity}</Header>
+      <Header name="x-verified-issuer">{crosscloud.issuer_uri}</Header>
+    </Headers>
+  </Set>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</AssignMessage>

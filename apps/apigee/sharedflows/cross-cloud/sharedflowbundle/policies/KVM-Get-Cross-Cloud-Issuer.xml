@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<KeyValueMapOperations name="KVM-Get-Cross-Cloud-Issuer" mapIdentifier="kvm-cross-cloud-issuers" continueOnError="false" enabled="true">
+  <DisplayName>KVM-Get-Cross-Cloud-Issuer</DisplayName>
+  <Scope>environment</Scope>
+  <ExclusiveCache>false</ExclusiveCache>
+  <ExpiryTimeInSecs>300</ExpiryTimeInSecs>
+  <Get assignTo="crosscloud.issuer_config_json">
+    <Key>
+      <Parameter ref="request.header.x-cross-cloud-issuer"/>
+    </Key>
+  </Get>
+  <Get assignTo="crosscloud.issuer_uri">
+    <Key>
+      <Parameter ref="request.header.x-cross-cloud-issuer"/>
+      <Parameter>issuer_uri</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="crosscloud.jwks_uri">
+    <Key>
+      <Parameter ref="request.header.x-cross-cloud-issuer"/>
+      <Parameter>jwks_uri</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="crosscloud.audience">
+    <Key>
+      <Parameter ref="request.header.x-cross-cloud-issuer"/>
+      <Parameter>audience</Parameter>
+    </Key>
+  </Get>
+</KeyValueMapOperations>

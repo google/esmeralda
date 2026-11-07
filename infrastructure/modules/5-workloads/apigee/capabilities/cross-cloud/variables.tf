@@ -27,6 +27,24 @@ variable "apigee_env_id" {
   type        = string
 }
 
+variable "service_account" {
+  description = "Service account email used by the deployed Apigee shared flow."
+  type        = string
+  default     = null
+}
+
+variable "sharedflow_name" {
+  description = "Name of the Apigee shared flow for inbound cross-cloud OIDC/JWT validation."
+  type        = string
+  default     = "cross-cloud"
+}
+
+variable "bundle_source_dir" {
+  description = "Optional override path to the cross-cloud sharedflow bundle directory."
+  type        = string
+  default     = null
+}
+
 variable "trusted_issuers" {
   description = "Map of trusted inbound cross-cloud OIDC/JWT issuers (issuer slug => issuer metadata)."
   type = map(object({

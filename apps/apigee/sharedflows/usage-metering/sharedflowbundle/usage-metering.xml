@@ -10,6 +10,7 @@
   <Policies>
     <Policy>AM-clean-headers</Policy>
     <Policy>AM-set-user-var</Policy>
+    <Policy>DC-capture-llm-metrics</Policy>
     <Policy>EV-ExtractTokenCount</Policy>
     <Policy>JS-extract-tokens</Policy>
     <Policy>ML-interaction</Policy>

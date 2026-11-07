@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<SharedFlow name="default">
+  <Step>
+    <Name>KVM-Get-Cross-Cloud-Issuer</Name>
+    <Condition>request.header.x-cross-cloud-issuer != null</Condition>
+  </Step>
+  <Step>
+    <Name>VJ-Verify-Cross-Cloud-JWT</Name>
+    <Condition>(request.header.x-cross-cloud-token != null) and (crosscloud.jwks_uri != null)</Condition>
+  </Step>
+  <Step>
+    <Name>AM-Propagate-Cross-Cloud-Principal</Name>
+    <Condition>jwt.VJ-Verify-Cross-Cloud-JWT.valid = true</Condition>
+  </Step>
+</SharedFlow>

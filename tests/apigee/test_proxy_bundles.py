@@ -220,3 +220,97 @@ def test_capability_terraform_modules_validate_offline(capability_module: str) -
         text=True,
     )
     assert "Success!" in validate_res.stdout
+
+
+def test_usage_metering_data_capture_populates_all_five_collectors() -> None:
+    """DC-capture-llm-metrics.xml must populate all 5 org-scoped DataCollectors in usage-metering."""
+    dc_policy = (
+        SHAREDFLOWS_DIR / "usage-metering" / "sharedflowbundle" / "policies" / "DC-capture-llm-metrics.xml"
+    )
+    assert dc_policy.exists(), "Missing DC-capture-llm-metrics.xml in usage-metering shared flow"
+    root = ET.parse(dc_policy).getroot()
+    assert root.tag == "DataCapture"
+    assert (root.findtext("IgnoreUnresolvedVariables") or "").strip() == "true"
+
+    collectors = {
+        (cap.findtext("DataCollector") or "").strip(): (
+            cap.find("Collect").attrib.get("ref") if cap.find("Collect") is not None else ""
+        )
+        for cap in root.findall("./Capture")
+    }
+    assert collectors == {
+        "dc_llm_model": "llm.model",
+        "dc_prompt_tokens": "llm.promptTokenCount",
+        "dc_candidates_tokens": "llm.candidatesTokenCount",
+        "dc_total_tokens": "llm.totalTokenCount",
+        "dc_consumer_app": "consumer.app.name",
+    }
+
+
+def test_cross_cloud_sharedflow_verifies_jwt_and_propagates_identity() -> None:
+    """cross-cloud shared flow must look up KVM issuer, verify JWT via JWKS, and propagate caller.identity."""
+    sf_dir = SHAREDFLOWS_DIR / "cross-cloud" / "sharedflowbundle"
+    flow_root = ET.parse(sf_dir / "sharedflows" / "default.xml").getroot()
+    steps = [
+        (el.text or "").strip()
+        for el in flow_root.findall("./Step/Name")
+    ]
+    assert steps == [
+        "KVM-Get-Cross-Cloud-Issuer",
+        "VJ-Verify-Cross-Cloud-JWT",
+        "AM-Propagate-Cross-Cloud-Principal",
+    ]
+    vj_root = ET.parse(sf_dir / "policies" / "VJ-Verify-Cross-Cloud-JWT.xml").getroot()
+    assert vj_root.tag == "VerifyJWT"
+    assert (vj_root.findtext("Issuer") or "") is not None
+    jwks_el = vj_root.find("./PublicKey/JWKS")
+    assert jwks_el is not None and jwks_el.attrib.get("uriRef") == "crosscloud.jwks_uri"
+
+
+def test_layer_4_telemetry_sink_and_partner_chargeback_view() -> None:
+    """Layer 4 telemetry sink must export esmeralda-apigee-interactions and 4_finops_analytics must expose vw_partner_apigee_chargeback."""
+    sink_tf = (
+        REPO_ROOT
+        / "infrastructure"
+        / "modules"
+        / "4-governance"
+        / "modules"
+        / "1_telemetry_sinks"
+        / "main.tf"
+    ).read_text(encoding="utf-8")
+    assert "esmeralda-apigee-interactions" in sink_tf
+    assert "apigee.gateway.interaction" in sink_tf
+
+    finops_dir = (
+        REPO_ROOT
+        / "infrastructure"
+        / "modules"
+        / "4-governance"
+        / "modules"
+        / "4_finops_analytics"
+    )
+    finops_tf = (finops_dir / "main.tf").read_text(encoding="utf-8")
+    assert "esmeralda_apigee_interactions" in finops_tf
+    assert "vw_partner_apigee_chargeback" in finops_tf
+
+    sql_tpl = (
+        REPO_ROOT
+        / "infrastructure"
+        / "modules"
+        / "4-governance"
+        / "sql"
+        / "vw_partner_apigee_chargeback.sql.tpl"
+    )
+    assert sql_tpl.exists()
+    sql_text = sql_tpl.read_text(encoding="utf-8")
+    for required_col in (
+        "consumer_app",
+        "total_input_tokens",
+        "total_output_tokens",
+        "total_thinking_tokens",
+        "avg_request_gateway_latency_ms",
+        "avg_target_backend_latency_ms",
+        "avg_response_gateway_latency_ms",
+        "estimated_cost_usd",
+    ):
+        assert required_col in sql_text

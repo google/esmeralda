@@ -24,6 +24,11 @@ output "chargeback_view_id" {
   description = "BigQuery FinOps monthly chargeback view ID"
 }
 
+output "partner_apigee_chargeback_view_id" {
+  value       = module.finops_analytics.partner_apigee_chargeback_view_id
+  description = "BigQuery FinOps partner Apigee gateway chargeback and latency decomposition view ID"
+}
+
 output "golden_signals_dashboard_id" {
   value       = module.alert_policies.golden_signals_dashboard_id
   description = "Cloud Monitoring Agent Golden Signals Dashboard ID"

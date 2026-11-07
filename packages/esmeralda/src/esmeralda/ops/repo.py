@@ -135,6 +135,37 @@ def gateways_block(root: Path, env: str) -> dict[str, Any]:
     }
 
 
+def governance_block(root: Path, env: str) -> dict[str, Any]:
+    """The ``governance = { apigee = { enabled = ... }, capabilities = { ... } }`` block of env.yaml, parsed."""
+    text = re.sub(r"#.*", "", env_locals(root, env))
+    start_match = re.search(r"^\s*governance\s*=\s*\{", text, re.MULTILINE)
+    if not start_match:
+        return {}
+    depth = 1
+    idx = start_match.end()
+    while idx < len(text) and depth > 0:
+        if text[idx] == "{":
+            depth += 1
+        elif text[idx] == "}":
+            depth -= 1
+        idx += 1
+    body = text[start_match.end() : idx - 1]
+    apigee_match = re.search(r"apigee\s*=\s*\{([^}]*)\}", body, re.DOTALL)
+    apigee_enabled = False
+    if apigee_match:
+        en_match = re.search(r"enabled\s*=\s*(true|false)", apigee_match.group(1))
+        if en_match:
+            apigee_enabled = en_match.group(1) == "true"
+    caps_match = re.search(r"capabilities\s*=\s*\{([^}]*)\}", body, re.DOTALL)
+    capabilities: dict[str, str] = {}
+    if caps_match:
+        capabilities = dict(re.findall(r'([\w_]+)\s*=\s*"([^"]+)"', caps_match.group(1)))
+    return {
+        "apigee": {"enabled": apigee_enabled},
+        "capabilities": capabilities,
+    }
+
+
 # ------------------------------------------------------------------------------------------
 # state and outputs
 # ------------------------------------------------------------------------------------------

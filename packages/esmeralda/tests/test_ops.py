@@ -159,6 +159,53 @@ def test_gateways_block(checkout):
     }
 
 
+def test_governance_block_and_apigee_unit_enabled(checkout):
+    env_yaml = checkout / "infrastructure/live/dev/env.yaml"
+    apigee_units = [
+        "layer-5-workloads/apigee/platform",
+        "layer-5-workloads/apigee/products",
+        "layer-5-workloads/apigee/capabilities/partner-agents",
+        "layer-5-workloads/apigee/capabilities/token-quota",
+        "layer-5-workloads/apigee/capabilities/cross-cloud",
+    ]
+    for unit in apigee_units:
+        (checkout / "infrastructure/live/dev" / unit).mkdir(parents=True, exist_ok=True)
+        (checkout / "infrastructure/live/dev" / unit / "terragrunt.hcl").write_text("")
+
+    # 1. With apigee.enabled = false, all apigee units are disabled/excluded.
+    env_yaml.write_text(
+        ENV_YAML
+        + """
+locals {
+  governance = {
+    apigee = {
+      enabled = false
+    }
+    capabilities = {
+      partner_agents = "apigee"
+      token_quota    = "agent_gateway"
+      cross_cloud    = "apigee"
+    }
+  }
+}
+"""
+    )
+    gov = repo.governance_block(checkout, "dev")
+    assert gov["apigee"]["enabled"] is False
+    for unit in apigee_units:
+        assert infra.unit_enabled(checkout, "dev", unit) is False
+
+    # 2. With apigee.enabled = true, platform/products and capabilities set to "apigee" are enabled.
+    env_yaml.write_text(env_yaml.read_text().replace("enabled = false", "enabled = true"))
+    gov_enabled = repo.governance_block(checkout, "dev")
+    assert gov_enabled["apigee"]["enabled"] is True
+    assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/platform") is True
+    assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/products") is True
+    assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/partner-agents") is True
+    assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/cross-cloud") is True
+    assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/token-quota") is False
+
+
 def test_gcs_backend_detected(checkout):
     env_yaml = checkout / "infrastructure/live/dev/env.yaml"
     env_yaml.write_text(

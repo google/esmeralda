@@ -129,6 +129,96 @@ EOF
   }
 }
 
+# Partitioned BigQuery Table for Apigee Partner Gateway interactions (when usage_metering = "apigee").
+# Pre-created with the OTel GenAI columns emitted by ML-interaction.xml so vw_partner_apigee_chargeback
+# can be validated and queried immediately before the first partner call arrives.
+resource "google_bigquery_table" "apigee_interactions" {
+  dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
+  table_id            = "esmeralda_apigee_interactions"
+  project             = var.governance_project_id
+  deletion_protection = false
+
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+
+  schema = <<EOF
+[
+  {"name": "timestamp", "type": "TIMESTAMP", "mode": "NULLABLE"},
+  {"name": "logName", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "severity", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "trace", "type": "STRING", "mode": "NULLABLE"},
+  {
+    "name": "jsonPayload",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {"name": "event", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "proxy", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "revision", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "verb", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "path", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "status", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "fault", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "traceparent", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "apigee_message_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "consumer_app", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "consumer_client_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "caller_identity", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_request_model", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_input_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_output_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_thinking_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_total_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {
+        "name": "quota",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "allowed", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "used", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "available", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "exceeded", "type": "STRING", "mode": "NULLABLE"}
+        ]
+      },
+      {
+        "name": "latency_timestamps",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "client_received_start_ms", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "target_sent_start_ms", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "target_received_end_ms", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "gateway_responded_ms", "type": "STRING", "mode": "NULLABLE"}
+        ]
+      }
+    ]
+  }
+]
+EOF
+
+  lifecycle {
+    ignore_changes = [schema]
+  }
+}
+
+# Partner Apigee Gateway Chargeback & Latency Decomposition View
+resource "google_bigquery_table" "vw_partner_apigee_chargeback" {
+  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+  table_id   = "vw_partner_apigee_chargeback"
+  project    = var.governance_project_id
+
+  view {
+    query = templatefile("${path.module}/../../sql/vw_partner_apigee_chargeback.sql.tpl", {
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+    })
+    use_legacy_sql = false
+  }
+
+  depends_on = [google_bigquery_table.apigee_interactions]
+}
+
 # Monthly Agent Chargeback View
 resource "google_bigquery_table" "vw_monthly_chargeback" {
   dataset_id = "esmeralda_telemetry_logs_${var.environment}"
