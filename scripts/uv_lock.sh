@@ -25,11 +25,18 @@ for p in "$@"; do
 done
 
 echo "🔐 Locking against public PyPI in Cloud Build${*:+ (upgrade: $*)}..."
-CICD_JSON="$(cd "${CICD_DIR}" && terragrunt output -json 2>/dev/null)"
-CICD_PROJECT="$(jq -r .cicd_project_id.value <<<"${CICD_JSON}")"
-BUILDER_SA="$(jq -r .builder_sa_email.value <<<"${CICD_JSON}")"
-SOURCE_BUCKET="$(jq -r .build_source_bucket.value <<<"${CICD_JSON}")"
-if [[ -z "${CICD_PROJECT}" || "${CICD_PROJECT}" == "null" ]]; then
+CICD_JSON="$(cd "${CICD_DIR}" && terragrunt output -json 2>/dev/null || echo '{}')"
+CICD_PROJECT="$(jq -r '.cicd_project_id.value // empty' <<<"${CICD_JSON}")"
+if [[ -z "${CICD_PROJECT}" ]]; then
+  MAIN_WORKTREE="$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')"
+  if [[ -n "${MAIN_WORKTREE}" && -d "${MAIN_WORKTREE}/${CICD_DIR}" ]]; then
+    CICD_JSON="$(cd "${MAIN_WORKTREE}/${CICD_DIR}" && terragrunt output -json 2>/dev/null || echo '{}')"
+    CICD_PROJECT="$(jq -r '.cicd_project_id.value // empty' <<<"${CICD_JSON}")"
+  fi
+fi
+BUILDER_SA="$(jq -r '.builder_sa_email.value // empty' <<<"${CICD_JSON}")"
+SOURCE_BUCKET="$(jq -r '.build_source_bucket.value // empty' <<<"${CICD_JSON}")"
+if [[ -z "${CICD_PROJECT}" ]]; then
   echo "❌ Could not read Layer 0 outputs from ${CICD_DIR} (run 'terragrunt output' there to see why)." >&2
   exit 1
 fi
