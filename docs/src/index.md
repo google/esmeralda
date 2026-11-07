@@ -44,53 +44,105 @@ Because these boundaries are strict and stable, **seven independent tracks and t
 
 ---
 
-## 2. The 60-Second Tour: Julian Sterling's Mortgage Application
+## 2. Architecture at a Glance: Julian Sterling's Mortgage Application
 
-To make every architectural concept concrete, this book follows a single real-world thread from start to finish: a loan officer asks Esmeralda,
+To make every architectural concept concrete, this book follows a single real-world thread from start to finish: a loan officer or external partner application asks Esmeralda,
 
 > ***"Can you verify Julian Sterling's income?"***
 
-Here is what happens across the platform in the seconds after that question is asked:
+### End-to-End System Topology
+
+```mermaid
+flowchart LR
+    subgraph NS["1. North–South Front Door (Layer 5)"]
+        Partner["External Partner / B2B App<br/>(API Key / OAuth + 3LO Token)"]
+        Apigee["Apigee X Partner Front Door<br/>(partner.esmeralda.internal / 10.0.1.3)<br/>API Products • LLMTokenQuota • Metering"]
+        Caller["Internal Loan Officer / CLI<br/>(esmeralda query)"]
+    end
+
+    subgraph Agents["2. Agent Runtime & Cryptographic Identity (Layers 3 & 5)"]
+        Orch["cx-mortgage-orchestrator<br/>(Google ADK • CX Project)<br/>SPIFFE Identity #1 (principal://)"]
+        Spec["ai-coe-mortgage-specialist<br/>(A2A Protocol • AI CoE Project)<br/>SPIFFE Identity #2 + Auth Manager 3LO"]
+        SQL[("Private Cloud SQL<br/>(A2A Task Store • CMEK)")]
+    end
+
+    subgraph Gov["3. East–West Zero-Trust Control Plane (Layer 4)"]
+        AGW["GEAP Central Agent Gateway (10.200.0.2)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor"]
+        Gemini["Gemini 3.7 Flash<br/>(Vertex AI API)"]
+        FinOps["Central Telemetry & FinOps Hub<br/>(OTel Baggage • BigQuery Chargeback Views)"]
+    end
+
+    subgraph EastWest["4. Private Entry Point & MCP Tools (Layer 5)"]
+        EP["Internal HTTPS Entry Point<br/>(*.esmeralda.internal / 10.0.1.2)<br/>Built-in direct routing (optional Envoy)"]
+        DMS["legacy-dms<br/>(Cloud Run FastMCP)"]
+        Inc["income-verification<br/>(Cloud Run FastMCP)"]
+        Email["corporate-email<br/>(Cloud Run FastMCP)"]
+    end
+
+    Partner -->|"HTTPS + x-api-key"| Apigee
+    Apigee -->|"Curated route + quota check"| Orch
+    Caller -->|"Vertex AI streamQuery"| Orch
+
+    Orch -->|"All outbound egress"| AGW
+    Spec -->|"All outbound egress"| AGW
+
+    AGW -->|"Authorized model call"| Gemini
+    AGW -->|"UAP + Semantic NLC verified"| EP
+
+    EP -->|"A2A (PSC NEG)"| Spec
+    EP -->|"MCP + 3LO Claims"| DMS & Inc & Email
+    Spec -->|"IAM DB Auth"| SQL
+
+    Orch -.->|"Log sink + caller baggage"| FinOps
+    Spec -.->|"Log sink + caller baggage"| FinOps
+    Apigee -.->|"ML-interaction analytics"| FinOps
+```
+
+### The 60-Second Request Tour
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Loan Officer
-    participant Orch as cx-mortgage-orchestrator<br/>(CX Team, Agent Runtime)
-    participant AGW as Central Agent Gateway<br/>(Layer 4 Egress Proxy)
+    actor User as Loan Officer / Partner App
+    participant Apigee as Apigee X (10.0.1.3)<br/>(Optional Partner Front Door)
+    participant Orch as cx-mortgage-orchestrator<br/>(CX Team, SPIFFE Identity #1)
+    participant AGW as Central Agent Gateway (10.200.0.2)<br/>(UAP/IAP + Semantic NLC + Model Armor)
     participant Gemini as Gemini 3.7 Flash<br/>(Vertex AI API)
-    participant EP as Entry Point<br/>(*.esmeralda.internal, direct)
-    participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE Team, A2A)
-    participant MCP as MCP Tool Servers<br/>(Cloud Run)
+    participant EP as Entry Point (10.0.1.2)<br/>(*.esmeralda.internal, direct)
+    participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE Team, SPIFFE Identity #2)
+    participant MCP as MCP Tool Servers<br/>(Cloud Run FastMCP)
     participant FinOps as Central Governance<br/>(Log Sinks & BigQuery)
 
-    User->>Orch: "Can you verify Julian Sterling's income?"
+    User->>Apigee: "Can you verify Julian Sterling's income?" (x-api-key / 3LO token)
+    Apigee->>Orch: Verified partner request + LLMTokenQuota check
     Orch->>AGW: Reason about intent
     AGW->>Gemini: Authorized model call (SPIFFE identity check)
     Gemini-->>Orch: Delegate underwriting to mortgage specialist
 
     Note over Orch,Spec: Act I — Governed Cross-Team A2A Delegation
-    Orch->>AGW: A2A task to ai-coe-mortgage-specialist.esmeralda.internal (caller's access token)
-    AGW->>EP: Verify Agent Registry + iap.egressor -> private PSC attachment
+    Orch->>AGW: A2A task to ai-coe-mortgage-specialist.esmeralda.internal
+    AGW->>EP: Verify Agent Registry + per-target UAP (principal://) -> private PSC attachment
     EP->>Spec: Route by Host header (PSC NEG to Agent Runtime, path rewrite)
 
-    Note over Spec,MCP: Act II — Private MCP Tool Execution
-    Spec->>AGW: Call verify_applicant & search_documents (https://<svc>.esmeralda.internal/mcp + ID token)
-    AGW->>EP: Verify Agent Registry + iap.egressor -> private PSC attachment
-    EP->>MCP: Route by Host header (serverless NEG to Cloud Run, IAM checks ID token)
+    Note over Spec,MCP: Act II — Semantically Governed MCP Tool Execution
+    Spec->>AGW: Call verify_applicant & search_documents (https://<svc>.esmeralda.internal/mcp + ID token + 3LO claims)
+    AGW->>EP: Verify UAP (principal://) + Semantic Governance (NLC) -> private PSC attachment
+    EP->>MCP: Route by Host header (serverless NEG to Cloud Run, IAM + mcp_authz check)
     MCP-->>Spec: Verified income ($185,000/yr) & W-2 / tax documents
 
     Spec-->>Orch: Structured underwriting assessment
-    Orch-->>User: Complete verification summary for Julian Sterling
+    Orch-->>Apigee: SSE stream + usageMetadata token counts
+    Apigee-->>User: Complete verification summary for Julian Sterling
     Orch-)FinOps: Structured token & latency telemetry -> BigQuery chargeback
     Spec-)FinOps: Structured token & latency telemetry -> BigQuery chargeback
 ```
 
-1. **The Orchestrator Reasons (`cx-mortgage-orchestrator`):** Running as a Bring-Your-Own-Container (BYOC) workload on Vertex AI Agent Runtime in the CX team's project, the orchestrator consults Gemini and decides to delegate income verification to the AI CoE's mortgage specialist.
-2. **The Trust Boundary Inspects (`Central Agent Gateway`):** The orchestrator cannot reach the network directly. Every outbound packet passes through the Google-managed **Central Agent Gateway** (`AGENT_TO_ANYWHERE`), which verifies the orchestrator's **SPIFFE Agent Identity**, checks that `ai-coe-mortgage-specialist.esmeralda.internal` is registered in the **Agent Registry**, and confirms the caller holds `roles/iap.egressor`.
-3. **The Private Front Door Routes (`Entry Point`):** The gateway forwards the request over Private Service Connect to the **entry point**—an internal HTTPS load balancer presenting a certificate signed by Esmeralda's internal Root CA. Using the built-in **`direct`** backend, the load balancer rewrites the path and routes the request straight to the specialist's Agent Runtime engine with zero intermediate proxy VMs.
-4. **The Specialist Calls MCP Tools (`ai-coe-mortgage-specialist` → `Cloud Run`):** The specialist invokes `income-verification`, `legacy-dms`, and `corporate-email` over the Model Context Protocol (`https://<svc>.esmeralda.internal/mcp`). Each tool call traverses the same Central Agent Gateway and entry point, arriving at private Cloud Run microservices with the caller's own Google ID token intact.
-5. **FinOps Closes the Loop (`BigQuery & Cloud Monitoring`):** Structured telemetry from both agents flows via centralized log sinks into BigQuery (`vw_monthly_agent_chargeback`), attributing every input and output token to the exact project and agent.
+1. **The North–South Front Door (`Apigee X` or Direct SDK):** External B2B partner apps enter through **Apigee X** (`partner.esmeralda.internal`), which validates API keys/OAuth tokens, blocks direct access to internal specialists, and enforces commercial `<LLMTokenQuota>` budgets. Internal callers can invoke the orchestrator directly via `uv run esmeralda query`.
+2. **The Orchestrator Reasons (`cx-mortgage-orchestrator`):** Running as a Bring-Your-Own-Container (BYOC) workload on Vertex AI Agent Runtime in the CX team's project with its own attested **SPIFFE Agent Identity (`principal://`)**, the orchestrator consults Gemini and delegates underwriting to the AI CoE's mortgage specialist.
+3. **The East–West Trust Boundary Inspects (`Central Agent Gateway`):** Every outbound packet passes through the Google-managed **Central Agent Gateway** (`AGENT_TO_ANYWHERE`), which verifies the caller's **SPIFFE `principal://` identity** against per-target **Unified Access Policies (UAP / IAP)**, checks the **Agent Registry**, evaluates **Semantic Governance (Natural Language Constraints, NLC)** on tool arguments, and runs **Model Armor** screening.
+4. **The Private Front Door Routes (`Entry Point`):** The gateway forwards the request over Private Service Connect to the internal HTTPS load balancer (**entry point**, `*.esmeralda.internal`), which presents a certificate signed by Esmeralda's internal Root CA and routes straight to the target engine or Cloud Run service (`direct` backend).
+5. **The Specialist Calls MCP Tools (`ai-coe-mortgage-specialist` → `Cloud Run`):** The specialist—using its own SPIFFE identity and **Auth Manager 3LO user delegation**—invokes `income-verification`, `legacy-dms`, and `corporate-email` over MCP (`https://<svc>.esmeralda.internal/mcp`).
+6. **FinOps Closes the Loop (`BigQuery & Cloud Monitoring`):** OpenTelemetry caller baggage (`caller.project_id`, `caller.agent_name`) and structured token telemetry flow into BigQuery (`vw_monthly_agent_chargeback`), attributing every token to the exact initiating team and agent.
 
 ---
 

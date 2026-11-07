@@ -1,4 +1,4 @@
-# Layer 1: Foundational Projects, Billing & FinOps
+# Chapter 8: Project Isolation, Blast Radius & FinOps (Layer 1)
 
 ## 1. The Story & Business Why: Why One Project Is Never Enough
 
@@ -51,7 +51,7 @@ What happens if a bank deploys all of those teams into a single Google Cloud pro
   | # | Project | Owner (`team` label) | Purpose |
   | :- | :--- | :--- | :--- |
   | 1 | `esm-<env>-net-host-<sfx>` | **NetOps** (`netops`) | Shared VPC, routing, Cloud NAT and the private DNS zone `esmeralda.internal.` |
-  | 2 | `esm-<env>-gateway-<sfx>` | **PlatformOps** (`platformops`) | API ingress: the entry point (internal HTTPS load balancer) with its built-in `direct` backend, plus optional bring-your-own adapters such as Envoy on Cloud Run (selected with the `gateways` block in `env.yaml`; Apigee is a stub) |
+  | 2 | `esm-<env>-gateway-<sfx>` | **PlatformOps** (`platformops`) | API ingress: the entry point (internal HTTPS load balancer) with its built-in `direct` backend, plus optional adapters such as Envoy on Cloud Run and Apigee X partner capability modules (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`) |
   | 3 | `esm-<env>-mcps-<sfx>` | **AppDev Tools** (`appdev-tools`) | Reusable serverless Model Context Protocol (MCP) tool servers (`legacy-dms`, `income-verification`, `corporate-email`) |
   | 4 | `esm-<env>-ai-coe-agents-<sfx>` | **AI CoE team** (`ai-coe`) | Reusable A2A specialist agents (`ai-coe-mortgage-specialist`) and their private Cloud SQL task store |
   | 5 | `esm-<env>-cx-agents-<sfx>` | **CX team** (`cx`) | User-facing orchestrator agents (`cx-mortgage-orchestrator`), which consume the AI CoE agents; also hosts the test VM |

@@ -29,11 +29,11 @@ To make Day-2 operations fast, deterministic, and safe for both **human SREs** a
 
 ```mermaid
 flowchart LR
-    DOC["1. Preflight\nesmeralda doctor / status / units"] --> PLAN["2. Non-Locking Plan\nesmeralda plan <unit>"]
-    PLAN --> APPLY["3. Guarded Apply\nesmeralda apply <unit>\n(blocks destroy/replace unless --allow-destroy)"]
-    APPLY --> VERIFY["4. End-to-End Verify\nesmeralda verify --env dev\n(gateway probes + live A2A/ADK queries)"]
-    VERIFY --> LOGS["5. Deduplicated Logs\nesmeralda logs <target>"]
-    LOGS --> GUARD["6. Pre-Commit Guard\nesmeralda guard --staged"]
+    DOC["1. Preflight<br/>esmeralda doctor / status / units"] --> PLAN["2. Non-Locking Plan<br/>esmeralda plan &lt;unit&gt;"]
+    PLAN --> APPLY["3. Guarded Apply<br/>esmeralda apply &lt;unit&gt;<br/>(blocks destroy/replace unless --allow-destroy)"]
+    APPLY --> VERIFY["4. End-to-End Verify<br/>esmeralda verify --env dev<br/>(gateway probes + live A2A/ADK queries)"]
+    VERIFY --> LOGS["5. Deduplicated Logs<br/>esmeralda logs &lt;target&gt;"]
+    LOGS --> GUARD["6. Pre-Commit Guard<br/>esmeralda guard --staged"]
 ```
 
 ### CLI Subcommands & `make` Targets Reference

@@ -1,4 +1,4 @@
-# Package reference
+# Chapter 12: Package & CLI Reference (`esmeralda-platform`)
 
 ## The Story & Business Why: One Audited Contract for Every Runtime Hook and Operator Command
 

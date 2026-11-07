@@ -35,27 +35,27 @@ Esmeralda replaces serialized bottlenecks with **Multi-Track Layered Parallelism
 ```mermaid
 flowchart LR
     subgraph Track1["Track 1: NetOps & PlatformOps"]
-        T1["Shared VPC, Private DNS\n(*.esmeralda.internal)\n& Internal HTTPS Entry Point"]
+        T1["Shared VPC, Private DNS<br/>(*.esmeralda.internal)<br/>& Internal HTTPS Entry Point"]
     end
 
     subgraph Track2["Track 2: SecOps & Governance"]
-        T2["Central Agent Gateway,\nAgent Registry, IAP Egress,\nGEAP UAP/NLC & Model Armor"]
+        T2["Central Agent Gateway,<br/>Agent Registry, IAP Egress,<br/>GEAP UAP/NLC & Model Armor"]
     end
 
     subgraph Track3["Track 3: FinOps & Observability"]
-        T3["Hub-and-Spoke Log Sinks,\nOTel Baggage Attribution &\nBigQuery Chargeback Views"]
+        T3["Hub-and-Spoke Log Sinks,<br/>OTel Baggage Attribution &<br/>BigQuery Chargeback Views"]
     end
 
     subgraph Track4["Track 4: AppDev Tools Team"]
-        T4["Cloud Run MCP Servers\n(legacy-dms, corporate-email,\nincome-verification)"]
+        T4["Cloud Run MCP Servers<br/>(legacy-dms, corporate-email,<br/>income-verification)"]
     end
 
     subgraph Track5["Track 5: AI CoE Team"]
-        T5["Reusable A2A Specialist\n(ai-coe-mortgage-specialist)\n& Private Cloud SQL"]
+        T5["Reusable A2A Specialist<br/>(ai-coe-mortgage-specialist)<br/>& Private Cloud SQL"]
     end
 
     subgraph Track6["Track 6: CX & Partner Teams"]
-        T6["User-Facing ADK Orchestrator\n(cx-mortgage-orchestrator)\n& Optional Apigee Partner APIs"]
+        T6["User-Facing ADK Orchestrator<br/>(cx-mortgage-orchestrator)<br/>& Optional Apigee Partner APIs"]
     end
 
     Track1 -->|"DNS + TLS Contract"| Track2
