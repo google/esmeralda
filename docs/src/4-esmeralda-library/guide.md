@@ -18,6 +18,7 @@ This page shows how to use the `esmeralda` library in each situation. For the fu
 | Agent-specific plugins (BigQuery analytics, ...) | `esmeralda.create_app(root_agent, plugins=[...])` |
 | Agent-specific process setup | `esmeralda.prepare([*esmeralda.lifecycle.PREPARE, my_step])` |
 | Run or test an agent, locally or deployed | `esmeralda query`, or `make query AGENT=<agent>` (add `TARGET=remote` or `TARGET=<url>`) |
+| Let a coding agent inspect and check a deployment (read-only) | `esmeralda mcp` as an MCP server: [Operating a checkout from an agent](#operating-a-checkout-from-an-agent-esmeralda-mcp) |
 
 ## Add the library to an agent
 
@@ -265,6 +266,46 @@ local_env:
 ```
 
 Local runs call Gemini on Vertex AI with your Application Default Credentials. Run `gcloud auth application-default login` with an account that can use Vertex AI, and set `GOOGLE_CLOUD_PROJECT` to a project where it is enabled.
+
+## Operating a checkout from an agent (`esmeralda mcp`)
+
+`esmeralda mcp` is a read-only MCP server (stdio transport) for coding agents and MCP clients. Its tools answer the usual operator questions (what is deployed, what would a plan change, does the agent answer, do the routes work, what do the logs say) with compact JSON instead of raw Terraform output or log dumps.
+
+Add it to the client's MCP configuration. Start the client from the repository root, or set `ESMERALDA_REPO`:
+
+```json
+{
+  "mcpServers": {
+    "esmeralda": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--all-packages", "esmeralda", "mcp"],
+      "env": {"ESMERALDA_REPO": "/path/to/esmeralda", "TG_PROVIDER_CACHE": "1"}
+    }
+  }
+}
+```
+
+`--all-packages` runs the server in the workspace environment, which has `fastmcp` (locked through the MCP services) and `google-cloud-logging` (locked through the agents). Without `fastmcp`, the command exits with that hint.
+
+| Tool | Returns | Notes |
+|---|---|---|
+| `status(env, unit=None)` | Deployed unit count, projects, entry point IP/domain/routing, gateways and their routes, agent engine ids and URLs, MCP service URIs, Agent Gateway, test VM. With `unit`: that unit's non-sensitive outputs, long values replaced by their size | Reads the local state files when the env uses the local backend (instant), else `terragrunt output -json` per unit |
+| `list_units(env)` | Every Terragrunt unit with `deployed` and its managed resource count | |
+| `plan_unit(env, unit)` | `changes`, `counts` (add/change/destroy/replace/read), one line per changed resource (`+`, `~`, `-/+`, `-`, `<=`) with the changed attribute names and replacement causes, changed outputs, drift | `terragrunt plan -lock=false`; the plan file goes to `.esmeralda/plans/` (gitignored). Nothing is applied |
+| `query_agent(env, agent, message)` | `passed`, the answer, agents involved, tool calls, tool errors, tokens, seconds | The same path as `make query AGENT=<agent> TARGET=remote` (`esmeralda.query.run` with the unit's `engine_id`) |
+| `test_gateway(env)` | `passed`, entry point, one entry per host: probe kind, HTTP code, `ok`, stale DNS, error | Runs `scripts/test_gateway.sh` (IAP SSH to the test VM) |
+| `agent_logs(env, agent, since="30m", severity="WARNING", limit=50)` | Entries `{time, severity, message, count?}`, newest first | Cloud Logging for the agent's Reasoning Engine. Tracebacks are collapsed to their exception line, repeated messages (numbers and ids masked) are merged with a `count`, messages are cut to 300 characters |
+| `describe_contracts()` | The gateway adapter contract and the `gateways` block (from the [ingress gateways guide](../2-workloads-and-catalog/01-ingress-gateways.md)), plus each env's current `gateways` block and gateway units | |
+
+Design rules:
+
+- **Read-only.** There is no apply or destroy tool. Changes go through `make` targets and review.
+- **Per-tool timeouts** (plan 15 min, query and gateway test 5 min, logs 2 min, status 3 min).
+- **Actionable errors.** Failures come back as tool errors with a hint, for example `gcloud auth expired: run gcloud auth login and gcloud auth application-default login`, an unknown unit with the closest match, or a missing `ESMERALDA_BILLING_ACCOUNT`.
+- **The server's environment is the client's.** Terragrunt reads `ESMERALDA_BILLING_ACCOUNT` (and `ESMERALDA_ORG_ID`) from `env.yaml`; pass them in the client's `env` block if the client doesn't inherit your shell. Prefer `TG_PROVIDER_CACHE=1` over `TF_PLUGIN_CACHE_DIR`: the Terraform plugin cache isn't safe for the parallel `terraform init` runs Terragrunt does to read dependency outputs, and fails with `does not match any of the checksums`.
+
+> [!NOTE]
+> The `make` targets for plan, status and environment checks cover similar ground for humans. `esmeralda mcp` is self-contained in the package and doesn't call them, so both can evolve independently; if they converge, the tools can call the shared code.
 
 ## Running and testing locally
 

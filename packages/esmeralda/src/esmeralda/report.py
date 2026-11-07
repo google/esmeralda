@@ -57,6 +57,7 @@ class Report:
     errors: list[Any] = field(default_factory=list)
     tool_calls: int = 0
     tool_errors: int = 0
+    tool_names: list[str] = field(default_factory=list)
     authors: list[str] = field(default_factory=list)
     answer_author: str | None = None
     answer: str = ""
@@ -123,6 +124,7 @@ class Report:
             if part.get("function_call"):
                 call = part["function_call"]
                 self.tool_calls += 1
+                self.tool_names.append(str(call.get("name")))
                 args = call.get("args") or {}
                 if call.get("name") == "transfer_to_agent":
                     self._trace(author, self._c("33", "⇢ transfer_to_agent → ") + str(args.get("agent_name")))
@@ -163,6 +165,7 @@ class Report:
                 if kind == "function_call":
                     self.tool_calls += 1
                     name, args = data.get("name"), data.get("args") or {}
+                    self.tool_names.append(str(name))
                     self._trace(author, self._c("33", f"→ {name}") + self._c("2", f"({_short(args, 100)})"))
                 elif kind == "function_response":
                     self._tool_result(author, data.get("name"), data.get("response"))

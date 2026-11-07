@@ -43,6 +43,8 @@ tests/load_test/.results/
 *.tfplan
 .local_states/
 .terraform.lock.hcl
+# Read-only plan files written by `esmeralda mcp` (plan_unit)
+.esmeralda/
 
 # --- System and IDE Overrides ---
 .DS_Store
