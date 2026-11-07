@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # --- INPUT VARIABLES CONTRACT ---
 variable "project_id" {
   description = "The GCP project ID allocated for gateway ingress (prj-esmeralda-gateway)"
@@ -20,7 +34,7 @@ variable "subnet_id" {
 }
 
 variable "agent_endpoints" {
-  description = "A map of logical agent names to their dynamic Vertex AI Reasoning Engine configuration"
+  description = "A map of logical agent names to their Agent Runtime endpoint configuration"
   type = map(object({
     logical_name = string
     engine_id    = string
@@ -35,3 +49,26 @@ variable "environment" {
   default     = "dev"
 }
 
+variable "environment_type" {
+  description = "Apigee PAYG environment tier: BASE, INTERMEDIATE, or COMPREHENSIVE"
+  type        = string
+  default     = "BASE"
+}
+
+variable "byo_apigee_org" {
+  description = "When true, attaches to an existing Apigee organization and instance service attachment"
+  type        = bool
+  default     = false
+}
+
+variable "existing_org_id" {
+  description = "Existing Apigee organization resource ID when byo_apigee_org = true"
+  type        = string
+  default     = null
+}
+
+variable "existing_instance_service_attachment" {
+  description = "Existing Apigee instance PSC service attachment URI when byo_apigee_org = true"
+  type        = string
+  default     = null
+}
