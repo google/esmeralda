@@ -39,6 +39,11 @@ IMAGES=(
   "ai-coe-mortgage-specialist"
   "cx-mortgage-orchestrator"
 )
+# The Envoy gateway image, when prd lists envoy in `gateways = { enabled = [...] }` (env.yaml).
+PRD_ENABLED_GATEWAYS="$(awk '/^  gateways[[:space:]]*=/{f=1} f && /enabled/{print; exit}' "${PRD_ENV_YAML}")"
+if [[ "${PRD_ENABLED_GATEWAYS}" == *'"envoy"'* ]]; then
+  IMAGES+=("envoy-gateway")
+fi
 
 while [[ $# -gt 0 ]]; do
   case $1 in
