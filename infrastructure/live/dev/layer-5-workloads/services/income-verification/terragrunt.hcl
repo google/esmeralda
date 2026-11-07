@@ -37,9 +37,10 @@ inputs = {
   subnet_id             = dependency.networking.outputs.subnet_id
   container_image       = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/income-verification-api:${local.env_vars.locals.container_tag}"
   tools_spec_path       = "${get_repo_root()}/apps/services/income-verification/tools.json"
-  invoker_service_accounts = [
+  # The Envoy gateway's identity is added when envoy is in gateways.enabled (env.yaml).
+  invoker_service_accounts = concat([
     dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
     dependency.security.outputs.test_vm_sa_email,
     dependency.security.outputs.kong_sa_email
-  ]
+  ], contains(local.env_vars.locals.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, null)] : [])
 }
