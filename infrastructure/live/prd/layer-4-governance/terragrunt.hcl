@@ -11,6 +11,7 @@ terraform {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  env      = local.env_vars.locals
 }
 
 dependency "projects" {
@@ -39,6 +40,7 @@ inputs = {
   alert_email_address          = "esmeralda.secops@google.com"
   runaway_loop_token_threshold = 50000
   monitoring_config            = local.env_vars.locals.monitoring_config
+  governance_config            = try(local.env.governance, {})
 
   # Envoy ingress gateway alerts (5xx ratio, token fetch failures) when envoy is in gateways.enabled
   ingress_gateway_service_name = contains(local.env_vars.locals.gateways.enabled, "envoy") ? "envoy-gateway-${local.env_vars.locals.environment}" : ""

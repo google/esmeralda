@@ -40,7 +40,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 # Terraform CLI for validation and the gateway harness: terraform if installed, else OpenTofu.
 TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null || echo terraform)
 
-.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway-unit run-mcp-local \
+.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway-unit test-guards run-mcp-local \
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy \
@@ -86,7 +86,12 @@ test-gateway-unit: ## Envoy gateway harness (offline): renders the config module
 	@echo "🧪 Running the Envoy gateway harness..."
 	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/gateway -q
 
-test-all: lock-check test test-terraform test-gateway-unit ## Run the uv.lock check, Python unit tests, Terraform validation and the Envoy gateway harness
+test-guards: ## Run repository hygiene, manifest parity, and governance capability contract guards
+	@echo "🛡️  Running repository and governance contract guards..."
+	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/guards tests/governance -q
+	@echo "✅ Repository guards passed!"
+
+test-all: lock-check test test-guards test-terraform test-gateway-unit ## Run the uv.lock check, Python unit tests, repo guards, Terraform validation and the Envoy gateway harness
 
 lock: ## Regenerate uv.lock against public PyPI (in Cloud Build) from your working copy; PKG="a b==1.2" also upgrades those
 	@bash scripts/uv_lock.sh $(PKG)

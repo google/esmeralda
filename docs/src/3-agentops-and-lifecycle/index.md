@@ -8,6 +8,7 @@
 | :--- | :--- |
 | **[01. Central Agent Gateway: How It Works and How to Deploy It](./01-central-agent-gateway.md)** | The featured deep-dive. How Agent Gateway intercepts, inspects and authorizes agent traffic; every component (Agent Registry, IAP authz, ACT, TrustConfig, PSC attachment); why the gateway needs our self-signed internal Root CA; how BYOC agents get the gateway's trust bundle at deploy time. |
 | **[03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)** | Layer 4 telemetry: log sinks, the BigQuery dataset and views, Cloud Monitoring dashboards, alert policies, SLOs and the DLP template. |
+| **[04. Capability-Based Governance: Agent Gateway & Optional Apigee Modules](./04-capability-based-governance.md)** | How `governance.capabilities` in `env.yaml` selects providers (`agent_gateway`, `apigee`, `none`) per governance capability, Layer 4 validation rules, Apigee environment tier requirements (`BASE` vs `INTERMEDIATE`), and repository contract guards (`make test-guards`). |
 
 ---
 
