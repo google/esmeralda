@@ -4,11 +4,14 @@
 # ==============================================================================
 
 locals {
+  cx_agents_trust_domain     = "agents.global.${data.google_project.cx_agents.org_id != "" ? "org-${data.google_project.cx_agents.org_id}" : "proj-${data.google_project.cx_agents.number}"}.system.id.goog"
+  ai_coe_agents_trust_domain = "agents.global.${data.google_project.ai_coe_agents.org_id != "" ? "org-${data.google_project.ai_coe_agents.org_id}" : "proj-${data.google_project.ai_coe_agents.number}"}.system.id.goog"
+
   # CX mortgage orchestrator identity PrincipalSet URI format for Vertex AI Reasoning Engine
-  cx_mortgage_orchestrator_identity_principal = "principalSet://agents.global.org-${data.google_project.cx_agents.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.cx_agents.number}"
+  cx_mortgage_orchestrator_identity_principal = "principalSet://${local.cx_agents_trust_domain}/attribute.platformContainer/aiplatform/projects/${data.google_project.cx_agents.number}"
 
   # AI CoE mortgage specialist identity PrincipalSet URI format for Vertex AI Reasoning Engine
-  ai_coe_mortgage_specialist_identity_principal = "principalSet://agents.global.org-${data.google_project.ai_coe_agents.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.ai_coe_agents.number}"
+  ai_coe_mortgage_specialist_identity_principal = "principalSet://${local.ai_coe_agents_trust_domain}/attribute.platformContainer/aiplatform/projects/${data.google_project.ai_coe_agents.number}"
 }
 
 # 1. Shared Invoker Service Account for MCP Microservices
@@ -23,6 +26,14 @@ resource "google_project_iam_member" "mcp_invoker_run_role" {
   project = var.mcps_project_id
   role    = "roles/run.invoker"
   member  = "serviceAccount:${google_service_account.mcp_invoker_sa.email}"
+}
+
+# 2b. Grant Cloud Run Invoker role on the MCPs Project directly to the AI CoE Specialist Agent Identity
+# (CX orchestrator is deliberately excluded: it delegates tool work to the AI CoE specialist over A2A)
+resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_mcp_run_invoker" {
+  project = var.mcps_project_id
+  role    = "roles/run.invoker"
+  member  = local.ai_coe_mortgage_specialist_identity_principal
 }
 
 # 3a. Allow CX mortgage orchestrator identity PrincipalSet to Impersonate the Invoker SA
@@ -83,10 +94,10 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles"
   member  = local.ai_coe_mortgage_specialist_identity_principal
 }
 
-# 5a. Grant roles/iap.egressor to CX mortgage orchestrator identity for Agent Gateway Egress Authz
+# 5a. Grant roles/iap.egressor to CX mortgage orchestrator identity ONLY on the AI CoE agents project
+# (never on mcps_project_id: the orchestrator must call the A2A specialist, not MCP servers directly)
 resource "google_project_iam_member" "cx_mortgage_orchestrator_iap_egressor" {
   for_each = toset([
-    var.mcps_project_id,
     var.ai_coe_agents_project_id,
   ])
   project = each.key

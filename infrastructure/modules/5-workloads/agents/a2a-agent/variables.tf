@@ -20,6 +20,12 @@ variable "enable_agent_identity" {
   default     = true
 }
 
+variable "enable_native_spiffe_auth" {
+  description = "When true, omit SERVICE_ACCOUNT_EMAIL from container env vars so the agent authenticates with its native GEAP SPIFFE identity instead of impersonating mcp_invoker_sa_email"
+  type        = bool
+  default     = false
+}
+
 variable "subnet_id" {
   description = "The self-link of the backend workload subnet inside the Shared VPC"
   type        = string

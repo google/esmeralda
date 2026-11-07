@@ -37,3 +37,13 @@ output "registry_service_id" {
   description = "Agent Registry service (governance project) publishing this agent's A2A card"
   value       = google_agent_registry_service.agent_card.id
 }
+
+output "agent_identity_principal" {
+  description = "The attested GEAP SPIFFE IAM principal (principal://...) of the A2A Reasoning Engine"
+  value       = local.agent_identity_principal
+}
+
+output "spiffe_id" {
+  description = "The canonical SPIFFE ID URI (spiffe://...) of the A2A Reasoning Engine"
+  value       = local.spiffe_id
+}

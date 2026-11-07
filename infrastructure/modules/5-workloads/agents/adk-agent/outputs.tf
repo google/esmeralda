@@ -22,3 +22,13 @@ output "logs_bucket_name" {
   description = "The name of the atomic GCS bucket used for long-term logs offload"
   value       = google_storage_bucket.logs.name
 }
+
+output "agent_identity_principal" {
+  description = "The attested GEAP SPIFFE IAM principal (principal://...) of the Reasoning Engine"
+  value       = local.agent_identity_principal
+}
+
+output "spiffe_id" {
+  description = "The canonical SPIFFE ID URI (spiffe://...) of the Reasoning Engine"
+  value       = local.spiffe_id
+}
