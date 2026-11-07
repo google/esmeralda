@@ -27,7 +27,8 @@ dependency "platform" {
 }
 
 inputs = {
-  org_id          = dependency.platform.outputs.org_id
-  apigee_env_name = dependency.platform.outputs.apigee_env_name
-  service_account = dependency.platform.outputs.proxy_runtime_sa_email
+  org_id            = dependency.platform.outputs.org_id
+  apigee_env_name   = dependency.platform.outputs.apigee_env_name
+  service_account   = dependency.platform.outputs.proxy_runtime_sa_email
+  bundle_source_dir = "${get_repo_root()}/apps/apigee/sharedflows/token-quota"
 }

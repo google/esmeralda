@@ -60,8 +60,8 @@ inputs = {
   existing_instance_service_attachment = try(local.env.governance.apigee.existing_instance_service_attachment, null)
 
   envgroup_hostnames = [
-    "*.${dependency.networking.outputs.entrypoint_domain}",
-    "*.partner.${dependency.networking.outputs.entrypoint_domain}",
+    "partner.${dependency.networking.outputs.entrypoint_domain}",
+    "apigee.${dependency.networking.outputs.entrypoint_domain}",
   ]
 
   consumer_accept_list = [

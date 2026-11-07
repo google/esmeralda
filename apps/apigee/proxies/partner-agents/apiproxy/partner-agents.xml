@@ -13,6 +13,8 @@
     <Policy>AM-set-user-var</Policy>
     <Policy>EV-ExtractTokenCount</Policy>
     <Policy>JS-extract-tokens</Policy>
+    <Policy>JS-rewrite-target-path</Policy>
+    <Policy>KVM-Get-Agent-Config</Policy>
     <Policy>LTQ-count</Policy>
     <Policy>LTQ-enforce</Policy>
     <Policy>ML-interaction</Policy>
@@ -26,6 +28,7 @@
   </ProxyEndpoints>
   <Resources>
     <Resource>jsc://extract-tokens.js</Resource>
+    <Resource>jsc://rewrite-target-path.js</Resource>
   </Resources>
   <TargetEndpoints>
     <TargetEndpoint>default</TargetEndpoint>

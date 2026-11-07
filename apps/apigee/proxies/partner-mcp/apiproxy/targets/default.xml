@@ -33,7 +33,7 @@
     </SSLInfo>
     <Authentication>
       <GoogleIDToken>
-        <Audience ref="target.audience">https://{mcp.service.host}.esmeralda.internal</Audience>
+        <Audience ref="target.audience">https://corporate-email.esmeralda.internal</Audience>
       </GoogleIDToken>
     </Authentication>
   </HTTPTargetConnection>

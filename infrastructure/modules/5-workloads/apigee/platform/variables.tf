@@ -121,7 +121,7 @@ variable "envgroup_name" {
 variable "envgroup_hostnames" {
   description = "Hostnames bound to the Apigee environment group."
   type        = list(string)
-  default     = ["*.esmeralda.internal", "*.partner.esmeralda.internal"]
+  default     = ["partner.esmeralda.internal", "apigee.esmeralda.internal"]
 }
 
 variable "consumer_accept_list" {

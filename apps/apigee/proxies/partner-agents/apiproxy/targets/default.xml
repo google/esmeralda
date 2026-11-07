@@ -8,7 +8,11 @@
   <Description>Non-streaming TargetEndpoint for /v1/card, :query, and /v1/message:send with Content-Type guarded token extraction.</Description>
   <FaultRules/>
   <PreFlow name="PreFlow">
-    <Request/>
+    <Request>
+      <Step>
+        <Name>JS-rewrite-target-path</Name>
+      </Step>
+    </Request>
     <Response/>
   </PreFlow>
   <PostFlow name="PostFlow">
@@ -33,7 +37,7 @@
     <LoadBalancer>
       <Server name="ts-esmeralda-entrypoint"/>
     </LoadBalancer>
-    <Path>/v1/agents</Path>
+    <Path>{esmeralda.target.path}</Path>
     <Properties>
       <Property name="io.timeout.millis">300000</Property>
       <Property name="api.timeout">300000</Property>

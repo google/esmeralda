@@ -14,11 +14,11 @@
       </Step>
       <Step>
         <Name>RF-Key-Identity-Mismatch</Name>
-        <Condition>(verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != null) and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != "") and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != request.header.x-verified-identity)</Condition>
+        <Condition>(verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != null) and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != "") and (request.header.x-verified-identity != null) and (request.header.x-verified-identity != "") and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != request.header.x-verified-identity)</Condition>
       </Step>
       <Step>
         <Name>RF-Agent-Not-Allowed</Name>
-        <Condition>!(proxy.pathsuffix MatchesPath "/cx-mortgage-orchestrator/**") and !(verifyapikey.VAK-Verify-Partner-Key.apiproduct.allowed_agents ~~ "(?i).*\\ball\\b.*")</Condition>
+        <Condition>!(proxy.pathsuffix MatchesPath "/cx-mortgage-orchestrator/**") and !(proxy.pathsuffix MatchesPath "/cx-mortgage-orchestrator:*") and !(verifyapikey.VAK-Verify-Partner-Key.apiproduct.allowed_agents ~~ "(?i).*\\ball\\b.*")</Condition>
       </Step>
       <Step>
         <Name>AM-set-user-var</Name>
@@ -28,6 +28,12 @@
       </Step>
       <Step>
         <Name>AM-clean-headers</Name>
+      </Step>
+      <Step>
+        <Name>KVM-Get-Agent-Config</Name>
+      </Step>
+      <Step>
+        <Name>JS-rewrite-target-path</Name>
       </Step>
     </Request>
     <Response/>
@@ -77,7 +83,7 @@
   </HTTPProxyConnection>
   <RouteRule name="sse">
     <TargetEndpoint>sse</TargetEndpoint>
-    <Condition>(proxy.pathsuffix MatchesPath "/*:streamQuery") or (proxy.pathsuffix MatchesPath "/*/api/stream_reasoning_engine") or (proxy.pathsuffix MatchesPath "/*/v1/message:stream")</Condition>
+    <Condition>(((proxy.pathsuffix MatchesPath "/*:streamQuery") or (proxy.pathsuffix MatchesPath "/*/api/stream_reasoning_engine")) and (request.header.Accept =| "text/event-stream")) or (proxy.pathsuffix MatchesPath "/*/v1/message:stream")</Condition>
   </RouteRule>
   <RouteRule name="default">
     <TargetEndpoint>default</TargetEndpoint>

@@ -31,3 +31,11 @@ output "consumer_key_secret_names" {
   description = "Map of consumer keys to Secret Manager short secret_id names (`apigee-consumer-key-<consumer>-<env>`)."
   value       = { for k, s in google_secret_manager_secret.consumer_key : k => s.secret_id }
 }
+
+output "partner_consumer_key_secret_id" {
+  description = "Secret Manager secret resource ID for the partner-smoke-test consumer key (used by scripts/test_partner.sh)."
+  value = try(
+    google_secret_manager_secret.consumer_key["partner-smoke-test"].id,
+    try(values(google_secret_manager_secret.consumer_key)[0].id, null)
+  )
+}

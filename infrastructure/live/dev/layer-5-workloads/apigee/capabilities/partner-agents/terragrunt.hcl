@@ -27,9 +27,19 @@ dependency "platform" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+dependency "cx_mortgage_orchestrator" {
+  config_path = "../../../agents/cx-mortgage-orchestrator"
+  mock_outputs = {
+    engine_id = "projects/mock/locations/us-central1/reasoningEngines/0"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 inputs = {
-  org_id          = dependency.platform.outputs.org_id
-  apigee_env_name = dependency.platform.outputs.apigee_env_name
-  apigee_env_id   = dependency.platform.outputs.apigee_env_id
-  service_account = dependency.platform.outputs.proxy_runtime_sa_email
+  org_id                 = dependency.platform.outputs.org_id
+  apigee_env_name        = dependency.platform.outputs.apigee_env_name
+  apigee_env_id          = dependency.platform.outputs.apigee_env_id
+  service_account        = dependency.platform.outputs.proxy_runtime_sa_email
+  orchestrator_engine_id = dependency.cx_mortgage_orchestrator.outputs.engine_id
+  bundle_source_dir      = "${get_repo_root()}/apps/apigee/proxies/partner-agents"
 }

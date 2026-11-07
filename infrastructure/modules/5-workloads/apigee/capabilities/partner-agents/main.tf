@@ -55,6 +55,20 @@ resource "google_apigee_environment_keyvaluemaps_entries" "allowed_agents" {
   value              = length(local.allowed_agent_names) > 0 ? join(",", local.allowed_agent_names) : "cx-mortgage-orchestrator"
 }
 
+resource "google_apigee_environment_keyvaluemaps_entries" "orchestrator_engine_id" {
+  count              = var.orchestrator_engine_id != "" ? 1 : 0
+  env_keyvaluemap_id = google_apigee_environment_keyvaluemaps.partner_agents.id
+  name               = "orchestrator_engine_id"
+  value              = var.orchestrator_engine_id
+}
+
+resource "google_project_iam_member" "proxy_sa_aiplatform_user" {
+  count   = var.orchestrator_engine_id != "" && length(split("/", var.orchestrator_engine_id)) >= 2 ? 1 : 0
+  project = split("/", var.orchestrator_engine_id)[1]
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${var.service_account}"
+}
+
 resource "google_apigee_api" "partner_agents" {
   org_id         = local.org_name
   name           = var.proxy_name
@@ -72,5 +86,7 @@ resource "google_apigee_environment_api_revision_deployment" "partner_agents" {
 
   depends_on = [
     google_apigee_environment_keyvaluemaps_entries.allowed_agents,
+    google_apigee_environment_keyvaluemaps_entries.orchestrator_engine_id,
+    google_project_iam_member.proxy_sa_aiplatform_user,
   ]
 }

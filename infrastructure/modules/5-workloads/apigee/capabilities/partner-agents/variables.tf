@@ -50,6 +50,12 @@ variable "bundle_source_dir" {
   default     = null
 }
 
+variable "orchestrator_engine_id" {
+  description = "Optional Vertex AI Reasoning Engine resource ID (projects/P/locations/L/reasoningEngines/ID) for cx-mortgage-orchestrator."
+  type        = string
+  default     = ""
+}
+
 variable "catalog" {
   description = "Service catalog entries; entries with expose_to_partners = true and kind = 'agent' populate the KVM allowlist."
   type = map(object({
