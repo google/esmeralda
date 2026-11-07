@@ -1,7 +1,8 @@
 version: 2
 updates:
-  # Whole uv workspace (both agents + the 3 MCP services) from the committed root uv.lock.
-  # Covers direct and transitive dependencies, so security updates can be proposed for both.
+  # Whole uv workspace (packages/esmeralda, both agents in apps/agents/*, and the 3 MCP services in
+  # apps/services/*) from the committed root uv.lock. Covers direct and transitive dependencies, so
+  # security updates can be proposed for both.
   - package-ecosystem: "uv"
     directory: "/"
     schedule:

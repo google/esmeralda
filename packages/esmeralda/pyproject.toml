@@ -21,9 +21,9 @@ requires-python = ">=3.12"
 dependencies = [
     "google-adk>=2.4.0",
     "google-auth",
-    "certifi",
-    "opentelemetry-api>=1.36.0,<1.46.0",
-    "opentelemetry-sdk>=1.36.0,<1.46.0",
+    "certifi>=2026.10.23",
+    "opentelemetry-api>=1.45.2,<1.46.0",
+    "opentelemetry-sdk>=1.45.2,<1.46.0",
     "pyyaml",
     "httpx",
     "a2a-sdk>=0.3.26,<1.0.0",
