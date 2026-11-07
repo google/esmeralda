@@ -92,26 +92,26 @@ extra_css:
 
 nav:
   - Home: index.md
-  - Platform Foundations:
-    - 1-platform-foundations/index.md
-    - "Layer 1: Projects & FinOps": 1-platform-foundations/01-projects-and-finops.md
-    - "Layer 2: Private Networking": 1-platform-foundations/02-private-networking.md
-    - "Layer 3: Security, IAM & PKI": 1-platform-foundations/03-security-iam-and-telemetry.md
-  - Workloads & Catalog:
+  - "Part I — Agents, Tools & Gateways":
     - 2-workloads-and-catalog/index.md
-    - Ingress Gateways: 2-workloads-and-catalog/01-ingress-gateways.md
-    - MCP Tool Servers: 2-workloads-and-catalog/02-mcp-tool-servers.md
-    - AI Agents & Database: 2-workloads-and-catalog/03-ai-agents-and-database.md
-  - AgentOps & Governance:
+    - "Ch 1: Two Teams, Two Agents": 2-workloads-and-catalog/03-ai-agents-and-database.md
+    - "Ch 2: MCP Tool Servers": 2-workloads-and-catalog/02-mcp-tool-servers.md
+    - "Ch 3: Private Front Door & Gateways": 2-workloads-and-catalog/01-ingress-gateways.md
+  - "Part II — Governance & Trust Boundary":
     - 3-agentops-and-lifecycle/index.md
-    - Central Agent Gateway: 3-agentops-and-lifecycle/01-central-agent-gateway.md
-    - Monitoring, Dashboards & FinOps: 3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md
-    - Capability-Based Governance: 3-agentops-and-lifecycle/04-capability-based-governance.md
-    - Operating with Agents & CLI: 3-agentops-and-lifecycle/04-operating-with-agents.md
-  - Esmeralda Library:
+    - "Ch 4: Central Agent Gateway": 3-agentops-and-lifecycle/01-central-agent-gateway.md
+    - "Ch 5: Capability-Based Governance": 3-agentops-and-lifecycle/04-capability-based-governance.md
+    - "Ch 6: Monitoring, Dashboards & FinOps": 3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md
+    - "Ch 7: Operating with Agents & CLI": 3-agentops-and-lifecycle/04-operating-with-agents.md
+  - "Part III — Platform Foundations":
+    - 1-platform-foundations/index.md
+    - "Ch 8: Projects & FinOps (Layer 1)": 1-platform-foundations/01-projects-and-finops.md
+    - "Ch 9: Private Networking (Layer 2)": 1-platform-foundations/02-private-networking.md
+    - "Ch 10: Security, IAM & PKI (Layer 3)": 1-platform-foundations/03-security-iam-and-telemetry.md
+  - "Part IV — Esmeralda Library & CLI":
     - 4-esmeralda-library/index.md
-    - Usage Guide: 4-esmeralda-library/guide.md
-    - Package Reference: 4-esmeralda-library/reference.md
+    - "Ch 11: Developer Usage Guide": 4-esmeralda-library/guide.md
+    - "Ch 12: Package & CLI Reference": 4-esmeralda-library/reference.md
   - Reference:
     - Make Targets: reference/make-targets.md
   - Contributing:

@@ -1,6 +1,20 @@
 # Package reference
 
-The reference for `esmeralda` 0.1.0 ([source](../../../packages/esmeralda/src/esmeralda/__init__.py)). For when to use each piece, see the [usage guide](guide.md).
+## The Story & Business Why: One Audited Contract for Every Runtime Hook and Operator Command
+
+This chapter is the complete API and CLI reference for `esmeralda` (`esmeralda-platform` on PyPI, [source](../../../packages/esmeralda/src/esmeralda/__init__.py)). While the [usage guide](guide.md) walks through recipes by task, this reference documents the exact contract of every module, function, class, CLI flag, telemetry JSON payload, and environment variable so platform engineers and application developers have a single authoritative specification.
+
+---
+
+## Why We Built It This Way (Key Decisions & Rationale)
+
+| Decision | Alternative Considered | Why We Chose This |
+| :--- | :--- | :--- |
+| **Small, Focused Submodules (`app`, `lifecycle`, `plugin`, `auth`, `auth_manager`, `mcp`, `mcp_authz`, `a2a`, `ops`)** | A single monolithic utility file | Keeps runtime dependencies minimal inside agent containers while isolating operational tooling (`esmeralda.ops`, `fastmcp`) to developer and CI workflows. |
+| **Plan-First Destroy Guard in `esmeralda apply` (`infra.apply_unit`)** | Running raw `terragrunt apply` directly | Inspects the saved plan JSON before applying and refuses with exit code `2` whenever `destroy > 0` unless `--allow-destroy` is explicitly passed. |
+| **JSON-First `esmeralda.ops` Functions (`--json`)** | Parsing unstructured human text in scripts and MCP tools | Every CLI subcommand (`status`, `doctor`, `units`, `plan`, `apply`, `verify`, `logs`, `contracts`, `guard`) and every `esmeralda mcp` tool shares the same structured dict return values and `OpsError` hints. |
+
+---
 
 ## Top-level API
 

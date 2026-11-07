@@ -1,67 +1,52 @@
-# Layer 5 workloads: entry point, service catalog and gateways
+# Chapter 3: The Private Front Door & Pluggable Gateways
 
-Welcome to the technical deep-dive for the **Layer 5 entry point**.
+In [Chapter 1](./03-ai-agents-and-database.md) and [Chapter 2](./02-mcp-tool-servers.md), we saw how Julian Sterling's mortgage verification flows from `cx-mortgage-orchestrator` to `ai-coe-mortgage-specialist` and then to three MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`).
 
-**What it is:** every private hostname under `*.esmeralda.internal` (the A2A specialist, the orchestrator and the three MCP servers) resolves to a single internal Application Load Balancer, the **entry point**. The entry point terminates TLS and routes each request by its `Host` header.
+Notice how clean the URLs were in every step:
 
-**How Esmeralda uses it:** the hosts it serves come from one **service catalog** in `env.yaml`. By default every host is served by the built-in **`direct`** backend: the load balancer sends MCP requests straight to the Cloud Run service and agent requests straight to Agent Runtime, with no proxy in between. Callers send their own Google credential, so the backend sees the real caller identity. A **bring-your-own adapter** (Envoy is the reference one, off by default) can take over some or all hosts when you need a proxy, for example for rate limits or token injection. Hosts move between `direct` and an adapter one at a time without touching callers.
+* `https://ai-coe-mortgage-specialist.esmeralda.internal`
+* `https://legacy-dms.esmeralda.internal/mcp`
+* `https://income-verification.esmeralda.internal/mcp`
+
+Under the hood, however, Cloud Run services live on generated `*.run.app` domains, and Vertex AI Reasoning Engines live at deeply nested `https://<region>-aiplatform.googleapis.com/v1beta1/projects/<p>/locations/<r>/reasoningEngines/<id>` resource paths. If an agent engine is recreated, its numeric `<id>` changes.
+
+How does Esmeralda give every agent and tool a permanent, friendly `*.esmeralda.internal` address—without running a fleet of expensive proxy VMs, and while still letting enterprise API teams plug in **Envoy** or **Apigee X** whenever they want? Meet the **Layer 5 Entry Point**.
+
+---
+
+## 1. The Story & Why It Matters: One Front Door, Zero Unnecessary Proxies
+
+Every private hostname under `*.esmeralda.internal` resolves to a single internal Application Load Balancer—the **entry point**. The entry point terminates TLS (using a certificate signed by Esmeralda's internal Root CA) and routes each request by its `Host` header.
+
+* **Zero-Proxy Default (`direct`):** By default, every host in `env.yaml` is served by the built-in **`direct`** backend. The Google Cloud load balancer routes MCP requests straight to their Cloud Run serverless Network Endpoint Groups (NEGs) and agent requests straight to Vertex AI Agent Runtime via a Private Service Connect (PSC) NEG with automatic host and path rewriting. There is **no proxy container in between**, and callers present their own Google credential so the destination verifies the real caller's identity.
+* **Pluggable Adapters (`envoy`, `apigee`):** When an enterprise track needs an L7 proxy—for example, per-key rate limiting, header transformation, or token swapping—they can enable an adapter in `env.yaml` (`gateways.enabled = ["envoy"]`) and move hosts to it **one at a time** (`host_rules`) without changing a single line of agent code, DNS record, or TLS certificate.
 
 > [!NOTE]
-> The entry point is **not** the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md). The Agent Gateway (Layer 4, governance project) controls where agents may go *out* to; the entry point (Layer 5, gateway project) is the private front door those calls arrive *at*. A typical call goes agent → Agent Gateway → entry point (internal HTTPS LB) → target. The Agent Gateway passes the caller's `Authorization` header through unchanged, which is why per-caller credentials work end to end.
+> **Entry Point (Inbound) vs. Central Agent Gateway (Outbound):**
+> The **entry point** (Layer 5, gateway project) is the private *front door* where calls to `*.esmeralda.internal` arrive. The **[Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md)** (Layer 4, governance project) is the Google-managed *outbound proxy* that governs where agents are allowed to go. Every internal agent call flows:
+> `Caller Agent → Central Agent Gateway (egress check) → Entry Point (internal HTTPS LB) → Target Agent or MCP Server`.
+> Because the Central Agent Gateway passes the caller's `Authorization` header through unchanged, end-to-end per-caller credentials work seamlessly.
 
-> [!NOTE]
-> Kong was the original ingress gateway. It has been removed (module, live units, image, build target and its service account) and replaced by the built-in `direct` backend.
+### How the Entry Point Spans Layers 2, 3, and 5
 
----
+Because the IP address, DNS zone, and TLS certificate live in lower foundational layers, the `*.esmeralda.internal` hostnames outlive any workload or gateway change:
 
-## The 60-second mental model
-
-| Piece | What it is | Where it lives | Changes when |
+| Piece | What It Is | Where It Lives | Changes When |
 | :--- | :--- | :--- | :--- |
-| **Entry point: IP + DNS** | Reserved internal IP `ilb-esmeralda-vip-<env>` (gateway project, shared core subnet) and the `esmeralda.internal` / `*.esmeralda.internal` A records (TTL 300) pointing at it. | Layer 2: [`2-networking/main.tf`](../../../infrastructure/modules/2-networking/main.tf) §7 (outputs `entrypoint_address_id`, `entrypoint_address`, `entrypoint_domain`; optional `entrypoint_ip_address` to pin the IP). | Almost never. |
-| **Entry point: certificate** | Leaf for `esmeralda.internal` + `*.esmeralda.internal` (only those two SANs), signed by the internal Root CA, stored as regional SSL certificate `cert-esmeralda-ilb-*` in the gateway project. | Layer 3: [`3-security/pki.tf`](../../../infrastructure/modules/3-security/pki.tf) (output `entrypoint_ssl_certificate_id`). The CA private key never leaves Layer 3. | When the leaf is re-issued. |
-| **Service catalog** | One entry per MCP service or agent: host name, kind, deploying unit, token kind, probe, callers. | `catalog` in `infrastructure/live/<env>/env.yaml`. | A service or agent is added or removed. |
-| **Entry point: routing** | URL map `ilb-esmeralda-url-map-<env>`, target HTTPS proxy `ilb-esmeralda-https-proxy-<env>`, forwarding rule `ilb-esmeralda-rule-<env>` on port **443** of the reserved IP. | Layer 5: [`5-workloads/entrypoint`](../../../infrastructure/modules/5-workloads/entrypoint/main.tf), live unit `layer-5-workloads/entrypoint`. | The catalog changes, or a host moves between backends. |
-| **`direct` backend** | Built-in, always deployed: per-host backend services (serverless NEGs for MCP services, one PSC NEG for Agent Runtime). | Layer 5: `modules/5-workloads/gateways/direct`, live unit `layer-5-workloads/gateways/direct`. | The catalog changes or an agent engine is recreated. |
-| **Adapters** (optional) | Bring-your-own proxies (Envoy, Apigee, ...). Each one ends in one regional backend service. | Layer 5: `modules/5-workloads/gateways/<name>`, live units `layer-5-workloads/gateways/<name>`. | Routes or the adapter product change. |
+| **Entry Point: IP + DNS** | Reserved internal IP `ilb-esmeralda-vip-<env>` (gateway project, shared core subnet) and the `esmeralda.internal` / `*.esmeralda.internal` A records (TTL 300) pointing at it. | **Layer 2:** [`2-networking/main.tf`](../../../infrastructure/modules/2-networking/main.tf) §7 (outputs `entrypoint_address_id`, `entrypoint_address`, `entrypoint_domain`; optional `entrypoint_ip_address` to pin the IP). | Almost never. |
+| **Entry Point: Certificate** | Leaf certificate for `esmeralda.internal` + `*.esmeralda.internal` (only those two SANs), signed by the internal Root CA, stored as regional SSL certificate `cert-esmeralda-ilb-*` in the gateway project. | **Layer 3:** [`3-security/pki.tf`](../../../infrastructure/modules/3-security/pki.tf) (output `entrypoint_ssl_certificate_id`). The CA private key never leaves Layer 3. | When the leaf is re-issued. |
+| **Service Catalog** | One entry per MCP service or agent: hostname, kind, deploying unit, token kind, probe, and authorized callers. | **Environment Config:** `catalog` in `infrastructure/live/<env>/env.yaml`. | A service or agent is added or removed. |
+| **Entry Point: Routing** | URL map `ilb-esmeralda-url-map-<env>`, target HTTPS proxy `ilb-esmeralda-https-proxy-<env>`, forwarding rule `ilb-esmeralda-rule-<env>` on port **443** of the reserved IP. | **Layer 5:** [`5-workloads/entrypoint`](../../../infrastructure/modules/5-workloads/entrypoint/main.tf), live unit `layer-5-workloads/entrypoint`. | The catalog changes, or a host moves between backends. |
+| **`direct` Backend** | Built-in, always deployed: per-host backend services (serverless NEGs for MCP services, one PSC NEG for Agent Runtime). | **Layer 5:** `modules/5-workloads/gateways/direct`, live unit `layer-5-workloads/gateways/direct`. | The catalog changes or an agent engine is recreated. |
+| **Adapters** (optional) | Bring-your-own proxies (Envoy, Apigee, ...). Each adapter exposes one regional backend service. | **Layer 5:** `modules/5-workloads/gateways/<name>`, live units `layer-5-workloads/gateways/<name>`. | Routes or the adapter product change. |
 
-Because the IP, the DNS records and the certificate live in lower layers, the hostnames outlive any backend: adding or swapping an adapter never changes what `*.esmeralda.internal` resolves to or which certificate callers see.
-
----
-
-## Persona and role breakdown
-
-| Engineering persona | Role and daily responsibilities | What they own | What they never touch |
-| :--- | :--- | :--- | :--- |
-| **PlatformOps / ingress lead** | Managing the catalog, the entry point routing, the `direct` backend and any adapter. | The `catalog` and `gateways` blocks in `env.yaml`, `infrastructure/modules/5-workloads/entrypoint/`, `gateways/direct/`, `gateways/envoy/` (and `gateways/apigee/`), `apps/services/envoy/` (pinned upstream image). | Internal agent prompt graphs, Python business logic. |
-| **NetOps engineer** | Providing the Shared VPC subnets, the private DNS zone and the entry point address. | `sb-esmeralda-core-<env>` / `sb-esmeralda-proxy-<env>` subnets, the `esmeralda.internal.` zone, the reserved entry point IP and its `esmeralda.internal` / `*.esmeralda.internal` A records (all Layer 2). | Route transformation policies. |
-| **SecOps engineer** | Owning the internal Root CA and the entry point certificate. | `infrastructure/modules/3-security/pki.tf` (Layer 3). | Routes. |
-| **AI application developer** (CX and AI CoE teams) | Calling targets via standard internal DNS hostnames. | Consuming `https://ai-coe-mortgage-specialist.esmeralda.internal` or `https://<svc>.esmeralda.internal/mcp`. | Entry point configuration, proxy infrastructure. |
-
----
-
-## Architecture decision records (ADRs): the "why"
-
-### ADR-04.1: Callers present their own credentials (`direct`)
-* **Context:** Agent Runtime engines require a Google OAuth2 access token (`roles/aiplatform.user`), and Cloud Run MCP servers require a Google OIDC ID token for an identity holding `roles/run.invoker`. The engines are only reachable through their `aiplatform.googleapis.com` resource URL, not a friendly hostname.
-* **History:** the first version used Kong as an **identity-injecting reverse proxy**: it routed by `Host` header, fetched a token for its own service account and replaced the caller's `Authorization` header with it. Backends only saw Kong's identity, and every request went through an extra Cloud Run hop.
-* **Decision:** Kong was replaced by the built-in **`direct`** backend. The load balancer itself maps each host to its backend (serverless NEG for Cloud Run, PSC NEG + URL rewrite for Agent Runtime), and callers send their own token. No token is swapped.
-* **Benefit:** the MCP server and the engine see the real caller identity and authorize it themselves (`callers` in the catalog), there is no proxy to build, patch or scale, and friendly hostnames still hide the engine IDs from callers. Teams that need a proxy can still route hosts to an adapter.
-
-### ADR-04.2: Separate entry point in front of the backends
-* **Context:** when the gateway module owned the load balancer, the certificate and the DNS records, replacing the gateway meant destroying the front door, and two gateways could not serve the same domain at the same time.
-* **Decision:** the IP and DNS records live in Layer 2, the certificate in Layer 3, and the URL map / HTTPS proxy / forwarding rule in a dedicated Layer 5 `entrypoint` unit. Backends (`direct` and adapters) only expose backend services.
-* **Benefit:** `direct` and adapters run side by side behind one entry point and hosts move one at a time (see [Moving hosts between backends](#moving-hosts-between-backends)). The Root CA key never has to be passed to Layer 5. This is also what made the move from Kong to `direct` possible without changing hostnames.
-
----
-
-## Request path
+### Request Path Diagram
 
 ```mermaid
 flowchart TD
-    Req["Agent call through the Agent Gateway, or test VM<br/>(Host: ai-coe-mortgage-specialist.esmeralda.internal)"]
+    Req["Agent call through Central Agent Gateway, or Test VM<br/>(Host: ai-coe-mortgage-specialist.esmeralda.internal)"]
     DNS["Private DNS (Layer 2): *.esmeralda.internal → entry point IP"]
-    EP["<b>Entry point</b> (Layer 5 entrypoint unit)<br/>• Internal HTTPS LB on 443<br/>• Private-CA leaf from Layer 3<br/>• URL map: one host rule per catalog host"]
+    EP["<b>Entry Point</b> (Layer 5 entrypoint unit)<br/>• Internal HTTPS LB on port 443<br/>• Private-CA leaf from Layer 3<br/>• URL map: one host rule per catalog host"]
 
     subgraph Direct["direct (built-in, default)"]
         direction TB
@@ -71,8 +56,8 @@ flowchart TD
 
     Adapter["Optional adapter (gateways.enabled)<br/>e.g. Envoy on Cloud Run<br/>one backend service for all its hosts"]
 
-    MCP["Cloud Run MCP servers<br/>(Cloud Run IAM checks the caller's ID token)"]
-    AR["Agent Runtime engines<br/>(checks the caller's access token)"]
+    MCP["Cloud Run MCP servers<br/>(Cloud Run IAM checks caller's ID token)"]
+    AR["Agent Runtime engines<br/>(checks caller's access token)"]
 
     Req --> DNS --> EP
     EP -->|"MCP hosts"| SNEG --> MCP
@@ -84,24 +69,43 @@ flowchart TD
 
 ---
 
-## Technical specifications
+## 2. Why We Designed It This Way: Key Decisions & Trade-offs
+
+| Decision | Why We Made It | What We Avoided |
+| :--- | :--- | :--- |
+| **ADR-04.1: Callers Present Their Own Credentials (`direct` Default)** | Maps each `*.esmeralda.internal` host natively in the Google Cloud load balancer (serverless NEG for Cloud Run, PSC NEG + URL rewrite for Agent Runtime) so callers send their own token and backends authorize the real caller identity (`callers` in `env.yaml`). | Running a mandatory identity-injecting reverse proxy (such as our earlier Kong prototype, now removed) that added an extra network hop, required container patching, and hid the caller's identity behind the proxy's own service account. |
+| **ADR-04.2: Separate Entry Point in Front of Pluggable Backends** | Places the IP/DNS in Layer 2, the TLS certificate in Layer 3, and the URL map in a dedicated `entrypoint` unit in Layer 5, while backends (`direct`, `envoy`, `apigee`) only output `backend_service_id` / `hosts`. | Tying the load balancer and DNS records to a single gateway product, which previously made it impossible to run two gateways side-by-side or migrate routes without downtime. |
+| **Host-by-Host Migration via `gateways.host_rules` (`env.yaml`)** | Allows PlatformOps to route a single host (e.g., `"legacy-dms" = "envoy"`) through an adapter while keeping all other hosts on `direct`, and automatically updates `ACCESS_TOKEN_HOSTS` on calling agents. | Big-bang gateway cutovers that risk breaking every agent and tool simultaneously. |
+
+### Clear Team Boundaries
+
+| Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
+| :--- | :--- | :--- | :--- |
+| **PlatformOps / Ingress Lead** | Managing the service catalog, the entry point routing, the `direct` backend, and any optional adapter. | `catalog` and `gateways` blocks in `env.yaml`, `infrastructure/modules/5-workloads/entrypoint/`, `gateways/direct/`, `gateways/envoy/` (and `gateways/apigee/`), `apps/services/envoy/`. | Internal agent prompt graphs or Python business logic. |
+| **NetOps Engineer** | Providing the Shared VPC subnets, private DNS zone, and reserved entry point address. | `sb-esmeralda-core-<env>` / `sb-esmeralda-proxy-<env>` subnets, the `esmeralda.internal.` zone, and the reserved entry point IP (Layer 2). | Route transformation policies. |
+| **SecOps Engineer** | Owning the internal Root CA and the entry point leaf certificate. | `infrastructure/modules/3-security/pki.tf` (Layer 3). | URL map host rules. |
+| **AI Application Developer** (CX and AI CoE Teams) | Calling targets via stable internal DNS hostnames. | Consuming `https://ai-coe-mortgage-specialist.esmeralda.internal` or `https://<svc>.esmeralda.internal/mcp`. | Entry point configuration or proxy infrastructure. |
+
+---
+
+## 3. How It Works & CLI in Practice
 
 ### 1. The service catalog
 
-Every host the entry point serves is one entry of `catalog` in `infrastructure/live/<env>/env.yaml`. The key is the host label: entry `legacy-dms` is served as `legacy-dms.esmeralda.internal`.
+Every host the entry point serves is declared as an entry in `catalog` inside `infrastructure/live/<env>/env.yaml`. The key is the host label: entry `legacy-dms` is served at `legacy-dms.esmeralda.internal`.
 
 | Field | Values | Meaning |
 | :--- | :--- | :--- |
-| `kind` | `mcp`, `a2a`, `adk` | `mcp`: Cloud Run MCP server. `a2a`: A2A agent on Agent Runtime. `adk`: ADK agent on Agent Runtime. |
+| `kind` | `mcp`, `a2a`, `adk` | `mcp`: Cloud Run MCP server. `a2a`: A2A specialist on Agent Runtime. `adk`: ADK orchestrator on Agent Runtime. |
 | `unit` | `services/<x>`, `agents/<x>` | Layer 5 unit that deploys it; the `direct` and adapter units map it to that unit's outputs. |
 | `token` | `id`, `access` | What callers send when the host is served by `direct`: `id` = Google ID token with audience `https://<name>.<domain>`, checked by Cloud Run IAM; `access` = OAuth2 access token, checked by Agent Runtime. |
-| `probe` | `mcp`, `a2a`, `query`, `none` | How `make test-gateway` checks the host (see [below](#test-every-route-make-test-gateway)). |
-| `timeout` | seconds (optional) | Route timeout for agent hosts. Default 600. |
-| `callers` | list (optional) | Catalog agents (and `test-vm`) whose service accounts get invoke rights: `roles/run.invoker` on an MCP service, `roles/aiplatform.user` on the agent project for an A2A agent. |
+| `probe` | `mcp`, `a2a`, `query`, `none` | How `uv run esmeralda verify` / `make test-gateway` checks the host (see [below](#test-every-route-make-test-gateway)). |
+| `timeout` | seconds (optional) | Route timeout for agent hosts. Default `600`. |
+| `callers` | list (optional) | Catalog agents (and `test-vm`) whose service accounts receive invoke rights: `roles/run.invoker` on an MCP service, `roles/aiplatform.user` on the agent project for an A2A agent. |
 
-How `callers` becomes IAM: the service or agent unit maps each caller to its Layer 3 service account output (`<name_with_underscores>_sa_email`, e.g. `test_vm_sa_email`). When at least one caller is an agent (not `test-vm`), it also adds the shared MCP invoker service account (`sa-mcp-invoker-<env>`), because agents call out as that account (`SERVICE_ACCOUNT_EMAIL`). The service account of each enabled adapter (Envoy) is added too, since an adapter calls with its own token. `direct` adds none.
+**How `callers` Becomes IAM:** The service or agent unit maps each caller to its Layer 3 service account output (`<name_with_underscores>_sa_email`, e.g. `test_vm_sa_email`). Whenever at least one caller is an agent (not `test-vm`), it also adds the shared MCP invoker service account (`sa-mcp-invoker-<env>`), because agents mint outbound credentials as that account (`SERVICE_ACCOUNT_EMAIL`). The service account of each enabled adapter (`envoy`) is added automatically when enabled; `direct` adds none.
 
-The repository ships these five entries (`infrastructure/live/<env>/env.yaml`):
+The repository ships with these five catalog entries (`infrastructure/live/<env>/env.yaml`):
 
 ```hcl
 catalog = {
@@ -117,99 +121,84 @@ catalog = {
 
 ```hcl
 gateways = {
-  default    = "direct" # gets every catalog host not listed in host_rules
+  default    = "direct" # serves every catalog host not listed in host_rules
   enabled    = []       # bring-your-own adapters only, e.g. ["envoy"]
   host_rules = {}       # optional: host label => "direct" or an enabled adapter
 }
 ```
 
-* `direct` is built in and always deployed; `enabled` lists **adapters only**, each a unit under `layer-5-workloads/gateways/<name>`.
-* A `host_rules` key is a host label (`legacy-dms` is routed as `legacy-dms.esmeralda.internal`).
-* Validation: `default` and every `host_rules` value must be `direct` or an enabled adapter, and `direct` can't be listed in `enabled`.
-* Both **dev and prd use `default = "direct"`, `enabled = []`**, no host rules. Envoy is wired in (live unit + entrypoint dependency) but off until `envoy` is added to `enabled`.
+* `direct` is built in and always deployed; `enabled` lists **adapters only**, each corresponding to a unit under `layer-5-workloads/gateways/<name>`.
+* A `host_rules` key is a catalog host label (`legacy-dms` routes `legacy-dms.esmeralda.internal`).
+* Validation: `default` and every `host_rules` value must be `direct` or an enabled adapter, and `direct` cannot be listed in `enabled`.
+* Both **`dev` and `prd` ship with `default = "direct"`, `enabled = []`**, and empty `host_rules`. Envoy is wired in (live unit + entrypoint dependency) and remains dormant until `"envoy"` is added to `enabled`.
 
 ### 3. The entry point (`entrypoint/`)
 
-[`modules/5-workloads/entrypoint`](../../../infrastructure/modules/5-workloads/entrypoint/main.tf) builds the regional internal Application Load Balancer in the gateway project:
+[`modules/5-workloads/entrypoint`](../../../infrastructure/modules/5-workloads/entrypoint/main.tf) provisions the regional internal Application Load Balancer in the gateway project:
 
-* **URL map** `ilb-esmeralda-url-map-<env>`: one host rule + path matcher per catalog host. Hosts served by `direct` use the per-host backends (and rewrites) from the `direct` unit's `hosts` output; hosts sent to an adapter use that adapter's single `backend_service_id`. Hosts outside the catalog fall through to a default backend and get a 404.
-* **Target HTTPS proxy** `ilb-esmeralda-https-proxy-<env>`, presenting the Layer 3 certificate (`entrypoint_ssl_certificate_id`).
-* **Forwarding rule** `ilb-esmeralda-rule-<env>`: port **443** on the Layer 2 reserved IP (`entrypoint_address`), `INTERNAL_MANAGED`, using the region's proxy-only subnet.
-* **Outputs:** `url_map_id`, `ip_address`, and **`routes`**: one entry per host with `host`, `probe`, `token` (the kind callers must send, given where the host is routed) and `backend` (`direct` or the adapter name). `make test-gateway` reads it.
+* **URL map** `ilb-esmeralda-url-map-<env>`: one host rule + path matcher per catalog host. Hosts served by `direct` use the per-host backends (and host/path rewrites) from the `direct` unit's `hosts` output; hosts routed to an adapter use that adapter's single `backend_service_id`. Unrecognized hosts fall through to a default backend and receive HTTP 404.
+* **Target HTTPS proxy** `ilb-esmeralda-https-proxy-<env>`, presenting the Layer 3 internal CA leaf certificate (`entrypoint_ssl_certificate_id`).
+* **Forwarding rule** `ilb-esmeralda-rule-<env>`: listens on port **443** of the Layer 2 reserved IP (`entrypoint_address`), `INTERNAL_MANAGED`, backed by the region's proxy-only subnet.
+* **Outputs:** `url_map_id`, `ip_address`, and **`routes`**—one entry per catalog host recording `host`, `probe`, `token` (the credential callers must send given its active backend), and `backend` (`direct` or the adapter name). Both `uv run esmeralda verify` and `make test-gateway` read this output directly.
 
-**Backend contract:**
+**The Backend Contract (`uv run esmeralda contracts`):**
 
-| Backend | Outputs | How the entry point uses them |
+| Backend | Required Outputs | How the Entry Point Consumes Them |
 | :--- | :--- | :--- |
-| `direct` | `hosts`: per-host backend service, plus host and path rewrites and timeout for agent hosts. | One host rule + path matcher per host. |
-| Adapter | `backend_service_id` (one regional `INTERNAL_MANAGED` backend service for every host sent to it) and `routes`. | Every host routed to the adapter points at that backend service. |
+| `direct` | `hosts`: per-host backend service ID, plus host/path rewrites and timeout for agent hosts. | Creates one host rule + path matcher per host. |
+| Adapter (`envoy`, `apigee`) | `backend_service_id` (one regional `INTERNAL_MANAGED` backend service for all hosts routed to it) and `routes`. | Points every host routed to the adapter at that backend service. |
 
-Why a private CA is needed, and how the Agent Gateway trusts it, is explained in [Central Agent Gateway §5](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
+Why a private CA is required for `.internal` domains—and how the Central Agent Gateway trusts it—is covered in [Chapter 4: Central Agent Gateway §5](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
 
 ### 4. The `direct` backend (`gateways/direct/`, default)
 
-Module `infrastructure/modules/5-workloads/gateways/direct`, live unit `infrastructure/live/<env>/layer-5-workloads/gateways/direct`, always deployed. No proxy, no container, no service account.
+Module `infrastructure/modules/5-workloads/gateways/direct`, live unit `infrastructure/live/<env>/layer-5-workloads/gateways/direct`, always deployed. Requires zero proxy containers and zero service accounts.
 
-* **MCP services:** one serverless NEG + regional `INTERNAL_MANAGED` HTTPS backend service per service, created **in the service's own project** and referenced cross-project by the entry point URL map. A serverless NEG can only point at a Cloud Run service in its own project, hence the NEG lives in the service project. The service keeps ingress `internal-and-cloud-load-balancing` and `custom_audiences`, so Cloud Run IAM checks the caller's ID token (audience `https://<name>.esmeralda.internal`).
-* **Agents (Agent Runtime):** one regional Private Service Connect NEG targeting `<region>-aiplatform.googleapis.com` + one HTTPS backend service in the gateway project, shared by all agent hosts. Each agent host gets a route with `hostRewrite = <region>-aiplatform.googleapis.com` and a `pathPrefixRewrite`:
-    * A2A: `/v1/` → `/v1beta1/projects/<p>/locations/<r>/reasoningEngines/<id>/a2a/v1/`
-    * ADK: `/api/stream_reasoning_engine` → `/v1beta1/projects/<p>/locations/<r>/reasoningEngines/<id>:streamQuery` (NDJSON stream)
-* **Timeout:** the backend service timeout of a PSC NEG that targets a Google API is fixed at 30 s and can't be changed, so each agent route sets its own timeout (default 600 s, catalog `timeout`) to let long streams finish.
-* **Credentials:** callers send their own token: an ID token for MCP hosts, an access token for agent hosts (Agent Runtime rejects ID tokens with 401). Nothing is swapped, so the MCP server and the engine see the real caller identity.
-* **Deployer permission:** the entry point references backend services that live in the MCP service projects, so whoever applies the entry point needs `compute.backendServices.use` on them (`roles/compute.loadBalancerServiceUser` on the service project). Project owners have it; a dedicated CI deployer needs it granted.
+* **MCP Services:** Creates one serverless NEG + regional `INTERNAL_MANAGED` HTTPS backend service per MCP service **inside the MCP service's own project** (because a serverless NEG must live in the same project as its Cloud Run service), referenced cross-project by the entry point URL map. Cloud Run IAM verifies the caller's Google OIDC ID token against the `https://<name>.esmeralda.internal` custom audience.
+* **Agents (Vertex AI Agent Runtime):** Creates one regional Private Service Connect (PSC) NEG targeting `<region>-aiplatform.googleapis.com` + one shared HTTPS backend service in the gateway project. Each agent host rule applies `hostRewrite = <region>-aiplatform.googleapis.com` and a `pathPrefixRewrite`:
+    * **A2A:** `/v1/` → `/v1beta1/projects/<p>/locations/<r>/reasoningEngines/<id>/a2a/v1/`
+    * **ADK:** `/api/stream_reasoning_engine` → `/v1beta1/projects/<p>/locations/<r>/reasoningEngines/<id>:streamQuery` (NDJSON stream)
+* **Route Timeout:** Because the backend service timeout of a PSC NEG targeting a Google API is fixed at 30 seconds, each agent route configures its own route-level timeout (default `600` seconds from catalog `timeout`) so multi-step reasoning streams complete cleanly.
+* **Credentials:** Callers send their own token—an ID token for MCP hosts and an OAuth2 access token for agent hosts (Agent Runtime rejects ID tokens with HTTP 401). Nothing is swapped on the path.
+* **Cross-Project Deployer Permission:** Because the entry point references backend services inside the MCPs project, the identity applying `entrypoint` needs `compute.backendServices.use` (`roles/compute.loadBalancerServiceUser` on the MCPs project).
 
 > [!IMPORTANT]
-> Agent routes use the agents' **engine IDs**. If an agent engine is recreated, re-run `make deploy-gateway ENV=<env>` (applies `gateways/direct`) and then `make deploy-entrypoint ENV=<env>`.
+> Agent routes embed the deployed agents' numeric **engine IDs**. Whenever an agent engine is recreated, re-apply `gateways/direct` (`make deploy-gateway ENV=<env>` or `uv run esmeralda apply layer-5-workloads/gateways/direct --env <env>`) and then `entrypoint` (`make deploy-entrypoint ENV=<env>`).
 
 ### 5. Token kinds and the client library
 
-| Host routed to | MCP host | Agent host |
+| Host Routed To | MCP Host | Agent Host |
 | :--- | :--- | :--- |
-| `direct` | ID token (audience `https://<name>.esmeralda.internal`) | Access token |
-| An adapter (Envoy) | ID token | ID token (the adapter's front door is Cloud Run IAM; it swaps the token for the upstream credential) |
+| `direct` | ID token (audience `https://<name>.esmeralda.internal`) | OAuth2 access token |
+| An adapter (`envoy`) | ID token | ID token (the adapter's front door is Cloud Run IAM; it swaps the token for the upstream credential) |
 
-The `esmeralda` client library picks the kind with `esmeralda.auth.token_kind(url)`: `access` for hosts listed in the `ACCESS_TOKEN_HOSTS` environment variable (comma-separated; Terraform sets it on each agent from the catalog and the routing) and always for `*.googleapis.com`, `id` otherwise. `esmeralda.a2a` and `esmeralda.mcp` send that kind.
+The `esmeralda` runtime library selects the right token automatically via `esmeralda.auth.token_kind(url)`: it returns `access` for hosts listed in the `ACCESS_TOKEN_HOSTS` environment variable (comma-separated, computed by Terraform from the catalog and active gateway routing) and for `*.googleapis.com`, and `id` otherwise. Both `esmeralda.a2a` and `esmeralda.mcp` use this helper transparently.
 
-Agents call out by impersonating the shared MCP invoker service account (`sa-mcp-invoker-<env>`), which has `roles/run.invoker` on the MCP project. For A2A over `direct` it also needs `roles/aiplatform.user` on the callee agent's project: when the callee's catalog `callers` include an agent, the agent unit adds it to `invoker_service_accounts`, and the a2a-agent module grants it that role on its project.
+Agents mint outbound tokens by impersonating `sa-mcp-invoker-<env>`, which holds `roles/run.invoker` on the MCP services and `roles/aiplatform.user` on callee A2A agent projects.
 
 > [!WARNING]
-> **Agent card URL.** The A2A agent card's `url` is the engine's real `aiplatform.googleapis.com` URL, not `<name>.esmeralda.internal`. `esmeralda.a2a.remote_agent` pins every RPC call to the configured `<name>.esmeralda.internal` base URL, so calls stay on the entry point. Other A2A clients that follow `card.url` go straight to aiplatform and need an access token.
+> **Agent Card URL Pinning:** The A2A Agent Card's internal `url` field contains the engine's raw `aiplatform.googleapis.com` resource URL rather than `<name>.esmeralda.internal`. `esmeralda.a2a.remote_agent` overrides that URL and pins every RPC call to the configured `<name>.esmeralda.internal` base URL so traffic always traverses the Central Agent Gateway and entry point.
 
 ### 6. Envoy on Cloud Run (`gateways/envoy/`, optional adapter)
 
-**What Envoy is:** an open-source, high-performance L7 proxy (CNCF). Its built-in [`gcp_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/gcp_authn_filter) filter fetches Google tokens from the metadata server and caches them, so no plugin or custom code is needed.
+**What Envoy Is:** An open-source, high-performance CNCF L7 proxy. Its built-in [`gcp_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/gcp_authn_filter) filter fetches and caches Google tokens from the instance metadata server with zero custom plugin code.
 
-**In Esmeralda:**
-* **Image:** `apps/services/envoy/Dockerfile` is upstream `envoyproxy/envoy:distroless-v1.40.2`, **pinned by digest** (Dependabot bumps it; the Gateway CI workflow runs the harness on every bump). Built with `make build-service-envoy` (image `envoy-gateway`) and deployed by digest like every other image. It contains no routes and no certificates.
-* **Bootstrap:** the pure [`config`](../../../infrastructure/modules/5-workloads/gateways/envoy/config/main.tf) submodule (no providers, no resources) renders the Envoy YAML from `agent_endpoints`, which the live unit derives from the catalog. Terraform stores it in Secret Manager (`envoy-config-<env>`) and Cloud Run mounts the exact secret version at `/etc/envoy/envoy.yaml`, so every config change rolls out as a new revision (old versions are kept, so traffic can be rolled back to an earlier revision). For each target it creates:
-  * a **host route** `<name>.esmeralda.internal` and apex path routes (`/<name>/...`, `/agents/<name>/...`, prefix stripped), plus `GET /healthz` on the apex;
-  * an optional **`path_map`**: the orchestrator serves only `/api/stream_reasoning_engine` (the path `esmeralda serve` exposes locally), rewritten to `<engine>:streamQuery?alt=sse`, with **`streaming = true`** (no route timeout; `stream_idle_timeout` 300 s still applies);
-  * a cluster with upstream TLS verified against the system CA bundle and the target's SAN, an explicit 120 s route timeout and 5 retries on connect failure;
-  * **tokens:** an OAuth2 **access token** for `*.googleapis.com` audiences (Agent Runtime), an OIDC **ID token** for the Cloud Run URI otherwise, cached until expiry.
-* **Hardening:** path normalization and slash merging, requests with encoded slashes rejected, query strings rejected on mapped paths, `x-envoy-original-*` headers only written by Envoy, upstream timing header removed, admin interface bound to `127.0.0.1`, JSON access log with the caller's host and path. Per-`X-API-Key` local rate limit (120/min per instance).
-* **Cloud Run service:** `envoy-gateway-<env>` in the gateway project, port 8080, running as **`sa-esmeralda-envoy-<env>`** (Layer 3 output `envoy_sa_email`). Ingress `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`, custom audiences for every served hostname, request timeout 3600 s (this also bounds requests through the load balancer: serverless NEG backend services take no `timeout_sec`). Direct VPC egress on the core subnet. Callers send it an **ID token** for every host, agent hosts included.
-* **Upstream grants:** when `envoy` is in `gateways.enabled`, the MCP service units add `sa-esmeralda-envoy-<env>` to their invokers, the specialist unit to its invokers, and the orchestrator unit grants it `roles/aiplatform.user` (adk-agent `invoker_service_accounts`).
-* **Backend contract:** serverless NEG `neg-envoy-gateway-<env>` → regional backend service `backend-envoy-gateway-<env>` (`INTERNAL_MANAGED`, request logging on), exposed as `backend_service_id`, plus `routes`. Module: [`gateways/envoy/main.tf`](../../../infrastructure/modules/5-workloads/gateways/envoy/main.tf); live unit: `layer-5-workloads/gateways/envoy`.
-* **Alerts (Layer 4):** when `envoy` is enabled, the governance unit passes `envoy-gateway-<env>` to the alert policies: a 5xx-ratio alert (threshold `monitoring_config.error_rate_threshold_pct`) and a token-fetch-failure alert, and the gateway is excluded from the P95 latency alert and SLO (streams stay open for minutes).
-* **Tests:**
-  * `make test-gateway-unit`: offline harness ([`tests/gateway`](../../../tests/gateway)). It renders the `config` submodule with Terraform/OpenTofu and runs it in a real `envoy` 1.40 binary against a fake metadata server and TLS mock upstreams (routing, tokens and caching, streaming, rate limits, failure modes). Part of `make test-all`. See [Contributing](../contributing.md) for how to get the binary.
-  * [`tests/gateway/sandbox`](../../../tests/gateway/sandbox/README.md): a throwaway GCP project that runs the module for real behind the `entrypoint` module and checks it from a VM.
+**How Esmeralda Packages It:**
 
-> [!IMPORTANT]
-> Like `direct`, Envoy routes use the agents' engine IDs. If an agent engine is recreated, re-apply `layer-5-workloads/gateways/envoy`.
+* **Pinned Distroless Image:** `apps/services/envoy/Dockerfile` uses upstream `envoyproxy/envoy:distroless-v1.40.2` **pinned by SHA-256 digest** (`make build-service-envoy`). It contains no hardcoded routes or certificates.
+* **Pure-Terraform Bootstrap Config:** The provider-free [`config`](../../../infrastructure/modules/5-workloads/gateways/envoy/config/main.tf) submodule renders `envoy.yaml` from `agent_endpoints` (derived from `catalog`), stores it in Secret Manager (`envoy-config-<env>`), and mounts the exact secret version at `/etc/envoy/envoy.yaml` on Cloud Run (`envoy-gateway-<env>`, running as `sa-esmeralda-envoy-<env>`):
+  * Creates host routes (`<name>.esmeralda.internal`), apex path routes (`/<name>/...`, `/agents/<name>/...`), and `GET /healthz`.
+  * Rewrites `/api/stream_reasoning_engine` to `<engine>:streamQuery?alt=sse` with `streaming = true`.
+  * Injects cached OAuth2 **access tokens** for `*.googleapis.com` (Agent Runtime) and OIDC **ID tokens** for Cloud Run upstreams.
+  * Enforces path normalization, rejects encoded slashes, strips upstream timing headers, and applies a per-`X-API-Key` local rate limit (120 req/min per instance).
+* **Offline & Sandbox Test Harnesses:** `make test-gateway-unit` renders the Terraform config and tests a real Envoy 1.40 binary against a mock metadata server and TLS upstreams ([`tests/gateway`](../../../tests/gateway)).
 
 ### 7. Apigee X (`gateways/apigee/`, stub)
 
-**What Apigee is:** Google Cloud's managed enterprise API management platform (proxies, products, quotas, analytics).
-
-**In Esmeralda** (not used by the current environments, and no live unit yet):
-* **Organization and environment:** provisions `google_apigee_organization` with `authorized_network = var.vpc_id`, an environment (`var.environment`), and an environment group registering `*.esmeralda.internal`.
-* **Runtime plane:** deploys `google_apigee_instance` with peering range `10.12.0.0/22`.
-* **Dynamic route KVM:** the `null_resource.populate_apigee_kvm` step iterates over `var.agent_endpoints`, populating the `agent-routes` Key-Value Map with logical-name → target URL entries.
-* **Proxy policies:** `KVM-Lookup.xml` extracts the subdomain and `Generate-Bearer-Token.xml` sets the `Authorization: Bearer` header.
+The repository also includes a starter module (`infrastructure/modules/5-workloads/gateways/apigee/`) illustrating how to wire **Apigee X** (`google_apigee_organization`, `google_apigee_instance`, and a `agent-routes` Key-Value Map with `KVM-Lookup.xml` and `Generate-Bearer-Token.xml` policies) to the same adapter contract.
 
 > [!WARNING]
-> The Apigee module is a placeholder for the adapter contract: its [`outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/apigee/outputs.tf) returns `backend_service_id = null` and empty `routes`, so the entrypoint rejects `apigee` as a backend. To make it routable, add a regional PSC NEG targeting the Apigee instance service attachment and a regional `INTERNAL_MANAGED` backend service on top of it, return that ID, then add a live unit and a dependency block in the entrypoint unit. It has not been validated with the Agent Gateway path. Treat it as a starting point, not a drop-in replacement.
+> The Apigee module is a structural stub: its [`outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/apigee/outputs.tf) currently returns `backend_service_id = null` and empty `routes`. To activate it, attach a regional PSC NEG targeting the Apigee instance service attachment and expose a regional `INTERNAL_MANAGED` backend service ID.
 
 ---
 
@@ -217,56 +206,65 @@ Agents call out by impersonating the shared MCP invoker service account (`sa-mcp
 
 ### Adding a catalog entry
 
-1. Add the entry to `catalog` in `env.yaml` (both environments).
-2. Add the Layer 5 unit that deploys it (`services/<x>` or `agents/<x>`).
-3. Add one dependency block for that unit in `layer-5-workloads/gateways/direct/terragrunt.hcl` and in `layer-5-workloads/gateways/envoy/terragrunt.hcl`: both map the entry's `unit` to that unit's outputs (Cloud Run service, or engine ID).
-4. Apply the unit, `gateways/direct` (`make deploy-gateway`; Envoy too if enabled), then the entry point (`make deploy-entrypoint`), and run `make test-gateway`.
+1. Add the new host entry to `catalog` in `infrastructure/live/<env>/env.yaml` (for both `dev` and `prd`).
+2. Create the Layer 5 unit that deploys the workload (`services/<x>` or `agents/<x>`).
+3. Add a dependency block in `layer-5-workloads/gateways/direct/terragrunt.hcl` (and `gateways/envoy/terragrunt.hcl`) mapping the entry's `unit` to its outputs.
+4. Apply the workload unit, `gateways/direct`, and `entrypoint`, then verify with `uv run esmeralda verify --env dev`.
 
 ### Adding an adapter
 
-1. **A module** under `infrastructure/modules/5-workloads/gateways/<name>/` that outputs `backend_service_id` (a regional `INTERNAL_MANAGED` backend service in the gateway project, in the entry point's region) and `routes`. It owns no load balancer, certificate or DNS record. See [`envoy/outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/envoy/outputs.tf) for the reference.
-2. **A live unit** under `infrastructure/live/<env>/layer-5-workloads/gateways/<name>/` with an `exclude` block that skips it when `<name>` is not in `gateways.enabled`.
-3. **One dependency block** in `infrastructure/live/<env>/layer-5-workloads/entrypoint/terragrunt.hcl` (with `enabled = contains(local.env_vars.locals.gateways.enabled, "<name>")`) plus its entry in the `adapters` input.
+1. Create a module under `infrastructure/modules/5-workloads/gateways/<name>/` outputting `backend_service_id` and `routes` (check `uv run esmeralda contracts`).
+2. Add a live unit under `infrastructure/live/<env>/layer-5-workloads/gateways/<name>/` with an `exclude` block when `<name>` is not in `gateways.enabled`.
+3. Add a conditional dependency block and `adapters` map entry in `layer-5-workloads/entrypoint/terragrunt.hcl`.
 
 ---
 
 ## Moving hosts between backends
 
-The entry point serves `direct` and adapter hosts side by side, so a host can move to an adapter (here `envoy`), or back, one at a time while callers keep the same hostname and certificate. Only the token kind can change: agent hosts take an access token on `direct` and an ID token on an adapter; the client library follows `ACCESS_TOKEN_HOSTS`, which Terraform updates on the agents.
+Because the entry point serves `direct` and adapter hosts side-by-side, you can migrate a single host (for example, `legacy-dms`) to `envoy` and back with zero downtime and no hostname or certificate changes:
 
-1. **Prepare the adapter.** For Envoy: apply Layer 3 (Envoy service account) and build the image (`make build-service-envoy`).
-2. **Enable it and move one host** in `env.yaml`:
+1. **Prepare the adapter:** Apply Layer 3 (to create `sa-esmeralda-envoy-<env>`) and build the image (`make build-service-envoy`).
+2. **Enable the adapter for one host** in `env.yaml`:
 
    ```hcl
    gateways = {
      default    = "direct"
      enabled    = ["envoy"]
-     host_rules = { "legacy-dms" = "envoy" }  # legacy-dms.esmeralda.internal -> envoy
+     host_rules = { "legacy-dms" = "envoy" }  # only legacy-dms.esmeralda.internal uses envoy
    }
    ```
 
-3. **Apply** the MCP services and agents (so they grant the Envoy service account and get the new `ACCESS_TOKEN_HOSTS`), Layer 4 for its alerts, the adapter, then the entry point:
+3. **Apply the affected units** so IAM invokers, `ACCESS_TOKEN_HOSTS`, Envoy, and the entry point URL map update:
 
    ```bash
-   cd infrastructure/live/<env>/layer-5-workloads/gateways/envoy && terragrunt apply
-   make deploy-entrypoint ENV=<env>
+   uv run esmeralda apply layer-5-workloads/gateways/envoy --env dev
+   uv run esmeralda apply layer-5-workloads/entrypoint --env dev
    ```
 
-4. **Test** with `make test-gateway ENV=<env>`: every host must still answer through the entry point, `legacy-dms` now through `envoy`.
-5. **Move more hosts** by adding them to `host_rules` and re-running `make deploy-entrypoint` + `make test-gateway`.
-6. **Flip the default** if every host should use the adapter: `default = "envoy"` and drop the overrides that now match the default. Apply the entry point and test again.
+4. **Verify every route** with `uv run esmeralda verify --env dev` (or `make test-gateway ENV=dev`).
 
-To roll back at any step, revert `env.yaml` and re-apply the agents and the entry point.
+To roll back at any point, revert `env.yaml` and re-apply the agents and `entrypoint`.
 
 ---
 
 ## Apply order
 
-For a new environment: L0 → L1 → L2 (includes the entry point IP + DNS) → L3 (includes the entry point certificate) → L4 → images → L5 services → agents → `gateways/direct` (and any enabled adapter) → `entrypoint` → `iap-egress` / `test-vm`. `make deploy-workloads` (`terragrunt run --all`) derives the Layer 5 order from the dependency blocks. The individual targets are `make deploy-gateway` (applies `layer-5-workloads/gateways/direct`; re-run it after an agent engine is recreated, since agent routes use engine IDs) and `make deploy-entrypoint`.
+For a greenfield environment: `L0` → `L1` → `L2` (entry point IP + DNS) → `L3` (entry point certificate) → `L4` → container images → `L5` services → agents → `gateways/direct` (and any enabled adapter) → `entrypoint` → `iap-egress` / `test-vm`. Both `make deploy-workloads` and `uv run esmeralda units --env dev` follow this dependency order automatically.
 
 ---
 
 ## Verification and runbook
+
+### Verify with the `esmeralda` CLI (Recommended)
+
+```bash
+# Inspect gateway & catalog contracts and current routing
+uv run esmeralda contracts
+uv run esmeralda status --env dev
+
+# Run all catalog route probes + a live end-to-end orchestrator query for Julian Sterling
+uv run esmeralda verify --env dev
+```
 
 ### Test every route: `make test-gateway`
 
@@ -274,44 +272,36 @@ For a new environment: L0 → L1 → L2 (includes the entry point IP + DNS) → 
 make test-gateway ENV=dev
 ```
 
-[`scripts/test_gateway.sh`](../../../scripts/test_gateway.sh) reads everything from Terragrunt outputs (test VM name / zone / project from the `test-vm` unit, entry point IP and domain from Layer 2, the internal Root CA secret from Layer 3, and the entry point's `routes` output). It then connects to the test VM over IAP SSH and probes each host through the entry point, pinned to the entry point IP, with TLS verified against the internal Root CA. Each host gets the token kind from `routes`: an ID token from the VM metadata server (audience `https://<host>`) or an access token.
+[`scripts/test_gateway.sh`](../../../scripts/test_gateway.sh) (also invoked by `uv run esmeralda verify`) reads the test VM details, the Layer 2 entry point IP, the Layer 3 internal Root CA certificate, and the entry point's `routes` output from Terragrunt. It connects to the test VM over IAP SSH and probes every catalog host with full TLS verification:
 
-| Probe | Request | Expected |
+| Probe Kind | Request Sent | Pass Criteria |
 | :--- | :--- | :--- |
-| `mcp` | `POST /mcp` (MCP `initialize`) | 2xx |
-| `a2a` | `GET /v1/card` (agent card) | 2xx |
-| `query` | `POST /api/stream_reasoning_engine` with an ADK `async_stream_query` body (user ID `test-gateway`, message from `TEST_GATEWAY_QUERY`, default "Can you verify Julian Sterling's income?"), 120 s timeout | HTTP 200, non-empty model text, no error event |
-| `none` | `GET /` | TLS + routing only, any HTTP status |
-
-A "no route" answer fails every kind.
+| `mcp` | `POST /mcp` (MCP `initialize`) | HTTP 2xx |
+| `a2a` | `GET /v1/card` (A2A Agent Card) | HTTP 2xx |
+| `query` | `POST /api/stream_reasoning_engine` with prompt *"Can you verify Julian Sterling's income?"* (120 s timeout) | HTTP 200, non-empty model response, zero error events |
+| `none` | `GET /` | TLS handshake + route exists |
 
 > [!NOTE]
-> The `query` probe runs a real agent turn end to end (orchestrator → specialist → MCP tools), so it costs model tokens.
+> The `query` probe executes a real end-to-end turn (`cx-mortgage-orchestrator` → `ai-coe-mortgage-specialist` → MCP tools) and consumes Gemini model tokens.
 
 ### Manual check via test VM
-The test VM (`test-vm-<env>`) currently lives in the CX agents project. The entry point only listens on HTTPS, so pass the internal Root CA public certificate (Secret Manager `esmeralda-internal-root-ca-<env>` in the gateway project) to `curl`.
 
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
 GW_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw gateway_project_id)
-ENTRY_IP=$(cd infrastructure/live/dev/layer-2-networking && terragrunt output -raw entrypoint_address)
 
-# Copy the internal Root CA (public cert only) to the VM
+# Copy the internal Root CA public certificate to the test VM
 gcloud secrets versions access latest --secret=esmeralda-internal-root-ca-dev --project=$GW_PROJ > /tmp/root-ca.pem
 gcloud compute scp /tmp/root-ca.pem test-vm-dev:/tmp/root-ca.pem --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap
-
-# SSH into the test VM
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap
 
-# Inside VM: fetch the AgentCard through the entry point (direct -> Agent Runtime).
-# Agent hosts on direct take an access token (gcloud auth print-access-token also works).
+# Inside VM: 1) Fetch the A2A Agent Card (direct -> Agent Runtime uses an access token)
 HOST=ai-coe-mortgage-specialist.esmeralda.internal
-getent hosts ${HOST}   # should print the entry point IP (ENTRY_IP above)
 TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" | jq -r .access_token)
 curl -s --cacert /tmp/root-ca.pem -H "Authorization: Bearer ${TOKEN}" https://${HOST}/v1/card | jq .
 
-# MCP hosts take an ID token with the host as audience
+# Inside VM: 2) Initialize an MCP session (MCP hosts on direct use an ID token with host audience)
 HOST=legacy-dms.esmeralda.internal
 TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://${HOST}")
@@ -320,3 +310,9 @@ curl -s --cacert /tmp/root-ca.pem -H "Authorization: Bearer ${TOKEN}" -H "Conten
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}' \
   https://${HOST}/mcp
 ```
+
+---
+
+You have now met the entire cast of **Part I**: the CX orchestrator, the AI CoE specialist, the three Cloud Run MCP tool servers, and the private entry point that connects them.
+
+In **[Part II — Governance & Trust Boundary](../3-agentops-and-lifecycle/index.md)**, we step into **Layer 4** to see how the **Central Agent Gateway**, **Capability-Based Governance**, and **BigQuery FinOps** keep every one of these calls secure, auditable, and cost-attributed.

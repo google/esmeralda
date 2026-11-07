@@ -1,10 +1,46 @@
-# Centralized Governance, Observability & FinOps Guide (Layer 4)
+# Chapter 6: FinOps, Telemetry & Cross-Team Chargeback
 
-## Overview
+Imagine it is the first Monday of the month. The bank's **Chief Financial Officer (CFO)** and **VP of Engineering** sit down to review the cloud bill for the new AI mortgage platform.
 
-Esmeralda centralizes platform observability, token cost accounting, security audit logging and PII inspection templates in the **governance project** `esm-<env>-governance-<sfx>`, following a **hub-and-spoke telemetry architecture**: every workload project (a *spoke*) forwards its logs to one central project (the *hub*), so that SecOps and FinOps get a single place to query, chart and alert, while application teams keep their own projects.
+In a naive multi-agent deployment, that meeting turns into an argument within five minutes:
+* The **AI Center of Excellence (AI CoE)** owns the project `esm-<env>-ai-coe-agents-<sfx>`, where `ai-coe-mortgage-specialist` runs. Because the specialist performs the heavy underwriting reasoning and calls three MCP tools (`legacy-dms`, `income-verification`, `corporate-email`), 75% of the Gemini token spend appears on the AI CoE project's GCP invoice.
+* Yet the AI CoE team didn't initiate a single one of those requests! Every underwriting call was triggered on behalf of **Julian Sterling** and thousands of other applicants talking to `cx-mortgage-orchestrator`, owned by the **Customer Experience (CX) team** in `esm-<env>-cx-agents-<sfx>`.
+* Worse, when a request takes 6.4 seconds or a prompt loop spikes token consumption at 3:00 AM, SREs shouldn't have to SSH into five separate GCP projects—or grant application developers broad access to production database logs—just to reconstruct a single conversation.
 
-All resources on this page are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Agent Gateway, which lives in the same module, has its own guide: **[01. Central Agent Gateway](./01-central-agent-gateway.md)**.
+How do we give the CFO **penny-accurate, per-request token chargeback across team boundaries**, give the VP of Engineering **real-time Golden Signals and runaway-loop circuit alerts**, and give SecOps **an immutable 7-year compliance audit trail**—all while preserving strict project isolation?
+
+Esmeralda solves this in **Layer 4 (`infrastructure/modules/4-governance`)** with a **Hub-and-Spoke Telemetry & FinOps Architecture** centered in `esm-<env>-governance-<sfx>`, paired with **OpenTelemetry caller baggage propagation** (`caller.project_id` and `caller.agent_name`) built into the [`esmeralda` runtime library](../4-esmeralda-library/index.md).
+
+---
+
+## Tracing Julian Sterling's Mortgage Query Across Two Teams' Budgets
+
+When Julian Sterling asks `cx-mortgage-orchestrator` to check his loan status, here is how Esmeralda tracks both the technical latency and the financial cost across project boundaries:
+
+1. **Caller Context Propagation (`caller.project_id`, `caller.agent_name`):**
+   When `cx-mortgage-orchestrator` (in `esm-<env>-cx-agents-<sfx>`) calls `ai-coe-mortgage-specialist` (in `esm-<env>-ai-coe-agents-<sfx>`) over A2A, the `esmeralda` library attaches W3C OpenTelemetry baggage carrying `caller.project_id` and `caller.agent_name`. Inside the specialist container, `BaggageSpanProcessor` ([`telemetry.py`](../../../packages/esmeralda/src/esmeralda/telemetry.py)) automatically copies those attributes onto every child Cloud Trace span—including the specialist's Gemini model calls and MCP tool calls.
+2. **Structured JSON Token & Tool Events on `stdout`:**
+   After every LLM turn and every MCP tool invocation, `TelemetryEmitter` writes a single-line structured JSON event (`genai_token_consumption` or `mcp_tool_execution`) to `stdout`, recording `prompt_tokens`, `completion_tokens`, `thoughts_tokens`, `cached_tokens`, `cache_hit_ratio`, `execution_path`, `session_id`, and the W3C `trace_id`/`span_id`.
+3. **Hub-and-Spoke Log Sinks to BigQuery:**
+   Every workload spoke project (`cx-agents`, `ai-coe-agents`, `mcps`, `gateway`, `net-host`) has a Layer 4 `google_logging_project_sink` that streams Reasoning Engine `stdout`, Cloud Run request logs, and Cloud Audit logs into a single BigQuery dataset (`esmeralda_telemetry_logs_<env>`) in the central governance project.
+4. **Instant Executive Rollups (`vw_monthly_agent_chargeback` & `vw_request_level_telemetry`):**
+   In BigQuery, pre-built analytical views calculate the exact USD cost of Julian's turn, quantify how much money Gemini context caching saved (`cache_hit_ratio_pct`), and roll up monthly chargeback per agent and model.
+
+---
+
+## Why We Built It This Way: Architectural Decisions
+
+| Architectural Choice | Alternative Considered | Why Esmeralda Chose This Design |
+| :--- | :--- | :--- |
+| **Hub-and-Spoke Log Sinks into a Central Governance BigQuery Dataset** | Querying logs separately inside each team's project, or running a single shared project for all teams | Separate log silos make cross-agent trace correlation and enterprise FinOps reporting impossible, while a single shared project destroys IAM blast-radius isolation. Hub-and-spoke sinks let each team work in an isolated spoke project while SecOps and FinOps query one unified hub in `esm-<env>-governance-<sfx>`. |
+| **Structured `stdout` JSON Events (`genai_token_consumption`) + OTel Baggage (`caller.project_id`, `caller.agent_name`)** | Estimating token cost from raw GCP project billing exports alone | Cloud Billing exports show aggregate SKU spend per project with a multi-hour delay, cannot distinguish which *initiating caller* triggered a shared A2A specialist, and cannot detect a runaway prompt loop in 60 seconds. Emitting per-turn token counters with W3C trace IDs and caller baggage gives both real-time Cloud Monitoring metrics and request-level BigQuery chargeback. |
+| **Pre-Created BigQuery Schemas & Views in Layer 4 (`4_finops_analytics`)** | Waiting for Cloud Logging sinks to auto-create tables on first traffic before deploying SQL views | If SQL views depend on tables that only appear after an agent serves traffic, fresh environments fail `terraform apply` or require manual two-phase deployments. Pre-creating the core `reasoning_engine_stdout` schema in Terraform ensures `vw_monthly_agent_chargeback` and `vw_request_level_telemetry` deploy cleanly on Day 1. |
+
+---
+
+## Complete Technical Architecture & Reference
+
+All resources below are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Central Agent Gateway, which lives in the same module, has its own deep-dive in **[Chapter 4: Central Agent Gateway](./01-central-agent-gateway.md)**.
 
 ```mermaid
 flowchart TD
@@ -101,9 +137,9 @@ flowchart TD
 
 #### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
 Calculates monthly agent cost and context-caching savings. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:
-* **Uncached Prompt Tokens**: `$0.075` per 1M tokens
-* **Cached Prompt Tokens**: `$0.01875` per 1M tokens (**75% cost reduction**)
-* **Response & Reasoning Tokens**: `$0.30` per 1M tokens
+* **Uncached Prompt Tokens**: `\$0.075` per 1M tokens
+* **Cached Prompt Tokens**: `\$0.01875` per 1M tokens (**75% cost reduction**)
+* **Response & Reasoning Tokens**: `\$0.30` per 1M tokens
 
 ```sql
 SELECT
@@ -232,3 +268,7 @@ flowchart LR
 3. **Gateway Request Logs**:
    * Every gateway decision (host, status, allow/deny) is logged in the governance project: `gcloud logging read 'logName:"gateway_requests"' --project=<governance-project-id>`.
    * Token counts for FinOps do **not** come from the gateway; they come from the agents' own `genai_token_consumption` events (sections 2 and 3).
+
+---
+
+**Next Chapter:** We have seen how Layer 4 governs outbound connections, evaluates semantic policies, and streams FinOps telemetry into BigQuery. How do platform engineers—and their AI coding assistants—actually operate this platform day to day without drowning in raw Terraform output or accidentally destroying stateful infrastructure? Turn to **[Chapter 7: Day-2 Operations with the `esmeralda` CLI & MCP Server](./04-operating-with-agents.md)**.

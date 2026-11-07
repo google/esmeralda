@@ -1,30 +1,38 @@
 # Layer 1: Foundational Projects, Billing & FinOps
 
-Welcome to the technical deep-dive for **Layer 1 (Projects, Billing & APIs)**.
+## 1. The Story & Business Why: Why One Project Is Never Enough
 
-Layer 1 provisions and manages the isolated Google Cloud projects of one environment, activates essential service APIs, links them to the billing account, applies cost-attribution labels, and bootstraps foundational Google-managed service identities.
+When **Julian Sterling** submits his mortgage application, a single user interaction triggers work across multiple distinct organizational teams. The **Customer Experience (CX) team** runs `cx-mortgage-orchestrator`, which greets Julian and coordinates the conversation. Behind the scenes, that orchestrator delegates the heavy underwriting analysis to `ai-coe-mortgage-specialist`—built and maintained by the **AI Center of Excellence (AI CoE) team**—which in turn calls three internal **Model Context Protocol (MCP) tool servers** (`legacy-dms`, `income-verification`, and `corporate-email`) maintained by the **AppDev Tools team**. Meanwhile, **NetOps** operates the private network, **PlatformOps** runs the ingress load balancer, and **SecOps** guards the encryption keys and audit logs.
+
+What happens if a bank deploys all of those teams into a single Google Cloud project? Three production failures inevitably follow:
+
+1. **The FinOps Attribution Blackout:** Every Gemini token consumed by the CX orchestrator and the AI CoE specialist—along with the 24/7 Cloud SQL database and scale-to-zero Cloud Run MCP tools—lands on one undifferentiated invoice. The CFO cannot tell whether consumer chat traffic or deep document underwriting is driving the monthly AI bill.
+2. **IAM Boundary Bleeding:** A tool developer granted permissions to debug an MCP server in a shared project can accidentally gain visibility into central KMS encryption keys, platform secrets, or another team's agent configurations.
+3. **API Quota Starvation:** In Google Cloud, Vertex AI and Cloud Run quotas are enforced per project. If an experimental agent enters a runaway retry loop in a shared project, it exhausts the Vertex AI token-per-minute quota and brings down every enterprise agent simultaneously.
+
+**Layer 1 solves all three problems before a single line of agent code is deployed.** It provisions **six isolated Google Cloud projects per environment** (plus the shared Layer 0 CI/CD project), links each to the corporate billing account with explicit `cost-center`, `team`, and `env` labels, activates only the exact APIs each domain needs, and pre-creates Google-managed service identities so downstream layers never hit IAM race conditions.
 
 * **Module:** [`infrastructure/modules/1-projects/`](../../../infrastructure/modules/1-projects/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-1-projects/` (inputs from `infrastructure/live/<env>/env.yaml`)
-* **Deploy:** `make deploy-projects ENV=<env>` (or `make deploy-foundations ENV=<env>` for Layers 1–3)
+* **Deploy:** `uv run esmeralda apply layer-1-projects --env <env>` (or `make deploy-projects ENV=<env>`)
 
 > [!NOTE]
-> The CI/CD project is **not** part of Layer 1. It is created once, for all environments, by Layer 0 (`make deploy-cicd`, module [`0-cicd`](../../../infrastructure/modules/0-cicd/main.tf)) as `esm-cicd-<sfx>`. It holds the mutable dev image repository (`esmeralda-containers`), the immutable release repository (`esmeralda-containers-release`), and the `sa-esmeralda-builder` / `sa-esmeralda-promoter` service accounts.
+> The CI/CD project is **not** part of Layer 1. It is created once, for all environments, by Layer 0 (`uv run esmeralda apply layer-0-cicd` / `make deploy-cicd`, module [`0-cicd`](../../../infrastructure/modules/0-cicd/main.tf)) as `esm-cicd-<sfx>`. It holds the mutable dev image repository (`esmeralda-containers`), the immutable release repository (`esmeralda-containers-release`), and the `sa-esmeralda-builder` / `sa-esmeralda-promoter` service accounts.
 
 ---
 
-## The 60-Second Mental Model: Why Layer 1 Exists
+## 2. Why We Built It This Way (Key Decisions & Rationale)
 
-In AI agent architectures, putting everything into a single GCP project causes three catastrophic production failures:
-1. **The FinOps Attribution Blackout:** Generative AI token costs (Gemini 3.7 Flash) get merged onto a single invoice, making it impossible to charge back costs to specific business units.
-2. **IAM Boundary Bleeding:** Application tool developers obtain accidental visibility into platform encryption keys (KMS) or central audit logs.
-3. **API Quota Starvation:** A runaway tool invocation loop in one agent consumes the entire project's Vertex AI quota, bringing down all enterprise agents simultaneously.
-
-**Layer 1 establishes operational blast boundaries by giving each team its own project: six per environment, plus the shared CI/CD project from Layer 0.**
+| Decision | Alternative Considered | Why We Chose This |
+| :--- | :--- | :--- |
+| **6 Per-Environment Projects + 1 Shared CI/CD Project** | Single monolithic GCP project per environment | Gives every team (`netops`, `platformops`, `appdev-tools`, `ai-coe`, `cx`, `security-and-platformops`) its own IAM perimeter, independent Vertex AI quota pool, and automatic Cloud Billing chargeback label. |
+| **Separate Projects for CX Orchestrators (`cx-agents`) and AI CoE Specialists (`ai-coe-agents`)** | One combined `agents` project for all AI workloads | Consumer-facing orchestrators and reusable domain specialists ship on different cadences, pay from different departmental budgets, and require distinct Agent Identity `principalSet` trust boundaries (see [Layer 3](./03-security-iam-and-telemetry.md)). |
+| **Per-Project `byo_*` Brownfield Toggles in `env.yaml`** | Requiring greenfield project creation for every deployment | Enterprise landing zones often mandate pre-existing `net-host`, `gateway`, or `governance` projects. Flipping `byo_*_project = true` lets Layer 1 adopt existing corporate projects while still creating the workload projects (`mcps`, `ai-coe-agents`, `cx-agents`). |
+| **Eager Service Identity Bootstrapping (`google_project_service_identity`)** | Relying on lazy Google service agent creation on first resource deploy | Google normally creates `service-<NUMBER>@gcp-sa-aiplatform.iam.gserviceaccount.com` lazily when the first agent is deployed. Bootstrapping all 8 service agents in Layer 1 prevents `400 Bad Request: Principal does not exist` race conditions when Layers 2 and 3 bind subnet and KMS IAM roles. |
 
 ---
 
-## Persona & Role Breakdown: Who Owns Layer 1?
+## 3. Persona & Role Breakdown: Who Owns Layer 1?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
@@ -34,7 +42,7 @@ In AI agent architectures, putting everything into a single GCP project causes t
 
 ---
 
-## Architecture Decision Records (ADRs): The "Why"
+## 4. Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-01.1: Seven Specialized GCP Projects vs. Monolithic Landing Zone
 * **Context:** Enterprise organizations require strict separation of concerns between Network Engineers, Security Operations, the AI Center of Excellence, and Line-of-Business (LOB) application developers.
@@ -92,7 +100,7 @@ flowchart TD
 
 ---
 
-## FinOps Cost Attribution Architecture
+## 5. FinOps Cost Attribution Architecture
 
 Because every team has its own project, and every project carries `cost-center`, `team` and `env` labels, costs can be attributed in the Cloud Billing BigQuery export without guesswork:
 
@@ -139,7 +147,7 @@ flowchart TD
 
 ---
 
-## Technical Implementation Breakdown (`modules/1-projects/`)
+## 6. Technical Architecture & In Practice (`modules/1-projects/`)
 
 ### 1. Service API Enablement Matrix (`google_project_service`)
 Each project receives the list of Google APIs required for its operational domain. Layer 1 first enables `serviceusage` and `cloudresourcemanager` on every new project with `gcloud` (a bootstrap step), then enables the rest declaratively:
@@ -175,9 +183,18 @@ The Cloud Build service agent of the shared CI/CD project is bootstrapped by Lay
 
 ---
 
-## Verification & Runbook
+## 7. Verification & Runbook
 
-### Inspect Provisioned Projects
+### Inspect Layer 1 Outputs via the `esmeralda` CLI
+```bash
+# View deployed project IDs and unit state via the esmeralda CLI
+uv run esmeralda status --env dev --unit layer-1-projects
+
+# Plan Layer 1 changes safely (read-only)
+uv run esmeralda plan layer-1-projects --env dev
+```
+
+### Inspect Provisioned Projects via `gcloud`
 ```bash
 # List all Esmeralda projects in the dev environment
 gcloud projects list --filter="name:esm-dev-*" --format="table(projectId, projectNumber, labels.team, labels.cost-center)"

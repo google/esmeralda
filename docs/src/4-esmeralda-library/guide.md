@@ -1,6 +1,25 @@
 # Usage guide
 
-This page shows how to use the `esmeralda` library in each situation. For the full API, see the [package reference](reference.md).
+## The Story & Business Why: From Local Workstation to Zero-Trust Production Without Changing a Line of Code
+
+When a developer on the CX or AI CoE team builds a mortgage underwriting agent for applicants like **Julian Sterling**, they need two seemingly contradictory things:
+1. **Frictionless local inner-loop speed:** Running `esmeralda query` or `esmeralda serve --local` on a laptop against local MCP servers (`http://localhost:8001/mcp`) with zero certificates, proxies, or load balancers in the way.
+2. **Zero-trust enterprise production rigor:** Running the exact same code inside Vertex AI Agent Runtime behind the Central Agent Gateway, authenticating to `https://legacy-dms.esmeralda.internal/mcp` with internal Root CAs, SPIFFE identities (`X-Agent-Spiffe-Id`), 3LO user tokens (`User-Auth-Token`), and structured FinOps telemetry.
+
+This guide shows how `esmeralda` (`esmeralda-platform`) bridges both worlds cleanly, and which building block to reach for in every scenario. For the complete module-by-module specification, see the [package reference](reference.md).
+
+---
+
+## Why We Built It This Way (Key Decisions & Rationale)
+
+| Decision | Alternative Considered | Why We Chose This |
+| :--- | :--- | :--- |
+| **Declarative `agent.yaml` (`framework: google-adk \| a2a`, `env`, `local_env`)** | Separate startup scripts and environment files per framework | Lets `esmeralda serve` and `esmeralda query` run ADK orchestrators and A2A specialists with the exact same CLI commands locally and in containers. |
+| **`esmeralda.mcp.toolset` & `esmeralda.a2a.remote_agent` Wrappers** | Constructing raw `McpToolset` / `RemoteA2aAgent` instances in each agent | Automatically attaches `Authorization: Bearer` (ID or access token), `User-Auth-Token`, `X-Agent-Spiffe-Id`, `X-API-Key`, and pins A2A RPC URLs to the private gateway host. |
+| **Zero-Latency Local JWT Verification (`esmeralda.mcp_authz`)** | Calling `oauth2.googleapis.com/tokeninfo` on every MCP tool call | Synchronous `tokeninfo` calls add latency and fail inside VPC Service Controls perimeters; `mcp_authz.verify_request` validates user claims and blocks service-account masquerading locally. |
+| **Read-Only `esmeralda mcp` Server for Coding Agents** | Giving AI assistants raw shell access to `terraform apply` or `destroy` | Exposes structured, compact JSON tools (`status`, `list_units`, `plan_unit`, `query_agent`, `test_gateway`, `agent_logs`, `describe_contracts`) with zero mutation risk. |
+
+---
 
 ## Which piece do I need?
 
@@ -18,6 +37,7 @@ This page shows how to use the `esmeralda` library in each situation. For the fu
 | Agent-specific plugins (BigQuery analytics, ...) | `esmeralda.create_app(root_agent, plugins=[...])` |
 | Agent-specific process setup | `esmeralda.prepare([*esmeralda.lifecycle.PREPARE, my_step])` |
 | Run or test an agent, locally or deployed | `esmeralda query`, or `make query AGENT=<agent>` (add `TARGET=remote` or `TARGET=<url>`) |
+| Inspect, plan, apply, verify, or check logs of an environment | `uv run esmeralda status / doctor / units / plan / apply / verify / logs / contracts / guard` |
 | Let a coding agent inspect and check a deployment (read-only) | `esmeralda mcp` as an MCP server: [Operating a checkout from an agent](#operating-a-checkout-from-an-agent-esmeralda-mcp) |
 
 ## Add the library to an agent

@@ -1,30 +1,40 @@
 # Layer 3: Security, IAM, CMEK & Internal PKI
 
-Welcome to the technical deep-dive for **Layer 3 (Security, IAM, CMEK & Internal PKI)**.
+## 1. The Story & Business Why: Proving Who Is Calling Whom—Without Shared Secrets
 
-Layer 3 creates the least-privilege workload service accounts, grants IAM to each team's **Agent Identity**, provisions Cloud KMS keys (CMEK) and platform secrets in `esm-<env>-governance-<sfx>`, grants image-pull access on the shared CI/CD repository, and creates the **internal Root CA** that secures `*.esmeralda.internal`.
+Follow a single question from a loan officer reviewing **Julian Sterling's** mortgage file: *"Verify Julian Sterling's income and check whether his W-2 matches his application."*
+
+In a naive agent deployment, `cx-mortgage-orchestrator` and `ai-coe-mortgage-specialist` run under a shared Google Cloud service account (or worse, hold static API keys in environment variables), and talk to internal tools over plain HTTP or `verify=False` TLS. That creates three unacceptable enterprise risks:
+1. **The Confused-Deputy Problem:** If every agent shares a single identity or an organization-wide wildcard grant, nothing stops a general-purpose consumer chatbot from bypassing the mortgage specialist and querying `legacy-dms` or `income-verification` directly—or impersonating a human user.
+2. **Uncontrolled Key & Secret Sprawl:** When developers create KMS keys or database secrets inside their own application projects, a compromised workload can modify its own security controls or read secrets it has no business touching.
+3. **Unverifiable Internal TLS:** Because `.internal` domain names (`*.esmeralda.internal`) do not exist on the public internet, Let's Encrypt and public Certificate Authorities cannot issue certificates for them. Teams often disable TLS verification (`verify=False`), blinding the network to man-in-the-middle attacks.
+
+**Layer 3 establishes cryptographic trust across all three fronts before any agent or gateway starts:**
+* **Three-Identity Delegation & GEAP SPIFFE Agent Identity:** Every Reasoning Engine receives its own Google-attested SPIFFE identity (`spiffe://` / `principal://...`), backed by auto-rotated 24-hour X.509 certificates. Across every request, Esmeralda cleanly separates **User Identity** (the human end user's OAuth 2.0 token), **Agent Identity** (the specific engine's cryptographic SPIFFE ID), and **Delegated Identity** (3LO/2LO credentials brokered via Agent Identity Auth Manager). Combined with per-target `roles/iap.egressor` policies, the CX orchestrator is cryptographically permitted to call *only* the AI CoE specialist, and *only* the AI CoE specialist can call the MCP tool servers.
+* **Centralized CMEK & Secrets in `governance`:** Cloud KMS Customer-Managed Encryption Keys (90-day rotation) and platform secrets live exclusively inside `esm-<env>-governance-<sfx>` under SecOps control.
+* **Internal Root CA & Entry Point Leaf Certificate (`*.esmeralda.internal`):** Layer 3 mints a 10-year private Root CA and signs the 1-year leaf certificate for `*.esmeralda.internal`. Every TLS handshake—from the agent container (`esmeralda run`) through the Central Agent Gateway to the internal HTTPS load balancer—is cryptographically verified end-to-end.
 
 * **Module:** [`infrastructure/modules/3-security/`](../../../infrastructure/modules/3-security/main.tf) (`main.tf`, [`agent_identity.tf`](../../../infrastructure/modules/3-security/agent_identity.tf), [`pki.tf`](../../../infrastructure/modules/3-security/pki.tf))
 * **Live config:** `infrastructure/live/<env>/layer-3-security/`
-* **Deploy:** `make deploy-security ENV=<env>`
+* **Deploy:** `uv run esmeralda apply layer-3-security --env <env>` (or `make deploy-security ENV=<env>`)
 
 > [!NOTE]
 > **Telemetry lives in Layer 4.** Log sinks, the BigQuery telemetry dataset, DLP, alerts, dashboards, FinOps views and Model Armor templates are created by the governance layer (`modules/4-governance`). See [Centralized Monitoring & FinOps](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md) and the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md).
 
 ---
 
-## The 60-Second Mental Model: Why Layer 3 Exists
+## 2. Why We Built It This Way (Key Decisions & Rationale)
 
-In AI agent platforms, security vulnerabilities fall into three distinct vectors:
-1. **Uncontrolled Secret Proliferation:** Developers hardcoding database passwords or API keys in git or agent prompt strings.
-2. **Over-Privileged Identities:** A compromised tool or agent having IAM rights to read all customer databases or modify audit trails.
-3. **Unverifiable Private Traffic:** Internal services without real TLS, so nobody can prove who is on the other end of a connection.
-
-**Layer 3 gives every workload its own narrowly scoped identity, keeps keys and secrets in the SecOps-owned governance project, and creates the private CA that makes TLS to internal services verifiable.**
+| Decision | Alternative Considered | Why We Chose This |
+| :--- | :--- | :--- |
+| **Native GEAP SPIFFE Agent Identity (`principal://...`) + Three-Identity Delegation** | Shared service accounts, static JSON keys, or service-account impersonation chains | Gives every Reasoning Engine a unique, hardware-backed X.509/SPIFFE identity (`spiffe_id` / `agent_identity_principal`) with zero rotatable keys, while preserving end-user attribution via `User-Auth-Token` and Auth Manager 3LO delegation. |
+| **Per-Target IAP Egress Policies (`roles/iap.egressor` per Agent Registry target)** | Org-wide wildcard (`system.id.goog/*`) or flat project-level invoker grants | Eliminates the **Confused-Deputy bypass**: `cx-mortgage-orchestrator` can only invoke `ai-coe-mortgage-specialist`, and only `ai-coe-mortgage-specialist` can invoke `corporate-email`, `income-verification`, and `legacy-dms`. |
+| **Centralized KMS Key Ring & Secrets in `esm-<env>-governance-<sfx>`** | Per-project KMS keys created by application teams | Enforces strict Separation of Duties (SoD): SecOps owns key rotation (90 days) and secret access logs in one project, while workload identities receive only `cryptoKeyEncrypterDecrypter` or `secretAccessor`. |
+| **Terraform-Managed Internal Root CA (`*.esmeralda.internal`)** | Disabling TLS verification (`verify=False`) or baking certs into Docker images | Public CAs cannot sign `.internal` domains. Generating the Root CA and entry point leaf in Layer 3—and injecting the public CA bundle at deploy time via `AGENT_GATEWAY_ROOT_CERTIFICATES`—gives full TLS verification while keeping container images environment-agnostic. |
 
 ---
 
-## Persona & Role Breakdown: Who Owns Security & IAM?
+## 3. Persona & Role Breakdown: Who Owns Security & IAM?
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
@@ -34,7 +44,7 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 
 ---
 
-## Architecture Decision Records (ADRs): The "Why"
+## 4. Architecture Decision Records (ADRs): The "Why"
 
 ### ADR-03.1: Centralized Governance Project vs. In-Project Security Assets
 * **Context:** Allowing application teams to manage their own KMS keys or secrets lets a compromised workload decrypt data or tamper with its own controls.
@@ -74,7 +84,7 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 
 ---
 
-## Security, IAM & PKI Topology
+## 5. Security, IAM & PKI Topology
 
 ```mermaid
 flowchart TD
@@ -103,7 +113,7 @@ flowchart TD
 
 ---
 
-## Technical Implementation Breakdown (`modules/3-security/`)
+## 6. Technical Architecture & In Practice (`modules/3-security/`)
 
 ### 1. Cloud KMS CMEK Keys (`google_kms_crypto_key`)
 **What it is:** a Customer-Managed Encryption Key (CMEK) is a Cloud KMS key you own and control that a Google service uses to encrypt your data at rest; disabling it makes the data unreadable.
@@ -162,7 +172,16 @@ This enforces least-privilege separation at both the GCP project layer and the C
 
 ---
 
-## Verification & Runbook
+## 7. Verification & Runbook
+
+### Inspect Layer 3 Security Outputs via the `esmeralda` CLI
+```bash
+# Inspect Layer 3 outputs (service account emails, KMS key IDs, SSL certificate ID)
+uv run esmeralda status --env dev --unit layer-3-security
+
+# Plan Layer 3 changes (read-only)
+uv run esmeralda plan layer-3-security --env dev
+```
 
 ### Verify Cross-Project KMS Access
 ```bash
