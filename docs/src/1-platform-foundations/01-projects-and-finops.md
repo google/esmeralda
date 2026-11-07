@@ -1,6 +1,6 @@
-# Chapter 8: Project Isolation, Blast Radius & FinOps (Layer 1)
+# 3.1 Project Isolation, Blast Radius & FinOps (Layer 1)
 
-## 1. The Story & Business Why: Why One Project Is Never Enough
+## 1. Why One Project Is Never Enough
 
 When **Julian Sterling** submits his mortgage application, a single user interaction triggers work across multiple distinct organizational teams. The **Customer Experience (CX) team** runs `cx-mortgage-orchestrator`, which greets Julian and coordinates the conversation. Behind the scenes, that orchestrator delegates the heavy underwriting analysis to `ai-coe-mortgage-specialist`—built and maintained by the **AI Center of Excellence (AI CoE) team**—which in turn calls three internal **Model Context Protocol (MCP) tool servers** (`legacy-dms`, `income-verification`, and `corporate-email`) maintained by the **AppDev Tools team**. Meanwhile, **NetOps** operates the private network, **PlatformOps** runs the ingress load balancer, and **SecOps** guards the encryption keys and audit logs.
 
@@ -21,52 +21,32 @@ What happens if a bank deploys all of those teams into a single Google Cloud pro
 
 ---
 
-## 2. Why We Built It This Way (Key Decisions & Rationale)
+## 2. Key Decisions & Project Inventory
 
 | Decision | Alternative Considered | Why We Chose This |
 | :--- | :--- | :--- |
 | **6 Per-Environment Projects + 1 Shared CI/CD Project** | Single monolithic GCP project per environment | Gives every team (`netops`, `platformops`, `appdev-tools`, `ai-coe`, `cx`, `security-and-platformops`) its own IAM perimeter, independent Vertex AI quota pool, and automatic Cloud Billing chargeback label. |
-| **Separate Projects for CX Orchestrators (`cx-agents`) and AI CoE Specialists (`ai-coe-agents`)** | One combined `agents` project for all AI workloads | Consumer-facing orchestrators and reusable domain specialists ship on different cadences, pay from different departmental budgets, and require distinct Agent Identity `principalSet` trust boundaries (see [Layer 3](./03-security-iam-and-telemetry.md)). |
+| **Separate Projects for CX Orchestrators (`cx-agents`) and AI CoE Specialists (`ai-coe-agents`)** | One combined `agents` project for all AI workloads | Consumer-facing orchestrators and reusable domain specialists ship on different cadences, pay from different departmental budgets, and require distinct Agent Identity `principalSet` trust boundaries (see [3.3 Security, SPIFFE Identity & PKI](./03-security-iam-and-telemetry.md)). |
 | **Per-Project `byo_*` Brownfield Toggles in `env.yaml`** | Requiring greenfield project creation for every deployment | Enterprise landing zones often mandate pre-existing `net-host`, `gateway`, or `governance` projects. Flipping `byo_*_project = true` lets Layer 1 adopt existing corporate projects while still creating the workload projects (`mcps`, `ai-coe-agents`, `cx-agents`). |
 | **Eager Service Identity Bootstrapping (`google_project_service_identity`)** | Relying on lazy Google service agent creation on first resource deploy | Google normally creates `service-<NUMBER>@gcp-sa-aiplatform.iam.gserviceaccount.com` lazily when the first agent is deployed. Bootstrapping all 8 service agents in Layer 1 prevents `400 Bad Request: Principal does not exist` race conditions when Layers 2 and 3 bind subnet and KMS IAM roles. |
 
----
+### The 7 Specialized GCP Projects
 
-## 3. Persona & Role Breakdown: Who Owns Layer 1?
+Each per-environment project is named `<project_prefix>-<name>-<sfx>` (`project_prefix` is `esm-dev` / `esm-prd`; `<sfx>` is a random 4-hex suffix shared by all projects of the environment), plus one shared CI/CD project:
 
-| Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
-| :--- | :--- | :--- | :--- |
-| **FinOps / Cloud Treasury** | Enforcing budget thresholds, monitoring token cost-centers, auditing monthly agent chargebacks. | Project labels (`cost-center`, `team`, `env`), Cloud Billing exports, BigQuery billing datasets. | Agent prompts, Python code, MCP tool endpoints. |
-| **Platform / Landing Zone Lead** | Maintaining organizational compliance, project factories, and API activation policies. | `infrastructure/modules/1-projects/`, Terraform project resources, service agent lifecycle. | Application business logic, database SQL schemas. |
-| **AI Application Developer** (CX or AI CoE team) | Writing prompt graphs and building agent reasoning capabilities. | Python logic in `apps/agents/<agent>/`. | Project creation, billing linkages, or GCP service API enablements. |
+| # | Project | Owner (`team` label) | Purpose |
+| :- | :--- | :--- | :--- |
+| 1 | `esm-<env>-net-host-<sfx>` | **NetOps** (`netops`) | Shared VPC, routing, Cloud NAT and the private DNS zone `esmeralda.internal.` |
+| 2 | `esm-<env>-gateway-<sfx>` | **PlatformOps** (`platformops`) | API ingress: the entry point (internal HTTPS load balancer) with its built-in `direct` backend, plus optional adapters such as Envoy on Cloud Run and Apigee X partner capability modules (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`) |
+| 3 | `esm-<env>-mcps-<sfx>` | **AppDev Tools** (`appdev-tools`) | Reusable serverless Model Context Protocol (MCP) tool servers (`legacy-dms`, `income-verification`, `corporate-email`) |
+| 4 | `esm-<env>-ai-coe-agents-<sfx>` | **AI CoE team** (`ai-coe`) | Reusable A2A specialist agents (`ai-coe-mortgage-specialist`) and their private Cloud SQL task store |
+| 5 | `esm-<env>-cx-agents-<sfx>` | **CX team** (`cx`) | User-facing orchestrator agents (`cx-mortgage-orchestrator`), which consume the AI CoE agents; also hosts the test VM |
+| 6 | `esm-<env>-governance-<sfx>` | **Security & PlatformOps** (`security-and-platformops`) | Agent Gateway, Agent Registry, KMS keys, secrets, telemetry sinks, alerts and FinOps views |
+| 7 | `esm-cicd-<sfx>` (shared, Layer 0) | **Platform Engineering** (`platform-engineering`) | Cloud Build and the dev/release Artifact Registry repositories |
 
----
+### Brownfield Fallback (`byo_*` Toggles)
 
-## 4. Architecture Decision Records (ADRs): The "Why"
-
-### ADR-01.1: Seven Specialized GCP Projects vs. Monolithic Landing Zone
-* **Context:** Enterprise organizations require strict separation of concerns between Network Engineers, Security Operations, the AI Center of Excellence, and Line-of-Business (LOB) application developers.
-* **Decision:** Provision six isolated projects per environment, named `<project_prefix>-<name>-<sfx>` (`project_prefix` is `esm-dev` / `esm-prd`; `<sfx>` is a random 4-hex suffix shared by all projects of the environment), plus one shared CI/CD project:
-
-  | # | Project | Owner (`team` label) | Purpose |
-  | :- | :--- | :--- | :--- |
-  | 1 | `esm-<env>-net-host-<sfx>` | **NetOps** (`netops`) | Shared VPC, routing, Cloud NAT and the private DNS zone `esmeralda.internal.` |
-  | 2 | `esm-<env>-gateway-<sfx>` | **PlatformOps** (`platformops`) | API ingress: the entry point (internal HTTPS load balancer) with its built-in `direct` backend, plus optional adapters such as Envoy on Cloud Run and Apigee X partner capability modules (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`) |
-  | 3 | `esm-<env>-mcps-<sfx>` | **AppDev Tools** (`appdev-tools`) | Reusable serverless Model Context Protocol (MCP) tool servers (`legacy-dms`, `income-verification`, `corporate-email`) |
-  | 4 | `esm-<env>-ai-coe-agents-<sfx>` | **AI CoE team** (`ai-coe`) | Reusable A2A specialist agents (`ai-coe-mortgage-specialist`) and their private Cloud SQL task store |
-  | 5 | `esm-<env>-cx-agents-<sfx>` | **CX team** (`cx`) | User-facing orchestrator agents (`cx-mortgage-orchestrator`), which consume the AI CoE agents; also hosts the test VM |
-  | 6 | `esm-<env>-governance-<sfx>` | **Security & PlatformOps** (`security-and-platformops`) | Agent Gateway, Agent Registry, KMS keys, secrets, telemetry sinks, alerts and FinOps views |
-  | 7 | `esm-cicd-<sfx>` (shared, Layer 0) | **Platform Engineering** (`platform-engineering`) | Cloud Build and the dev/release Artifact Registry repositories |
-
-* **Why two agent projects?** The CX team and the AI CoE team ship on different cadences and pay from different budgets. Separate projects give each team its own IAM boundary, quota pool and bill, and give each team's agents their own Agent Identity `principalSet` (see [Layer 3](./03-security-iam-and-telemetry.md)).
-* **Trade-Offs:** Adds cross-project IAM complexity (managed declaratively via Terragrunt) in exchange for security isolation, per-project billing attribution, and independent quota pools.
-
----
-
-### ADR-01.2: BYOInfra (Brownfield Fallback) Architecture
-* **Context:** Large enterprises often already have pre-existing Shared VPC Host projects (`net_host`), centralized Ingress Gateways (`gateway`) or security projects (`governance`), and forbid automated tools from recreating them.
-* **Decision:** Implement conditional creation toggles in `env.yaml`: `byo_net_host_project`, `byo_gateway_project` and `byo_governance_project`, each paired with an `existing_*_project` ID.
-* **Mechanism:** If `byo_* = true`, Layer 1 skips project creation and API enablement for that specific project, and returns the customer's existing project ID to downstream layers. The `mcps`, `ai-coe-agents` and `cx-agents` projects are always created. Later layers have their own toggles (`byo_networking` in Layer 2, `byo_security` in Layer 3).
+If `byo_net_host_project`, `byo_gateway_project`, or `byo_governance_project` is `true` in `env.yaml`, Layer 1 skips project creation and API enablement for that project and returns `existing_*_project` to downstream layers (`byo_networking` in Layer 2 and `byo_security` in Layer 3 follow the same pattern):
 
 ```mermaid
 flowchart TD
@@ -96,11 +76,19 @@ flowchart TD
     Inputs --> Check_Gwy
 ```
 
-*(`byo_governance_project` follows the same pattern as the two toggles shown.)*
+---
+
+## 3. Persona & Role Breakdown: Who Owns Layer 1?
+
+| Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
+| :--- | :--- | :--- | :--- |
+| **FinOps / Cloud Treasury** | Enforcing budget thresholds, monitoring token cost-centers, auditing monthly agent chargebacks. | Project labels (`cost-center`, `team`, `env`), Cloud Billing exports, BigQuery billing datasets. | Agent prompts, Python code, MCP tool endpoints. |
+| **Platform / Landing Zone Lead** | Maintaining organizational compliance, project factories, and API activation policies. | `infrastructure/modules/1-projects/`, Terraform project resources, service agent lifecycle. | Application business logic, database SQL schemas. |
+| **AI Application Developer** (CX or AI CoE team) | Writing prompt graphs and building agent reasoning capabilities. | Python logic in `apps/agents/<agent>/`. | Project creation, billing linkages, or GCP service API enablements. |
 
 ---
 
-## 5. FinOps Cost Attribution Architecture
+## 4. FinOps Cost Attribution Architecture
 
 Because every team has its own project, and every project carries `cost-center`, `team` and `env` labels, costs can be attributed in the Cloud Billing BigQuery export without guesswork:
 
@@ -147,7 +135,7 @@ flowchart TD
 
 ---
 
-## 6. Technical Architecture & In Practice (`modules/1-projects/`)
+## 5. Technical Architecture & In Practice (`modules/1-projects/`)
 
 ### 1. Service API Enablement Matrix (`google_project_service`)
 Each project receives the list of Google APIs required for its operational domain. Layer 1 first enables `serviceusage` and `cloudresourcemanager` on every new project with `gcloud` (a bootstrap step), then enables the rest declaratively:
@@ -183,7 +171,7 @@ The Cloud Build service agent of the shared CI/CD project is bootstrapped by Lay
 
 ---
 
-## 7. Verification & Runbook
+## 6. Verification & Runbook
 
 ### Inspect Layer 1 Outputs via the `esmeralda` CLI
 ```bash

@@ -1,8 +1,8 @@
-# Chapter 12: Package & CLI Reference (`esmeralda-platform`)
+# 4.2 Package & CLI Reference (`esmeralda-platform`)
 
-## The Story & Business Why: One Audited Contract for Every Runtime Hook and Operator Command
+## One Audited Contract for Every Runtime Hook and Operator Command
 
-This chapter is the complete API and CLI reference for `esmeralda` (`esmeralda-platform` on PyPI, [source](../../../packages/esmeralda/src/esmeralda/__init__.py)). While the [usage guide](guide.md) walks through recipes by task, this reference documents the exact contract of every module, function, class, CLI flag, telemetry JSON payload, and environment variable so platform engineers and application developers have a single authoritative specification.
+This page is the complete API and CLI reference for `esmeralda` (`esmeralda-platform` on PyPI, [source](../../../packages/esmeralda/src/esmeralda/__init__.py)). While the [usage guide](guide.md) walks through recipes by task, this reference documents the exact contract of every module, function, class, CLI flag, telemetry JSON payload, and environment variable so platform engineers and application developers have a single authoritative specification.
 
 ---
 

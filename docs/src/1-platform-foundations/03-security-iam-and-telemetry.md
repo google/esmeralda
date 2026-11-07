@@ -1,6 +1,6 @@
-# Chapter 10: Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)
+# 3.3 Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)
 
-## 1. The Story & Business Why: Proving Who Is Calling Whom—Without Shared Secrets
+## 1. Proving Who Is Calling Whom—Without Shared Secrets
 
 Follow a single question from a loan officer reviewing **Julian Sterling's** mortgage file: *"Verify Julian Sterling's income and check whether his W-2 matches his application."*
 
@@ -44,19 +44,11 @@ In a naive agent deployment, `cx-mortgage-orchestrator` and `ai-coe-mortgage-spe
 
 ---
 
-## 4. Architecture Decision Records (ADRs): The "Why"
-
-### ADR-03.1: Centralized Governance Project vs. In-Project Security Assets
-* **Context:** Allowing application teams to manage their own KMS keys or secrets lets a compromised workload decrypt data or tamper with its own controls.
-* **Decision:** Create the KMS key ring, CMEK crypto keys and platform secrets inside `esm-<env>-governance-<sfx>`, and grant workload identities only the roles they need on them.
-* **Benefit:** Enforces Separation of Duties (SoD): SecOps can disable or rotate a key in one project without touching workload code.
+## 4. Three-Identity Delegation & Per-Target SPIFFE Governance
 
 > [!WARNING]
 > **Current state of CMEK consumption:** the Secret Manager secret `secret-pg-admin-password-<env>` is encrypted with `key-esmeralda-secrets-<env>`. The **Cloud SQL instance** created in Layer 5 does **not** reference `key-esmeralda-sql-<env>` yet (it uses Google-managed encryption), and it uses its own generated `postgres` password and IAM database authentication rather than `secret-pg-admin-password-<env>`. Disabling the SQL key therefore does not lock the database today.
 
----
-
-### ADR-03.2: GEAP Agent Identity (`spiffe://` / `principal://`), Three-Identity Delegation, and Per-Target Agent Gateway IAP/UAP Policies
 * **What GEAP Agent Identity is:** a Google-issued, cryptographically attested [SPIFFE](https://spiffe.io/) identity given to each Agent Runtime (Vertex AI Reasoning Engine) deployed with `identity_type = AGENT_IDENTITY`, backed by auto-rotated 24-hour X.509 certificates, mTLS, and DPoP token binding:
   * **Per-engine SPIFFE URI (`spiffe_id` output):**
     `spiffe://agents.global.org-<ORG_ID>.system.id.goog/resources/aiplatform/projects/<PROJECT_NUMBER>/locations/<REGION>/reasoningEngines/<ENGINE_ID>`

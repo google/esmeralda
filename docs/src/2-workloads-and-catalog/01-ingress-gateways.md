@@ -1,6 +1,6 @@
-# Chapter 3: The Private Front Door & Pluggable Gateways
+# 1.3 The Private Front Door & Pluggable Gateways
 
-In [Chapter 1](./03-ai-agents-and-database.md) and [Chapter 2](./02-mcp-tool-servers.md), we saw how Julian Sterling's mortgage verification flows from `cx-mortgage-orchestrator` to `ai-coe-mortgage-specialist` and then to three MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`).
+In [1.1 Two Teams, Two Agents](./03-ai-agents-and-database.md) and [1.2 MCP Tool Servers](./02-mcp-tool-servers.md), we saw how Julian Sterling's mortgage verification flows from `cx-mortgage-orchestrator` to `ai-coe-mortgage-specialist` and then to three MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`).
 
 Notice how clean the URLs were in every step:
 
@@ -14,7 +14,7 @@ How does Esmeralda give every agent and tool a permanent, friendly `*.esmeralda.
 
 ---
 
-## 1. The Story & Why It Matters: One Front Door, Zero Unnecessary Proxies
+## 1. One Front Door, Zero Unnecessary Proxies
 
 Every private hostname under `*.esmeralda.internal` resolves to a single internal Application Load Balancer—the **entry point**. The entry point terminates TLS (using a certificate signed by Esmeralda's internal Root CA) and routes each request by its `Host` header.
 
@@ -148,7 +148,7 @@ gateways = {
 | `direct` | `hosts`: per-host backend service ID, plus host/path rewrites and timeout for agent hosts. | Creates one host rule + path matcher per host. |
 | Adapter (`envoy`, `apigee`) | `backend_service_id` (one regional `INTERNAL_MANAGED` backend service for all hosts routed to it) and `routes`. | Points every host routed to the adapter at that backend service. |
 
-Why a private CA is required for `.internal` domains—and how the Central Agent Gateway trusts it—is covered in [Chapter 4: Central Agent Gateway §5](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
+Why a private CA is required for `.internal` domains—and how the Central Agent Gateway trusts it—is covered in [2.1 Central Agent Gateway §5](../3-agentops-and-lifecycle/01-central-agent-gateway.md#5-tls-and-certificates-why-we-need-self-signed-cas).
 
 ### 4. The `direct` backend (`gateways/direct/`, default)
 
@@ -200,7 +200,7 @@ When an environment needs to expose curated agents or MCP tools to **external B2
 * **Platform & PSC NEG Bridge ([`infrastructure/modules/5-workloads/gateways/apigee/`](../../../infrastructure/modules/5-workloads/gateways/apigee/main.tf)):** Provisions (or adopts via `byo = true`) the `google_apigee_organization`, regional `google_apigee_instance`, `esmeralda-<env>` environment (`BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`), `envgroup-esmeralda-<env>` (`partner.esmeralda.internal`), southbound PSC endpoint attachment to `*.esmeralda.internal`, and a regional PSC NEG (`neg-apigee-psc-<env>`) + `INTERNAL_MANAGED` backend service (`backend-apigee-gateway-<env>`) consumed by `entrypoint` on the partner VIP (`10.0.1.3`).
 * **Removable Capability Modules (`apigee/capabilities/*` & `apigee/products`):** Deploys the `partner-agents` and `partner-mcp` proxy bundles, `token-quota` (`<LLMTokenQuota>` `EnforceOnly` + SSE `EventFlow` `CountOnly`) and `usage-metering` (`DataCapture` + `PostClientFlow` `ML-interaction`) shared flows, and tiered API products whenever `governance.capabilities` in `env.yaml` selects `"apigee"`.
 
-For the complete architecture, packet flow, XML/JavaScript policy mechanics, and live conformance probes (`uv run esmeralda verify --env dev --partner`), see **[Chapter 3B: Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**.
+For the complete architecture, packet flow, XML/JavaScript policy mechanics, and live conformance probes (`uv run esmeralda verify --env dev --partner`), see **[1.4 Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**.
 
 ---
 
@@ -315,6 +315,4 @@ curl -s --cacert /tmp/root-ca.pem -H "Authorization: Bearer ${TOKEN}" -H "Conten
 
 ---
 
-You have now met the entire cast of **Part I**: the CX orchestrator, the AI CoE specialist, the three Cloud Run MCP tool servers, and the private entry point that connects them.
-
-In **[Part II — Governance & Trust Boundary](../3-agentops-and-lifecycle/index.md)**, we step into **Layer 4** to see how the **Central Agent Gateway**, **Capability-Based Governance**, and **BigQuery FinOps** keep every one of these calls secure, auditable, and cost-attributed.
+Next, let's see how external B2B partner portals and brokerage apps connect through Apigee X with commercial API Products and `<LLMTokenQuota>` enforcement in **[1.4 Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**, or jump to **[2.0 Governance, Identity & AgentOps](../3-agentops-and-lifecycle/index.md)** to explore the Layer 4 trust boundary.

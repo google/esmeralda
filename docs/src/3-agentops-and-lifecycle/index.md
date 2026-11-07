@@ -1,19 +1,19 @@
-# Part II: The Trust Boundary, Multi-Track Release Lifecycle & Platform Governance
+# 2.0 Governance, Identity & AgentOps — Overview & Release Lifecycle (Layer 4)
 
-In **Part I**, we laid down the physical foundations of our enterprise city: isolated GCP projects with FinOps cost attribution labels (Layer 1), a zero-trust Shared VPC with a private internal DNS zone `esmeralda.internal.` (Layer 2), and hardware-backed KMS keys, cryptographic SPIFFE Agent Identities, and an internal Root Certificate Authority (Layer 3).
+In **[1. Workloads, Catalog & Gateways](../2-workloads-and-catalog/index.md)**, we met the cast of runtime workloads in Layer 5: `cx-mortgage-orchestrator`, `ai-coe-mortgage-specialist`, the three Cloud Run MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`), the internal HTTPS entry point (`*.esmeralda.internal`), and the optional **Apigee X** partner front door (`partner.esmeralda.internal`).
 
-Now, in **Part II**, we step into **Layer 4 (`layer-4-governance`)** and the day-to-day operational rhythm of **AgentOps**. Before a single line of agent or MCP tool code is allowed to handle a customer conversation in Layer 5, Layer 4 establishes the **Trust Boundary**: the central egress control plane, semantic policy guardrails, and cross-project FinOps telemetry hub that govern every action an agent takes.
+Now, in **Section 2**, we step into **Layer 4 (`layer-4-governance`)** and the day-to-day operational rhythm of **AgentOps**. Before a single line of agent or MCP tool code is allowed to handle a customer conversation in Layer 5, Layer 4 establishes the **Trust Boundary**: the central egress control plane, semantic policy guardrails, and cross-project FinOps telemetry hub that govern every action an agent takes.
 
 ---
 
-## Reading Roadmap for Part II
+## Subsections in Section 2
 
-| Chapter | Title & Focus | Who Should Read This |
+| Subsection | Title & Focus | Who Should Read This |
 | :--- | :--- | :--- |
-| **[Chapter 4: Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)** | Follows Julian Sterling's mortgage request as `cx-mortgage-orchestrator` and `ai-coe-mortgage-specialist` make outbound calls. Explains why enterprise AI requires a deny-by-default egress proxy (`AGENT_TO_ANYWHERE`), per-target SPIFFE `principal://` IAP authorization, and an internal Root CA—followed by the complete, preserved technical deep dive and reference. | Security Architects, NetOps, Platform Engineers, Agent Developers |
-| **[Chapter 5: Capability-Based & Semantic Governance](./04-capability-based-governance.md)** | Explains how Esmeralda prevents the "Confused Deputy" problem at the tool layer using **GEAP Unified Access Policies (UAPs)** and **Natural Language Constraints (NLC)**, why governance is declared by capability (`governance.capabilities` in `env.yaml`), and how optional **Apigee X** capabilities (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`) plug in when external B2B partner APIs are needed. | CISOs, Governance Leads, API Product Managers, SecOps |
-| **[Chapter 6: FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)** | Tells the story of how a CFO and Engineering VP trace the exact token cost, cache savings, and latency of Julian Sterling's mortgage inquiry across two separate teams' GCP projects using OpenTelemetry baggage (`caller.project_id`, `caller.agent_name`), central Cloud Logging sinks, BigQuery views (`vw_monthly_agent_chargeback`), and Golden Signals dashboards. | FinOps Leads, CFO / Engineering Leadership, SREs |
-| **[Chapter 7: Day-2 Operations with the `esmeralda` CLI & MCP Server](./04-operating-with-agents.md)** | Walks through day-to-day platform operations—both for human engineers and AI coding assistants—using `uv run esmeralda` (`status`, `doctor`, `units`, `plan`, `apply` with the destroy guard, `verify`, `logs`, `contracts`, `guard`) and the read-only `uv run esmeralda mcp` server. | Platform Operators, SREs, Developers using AI Coding Assistants |
+| **[2.1 Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)** | Follows Julian Sterling's mortgage request as `cx-mortgage-orchestrator` and `ai-coe-mortgage-specialist` make outbound calls. Explains why enterprise AI requires a deny-by-default egress proxy (`AGENT_TO_ANYWHERE`), per-target SPIFFE `principal://` IAP authorization, and an internal Root CA—followed by the complete, preserved technical deep dive and reference. | Security Architects, NetOps, Platform Engineers, Agent Developers |
+| **[2.2 Capability-Based & Semantic Governance](./04-capability-based-governance.md)** | Explains how Esmeralda prevents the "Confused Deputy" problem at the tool layer using **GEAP Unified Access Policies (UAPs)** and **Natural Language Constraints (NLC)**, why governance is declared by capability (`governance.capabilities` in `env.yaml`), and how optional **Apigee X** capabilities (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`) plug in when external B2B partner APIs are needed. | CISOs, Governance Leads, API Product Managers, SecOps |
+| **[2.3 FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)** | Shows how a CFO and Engineering VP trace the exact token cost, cache savings, and latency of Julian Sterling's mortgage inquiry across two separate teams' GCP projects using OpenTelemetry baggage (`caller.project_id`, `caller.agent_name`), central Cloud Logging sinks, BigQuery views (`vw_monthly_agent_chargeback`), and Golden Signals dashboards. | FinOps Leads, CFO / Engineering Leadership, SREs |
+| **[2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server](./04-operating-with-agents.md)** | Walks through day-to-day platform operations—both for human engineers and AI coding assistants—using `uv run esmeralda` (`status`, `doctor`, `units`, `plan`, `apply` with the destroy guard, `verify`, `logs`, `contracts`, `guard`) and the read-only `uv run esmeralda mcp` server. | Platform Operators, SREs, Developers using AI Coding Assistants |
 
 ---
 
@@ -77,19 +77,19 @@ Every track maps cleanly to a dedicated GCP project and `team` cost-allocation l
 | **AI CoE Team** (`ai-coe`) | Reusable A2A domain specialists and private relational state. | `esm-<env>-ai-coe-agents-<sfx>` | Publishes `ai-coe-mortgage-specialist` and its A2A Agent Card at `https://ai-coe-mortgage-specialist.esmeralda.internal`. |
 | **CX Team** (`cx`) | User-facing conversational orchestrators (ADK). | `esm-<env>-cx-agents-<sfx>` | Consumes the specialist via `A2A_AGENT_URL` without ever knowing its underlying engine ID, database IP, or MCP tool implementation. |
 
-Notice the decoupling between the **CX Team** and the **AI CoE Team**: `cx-mortgage-orchestrator` never calls `ai-coe-mortgage-specialist` by a raw Vertex AI Reasoning Engine resource ID, and it never calls MCP tools directly. It calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and the private **entry point** (see [Chapter 4 §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). The AI CoE team can redeploy, scale, or replace its specialist engine at 2:00 PM without requiring a single configuration change or redeployment from the CX team.
+Notice the decoupling between the **CX Team** and the **AI CoE Team**: `cx-mortgage-orchestrator` never calls `ai-coe-mortgage-specialist` by a raw Vertex AI Reasoning Engine resource ID, and it never calls MCP tools directly. It calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and the private **entry point** (see [2.1 Central Agent Gateway §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). The AI CoE team can redeploy, scale, or replace its specialist engine at 2:00 PM without requiring a single configuration change or redeployment from the CX team.
 
 ---
 
 ## Why We Built the AgentOps Lifecycle This Way
 
-Before diving into the repository layout and release pipeline, here are the core architectural decisions that shape Part II:
+Before diving into the repository layout and release pipeline, here are the core architectural decisions that shape Section 2:
 
 | Architectural Decision | The Problem It Solves | Why Esmeralda Chose This Approach |
 | :--- | :--- | :--- |
 | **ADR-07: Central Agent Gateway (`AGENT_TO_ANYWHERE`) + SPIFFE Identity over Direct Cloud NAT** | Standard Cloud NAT allows a prompt-injected agent to exfiltrate customer PII to arbitrary external servers or enter runaway token loops without per-agent visibility. | Every Reasoning Engine runs with an attested SPIFFE `AGENT_IDENTITY`. All outbound calls traverse the Central Agent Gateway in `esm-<env>-governance-<sfx>`, which enforces deny-by-default Agent Registry allowlisting, IAP `roles/iap.egressor` checks, GEAP Semantic Governance (NLC), and optional Model Armor inspection. |
 | **ADR-08: Decoupled Multi-Track Repositories Bound by Immutable `sha256` Digests** | Putting platform Terraform, MCP microservices, and multiple teams' agents into a single monolithic release cycle means a tiny email tool tweak forces a full re-test of every agent—or worse, gives application developers IAM access to KMS and VPC state. | Production teams work in decoupled repositories (Platform IaC, MCP Tools, Specialist Agents, Orchestrator Agents) that publish environment-neutral containers to Layer 0 Artifact Registry and bind into environments exclusively via immutable `@sha256:...` digests. |
-| **Environment-Neutral BYOC Containers + Deploy-Time CA Injection** | Baking `dev` certificates or URLs into a container image makes it impossible to promote the exact same binary artifact to `prd`. | Images contain zero certificates or environment URLs. Layer 4 assembles the gateway inspection roots + internal Root CA into `AGENT_GATEWAY_ROOT_CERTIFICATES`, and `esmeralda run` installs them into the container's system trust store at startup (see [Chapter 4 §6](./01-central-agent-gateway.md#6-bring-your-own-container-byoc)). |
+| **Environment-Neutral BYOC Containers + Deploy-Time CA Injection** | Baking `dev` certificates or URLs into a container image makes it impossible to promote the exact same binary artifact to `prd`. | Images contain zero certificates or environment URLs. Layer 4 assembles the gateway inspection roots + internal Root CA into `AGENT_GATEWAY_ROOT_CERTIFICATES`, and `esmeralda run` installs them into the container's system trust store at startup (see [2.1 Central Agent Gateway §6](./01-central-agent-gateway.md#6-bring-your-own-container-byoc)). |
 
 ---
 
@@ -271,7 +271,7 @@ flowchart LR
 
 ## Preview: Hub-and-Spoke Observability
 
-How does Layer 4 observe all of these decoupled projects without giving developers direct access to production databases or raw infrastructure logs? Esmeralda uses a **hub-and-spoke telemetry model** (covered in full in [Chapter 6: FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)):
+How does Layer 4 observe all of these decoupled projects without giving developers direct access to production databases or raw infrastructure logs? Esmeralda uses a **hub-and-spoke telemetry model** (covered in full in [2.3 FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)):
 
 * **Spoke Sources**:
   * **MCP Tool Servers** on Cloud Run emit structured HTTP request logs and export OpenTelemetry metrics to the Cloud Telemetry API (`telemetry.googleapis.com`).
@@ -280,4 +280,4 @@ How does Layer 4 observe all of these decoupled projects without giving develope
 * **Central Governance Hub (`esm-<env>-governance-<sfx>`)**:
   * Layer 4 installs a project-level log sink (`google_logging_project_sink`) in each of the five spoke projects (`net-host`, `gateway`, `mcps`, `ai-coe-agents`, `cx-agents`) that streams logs into the central BigQuery dataset `esmeralda_telemetry_logs_<env>`, and attaches all spoke projects to the governance Cloud Monitoring metrics scope.
 
-Let's begin our tour of Layer 4 in **[Chapter 4: Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)**, where we follow Julian Sterling's mortgage application across the trust boundary.
+Let's begin our tour of Layer 4 in **[2.1 Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)**, where we follow Julian Sterling's mortgage application across the trust boundary.

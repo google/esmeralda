@@ -1,14 +1,14 @@
-# Chapter 1: Two Teams, Two Agents — Orchestration vs. Specialization
+# 1.1 Two Teams, Two Agents — Orchestration vs. Specialization (ADK & A2A)
 
 When our loan officer asks, ***"Can you verify Julian Sterling's income?"***, the first workload to wake up is an AI agent.
 
 In a laptop prototype, a single agent usually handles everything: chatting with the user, knowing every underwriting rule, and calling every backend database. In an enterprise, however, **the team that owns the customer channel is rarely the team that owns core mortgage underwriting**.
 
-This chapter explains how Esmeralda splits reasoning across two specialized agents owned by two independent teams—the **CX Mortgage Orchestrator** (`cx-mortgage-orchestrator`) and the **AI CoE Mortgage Specialist** (`ai-coe-mortgage-specialist`)—how both run as Bring-Your-Own-Container (BYOC) workloads on **Vertex AI Agent Runtime**, and how stateful agent infrastructure (like a private Cloud SQL database) is packaged and bootstrapped without a single manual ticket.
+This section explains how Esmeralda splits reasoning across two specialized agents owned by two independent teams—the **CX Mortgage Orchestrator** (`cx-mortgage-orchestrator`) and the **AI CoE Mortgage Specialist** (`ai-coe-mortgage-specialist`)—how both run as Bring-Your-Own-Container (BYOC) workloads on **Vertex AI Agent Runtime**, and how stateful agent infrastructure (like a private Cloud SQL database) is packaged and bootstrapped without a single manual ticket.
 
 ---
 
-## 1. The Story & Why It Matters: Orchestrators Meet Specialists
+## 1. Orchestrators Meet Specialists
 
 Think of how a modern financial institution is organized:
 
@@ -53,7 +53,7 @@ sequenceDiagram
     Orch-->>Client: 11. Final verification response stream
 ```
 
-How each hop is authorized and how private TLS certificates work on this path is detailed in [Chapter 4: Central Agent Gateway §4](../3-agentops-and-lifecycle/01-central-agent-gateway.md#4-life-of-a-request).
+How each hop is authorized and how private TLS certificates work on this path is detailed in [2.1 Central Agent Gateway §4](../3-agentops-and-lifecycle/01-central-agent-gateway.md#4-life-of-a-request).
 
 ---
 
@@ -85,8 +85,8 @@ In many organizations, deploying a stateful AI agent requires filing tickets acr
 * **BYOC Image Promotion:** Built with `make build-ai-coe-mortgage-specialist` / `make build-cx-mortgage-orchestrator` into the shared Layer 0 CI/CD Artifact Registry. Terraform pins `container_spec.image_uri` to an immutable **SHA-256 digest**: in `dev` it resolves the tag from `env.yaml` (`container_tag`); in `prd` it reads the verified digest from `release/prd.yaml`.
 * **Cryptographic SPIFFE Agent Identity:** Setting `identity_type = AGENT_IDENTITY` assigns each engine a verifiable identity. IAM and egress grants target the team project's principal set (`principalSet://agents.global.org-<ORG>.system.id.goog/attribute.platformContainer/aiplatform/projects/<PROJECT_NUMBER>`), keeping CX and AI CoE authorization completely separate.
 * **Central Agent Gateway Binding:** `deployment_spec.agent_gateway_config.agent_to_anywhere_config.agent_gateway` binds the runtime to the Layer 4 gateway. When bound, the module omits `psc_interface_config` so 100% of outbound traffic (Gemini, Google APIs, MCP tools, A2A) traverses the Central Agent Gateway.
-* **Runtime Trust Bundle Injection:** The Layer 4 certificate bundle (gateway inspection roots + Esmeralda's internal Root CA) is injected via `AGENT_GATEWAY_ROOT_CERTIFICATES` and installed into the container's trust store at startup by the `esmeralda run` entrypoint (see [Chapter 4: Central Agent Gateway §6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
-* **Automatic Credential Selection for `*.esmeralda.internal`:** `SERVICE_ACCOUNT_EMAIL` points to `sa-mcp-invoker-<env>`. The agent impersonates this account to mint the exact token kind required by each target host: an **ID token** for Cloud Run MCP hosts and an **OAuth2 access token** for Agent Runtime hosts served by the `direct` backend. `esmeralda.auth.token_kind(url)` selects the token automatically from `ACCESS_TOKEN_HOSTS`, which Terraform populates from the service catalog (see [Chapter 3: Entry Point → Token Kinds](./01-ingress-gateways.md#5-token-kinds-and-the-client-library)).
+* **Runtime Trust Bundle Injection:** The Layer 4 certificate bundle (gateway inspection roots + Esmeralda's internal Root CA) is injected via `AGENT_GATEWAY_ROOT_CERTIFICATES` and installed into the container's trust store at startup by the `esmeralda run` entrypoint (see [2.1 Central Agent Gateway §6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
+* **Automatic Credential Selection for `*.esmeralda.internal`:** `SERVICE_ACCOUNT_EMAIL` points to `sa-mcp-invoker-<env>`. The agent impersonates this account to mint the exact token kind required by each target host: an **ID token** for Cloud Run MCP hosts and an **OAuth2 access token** for Agent Runtime hosts served by the `direct` backend. `esmeralda.auth.token_kind(url)` selects the token automatically from `ACCESS_TOKEN_HOSTS`, which Terraform populates from the service catalog (see [1.3 Entry Point → Token Kinds](./01-ingress-gateways.md#5-token-kinds-and-the-client-library)).
 * **Per-Agent Storage & Analytics:** Provisions dedicated staging, artifacts, and logs Cloud Storage buckets, plus a BigQuery dataset (`<agent>_logs_<env>`) wired into central FinOps views.
 * **Declarative `agent.yaml` Contract:** `apps/agents/<agent>/agent.yaml` defines the agent's name, compute scaling (CPU, memory, min/max instances, concurrency), skills, and default environment variables, while Terraform overlays live environment URLs and certificates at deploy time.
 
@@ -96,7 +96,7 @@ In many organizations, deploying a stateful AI agent requires filing tickets acr
 
 * **A2A Protocol Server:** Exposes the standard Agent-to-Agent JSON-RPC methods (`on_message_send`, `handle_authenticated_agent_card`, `on_get_task`, `on_cancel_task`) alongside the Agent Card declared in `agent.yaml` (advertising *Document Search*, *Income Verification*, and *Corporate Email* skills).
 * **Agent Card in Agent Registry:** `google_agent_registry_service.agent_card` registers the specialist (`A2A_AGENT_CARD`, URL `https://ai-coe-mortgage-specialist.esmeralda.internal`) in the central **governance** project's Agent Registry—the exact allowlist entry that authorizes the CX orchestrator to call it through the Central Agent Gateway.
-* **MCP Tool Bindings:** Injects `DMS_MCP_URL`, `INCOME_VERIFICATION_URL`, and `EMAIL_MCP_URL` pointing at `https://<svc>.esmeralda.internal/mcp` (detailed in [Chapter 2: MCP Tool Servers](./02-mcp-tool-servers.md)).
+* **MCP Tool Bindings:** Injects `DMS_MCP_URL`, `INCOME_VERIFICATION_URL`, and `EMAIL_MCP_URL` pointing at `https://<svc>.esmeralda.internal/mcp` (detailed in [1.2 MCP Tool Servers](./02-mcp-tool-servers.md)).
 * **Private Cloud SQL PostgreSQL Instance:** Provisions `google_sql_database_instance.task_store` (`POSTGRES_15`, `ZONAL`) with `ipv4_enabled = false` and `private_network = var.vpc_id`, reachable solely through the Shared VPC private services access range (Layer 2).
 * **IAM Database Authentication:** Enables `cloudsql.iam_authentication = on` and registers a `CLOUD_IAM_SERVICE_ACCOUNT` database user for `sa-ai-coe-mortgage-spec-<env>` with `roles/cloudsql.client` and `roles/cloudsql.instanceUser`.
 * **Zero-Bastion VPC Bootstrapper:** Runs `google_cloud_run_v2_job.schema_bootstrap` inside the Shared VPC core subnet to grant the IAM service account privileges on the `a2a_tasks` database and `public` schema, allowing the A2A SDK's `DatabaseTaskStore` to manage task tables automatically.
@@ -170,4 +170,4 @@ The script verifies TLS against Esmeralda's internal Root CA (`/tmp/root-ca.pem`
 
 ---
 
-Next, let's see how the specialist actually checks Julian Sterling's W-2s, payroll records, and loan-officer emails in **[Chapter 2: Wrapping Enterprise Systems as MCP Tool Servers](./02-mcp-tool-servers.md)**.
+Next, let's see how the specialist actually checks Julian Sterling's W-2s, payroll records, and loan-officer emails in **[1.2 Wrapping Enterprise Systems as MCP Tool Servers](./02-mcp-tool-servers.md)**.

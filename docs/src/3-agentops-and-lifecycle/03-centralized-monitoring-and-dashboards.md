@@ -1,4 +1,4 @@
-# Chapter 6: FinOps, Telemetry & Cross-Team Chargeback
+# 2.3 FinOps, Telemetry & Cross-Team Chargeback
 
 Imagine it is the first Monday of the month. The bank's **Chief Financial Officer (CFO)** and **VP of Engineering** sit down to review the cloud bill for the new AI mortgage platform.
 
@@ -40,7 +40,7 @@ When Julian Sterling asks `cx-mortgage-orchestrator` to check his loan status, h
 
 ## Complete Technical Architecture & Reference
 
-All resources below are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Central Agent Gateway, which lives in the same module, has its own deep-dive in **[Chapter 4: Central Agent Gateway](./01-central-agent-gateway.md)**.
+All resources below are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Central Agent Gateway, which lives in the same module, has its own deep-dive in **[2.1 Central Agent Gateway & Private PKI](./01-central-agent-gateway.md)**.
 
 ```mermaid
 flowchart TD
@@ -240,7 +240,7 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 
 ## 5. Central Agent Gateway & Model Armor Guardrails (`modules/6_agent_gateway`, `modules/5_model_armor`)
 
-**Agent Gateway** is a Google-managed egress proxy: every outbound call from the two Reasoning Engines (Gemini, MCP tools, the A2A specialist) is transparently routed through `esmeralda-agent-egress-gateway-<env>` in the governance project. The full design (identity, registry, certificates, BYOC) is in **[01. Central Agent Gateway](./01-central-agent-gateway.md)**; this section only covers its governance and observability touchpoints.
+**Agent Gateway** is a Google-managed egress proxy: every outbound call from the two Reasoning Engines (Gemini, MCP tools, the A2A specialist) is transparently routed through `esmeralda-agent-egress-gateway-<env>` in the governance project. The full design (identity, registry, certificates, BYOC) is in **[2.1 Central Agent Gateway & Private PKI](./01-central-agent-gateway.md)**; this section only covers its governance and observability touchpoints.
 
 ```mermaid
 flowchart LR
@@ -271,4 +271,4 @@ flowchart LR
 
 ---
 
-**Next Chapter:** We have seen how Layer 4 governs outbound connections, evaluates semantic policies, and streams FinOps telemetry into BigQuery. How do platform engineers—and their AI coding assistants—actually operate this platform day to day without drowning in raw Terraform output or accidentally destroying stateful infrastructure? Turn to **[Chapter 7: Day-2 Operations with the `esmeralda` CLI & MCP Server](./04-operating-with-agents.md)**.
+**Next Subsection:** We have seen how Layer 4 governs outbound connections, evaluates semantic policies, and streams FinOps telemetry into BigQuery. How do platform engineers—and their AI coding assistants—actually operate this platform day to day without drowning in raw Terraform output or accidentally destroying stateful infrastructure? Turn to **[2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server](./04-operating-with-agents.md)**.

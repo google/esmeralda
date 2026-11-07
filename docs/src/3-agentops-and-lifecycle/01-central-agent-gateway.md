@@ -1,4 +1,4 @@
-# Chapter 4: Zero-Trust Egress & The Central Agent Gateway
+# 2.1 Zero-Trust Egress & The Central Agent Gateway
 
 Imagine that **Julian Sterling**, a prospective homebuyer, opens his bank's mortgage portal and asks a simple question:
 
@@ -22,7 +22,7 @@ Whenever `cx-mortgage-orchestrator` or `ai-coe-mortgage-specialist` opens a sock
 
 1. **Who is calling? (Cryptographic SPIFFE Identity):** Every Reasoning Engine runs with `identity_type = "AGENT_IDENTITY"`, receiving a hardware-backed SPIFFE identity (`principal://agents.global.org-<ORG_ID>.system.id.goog/...`).
 2. **Where is it going? (Deny-by-Default Agent Registry + Per-Target IAP):** The destination URL must be explicitly cataloged in the governance **Agent Registry** (no wildcards allowed), and Identity-Aware Proxy (`REQUEST_AUTHZ`) verifies that this specific agent identity holds `roles/iap.egressor` on that target.
-3. **What is inside the payload? (Semantic Governance & Model Armor):** Because the gateway terminates TLS on Leg 1 and re-encrypts on Leg 2, it can evaluate tool arguments against GEAP Semantic Governance policies (Chapter 5) and optional Model Armor content guardrails (`CONTENT_AUTHZ`).
+3. **What is inside the payload? (Semantic Governance & Model Armor):** Because the gateway terminates TLS on Leg 1 and re-encrypts on Leg 2, it can evaluate tool arguments against GEAP Semantic Governance policies ([2.2 Capability & Semantic Governance](./04-capability-based-governance.md)) and optional Model Armor content guardrails (`CONTENT_AUTHZ`).
 
 ---
 
@@ -41,7 +41,7 @@ Both business executives evaluating risk and infrastructure engineers reviewing 
 
 ## Complete Technical Deep Dive & Reference
 
-The remainder of this chapter provides the complete, step-by-step engineering reference for deploying, configuring, inspecting, and troubleshooting the Central Agent Gateway, private PKI certificates, and Bring-Your-Own-Container (BYOC) agents.
+The remainder of this section provides the complete, step-by-step engineering reference for deploying, configuring, inspecting, and troubleshooting the Central Agent Gateway, private PKI certificates, and Bring-Your-Own-Container (BYOC) agents.
 
 > **Audience:** engineers and architects who know cloud basics (projects, IAM, VPCs, HTTPS) but are not networking or PKI specialists.
 >
@@ -561,4 +561,4 @@ gcloud logging read 'logName:"gateway_requests"' --project=$GOV --limit=20 --fre
 
 ---
 
-**Next Chapter:** Now that we have secured *where* an agent can connect at the network and TLS layers, how do we ensure that a legitimate connection to `corporate-email` or `legacy-dms` isn't tricked into executing a malicious command? Turn to **[Chapter 5: Capability-Based & Semantic Governance](./04-capability-based-governance.md)**.
+**Next Subsection:** Now that we have secured *where* an agent can connect at the network and TLS layers, how do we ensure that a legitimate connection to `corporate-email` or `legacy-dms` isn't tricked into executing a malicious command? Turn to **[2.2 Capability-Based & Semantic Governance](./04-capability-based-governance.md)**.
