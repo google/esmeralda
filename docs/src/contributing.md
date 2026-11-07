@@ -65,13 +65,25 @@ If you changed agent or MCP code, also exercise it locally (the targets start
 and stop the three MCP servers on ports 8001-8003 for you):
 
 ```bash
-make test-ai-coe-mortgage-specialist-local   # AI CoE specialist (A2A) -> local MCP servers
-make test-cx-mortgage-orchestrator-local     # CX orchestrator -> specialist -> local MCP servers
+make query AGENT=ai-coe-mortgage-specialist   # AI CoE specialist (A2A) -> local MCP servers
+make query AGENT=cx-mortgage-orchestrator     # CX orchestrator -> specialist -> local MCP servers
 ```
 
 If you have a deployed `dev` environment, `make test-e2e ENV=dev` checks the
 specialist and then the orchestrator -> specialist path through the Agent
 Gateway and Kong.
+
+## Working with AI coding agents
+
+The repository ships instructions for AI coding agents. The root
+[`AGENTS.md`](https://github.com/google/esmeralda/blob/main/AGENTS.md) covers
+the repo map, layer order, invariants, the commands that matter, testing
+expectations and safety rules; nested `AGENTS.md` files in `infrastructure/`,
+`apps/agents/`, `apps/services/` and `packages/esmeralda/` add local rules.
+`GEMINI.md` and `CLAUDE.md` point to it. The docs site also publishes an
+[`llms.txt`](https://google.github.io/esmeralda/llms.txt) index of every page
+(source: `docs/src/llms.txt`). Keep these files accurate when you change a
+convention, a command or a docs page.
 
 ## Documentation
 

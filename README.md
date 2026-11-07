@@ -134,7 +134,7 @@ Both agents are **bring-your-own-container (BYOC)** images running on **Vertex A
 <a id="quick-start"></a>
 ### Quick Start
 
-Requires `gcloud`, `terraform`, `terragrunt` and [`uv`](https://docs.astral.sh/uv/). Set your billing account and organization in `infrastructure/live/<env>/env.yaml` first.
+Requires `gcloud`, `terraform`, `terragrunt` and [`uv`](https://docs.astral.sh/uv/). Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID`) and review `infrastructure/live/<env>/env.yaml` first.
 
 ```bash
 make bootstrap                 # preflight checks + uv workspace sync
@@ -158,6 +158,7 @@ Run `make help` for every target (per-layer deploys, local agent tests, image pr
 * **[Central Agent Gateway Guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md)** — How agent egress, the Agent Registry, private certificates and BYOC agents fit together.
 * **[Architecture Overview & Documentation Hub](docs/src/index.md)** — Mental model, team ownership, request lifecycle, and the layered blueprint.
 * **[Contributing Guidelines](docs/src/contributing.md)** — CLA, PR workflow, and local testing commands.
+* **[AGENTS.md](AGENTS.md)** — Instructions for AI coding agents (repo map, invariants, commands, testing and safety rules); the docs site also serves an [`llms.txt`](https://google.github.io/esmeralda/llms.txt) index.
 * **[Code of Conduct](docs/src/code-of-conduct.md)** — Community engagement standards.
 
 
