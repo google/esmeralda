@@ -417,6 +417,26 @@ def test_cli_verify_probe_and_skip_query(ops_checkout, monkeypatch, capsys):
     assert "Verification failed" in capsys.readouterr().out
 
 
+def test_cli_verify_partner(ops_checkout, monkeypatch, capsys):
+    (ops_checkout / "scripts").mkdir(exist_ok=True)
+    (ops_checkout / "scripts" / "test_partner.sh").write_text("")
+    pt_out = (
+        "🧪 Running offline partner front-door conformance checks (5 probes)...\n"
+        "  ✅ Probe 1 (Unauthenticated -> 401): VerifyAPIKey enforced in PreFlow\n"
+        "  ✅ Probe 2 (Unallowlisted agent -> 403/404): Internal specialists blocked\n"
+        "✅ Partner conformance checks passed (offline mode).\n"
+    )
+    monkeypatch.setattr(repo, "run", lambda cmd, **_: subprocess.CompletedProcess(cmd, 0, pt_out, ""))
+
+    assert cli.main(["verify", "--partner", "--env", "dev", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["passed"] is True and data["partner"]["ok"] == 2 and data["partner"]["mode"] == "offline"
+    assert len(data["steps"]) == 2
+
+    assert cli.main(["verify", "--partner", "--env", "dev"]) == 0
+    assert "Verification passed" in capsys.readouterr().out
+
+
 def test_cli_logs_supports_agent_and_mcp_service(ops_checkout, monkeypatch, capsys):
     rows = [{"timestamp": "2026-01-02T03:04:05Z", "severity": "ERROR", "textPayload": "boom"}]
     seen_cmds: list[list[str]] = []

@@ -57,30 +57,31 @@ Terragrunt `dependency` blocks; never reverse that direction.
 
 ## Commands that matter
 
-Run `make help` for all targets. Most take `ENV=<env>` (default `dev`).
+Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for day-to-day status, planning, verification, querying, logging, and repository guards; `make` targets wrap the CLI and multi-step image/Terragrunt workflows (`make help`, most take `ENV=<env>`, default `dev`).
 
-| Command | What it proves |
-|---|---|
-| `make bootstrap` | Tools present (preflight), workspace synced with `uv`, pre-push hook installed |
-| `make lock-check` | `uv.lock` matches every `pyproject.toml` (offline) |
-| `make test` | Unit tests of the MCP services, both agents and `packages/esmeralda` (`make test-agents`: agents + library only) |
-| `make test-terraform` | Every module passes `terraform validate`; workloads deploy images by digest |
-| `make test-all` | `lock-check` + `test` + `test-terraform`: the offline gate before a PR or a plan |
-| `make docs-build` | Docs site builds in strict mode (broken links, anchors, nav fail), same as CI |
-| `make query AGENT=<agent>` | The agent answers in-process against local MCP servers (`TARGET=local`, default) |
-| `make serve AGENT=<agent> [WEB=1]` | The agent serves locally exactly as in its container |
-| `make run-mcp-local` | The three MCP servers start on ports 8001-8003 |
-| `make deploy-<layer> ENV=<env>` | Applies one layer (`cicd`, `projects`, `networking`, `security`, `governance`, `workloads`) |
-| `make test-gateway ENV=<env>` | Every gateway route host answers through the entry point, from the test VM |
-| `make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=<env>` | The deployed orchestrator answers a real query end to end (Agent Gateway → entry point → specialist → MCP) |
-| `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist, both deployed |
-| `make lock [PKG=...]` | Regenerates `uv.lock` in Cloud Build (needs `gcloud` access to the CI/CD project) |
+| Command | Make equivalent | What it proves |
+|---|---|---|
+| `uv run esmeralda status --env <env>` | `make status ENV=<env>` | Git branch/SHA, active worktrees, local state units, image tags/digests, and deployed environment outputs |
+| `uv run esmeralda doctor --env <env>` | `make doctor ENV=<env>` | Workstation preflight check: required tools, `ESMERALDA_BILLING_ACCOUNT`, ADC token, `uv.lock`, and local state readability |
+| `uv run esmeralda units [--layer 0..5] --env <env>` | `make units ENV=<env>` | Lists Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence |
+| `uv run esmeralda plan <unit\|--all> --env <env>` | `make plan [UNIT=<unit>] ENV=<env>` | Read-only `terragrunt plan -lock=false` summary (`to add`, `to change`, `to destroy`, `to replace`) |
+| `uv run esmeralda apply <unit> --env <env>` | `make apply UNIT=<unit> ENV=<env>` | Plans to a saved planfile, **enforces the destroy guard** (refuses `destroy > 0` without `--allow-destroy`), and applies |
+| `uv run esmeralda verify --env <env>` | `make verify ENV=<env>` | Gateway conformance probes (`scripts/test_gateway.sh`) + remote specialist and orchestrator queries |
+| `uv run esmeralda verify --partner --env <env>` | `make test-partner ENV=<env>` | Apigee partner front-door conformance probes (`scripts/test_partner.sh`, offline or live) |
+| `uv run esmeralda query --agent-dir apps/agents/<agent> "..."` | `make query AGENT=<agent> [TARGET=local\|remote]` | Queries an ADK or A2A agent in-process, over `--url`, or on Agent Runtime (`--engine`), with `--user-token` support |
+| `uv run esmeralda logs <target> --env <env>` | `make logs TARGET_NAME=<target> ENV=<env>` | Recent Cloud Logging entries for an agent or MCP service (tracebacks collapsed, deduplicated) |
+| `uv run esmeralda contracts [--section ...]` | — | Prints architectural contracts (`entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
+| `uv run esmeralda guard [--staged\|--diff <range>\|--all]` | `make guard` | Public-repository sensitive-content and forbidden-path scanner |
+| — | `make bootstrap` | Tools present (preflight), workspace synced with `uv`, `.githooks` installed |
+| — | `make lock-check` | `uv.lock` matches every `pyproject.toml` (offline) |
+| — | `make test-all` | `lock-check` + `test` + `test-guards` + `test-terraform` + `test-gateway-unit` + `test-apigee`: the offline gate before a PR |
+| — | `make docs-build` | Docs site builds in strict mode (broken links, anchors, nav fail), same as CI |
 
 ## Testing expectations
 
-1. **Offline first:** `make test-all` (and `make docs-build` when docs change) must pass before any plan or PR.
-2. **Before an apply,** run `terragrunt plan` in the unit directory (`infrastructure/live/<env>/<layer or unit>`) and read it.
-3. **After an infra, gateway or agent change in a deployed env,** prove it end to end: `make test-gateway ENV=<env>` for ingress changes, and always a real query that returns an answer: `make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=<env>` (or `make test-e2e ENV=<env>`). A routing or TLS-only check is not enough.
+1. **Offline first:** `make test-all` (and `make docs-build` when docs change) and `uv run esmeralda guard --staged` must pass before any commit, plan, or PR.
+2. **Before an apply,** run `uv run esmeralda plan <unit> --env <env>` (or `uv run esmeralda apply <unit> --env <env>`, which plans first and enforces the destroy guard) and inspect the summary.
+3. **After an infra, gateway or agent change in a deployed env,** prove it end to end with `uv run esmeralda verify --env <env>` (which runs all gateway route probes plus real `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` queries), and `uv run esmeralda verify --partner --env <env>` when partner front-door capabilities are modified. A routing or TLS-only check is not enough.
 
 ## Safety
 

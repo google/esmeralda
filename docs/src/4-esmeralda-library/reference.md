@@ -137,8 +137,27 @@ A frozen dataclass.
 
 | Name | Description |
 |---|---|
-| `toolset(url, *, prefix, api_key=None, timeout=30.0, sse_read_timeout=300.0, token=None, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. `token` (`"id"` or `"access"`) overrides `auth.token_kind(url)`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
-| `headers_for(url, ctx=None, *, api_key=None, token=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `context.user_token(ctx)` has one) |
+| `toolset(url, *, prefix, api_key=None, auth_provider=None, timeout=30.0, sse_read_timeout=300.0, token=None, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. `token` (`"id"` or `"access"`) overrides `auth.token_kind(url)`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
+| `headers_for(url, ctx=None, *, api_key=None, token=None, auth_provider=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `auth_manager.resolve_user_token(ctx, auth_provider=...)` resolves one), and `X-Agent-Spiffe-Id` (when `auth_manager.spiffe_id()` is present) |
+
+## `esmeralda.auth_manager`
+
+| Name | Description |
+|---|---|
+| `DelegatedContext(user_identity=None, agent_spiffe_id=None, auth_provider=None, scopes=())` | Frozen dataclass representing the Three-Identity Delegation tuple (`User identity + Agent SPIFFE identity = Delegated identity`) |
+| `spiffe_id() -> str \| None` | Returns the agent's runtime SPIFFE / `principal://` ID from `AGENT_SPIFFE_ID` or `AGENT_WORKLOAD_CERT_PATH` |
+| `delegated_context(ctx=None, *, auth_provider=None, scopes=()) -> DelegatedContext` | Builds a `DelegatedContext` for an invocation |
+| `acquire_token(auth_provider, *, user_id=None, session_id=None, scopes=(), base_url=None, timeout=10.0) -> str` | Acquires a 3LO/2LO token or API key from Agent Identity Auth Manager (`{auth_provider}:acquireToken`) |
+| `resolve_user_token(ctx=None, *, auth_provider=None, scopes=()) -> str \| None` | Returns `context.user_token(ctx)` if present, else acquires a delegated token via `acquire_token` when `auth_provider` or `AGENT_AUTH_PROVIDER` is configured |
+
+## `esmeralda.mcp_authz`
+
+| Name | Description |
+|---|---|
+| `verify_request(headers=None, *, enforce=None, allowed_domains=None) -> VerifiedCaller` | Verifies `User-Auth-Token` and `X-Agent-Spiffe-Id` without network I/O; rejects `*.gserviceaccount.com` tokens and fails closed when `MCP_ENFORCE_USER_AUTH=true` |
+| `decode_jwt_claims(token) -> dict \| None` | Decodes the JSON payload of a 3-part JWT locally |
+| `is_service_account_email(value) -> bool` | `True` when `value` is a `*.gserviceaccount.com` service account identifier |
+| `AuthorizationError(reason, *, status_code=403)` | Raised when verification fails |
 
 ## `esmeralda.a2a`
 
@@ -269,7 +288,7 @@ esmeralda doctor [--env dev|prd] [--json] [--repo PATH]
 esmeralda units [--env dev|prd] [--layer 0..5] [--json] [--repo PATH]
 esmeralda plan [<unit> | --all] [--env dev|prd] [--json] [--repo PATH]
 esmeralda apply <unit> [--env dev|prd] [--allow-destroy] [--json] [--repo PATH]
-esmeralda verify [--env dev|prd] [--probe NAME] [--skip-query] [--json] [--repo PATH]
+esmeralda verify [--env dev|prd] [--probe NAME] [--skip-query] [--partner] [--json] [--repo PATH]
 esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json] [--repo PATH]
 esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json] [--repo PATH]
 esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json] [--repo PATH]
@@ -282,7 +301,7 @@ esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json]
 | `units` | `esmeralda.ops.infra.list_units` | Lists Terragrunt units for `<env>`, their layer (`0..5`), dependencies, whether enabled/excluded in `env.yaml`, and whether local state exists |
 | `plan` | `esmeralda.ops.infra.plan_unit` | Runs read-only `terragrunt plan -lock=false` on a unit (full path or short name such as `entrypoint`) or `--all` enabled units, and prints the resource change summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `apply` | `esmeralda.ops.infra.apply_unit` | Plans `<unit>` to a planfile first, inspects the plan for `destroy` or `replace` actions, **refuses to apply with exit code `2` if `destroy > 0` unless `--allow-destroy` is passed**, and otherwise applies the saved planfile |
-| `verify` | `esmeralda.ops.runtime.verify` | Runs gateway conformance probes (`runtime.test_gateway`, optionally filtered by `--probe`) and, unless `--skip-query` is passed, runs remote queries against `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator`. Exits non-zero if any check fails |
+| `verify` | `esmeralda.ops.runtime.verify` | Runs gateway conformance probes (`runtime.test_gateway`, optionally filtered by `--probe`) and, unless `--skip-query` is passed, runs remote queries against `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` (or with `--partner`, runs Apigee partner conformance checks via `runtime.test_partner`). Exits non-zero if any check fails |
 | `logs` | `esmeralda.ops.logs.agent_logs` | Pulls recent Cloud Logging entries for an agent (Reasoning Engine) or MCP/gateway service (Cloud Run), collapsing tracebacks and deduplicating repeats |
 | `contracts` | `esmeralda.ops.contracts.describe_contracts` | Prints architectural contracts (`all`, `entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
 | `guard` | `esmeralda.ops.guard.run_guard` | Public-repository sensitive-content scanner across `--staged` changes, `--diff <range>`, `--all` tracked files, or `--message-file`. Exits non-zero if any secret, forbidden path, or internal/customer marker is detected |

@@ -187,6 +187,32 @@ When Gemini Enterprise calls an agent with a user authorization, the runtime sto
 
 `esmeralda.context.user_token(ctx)` finds the token for the current invocation, either in that state or in the A2A metadata of a calling agent. Toolsets and remote agents forward it on their own. Agent code can call it from a tool or a callback.
 
+### Agent Identity Auth Manager (3LO Delegation) & End-User Token Verification
+
+In Gemini Enterprise Agent Platform (GEAP), **Agent Identity Auth Manager** (`agentidentitycredentials.googleapis.com`) implements the [Three-Identity Delegation Framework](https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern/agent-identity-overview#agent-auth-manager) (`User identity + Agent SPIFFE identity = Delegated identity`):
+
+1. **Brokering 3LO/2LO credentials (`esmeralda.auth_manager`)**: When an MCP toolset is configured with `auth_provider` (or `$AGENT_AUTH_PROVIDER`), `esmeralda.auth_manager.resolve_user_token(ctx, auth_provider=...)` first checks whether the invocation already carries an end-user token (`context.user_token(ctx)`); if not, it calls `{auth_provider}:acquireToken` on Agent Identity Auth Manager using the agent's runtime identity and `X-Agent-Spiffe-Id` (`$AGENT_SPIFFE_ID` or workload X.509 certificate).
+
+   ```python
+   from esmeralda import mcp
+
+   dms_toolset = mcp.toolset(
+       os.environ["DMS_MCP_URL"],
+       prefix="dms",
+       auth_provider=os.environ.get("AGENT_AUTH_PROVIDER"),
+   )
+   ```
+
+2. **Zero-latency end-user & delegation verification on MCP servers (`esmeralda.mcp_authz`)**: Downstream MCP servers can inspect `User-Auth-Token` and `X-Agent-Spiffe-Id` locally without making synchronous calls to `oauth2.googleapis.com/tokeninfo` (which fail inside VPC Service Controls perimeters) and without hardcoding fictional user allowlists:
+   - Always rejects service account tokens (`*.gserviceaccount.com`) presented as `User-Auth-Token`, preventing workload service accounts from masquerading as human end users.
+   - Fails closed when `MCP_ENFORCE_USER_AUTH=true` and `User-Auth-Token` is missing, expired, or lacks user identity claims.
+
+   ```python
+   from esmeralda import mcp_authz
+
+   caller = mcp_authz.verify_request(request.headers)
+   ```
+
 ## Caller context
 
 The caller context says which project and agent made a call. The plugin puts it in OpenTelemetry baggage for the run, and every span created during the run gets the attributes `caller.project_id` and `caller.agent_name`. It is for telemetry and cost attribution, never for authorization.
@@ -247,7 +273,7 @@ The same applies to `finalize`, with `esmeralda.lifecycle.FINALIZE`. When you pa
 
 Every run prints the same report: the events as they arrive (agent transfers, tool calls and results, text), then the answer, tool and token counts, and a verdict. The exit code is `0` on success, and `1` if the agent reported an error, returned no answer, or (A2A) the task didn't complete. Add `--fail-on-tool-error` to also fail when a tool call returned an error.
 
-The caller context is always sent, as `<project>/esmeralda_cli` by default (override with `--caller project/agent`). Other options: `--user`, `--session` (continue a conversation), `--timeout`, `--verbose` (raw events).
+The caller context is always sent, as `<project>/esmeralda_cli` by default (override with `--caller project/agent`). Pass `--user-token <token>` (or set `$ESMERALDA_USER_TOKEN`) to forward an end-user OAuth token as `temp:user_auth_token` (ADK) or `user_auth_token` in A2A metadata. Other options: `--user`, `--session` (continue a conversation), `--timeout`, `--verbose` (raw events).
 
 From the repository root, `make query` resolves the agent directory and the deployed engine for you:
 

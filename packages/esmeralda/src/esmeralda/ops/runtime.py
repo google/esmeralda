@@ -105,6 +105,9 @@ _HOST = re.compile(
     r"(?:\s+\(DNS still resolves to (?P<dns>[^)]+)\))?\s*(?P<rest>.*)$"
 )
 _PROBING = re.compile(r"Probing (?P<n>\d+) host\(s\) through the entry point (?P<ip>\S+) \(\*\.(?P<domain>[^)]+)\)")
+_PARTNER_PROBE = re.compile(
+    r"^\s*(?P<mark>✅|❌)\s+Probe\s+(?P<num>\d+)(?:\s*\((?P<label>[^)]+)\))?[:\s]+(?P<detail>.*)$"
+)
 
 
 def parse_gateway_output(text: str) -> dict[str, Any]:
@@ -179,6 +182,62 @@ def test_gateway(
     return summary
 
 
+def parse_partner_output(text: str) -> dict[str, Any]:
+    """Per-probe results from the output of ``scripts/test_partner.sh``."""
+    probes: list[dict[str, Any]] = []
+    mode = "live"
+    for raw in text.splitlines():
+        line = _ANSI.sub("", raw)
+        if "offline" in line.lower():
+            mode = "offline"
+        match = _PARTNER_PROBE.match(line)
+        if not match:
+            continue
+        entry: dict[str, Any] = {
+            "probe": int(match["num"]),
+            "ok": match["mark"] == "✅",
+            "detail": repo.short(match["detail"].strip(), 200),
+        }
+        if match["label"]:
+            entry["label"] = match["label"].strip()
+        probes.append(entry)
+    return {"mode": mode, "probes": probes}
+
+
+def test_partner(
+    root: Path,
+    env: str,
+    *,
+    timeout: float = 300.0,
+) -> dict[str, Any]:
+    """Runs ``scripts/test_partner.sh <env>`` (Apigee partner front-door conformance checks)."""
+    repo.env_dir(root, env)
+    script = root / "scripts" / "test_partner.sh"
+    if not script.is_file():
+        raise OpsError(f"{script.relative_to(root)} not found in this checkout")
+    started = time.monotonic()
+    result = repo.run(["bash", str(script), env], cwd=root, timeout=timeout, what="scripts/test_partner.sh")
+    parsed = parse_partner_output(result.stdout + "\n" + result.stderr)
+    probes = parsed["probes"]
+    passed = result.returncode == 0
+    summary: dict[str, Any] = {
+        "env": env,
+        "passed": passed,
+        "mode": parsed["mode"],
+        "ok": sum(p["ok"] for p in probes),
+        "failed": sum(not p["ok"] for p in probes),
+        "probes": probes,
+        "seconds": round(time.monotonic() - started, 1),
+    }
+    if not passed:
+        text = f"{result.stderr}\n{result.stdout}"
+        fatal = [line.strip() for line in _ANSI.sub("", text).splitlines() if line.strip().startswith("❌ ")]
+        summary["error"] = repo.short(fatal[-1] if fatal else " | ".join(repo.error_lines(text, 4)), 300)
+        if found := repo.hint(text):
+            summary["hint"] = found
+    return summary
+
+
 DEFAULT_VERIFY_MESSAGE = "Can you verify Julian Sterling's income?"
 DEFAULT_VERIFY_AGENTS = ("ai-coe-mortgage-specialist", "cx-mortgage-orchestrator")
 
@@ -189,11 +248,40 @@ async def verify(
     *,
     probe: str | None = None,
     skip_query: bool = False,
+    partner: bool = False,
     message: str = DEFAULT_VERIFY_MESSAGE,
     timeout: float = 300.0,
 ) -> dict[str, Any]:
-    """End-to-end verification: gateway conformance probes + remote specialist and orchestrator queries."""
+    """End-to-end verification: gateway conformance probes + remote queries, or partner conformance (--partner)."""
     started = time.monotonic()
+    if partner:
+        pt = test_partner(root, env, timeout=timeout)
+        p_steps = [
+            {
+                "step": f"partner:probe-{p['probe']}" + (f" ({p['label']})" if p.get("label") else ""),
+                "passed": bool(p.get("ok")),
+                "seconds": 0.0,
+                "detail": p.get("detail", ""),
+            }
+            for p in pt.get("probes") or []
+        ]
+        if not p_steps:
+            p_steps = [
+                {
+                    "step": "partner",
+                    "passed": bool(pt.get("passed")),
+                    "seconds": pt.get("seconds", 0.0),
+                    "detail": pt.get("error") or f"{pt.get('ok', 0)} ok, {pt.get('failed', 0)} failed",
+                }
+            ]
+        return {
+            "env": env,
+            "passed": bool(pt.get("passed")),
+            "partner": pt,
+            "steps": p_steps,
+            "seconds": round(time.monotonic() - started, 1),
+        }
+
     gw = test_gateway(root, env, probe=probe, timeout=timeout)
     steps: list[dict[str, Any]] = [
         {

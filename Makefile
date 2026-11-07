@@ -299,7 +299,7 @@ test-gateway: ## Probe every catalog host through the entry point from the test 
 	@bash scripts/test_gateway.sh $(ENV)
 
 test-partner: ## Run partner front-door conformance checks (401 unauth, 403/404 agent/MCP scope, SSE TTFB + answer, 429 quota): ENV=<env>
-	@bash scripts/test_partner.sh $(ENV)
+	@uv run esmeralda verify --partner --env $(ENV)
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
 	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
