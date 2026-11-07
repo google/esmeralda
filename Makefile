@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Execute all commands using interactive bash with alias expansion enabled (critical for Cloudtop & IDEs)
+# Execute all commands using interactive bash with alias expansion enabled (critical for remote dev VMs & IDEs)
 SHELL := /bin/bash
 .SHELLFLAGS := -O expand_aliases -lc
 

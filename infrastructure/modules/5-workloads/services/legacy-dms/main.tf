@@ -78,7 +78,8 @@ resource "null_resource" "mcp_registration" {
   provisioner "local-exec" {
     command = <<EOT
       echo "📡 Registering Legacy DMS MCP Server with Google Cloud Agent Registry..."
-      GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/codigos/esmeralda"); python3 "$GIT_ROOT/apps/services/register_mcp.py" \
+      GIT_ROOT=$(git -C "${path.module}" rev-parse --show-toplevel 2>/dev/null) || { echo "ERROR: cannot locate the repository root from ${path.module}; run Terragrunt from a git checkout of this repository." >&2; exit 1; }
+      python3 "$GIT_ROOT/apps/services/register_mcp.py" \
         --project_id="${var.project_id}" \
         --region="${var.region}" \
         --server_name="legacy-dms" \

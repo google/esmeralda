@@ -117,9 +117,9 @@ versions that were tested.
 Dockerfile installs it with `--require-hashes`. An image therefore contains
 exactly what is in `uv.lock`, never whatever is newest on PyPI on build day.
 
-**Never run `uv lock` directly.** On corporate machines `uv` goes through a
-package proxy (for example Corp Airlock) that holds back new releases for 1-3
-weeks and would rewrite every URL in `uv.lock`. The Makefile sets
+**Never run `uv lock` directly.** On machines that route `uv` through a
+corporate package proxy, the proxy can hold back new releases for weeks and
+would rewrite every URL in `uv.lock`. The Makefile sets
 `UV_FROZEN=1`, so `uv` only installs what `uv.lock` says; to change the lock,
 use `make lock`.
 
