@@ -1,6 +1,6 @@
 # Esmeralda
 
-> Reference blueprint for running AI agents (Google ADK, A2A) and MCP tool servers in production on Google Cloud: layered Terragrunt/Terraform infrastructure (L0 CI/CD, L1 projects, L2 networking, L3 security, L4 governance with the Central Agent Gateway, L5 workloads), agents on Vertex AI Agent Engine with SPIFFE Agent Identity, private ingress through an internal entry point (`*.esmeralda.internal`) and swappable gateways (Kong by default), and a Python runtime library (`esmeralda`). Everything runs through the root Makefile (`make help`).
+> Reference blueprint for running AI agents (Google ADK, A2A) and MCP tool servers in production on Google Cloud: layered Terragrunt/Terraform infrastructure (L0 CI/CD, L1 projects, L2 networking, L3 security, L4 governance with the Central Agent Gateway, L5 workloads), agents on Vertex AI Agent Engine with SPIFFE Agent Identity, private ingress through an internal entry point (`*.esmeralda.internal`) with a built-in `direct` backend and swappable gateway adapters (Envoy, Apigee), and a Python runtime library (`esmeralda`). Everything runs through the root Makefile (`make help`).
 
 The sample use case is a mortgage-underwriting assistant built with synthetic data: a CX orchestrator (ADK) delegates to an AI CoE specialist (A2A), which calls three MCP servers. Source code: https://github.com/google/esmeralda
 
@@ -18,7 +18,7 @@ The sample use case is a mortgage-underwriting assistant built with synthetic da
 ## Workloads & Catalog (Layer 5)
 
 - [Workloads & Catalog](https://google.github.io/esmeralda/2-workloads-and-catalog/): Layer 5 overview and deploy order (services, agents, gateways, entry point, IAP egress).
-- [Ingress Gateways](https://google.github.io/esmeralda/2-workloads-and-catalog/01-ingress-gateways/): entry point, the gateway adapter contract (backend_service_id + routes), the env.yaml gateways block, Kong, host-by-host migration and make test-gateway.
+- [Ingress Gateways](https://google.github.io/esmeralda/2-workloads-and-catalog/01-ingress-gateways/): entry point, service catalog, built-in `direct` backend, gateway adapter contract (backend_service_id + routes), host-by-host migration and make test-gateway.
 - [MCP Tool Servers](https://google.github.io/esmeralda/2-workloads-and-catalog/02-mcp-tool-servers/): FastMCP servers on Cloud Run, custom audiences, IAM and Agent Registry entries.
 - [AI Agents & Database](https://google.github.io/esmeralda/2-workloads-and-catalog/03-ai-agents-and-database/): ADK and A2A agents on Agent Engine (BYOC, Agent Identity, Agent Gateway binding) and the Cloud SQL task store.
 

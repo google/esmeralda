@@ -62,9 +62,8 @@ ENV_YAML="${REPO_ROOT}/infrastructure/live/${ENV_NAME}/env.yaml"
 MANIFEST="${REPO_ROOT}/release/${ENV_NAME}.yaml"
 [[ -f "${ENV_YAML}" ]] || { echo "❌ No ${ENV_YAML}" >&2; exit 1; }
 
-# Every Layer 5 image built by `make build-images` (both gateways + 3 MCP services + 2 agents).
+# Every Layer 5 image built by `make build-images` (Envoy gateway + 3 MCP services + 2 agents).
 IMAGES=(
-  "kong-gateway"
   "envoy-gateway"
   "legacy-dms"
   "income-verification-api"

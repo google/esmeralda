@@ -1,13 +1,13 @@
 # Workloads & Catalog (Layer 5)
 
-This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads: the private entry point and its swappable ingress gateways (Kong by default), the composable MCP tool servers, and the two AI agents.
+This section of the documentation unifies the architectural specifications, **Architectural Decision Records (ADRs)**, and implementation blueprints for Esmeralda's Layer 5 workloads: the private entry point with its service catalog (built-in `direct` backend by default, optional bring-your-own adapters), the composable MCP tool servers, and the two AI agents.
 
 Layer 5 is deployed with `make deploy-workloads ENV=<env>` (Terragrunt `run --all` over `infrastructure/live/<env>/layer-5-workloads/`). Terragrunt dependencies give this order:
 
 1. **MCP services** (`services/{legacy-dms,income-verification,corporate-email}`) and their Agent Registry entries.
 2. **Agents**: `agents/ai-coe-mortgage-specialist`, then `agents/cx-mortgage-orchestrator`.
-3. **Gateways** (`gateways/kong`, one unit per gateway in `gateways.enabled`): Kong's routes point at the agents' engine IDs, so re-run `make deploy-gateway` whenever an agent engine is recreated.
-4. **Entry point** (`entrypoint`): the internal HTTPS load balancer routing `*.esmeralda.internal` to the enabled gateways (`make deploy-entrypoint`). Its IP and DNS records come from Layer 2 and its certificate from Layer 3.
+3. **Gateway backends**: `gateways/direct` (always) plus one unit per adapter in `gateways.enabled` (e.g. `gateways/envoy`). Agent routes point at the agents' engine IDs, so re-run `make deploy-gateway` (applies `gateways/direct`) and the entry point whenever an agent engine is recreated.
+4. **Entry point** (`entrypoint`): the internal HTTPS load balancer routing every catalog host under `*.esmeralda.internal` to `direct` or an adapter (`make deploy-entrypoint`). Its IP and DNS records come from Layer 2 and its certificate from Layer 3.
 5. **IAP egress** (`services/iap-egress`): grants `roles/iap.egressor` on the registry entries created above.
 6. **Test VM** (`services/test-vm`).
 
@@ -22,9 +22,9 @@ Esmeralda separates **agents that talk to customers** from **agents that are reu
 | **CX team** | User-facing **orchestrator** agents (ADK). They own the conversation and *consume* reusable agents. | `esm-<env>-cx-agents-<sfx>` | `cx-mortgage-orchestrator` |
 | **AI CoE team** | Reusable **A2A specialist** agents that any orchestrator (CX or other teams) can call. | `esm-<env>-ai-coe-agents-<sfx>` | `ai-coe-mortgage-specialist` |
 | **AppDev tools team** | MCP tool servers used by the specialists. | `esm-<env>-mcps-<sfx>` | `legacy-dms`, `income-verification`, `corporate-email` |
-| **PlatformOps** | The entry point (internal load balancer) and the ingress gateway behind it (Kong). | `esm-<env>-gateway-<sfx>` | `kong-gateway-<env>` |
+| **PlatformOps** | The entry point (internal load balancer), the service catalog, and any optional adapter behind it. | `esm-<env>-gateway-<sfx>` | `entrypoint`, `gateways/direct` |
 
-The orchestrator never calls MCP tools directly: it delegates to the specialist over **A2A**, and the specialist calls the tools over **MCP**. Every agent-to-agent and agent-to-tool call leaves the agent through the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and enters the target through the entry point and Kong.
+The orchestrator never calls MCP tools directly: it delegates to the specialist over **A2A**, and the specialist calls the tools over **MCP**. Every agent-to-agent and agent-to-tool call leaves the agent through the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md) and enters the target through the entry point.
 
 ---
 
@@ -66,10 +66,12 @@ flowchart TB
 
     AGW["Central Agent Gateway<br/>(governance project, Layer 4)"]
 
-    subgraph Gateway["Gateway project (modules/5-workloads/entrypoint + gateways/kong)"]
+    subgraph Gateway["Gateway project (modules/5-workloads/entrypoint + gateways/direct)"]
         EP["Entry point<br/>internal HTTPS LB<br/>*.esmeralda.internal"]
-        Kong["Kong on Cloud Run<br/>(selectable gateway)"]
-        EP ==> Kong
+        PSC["PSC NEG<br/>(region-aiplatform.googleapis.com)"]
+        Adapter["Optional adapter<br/>(e.g. Envoy, off by default)"]
+        EP ==> PSC
+        EP -.-> Adapter
     end
 
     subgraph CoE["AI CoE team project (modules/5-workloads/agents/a2a-agent)"]
@@ -78,7 +80,7 @@ flowchart TB
         Spec -.-> DB
     end
 
-    subgraph MCPServers["MCPs project (modules/5-workloads/services/*)"]
+    subgraph MCPServers["MCPs project (modules/5-workloads/services/* + serverless NEGs)"]
         M1["corporate-email"]
         M2["income-verification"]
         M3["legacy-dms"]
@@ -87,18 +89,18 @@ flowchart TB
     Orch ==>|"A2A: ai-coe-mortgage-specialist.esmeralda.internal"| AGW
     Spec ==>|"MCP: #60;svc#62;.esmeralda.internal/mcp"| AGW
     AGW ==> EP
-    Kong ==>|Host-based route + Google ID token| Spec
-    Kong ==>|Host-based route + Google ID token| MCPServers
+    PSC ==>|"Host + path rewrite, caller's access token"| Spec
+    EP ==>|"Serverless NEG, caller's ID token"| MCPServers
 ```
 
 ---
 
 ## Workloads Catalog Detailed Guides
 
-1. **[Swappable Ingress Gateways](./01-ingress-gateways.md)**
-   * The entry point (internal HTTPS load balancer) and the `gateways` block in `env.yaml`
-   * Kong Gateway on Cloud Run (default in dev and prd)
-   * Apigee X (stub gateway module) and host-by-host migration between gateways
+1. **[Entry point, service catalog and gateways](./01-ingress-gateways.md)**
+   * The entry point (internal HTTPS load balancer), the `catalog` and `gateways` blocks in `env.yaml`
+   * The built-in `direct` backend (default in dev and prd) and token kinds
+   * Envoy (optional adapter), Apigee X (stub) and moving hosts between backends
 2. **[Composable MCP Tool Servers](./02-mcp-tool-servers.md)**
    * Corporate Email Server (`apps/services/corporate-email/`)
    * Income Verification Server (`apps/services/income-verification/`)

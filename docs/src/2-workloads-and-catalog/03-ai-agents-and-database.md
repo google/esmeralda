@@ -60,18 +60,18 @@ sequenceDiagram
     participant Client as User / test client
     participant Orch as cx-mortgage-orchestrator (CX)
     participant AGW as Agent Gateway
-    participant Kong as Kong (*.esmeralda.internal)
+    participant EP as Entry point (*.esmeralda.internal, direct)
     participant Spec as ai-coe-mortgage-specialist (AI CoE)
     participant DMS as legacy-dms (Cloud Run)
 
     Client->>Orch: 1. streamQuery ("Process mortgage for Julian Sterling")
     Orch->>Orch: 2. transfer_to_agent → mortgage_tools_agent (RemoteA2aAgent)
-    Orch->>AGW: 3. A2A to ai-coe-mortgage-specialist.esmeralda.internal
-    AGW->>Kong: 4. Registry + iap.egressor check, then PSC to internal LB
-    Kong->>Spec: 5. Route by Host, inject Google access token
-    Spec->>AGW: 6. MCP tools/call search_documents (legacy-dms.esmeralda.internal/mcp)
-    AGW->>Kong: 7. Same checks and path
-    Kong->>DMS: 8. Route by Host, inject Google ID token
+    Orch->>AGW: 3. A2A to ai-coe-mortgage-specialist.esmeralda.internal (caller's access token)
+    AGW->>EP: 4. Registry + iap.egressor check, then PSC to internal LB
+    EP->>Spec: 5. Route by Host: PSC NEG to Agent Runtime, host + path rewrite
+    Spec->>AGW: 6. MCP tools/call search_documents (legacy-dms.esmeralda.internal/mcp, caller's ID token)
+    AGW->>EP: 7. Same checks and path
+    EP->>DMS: 8. Route by Host: serverless NEG, Cloud Run IAM checks the ID token
     DMS-->>Spec: 9. Documents: W2, tax return, bank statement
     Spec-->>Orch: 10. A2A task result
     Orch-->>Client: 11. Final response stream
@@ -88,7 +88,7 @@ How each hop is authorized and how TLS works on it is detailed in [Central Agent
 * **Agent Identity:** `identity_type = AGENT_IDENTITY` gives each engine a SPIFFE identity. Grants go to the team project's `principalSet://agents.global.org-<ORG>.system.id.goog/attribute.platformContainer/aiplatform/projects/<PROJECT_NUMBER>`, so CX and AI CoE agents are authorized independently.
 * **Agent Gateway binding:** `deployment_spec.agent_gateway_config.agent_to_anywhere_config.agent_gateway` points at the Layer 4 gateway. When it is set, the module does **not** attach `psc_interface_config`; all egress (Gemini, Google APIs, MCPs, A2A) goes through the Agent Gateway.
 * **Trust bundle:** the Layer 4 bundle (gateway inspection roots + internal Root CA) is injected as `AGENT_GATEWAY_ROOT_CERTIFICATES` and installed by the `esmeralda run` entrypoint at start-up (see [Central Agent Gateway §6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#6-bring-your-own-container-byoc)).
-* **Calling Kong:** `SERVICE_ACCOUNT_EMAIL` is set to `sa-mcp-invoker-<env>`. The agent impersonates it to mint the ID token that Kong's Cloud Run IAM check requires.
+* **Calling the entry point:** `SERVICE_ACCOUNT_EMAIL` is set to `sa-mcp-invoker-<env>`. The agent impersonates it to mint its own credential for each `*.esmeralda.internal` host: an ID token for MCP hosts (checked by Cloud Run IAM) and an access token for agent hosts served by `direct` (checked by Agent Runtime). `esmeralda.auth.token_kind(url)` picks the kind from `ACCESS_TOKEN_HOSTS`, which Terraform sets on each agent from the service catalog and the routing (see [Entry point → token kinds](./01-ingress-gateways.md#5-token-kinds-and-the-client-library)).
 * **Per-agent resources:** staging, artifacts and logs buckets, and a BigQuery dataset `<agent>_logs_<env>` for event analytics.
 * **Configuration:** `apps/agents/<agent>/agent.yaml` supplies the name, resources (CPU, memory, min/max instances, concurrency) and env vars. Terraform runtime values (bucket, dataset, URLs, certificates) override the YAML.
 
@@ -109,6 +109,7 @@ How each hop is authorized and how TLS works on it is detailed in [Central Agent
 
 ### 2. CX Mortgage Orchestrator, ADK (`agents/adk-agent/main.tf`)
 * **Multi-Agent Coordinator:** an ADK `Agent` named `cx_mortgage_orchestrator` (exported as `root_agent`, the symbol ADK requires) with one sub-agent, `mortgage_tools_agent`, a `RemoteA2aAgent` that loads the specialist's card from `${A2A_AGENT_URL}/v1/card` and delegates with `transfer_to_agent`. No database.
+* **Agent card URL:** the card's `url` is the engine's real `aiplatform.googleapis.com` URL. `esmeralda.a2a.remote_agent` pins every RPC call to `A2A_AGENT_URL`, so calls stay on the entry point and the Agent Gateway.
 * **Dynamic Variable Injection:** `A2A_AGENT_URL` (`https://ai-coe-mortgage-specialist.esmeralda.internal`) comes from the live `terragrunt.hcl`. `GATEWAY_MCP_URL` is still a module input but is empty and unused, because the orchestrator doesn't call MCP tools itself.
 * **Consumer, not owner:** the CX team doesn't deploy or configure the specialist. It only needs the specialist's hostname, the registry entry (created by the AI CoE module) and an `iap.egressor` grant for its own project's agent identities.
 
@@ -118,17 +119,26 @@ How each hop is authorized and how TLS works on it is detailed in [Central Agent
 
 ### End-to-End Multi-Agent Test
 ```bash
-# Specialist alone, then orchestrator → specialist through the Agent Gateway and Kong
+# Specialist alone, then orchestrator → specialist through the Agent Gateway and the entry point
 make test-e2e ENV=dev
 
 # Or individually
 make test-ai-coe-mortgage-specialist-remote ENV=dev
 make test-cx-mortgage-orchestrator-remote ENV=dev   # TEST_VERBOSE=1 dumps raw objects
+
+# Every catalog host through the entry point, including a real orchestrator query
+make test-gateway ENV=dev
 ```
 
-### Test the Specialist through Kong from the Test VM
+### Test the Specialist through the Entry Point from the Test VM
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
 gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap \
   --command="bash -s" < scripts/test_a2a_through_gateway.sh
+
+# If the specialist host is routed to an adapter (e.g. Envoy), it takes an ID token instead:
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap \
+  --command="TOKEN_KIND=id bash -s" < scripts/test_a2a_through_gateway.sh
 ```
+
+The script fetches the card and sends an A2A message through the entry point, with the internal Root CA at `/tmp/root-ca.pem` (or `CA_CERT`). `TOKEN_KIND` picks the credential: `access` (default) for an agent host served by `direct`, `id` for a host routed to an adapter. `make test-gateway` prints the kind for each host.

@@ -11,7 +11,7 @@ flowchart TD
     subgraph Spokes["Workload Spoke Projects"]
         CX["esm-ENV-cx-agents<br/>(CX orchestrator Reasoning Engine)"]
         AICOE["esm-ENV-ai-coe-agents<br/>(AI CoE A2A specialist Reasoning Engine)"]
-        GW["esm-ENV-gateway<br/>(Kong / Ingress Gateway)"]
+        GW["esm-ENV-gateway<br/>(Entry point / optional adapter)"]
         MCP["esm-ENV-mcps<br/>(Cloud Run MCP Tools)"]
         NET["esm-ENV-net-host<br/>(Shared VPC)"]
     end
@@ -90,7 +90,7 @@ flowchart TD
 | **`genai_telemetry_events`** | Terraform | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Unified JSON Event Envelope storing `timestamp`, `event_type`, `session_id`, `user_id`, `agent_id`, `execution_path`, and `payload` (`JSON`). |
 | **`cloudaudit_googleapis_com_activity`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Cloud Audit Activity logs for IAM, Secret Manager, and Reasoning Engine operations. |
 | **`aiplatform_googleapis_com_reasoning_engine_stdout`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Reasoning Engine stdout from both agent projects, including the agents' structured `genai_token_consumption` and `mcp_tool_execution` events. |
-| **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (Kong and the MCP servers). |
+| **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (the MCP servers, and the Envoy adapter when enabled). |
 
 ### Analytical Views
 
@@ -154,7 +154,10 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
   6. **MCP Tool Execution Frequency per Microservice** (grouped by `metric.label.tool_name`)
 
 ### 2. `[Esmeralda <env>] Agent Platform - Golden Signals & Health`
-* **Widgets**: Cloud Run latencies (P50/P95/P99), Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, Ingress Gateway synthetic uptime check status.
+* **Widgets**: Cloud Run latencies (P50/P95/P99), Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, and the entry point's request rate by response code class (internal Application Load Balancer metrics).
+
+> [!NOTE]
+> The former synthetic uptime check of the ingress gateway was removed: it targeted an internal host, which a public uptime check can't reach. The entry point request-rate tile replaces it.
 
 ---
 
@@ -176,6 +179,8 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 
 > [!NOTE]
 > Secret access and Reasoning Engine deployments are tracked as metrics and in `vw_security_audit_trail`, but have no alert policy. The Pub/Sub topic has no subscriber in the IaC yet.
+>
+> When the optional Envoy adapter is enabled (`envoy` in `gateways.enabled`), Layer 4 also creates a 5xx-ratio alert and a token-fetch-failure alert for `envoy-gateway-<env>`, and excludes it from the P95 latency alert and SLO. The default `direct` backend has no proxy of its own, so it adds no alert.
 
 ### Platform Service Level Objectives (SLOs)
 

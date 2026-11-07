@@ -1,6 +1,6 @@
 # infrastructure/live/dev/layer-5-workloads/agents/cx-mortgage-orchestrator/terragrunt.hcl
 # Layer 5: CX mortgage orchestrator Reasoning Engine (CX team), bound to the layer-4 Agent Gateway.
-# Calls the AI CoE mortgage specialist (A2A) at runtime through the gateway and Kong (ai-coe-mortgage-specialist.esmeralda.internal).
+# Calls the AI CoE mortgage specialist (A2A) at runtime through the entry point (ai-coe-mortgage-specialist.esmeralda.internal).
 include "root" {
   path = find_in_parent_folders("root.hcl")
 }
@@ -31,6 +31,17 @@ dependency "governance" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  catalog  = local.env_vars.locals.catalog
+  gateways = local.env_vars.locals.gateways
+  # This agent's catalog entry (env.yaml catalog), keyed by the unit's directory name.
+  name    = basename(get_terragrunt_dir())
+  callers = try(local.catalog[local.name].callers, [])
+  # Catalog hosts served by the built-in direct backend that take an access token (Agent Runtime):
+  # this agent calls them with an access token instead of an ID token (ACCESS_TOKEN_HOSTS).
+  access_token_names = [
+    for name, entry in local.catalog : name
+    if entry.token == "access" && lookup(local.gateways.host_rules, name, local.gateways.default) == "direct"
+  ]
 
   # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
   # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
@@ -46,9 +57,16 @@ inputs = {
   agent_service_account = dependency.security.outputs.cx_mortgage_orchestrator_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
 
-  # The Envoy gateway queries this engine for cx-mortgage-orchestrator.esmeralda.internal
-  # (/api/stream_reasoning_engine), when envoy is in gateways.enabled (env.yaml).
-  invoker_service_accounts = contains(local.env_vars.locals.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, null)] : []
+  # roles/aiplatform.user on this agent's project: the service accounts of the catalog callers, and the
+  # Envoy adapter, which queries this engine for cx-mortgage-orchestrator.<domain>
+  # (/api/stream_reasoning_engine) when envoy is in gateways.enabled (env.yaml).
+  invoker_service_accounts = distinct(compact(concat(
+    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
+    contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
+  )))
+
+  # Agent hosts reached through direct take an OAuth2 access token (esmeralda.auth.token_kind).
+  access_token_hosts = [for name in local.access_token_names : "${name}.${dependency.networking.outputs.entrypoint_domain}"]
 
   # Agent Gateway binding + the CA bundle the env-neutral image installs at start-up
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id

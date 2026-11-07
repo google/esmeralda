@@ -18,6 +18,11 @@ set -e
 GATEWAY_HOST="${1:-ai-coe-mortgage-specialist.esmeralda.internal}"
 GATEWAY_URL="https://${GATEWAY_HOST}"
 AUDIENCE="${GATEWAY_URL}"
+# Token kind the host takes (make test-gateway prints it per host): "access" (OAuth2 access token) when
+# the agent is served by the built-in direct backend (Agent Runtime), "id" (ID token for the host) when
+# the host is routed to an adapter such as Envoy (Cloud Run IAM).
+TOKEN_KIND="${TOKEN_KIND:-access}"
+METADATA="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default"
 # The gateway's internal LB only serves HTTPS, with a leaf signed by the internal Root CA
 # (secret esmeralda-internal-root-ca-<env> in the gateway project).
 CA_CERT="${CA_CERT:-/tmp/root-ca.pem}"
@@ -32,10 +37,16 @@ echo "🧪 Esmeralda A2A Gateway E2E Verification Script (Internal VM)"
 echo "Target Gateway: ${GATEWAY_URL}"
 echo "========================================================================="
 
-echo -n "[1/4] Fetching OIDC token from GCP Metadata Server for audience ${AUDIENCE}... "
-if ! TOKEN=$(curl -s -f -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${AUDIENCE}"); then
+if [ "${TOKEN_KIND}" = "access" ]; then
+  echo -n "[1/4] Fetching an access token from the GCP metadata server... "
+  TOKEN=$(curl -s -f -H "Metadata-Flavor: Google" "${METADATA}/token" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])') || TOKEN=""
+else
+  echo -n "[1/4] Fetching an ID token from the GCP metadata server for audience ${AUDIENCE}... "
+  TOKEN=$(curl -s -f -H "Metadata-Flavor: Google" "${METADATA}/identity?audience=${AUDIENCE}") || TOKEN=""
+fi
+if [ -z "${TOKEN}" ]; then
   echo "FAILED!"
-  echo "Error: Could not retrieve OIDC token from metadata server. Are you running this script inside a GCP VM (e.g., test-vm-dev)?"
+  echo "Error: Could not retrieve a token from the metadata server. Are you running this script inside a GCP VM (e.g., test-vm-dev)?"
   exit 1
 fi
 echo "OK (${#TOKEN} chars)"

@@ -66,7 +66,7 @@ resource "google_project_iam_member" "agent_gateway_network_user" {
 }
 
 # 2a. Agent Connectivity Template (egress networking + private CA trust)
-# - Private ranges (esmeralda.internal -> Kong ILB) egress through the PSC network attachment.
+# - Private ranges (esmeralda.internal -> internal entry point ILB) egress through the PSC network attachment.
 # - Public Google APIs use Private Google Access automatically (never peer googleapis.com).
 # - TLS to *.esmeralda.internal is validated against the internal Root CA TrustConfig.
 # NOTE: ACTs are immutable while referenced by a gateway; changing one forces a gateway replace.

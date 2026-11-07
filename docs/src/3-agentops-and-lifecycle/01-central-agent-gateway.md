@@ -73,7 +73,7 @@ flowchart LR
 
     subgraph NET["Shared VPC (net-host project)"]
         DNS["Private DNS zone esmeralda.internal"]
-        ILB["Entry point internal HTTPS LB (*.esmeralda.internal cert) → Kong"]
+        ILB["Entry point internal HTTPS LB (*.esmeralda.internal cert, direct routing)"]
     end
 
     GAPI["Google APIs (Gemini, Telemetry, ...)"]
@@ -95,7 +95,7 @@ flowchart LR
 There are two kinds of destination:
 
 - **Public Google APIs** such as `us-central1-aiplatform.googleapis.com`. The gateway reaches them directly, and they present publicly trusted certificates.
-- **Private services** under `*.esmeralda.internal`, meaning the MCP tool servers and the A2A specialist. The gateway reaches them through a network attachment into the Shared VPC, where the entry point (an internal load balancer in front of Kong) presents a certificate signed by **our own private Root CA**.
+- **Private services** under `*.esmeralda.internal`, meaning the MCP tool servers and the A2A specialist. The gateway reaches them through a network attachment into the Shared VPC, where the entry point (an internal load balancer that routes each host straight to its Cloud Run service or Agent Runtime engine) presents a certificate signed by **our own private Root CA**.
 
 The second kind is why this guide spends so much time on certificates.
 
@@ -302,7 +302,7 @@ sequenceDiagram
     G-->>A: Response
 ```
 
-### 4.2 Orchestrator → specialist (private, through the entry point and Kong)
+### 4.2 Orchestrator → specialist (private, through the entry point)
 
 ```mermaid
 sequenceDiagram
@@ -310,10 +310,10 @@ sequenceDiagram
     participant O as cx-mortgage-orchestrator
     participant G as Agent Gateway
     participant D as Cloud DNS (esmeralda.internal, via DNS peering)
-    participant K as Entry point internal HTTPS LB (→ Kong)
+    participant K as Entry point internal HTTPS LB (direct)
     participant S as ai-coe-mortgage-specialist
 
-    O->>G: HTTPS to ai-coe-mortgage-specialist.esmeralda.internal
+    O->>G: HTTPS to ai-coe-mortgage-specialist.esmeralda.internal (Authorization: caller's access token)
     G-->>O: TLS cert signed by the gateway inspection root
     G->>G: Registry lookup + IAP iap.egressor check
     G->>D: Resolve host (dns_peering_config)
@@ -321,12 +321,12 @@ sequenceDiagram
     G->>K: Private IP, egress through the PSC network attachment
     K-->>G: *.esmeralda.internal leaf signed by the internal Root CA
     Note over G: Validates with the ACT tls_config TrustConfig
-    G->>K: Forward request
-    K->>S: Kong routes by Host header, adds a Google ID token for the upstream
+    G->>K: Forward request, Authorization header unchanged
+    K->>S: Routes by Host header: PSC NEG to Agent Runtime, host + path rewrite
     S-->>O: A2A response (back along the same path)
 ```
 
-The MCP tool calls (`legacy-dms`, `income-verification`, `corporate-email`) follow the same path as 4.2.
+The MCP tool calls (`legacy-dms`, `income-verification`, `corporate-email`) follow the same path as 4.2, except that the caller sends an ID token and the entry point routes the host to the Cloud Run service through a serverless NEG. The Agent Gateway passes the caller's `Authorization` header through unchanged, so each backend checks the real caller's own credential; nothing on the path swaps tokens. See [Entry point and gateways](../2-workloads-and-catalog/01-ingress-gateways.md).
 
 ---
 
@@ -459,11 +459,11 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 | 15 | L4 governance | `roles/iap.egressor` on the registry (`grant_iap_egress.sh`) | Authorizes the agents on the registered entries |
 | 16 | L4 governance | Trust bundle `agw_root_ca_bundle` + secret `agw-root-ca-cert-<env>` | What the agents must trust on leg 1 |
 | 17 | L5 workloads | MCP services on Cloud Run (internal-LB ingress) + registry entries `https://<svc>.esmeralda.internal/mcp` | Private tools, registered exactly |
-| 18 | L5 workloads | Gateway `gateways/kong` (Cloud Run + serverless NEG + backend service), then the `entrypoint` unit (URL map + HTTPS proxy with the L3 leaf + forwarding rule on the L2 IP) | The TLS endpoint behind `*.esmeralda.internal` and the routing to the gateway |
+| 18 | L5 workloads | `gateways/direct` (serverless NEGs + backend services per MCP service, PSC NEG to Agent Runtime) and any enabled adapter, then the `entrypoint` unit (URL map + HTTPS proxy with the L3 leaf + forwarding rule on the L2 IP) | The TLS endpoint behind `*.esmeralda.internal` and the routing to each backend |
 | 19 | L5 workloads | A2A specialist engine + its registry agent card | Reusable agent, callable through the gateway |
 | 20 | L5 workloads | Engines with `agent_gateway_config` + `AGENT_GATEWAY_ROOT_CERTIFICATES` env | Binds BYOC agents to the gateway with the right trust |
 | 21 | L5 workloads | `services/iap-egress` stack (runs `grant_iap_egress.sh` again) | Grants on the entries registered in L5 |
-| 22 | — | `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist through gateway, entry point and Kong |
+| 22 | — | `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist through gateway and entry point |
 
 ---
 

@@ -125,46 +125,36 @@ inputs = {
     dependency.security.outputs.mcp_invoker_sa_email
   ]
 
+  # Every catalog entry (env.yaml catalog), built from its unit's outputs (catalog unit => dependency
+  # below). Envoy swaps the caller's ID token for the upstream credential: an ID token for Cloud Run
+  # (audience = service URL), an access token for Agent Runtime (audience = the aiplatform API).
   agent_endpoints = {
-    # Agents
-    ai-coe-mortgage-specialist = {
-      logical_name = "ai-coe-mortgage-specialist"
-      engine_id    = dependency.ai_coe_mortgage_specialist.outputs.engine_id
-      endpoint_url = "${dependency.ai_coe_mortgage_specialist.outputs.endpoint_url}/a2a"
-      audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
-      probe        = "a2a"
-    }
-    cx-mortgage-orchestrator = {
-      logical_name = "cx-mortgage-orchestrator"
-      engine_id    = dependency.cx_mortgage_orchestrator.outputs.engine_id
-      endpoint_url = dependency.cx_mortgage_orchestrator.outputs.endpoint_url
-      audience     = "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
-      # Same path `esmeralda serve` exposes locally; Agent Runtime serves it as :streamQuery over SSE.
-      path_map  = { "/api/stream_reasoning_engine" = ":streamQuery?alt=sse" }
-      streaming = true
-      probe     = "query" # a real query through /api/stream_reasoning_engine
-    }
-    # MCP Servers
-    corporate-email = {
-      logical_name = "corporate-email"
-      engine_id    = dependency.corporate_email.outputs.service_name
-      endpoint_url = dependency.corporate_email.outputs.service_uri
-      audience     = dependency.corporate_email.outputs.service_uri
-      probe        = "mcp"
-    }
-    income-verification = {
-      logical_name = "income-verification"
-      engine_id    = dependency.income_verification.outputs.service_name
-      endpoint_url = dependency.income_verification.outputs.service_uri
-      audience     = dependency.income_verification.outputs.service_uri
-      probe        = "mcp"
-    }
-    legacy-dms = {
-      logical_name = "legacy-dms"
-      engine_id    = dependency.legacy_dms.outputs.service_name
-      endpoint_url = dependency.legacy_dms.outputs.service_uri
-      audience     = dependency.legacy_dms.outputs.service_uri
-      probe        = "mcp"
-    }
+    for name, entry in local.env_vars.locals.catalog : name => [
+      for unit in [{
+        "agents/ai-coe-mortgage-specialist" = dependency.ai_coe_mortgage_specialist.outputs
+        "agents/cx-mortgage-orchestrator"   = dependency.cx_mortgage_orchestrator.outputs
+        "services/corporate-email"          = dependency.corporate_email.outputs
+        "services/income-verification"      = dependency.income_verification.outputs
+        "services/legacy-dms"               = dependency.legacy_dms.outputs
+        }[entry.unit]] : {
+        logical_name = name
+        engine_id    = entry.kind == "mcp" ? try(unit.service_name, "") : try(unit.engine_id, "")
+        # A2A: card and RPC paths live under <engine>/a2a. ADK: path_map below.
+        endpoint_url = {
+          mcp = try(unit.service_uri, "")
+          a2a = "${try(unit.endpoint_url, "")}/a2a"
+          adk = try(unit.endpoint_url, "")
+        }[entry.kind]
+        audience = entry.kind == "mcp" ? try(unit.service_uri, "") : "https://${local.env_vars.locals.region}-aiplatform.googleapis.com"
+        # ADK: the path `esmeralda serve` exposes locally; Agent Runtime serves it as :streamQuery over SSE.
+        path_map = {
+          mcp = {}
+          a2a = {}
+          adk = { "/api/stream_reasoning_engine" = ":streamQuery?alt=sse" }
+        }[entry.kind]
+        streaming = entry.kind == "adk"
+        probe     = try(entry.probe, "none")
+      }
+    ][0]
   }
 }

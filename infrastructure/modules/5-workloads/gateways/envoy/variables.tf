@@ -1,5 +1,5 @@
 # --- INPUT VARIABLES CONTRACT ---
-# Same inputs as gateways/kong, plus the gateway service account and optional path_map/streaming per target.
+# Bring-your-own gateway adapter on Cloud Run: takes the gateway service account and per-target routing config.
 
 variable "project_id" {
   description = "The GCP project ID allocated for gateway ingress (esm-<env>-gateway-<sfx>)"

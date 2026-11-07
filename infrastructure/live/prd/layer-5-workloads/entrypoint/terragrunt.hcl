@@ -1,10 +1,11 @@
 # infrastructure/live/prd/layer-5-workloads/entrypoint/terragrunt.hcl
 # Layer 5 entry point: URL map + HTTPS proxy + forwarding rule for *.esmeralda.internal.
-# Routes every host to gateways.default and the hosts in gateways.host_rules to their gateway
-# (env.yaml). The reserved IP + DNS records come from layer 2, the certificate from layer 3.
-# Applied after the gateways: one dependency block per known gateway, enabled only when the
-# gateway is listed in gateways.enabled. Adding a gateway (e.g. apigee) = one more dependency
-# block below plus its entry in inputs.backends.
+# Serves every catalog host (env.yaml catalog) through gateways.default, and the hosts in
+# gateways.host_rules through their backend: "direct" (built-in, gateways/direct unit) or an enabled
+# adapter (gateways.enabled). The reserved IP + DNS records come from layer 2, the certificate from layer 3.
+# Applied after the backends: the direct unit always, plus one dependency block per known adapter,
+# enabled only when it is listed in gateways.enabled. Adding an adapter (e.g. apigee) = one more
+# dependency block below plus its entry in inputs.adapters.
 # Mocks below only serve `validate`/`plan` before the inputs exist; `apply` requires real outputs.
 include "root" {
   path = find_in_parent_folders("root.hcl")
@@ -44,17 +45,26 @@ dependency "security" {
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
-# --- Gateways (modules/5-workloads/gateways/*): each outputs backend_service_id ---
+# --- Built-in direct backends (modules/5-workloads/gateways/direct): per-host backends ---
 
-dependency "kong" {
-  config_path = "../gateways/kong"
-  enabled     = contains(local.env_vars.locals.gateways.enabled, "kong")
+dependency "direct" {
+  config_path = "../gateways/direct"
   mock_outputs = {
-    backend_service_id = "projects/mock/regions/us-central1/backendServices/mock-kong"
+    hosts = {
+      for name, entry in local.env_vars.locals.catalog : name => {
+        backend_service_id = "projects/mock/regions/us-central1/backendServices/mock-direct-${name}"
+        host_rewrite       = null
+        timeout_sec        = null
+        path_rewrites      = []
+      }
+    }
+    default_backend_service_id = "projects/mock/regions/us-central1/backendServices/mock-direct"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
+
+# --- Adapters (modules/5-workloads/gateways/*): each outputs backend_service_id ---
 
 dependency "envoy" {
   config_path = "../gateways/envoy"
@@ -77,11 +87,22 @@ inputs = {
   domain             = dependency.networking.outputs.entrypoint_domain
   ssl_certificate_id = dependency.security.outputs.entrypoint_ssl_certificate_id
 
-  # name => backend_service_id of every enabled gateway (a disabled dependency is never read).
-  # Validated by the module: default and every host_rules value must be an enabled gateway.
-  backends = {
+  # Catalog hosts and how each is probed; extra attributes (unit, callers, timeout) stay in env.yaml.
+  catalog = {
+    for name, entry in local.env_vars.locals.catalog : name => {
+      kind  = entry.kind
+      token = entry.token
+      probe = try(entry.probe, "none")
+    }
+  }
+
+  direct_hosts                      = dependency.direct.outputs.hosts
+  direct_default_backend_service_id = dependency.direct.outputs.default_backend_service_id
+
+  # name => backend_service_id of every enabled adapter (a disabled dependency is never read).
+  # Validated by the module: default and every host_rules value must be direct or an enabled adapter.
+  adapters = {
     for name, id in {
-      kong  = try(dependency.kong.outputs.backend_service_id, null)
       envoy = try(dependency.envoy.outputs.backend_service_id, null)
     } : name => id if contains(local.gateways.enabled, name)
   }

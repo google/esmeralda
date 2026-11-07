@@ -30,6 +30,17 @@ dependency "governance" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  catalog  = local.env_vars.locals.catalog
+  gateways = local.env_vars.locals.gateways
+  # This agent's catalog entry (env.yaml catalog), keyed by the unit's directory name.
+  name    = basename(get_terragrunt_dir())
+  callers = try(local.catalog[local.name].callers, [])
+  # Catalog hosts served by the built-in direct backend that take an access token (Agent Runtime):
+  # this agent calls them with an access token instead of an ID token (ACCESS_TOKEN_HOSTS).
+  access_token_names = [
+    for name, entry in local.catalog : name
+    if entry.token == "access" && lookup(local.gateways.host_rules, name, local.gateways.default) == "direct"
+  ]
 
   # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
   # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
@@ -54,12 +65,17 @@ inputs = {
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle
 
-  # The Envoy gateway's identity is added when envoy is in gateways.enabled (env.yaml).
-  invoker_service_accounts = concat([
-    dependency.security.outputs.test_vm_sa_email,
-    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-    dependency.security.outputs.kong_sa_email
-  ], contains(local.env_vars.locals.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, null)] : [])
+  # roles/aiplatform.user on this agent's project: the service accounts of the catalog callers; when an
+  # agent calls, also the identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared MCP invoker
+  # service account, whose access token reaches Agent Runtime through direct); and each enabled adapter.
+  invoker_service_accounts = distinct(compact(concat(
+    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
+    length([for caller in local.callers : caller if caller != "test-vm"]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
+  )))
+
+  # Agent hosts reached through direct take an OAuth2 access token (esmeralda.auth.token_kind).
+  access_token_hosts = [for name in local.access_token_names : "${name}.${dependency.networking.outputs.entrypoint_domain}"]
 
   # BYOC image from the shared layer-0 CI/CD project (resolved to a digest by the module)
   agent_image_uri = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"

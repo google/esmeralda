@@ -1,5 +1,5 @@
 # .cloudbuild/build-image.yaml
-# Env-neutral image build for every Esmeralda container (agents, MCP services, Kong, Envoy).
+# Env-neutral image build for every Esmeralda container (agents, MCP services, Envoy).
 #
 # Builds touch nothing env-specific: no Secret Manager, no Agent Registry, no CA bundle.
 # Env wiring (CA bundle, registry entries, IAM) happens at deploy time in Terraform, so the

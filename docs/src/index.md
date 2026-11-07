@@ -51,7 +51,7 @@ Application developers are further split into teams, and **each team owns its ow
 | **CX team** | User-facing **orchestrator** agents (Google ADK). They talk to the customer and *consume* reusable agents instead of rebuilding them. | `cx-mortgage-orchestrator` ([`apps/agents/cx-mortgage-orchestrator`](../../apps/agents/cx-mortgage-orchestrator/)) | `esm-<env>-cx-agents-<sfx>` |
 | **AI CoE team** | Reusable **specialist** agents published over the **A2A** (Agent-to-Agent) protocol, an open standard where an agent advertises its skills in an *agent card* and receives tasks over HTTP. Any team can call them. | `ai-coe-mortgage-specialist` ([`apps/agents/ai-coe-mortgage-specialist`](../../apps/agents/ai-coe-mortgage-specialist/)), skills: Document Search, Income Verification, Corporate Email | `esm-<env>-ai-coe-agents-<sfx>` |
 
-The specialist's agent card is registered in the central **Agent Registry** (governance project), and the orchestrator reaches it at `https://ai-coe-mortgage-specialist.esmeralda.internal` through the Agent Gateway, the private entry point and Kong. Neither team needs network or IAM access to the other's project.
+The specialist's agent card is registered in the central **Agent Registry** (governance project), and the orchestrator reaches it at `https://ai-coe-mortgage-specialist.esmeralda.internal` through the Agent Gateway and the private entry point. Neither team needs network or IAM access to the other's project.
 
 ---
 
@@ -66,7 +66,7 @@ sequenceDiagram
     participant Orch as cx-mortgage-orchestrator<br/>(CX team, Agent Runtime)
     participant AGW as Agent Gateway<br/>(Central Egress Proxy)
     participant Gemini as Gemini 3.7 Flash<br/>(Vertex AI API)
-    participant Kong as Entry point → Kong<br/>(internal HTTPS LB + gateway)
+    participant EP as Entry point<br/>(internal HTTPS LB, direct routing)
     participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE team, A2A)
     participant MCP as MCP Tools<br/>(Cloud Run)
     participant FinOps as Central Governance<br/>(Log Sinks & BigQuery)
@@ -77,15 +77,15 @@ sequenceDiagram
     Gemini-->>Orch: Decision: delegate to the specialist
 
     Note over Orch,Spec: Phase A — Governed A2A delegation
-    Orch->>AGW: A2A task to ai-coe-mortgage-specialist.esmeralda.internal
-    AGW->>Kong: Private egress (PSC attachment, private DNS, internal Root CA)
-    Kong->>Spec: Route by Host header (+ Google ID token)
+    Orch->>AGW: A2A task to ai-coe-mortgage-specialist.esmeralda.internal (caller's access token)
+    AGW->>EP: Private egress (PSC attachment, private DNS, internal Root CA)
+    EP->>Spec: Route by Host header (PSC NEG to Agent Runtime, path rewrite)
 
     Note over Spec,MCP: Phase B — Private tool execution
-    Spec->>AGW: Model calls and MCP calls (https://<svc>.esmeralda.internal/mcp)
+    Spec->>AGW: Model calls and MCP calls (https://<svc>.esmeralda.internal/mcp, caller's ID token)
     AGW->>Gemini: Reasoning
-    AGW->>Kong: MCP calls
-    Kong->>MCP: Legacy DMS, Income Verification, Corporate Email
+    AGW->>EP: MCP calls
+    EP->>MCP: Legacy DMS, Income Verification, Corporate Email (serverless NEGs)
 
     Spec-->>Orch: Structured assessment (back along the same path)
     Orch-->>User: Final response
@@ -127,8 +127,7 @@ flowchart LR
    Deploys the runtime applications, bound to the layer-4 gateway and registry:
    * **MCP Microservices** (Cloud Run, internal only): Corporate Email, Income Verification, Legacy DMS, each registered in the Agent Registry.
    * **AI Reasoning Engines** (Vertex AI Agent Engine, BYOC containers bound to the gateway): the CX team's orchestrator (`cx-mortgage-orchestrator`) consuming the AI CoE's reusable A2A specialist (`ai-coe-mortgage-specialist`; a Cloud SQL task store is provisioned but not yet enabled).
-   * **Entry point** (internal HTTPS load balancer on the Layer 2 IP, with the Layer 3 certificate): the private front door for `*.esmeralda.internal`, routing each host to an enabled gateway (`gateways` in `env.yaml`).
-   * **Kong** gateway (Cloud Run behind the entry point): routes by Host header to the MCP servers and agents.
+   * **Entry point** (internal HTTPS load balancer on the Layer 2 IP, with the Layer 3 certificate): the private front door for `*.esmeralda.internal`. It serves every host of the service catalog (`catalog` in `env.yaml`) through the built-in **`direct`** backend, straight to the MCP servers and agents with no proxy, or through an optional bring-your-own adapter such as Envoy (`gateways` in `env.yaml`).
    * **IAP egress grants** and a **test VM** for private smoke tests.
 
 ---
@@ -140,7 +139,7 @@ Deep-dive into specific areas of the platform:
 | Guide | Description | Key Topics |
 | :--- | :--- | :--- |
 | **[1. Platform Foundations](./1-platform-foundations/index.md)** | Core cloud landing zone and infrastructure specs. | [Projects & APIs](./1-platform-foundations/01-projects-and-finops.md), [Shared VPC Networking](./1-platform-foundations/02-private-networking.md), [Security, CMEK & IAM](./1-platform-foundations/03-security-iam-and-telemetry.md). |
-| **[2. Workloads & Catalog](./2-workloads-and-catalog/index.md)** | Runtimes, microservices, and AI engines. | [Ingress Gateways](./2-workloads-and-catalog/01-ingress-gateways.md), [MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md), [Reasoning Engines & Database](./2-workloads-and-catalog/03-ai-agents-and-database.md). |
+| **[2. Workloads & Catalog](./2-workloads-and-catalog/index.md)** | Runtimes, microservices, and AI engines. | [Entry point & gateways](./2-workloads-and-catalog/01-ingress-gateways.md), [MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md), [Reasoning Engines & Database](./2-workloads-and-catalog/03-ai-agents-and-database.md). |
 | **[3. AgentOps & Governance](./3-agentops-and-lifecycle/index.md)** | Enterprise governance, security, and observability. | [Central Agent Gateway](./3-agentops-and-lifecycle/01-central-agent-gateway.md), [Centralized Monitoring & FinOps Dashboards](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md), [Multi-repo SDLC, cross-team model & image promotion](./3-agentops-and-lifecycle/index.md). |
 | **[Contributing Guidelines](./contributing.md)** | Contribution process and local testing. | CLA, PR reviews, `make` test targets. |
 | **[Code of Conduct](./code-of-conduct.md)** | Community engagement standards. | Respect, inclusivity, and community ethics. |

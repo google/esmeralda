@@ -22,7 +22,7 @@ Esmeralda separates agent work between two application teams, each with its **ow
 | **CX team** | User-facing **orchestrator** agents (ADK). They own the conversation and *consume* reusable agents. | `cx-mortgage-orchestrator` | `esm-<env>-cx-agents-<sfx>` (label `team=cx`) |
 | **AI CoE team** | Reusable **A2A specialist** agents that any orchestrator can call over the A2A protocol. | `ai-coe-mortgage-specialist` | `esm-<env>-ai-coe-agents-<sfx>` (label `team=ai-coe`) |
 
-The orchestrator never calls the specialist directly: it calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and **Kong** (see [01. Central Agent Gateway §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). This lets the AI CoE team redeploy or scale its specialist without any change on the CX side.
+The orchestrator never calls the specialist directly: it calls `https://ai-coe-mortgage-specialist.esmeralda.internal`, and the request flows through the **Central Agent Gateway** and the private **entry point** (see [01. Central Agent Gateway §4.2](./01-central-agent-gateway.md#4-life-of-a-request)). This lets the AI CoE team redeploy or scale its specialist without any change on the CX side.
 
 ---
 
@@ -96,7 +96,7 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 | Blueprint Folder (Monorepo) | Target Production Git Repository | Deployment Endpoint |
 | :--- | :--- | :--- |
 | `infrastructure/modules/0-cicd/`<br/>`infrastructure/modules/1-projects/`<br/>`infrastructure/modules/2-networking/`<br/>`infrastructure/modules/3-security/`<br/>`infrastructure/modules/4-governance/`<br/>`infrastructure/modules/5-workloads/`<br/>`infrastructure/live/` | **`platform-infra-iac.git`** | GCP Projects, VPCs, KMS Keys, IAM Policies, and Terragrunt orchestrations |
-| `apps/services/kong/` | **`platform-infra-iac.git`** (or a dedicated `gateway-kong.git`) | Cloud Run Service: `kong-gateway-{env}` in `esm-<env>-gateway-<sfx>` |
+| `apps/services/envoy/` (optional adapter) | **`platform-infra-iac.git`** (or a dedicated `gateway-envoy.git`) | Cloud Run Service: `envoy-gateway-{env}` in `esm-<env>-gateway-<sfx>` (only when `envoy` is in `gateways.enabled`) |
 | `apps/services/corporate-email/` | **`mcp-corporate-email.git`** | Cloud Run Service: `corporate-email-{env}` in `esm-<env>-mcps-<sfx>` |
 | `apps/services/income-verification/` | **`mcp-income-verification.git`** | Cloud Run Service: `income-verification-{env}` in `esm-<env>-mcps-<sfx>` |
 | `apps/services/legacy-dms/` | **`mcp-legacy-dms.git`** | Cloud Run Service: `legacy-dms-{env}` in `esm-<env>-mcps-<sfx>` |
@@ -121,13 +121,22 @@ Terragrunt then builds every image URI from the Layer 0 repository outputs plus 
 
 #### 1. Tool Container Image (`live/<env>/layer-5-workloads/services/corporate-email/terragrunt.hcl`)
 ```hcl
+locals {
+  name    = basename(get_terragrunt_dir())                                      # catalog key: corporate-email
+  callers = try(local.env_vars.locals.catalog[local.name].callers, [])
+}
+
 inputs = {
-  container_image = "${<dev or release repository_url from layer-0-cicd>}/${local.image_ref}" # corporate-email@sha256:... or corporate-email:<tag>
-  invoker_service_accounts = [
-    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-    dependency.security.outputs.test_vm_sa_email,
-    dependency.security.outputs.kong_sa_email
-  ]
+  container_image   = "${<dev or release repository_url from layer-0-cicd>}/${local.image_ref}" # corporate-email@sha256:... or corporate-email:<tag>
+  internal_hostname = "${local.name}.${dependency.networking.outputs.entrypoint_domain}"        # Agent Registry URL
+
+  # run.invoker: the catalog callers' service accounts, the shared MCP invoker SA when an agent calls,
+  # and the SA of each enabled adapter.
+  invoker_service_accounts = distinct(compact(concat(
+    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
+    length([for caller in local.callers : caller if caller != "test-vm"]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
+  )))
 }
 ```
 
@@ -153,7 +162,7 @@ To maintain separation of concerns, Esmeralda maps roles to specific projects an
 | Engineering Team (`team` label) | Primary Role / Responsibility | Owned GCP Project | Target Infrastructure Resources |
 | :--- | :--- | :--- | :--- |
 | **NetOps** (`netops`) | Network architecture, routing, egress security. | `esm-<env>-net-host-<sfx>` | Shared VPC, Subnets, Cloud NAT, Private DNS (`esmeralda.internal.`), optional Secure Web Proxy (disabled in dev/prd). |
-| **PlatformOps** (`platformops`) | Ingress, routing, general automation. | `esm-<env>-gateway-<sfx>` | Entry point (internal HTTPS LB) + Kong on Cloud Run (gateways selected with the `gateways` block in `env.yaml`). |
+| **PlatformOps** (`platformops`) | Ingress, routing, general automation. | `esm-<env>-gateway-<sfx>` | Entry point (internal HTTPS LB) with the built-in `direct` backend, plus optional adapters such as Envoy on Cloud Run (`catalog` and `gateways` blocks in `env.yaml`). |
 | **SecOps & Governance** (`security-and-platformops`) | Agent egress control, key lifecycle, secrets, telemetry auditing. | `esm-<env>-governance-<sfx>` | Agent Gateway, Agent Registry, Model Armor, Cloud KMS, Secret Manager, BigQuery telemetry dataset, dashboards and alerts. |
 | **Platform Engineering** | CI/CD systems, container registries. | `esm-cicd-<sfx>` (shared, Layer 0) | Artifact Registry (`esmeralda-containers`, `esmeralda-containers-release`), Cloud Build, `sa-esmeralda-builder`, `sa-esmeralda-promoter`. |
 | **AppDev Tools Team** (`appdev-tools`) | Enterprise data connectors, backend integrations. | `esm-<env>-mcps-<sfx>` | Cloud Run MCP tool servers and their Agent Registry entries. |
@@ -189,10 +198,10 @@ sequenceDiagram
 1.  **Workload Request**: The CX team opens an architectural request for a new reusable specialist agent.
 2.  **Platform & Security Check**: PlatformOps and SecOps review billing allocations and verify the security posture of the new specialist.
 3.  **Infrastructure Provisioning**: PlatformOps uses Terragrunt to provision GCS buckets, the Cloud SQL PostgreSQL database (schema bootstrapped by a private Cloud Run job) and service accounts in `esm-<env>-ai-coe-agents-<sfx>`.
-4.  **Endpoint Handoff**: The AI CoE team deploys the specialist Reasoning Engine, which registers its **agent card** in the governance Agent Registry. PlatformOps re-applies Kong (`make deploy-gateway`) so the `ai-coe-mortgage-specialist.esmeralda.internal` Host route points at the new engine ID. The CX team receives only the stable URL `https://ai-coe-mortgage-specialist.esmeralda.internal` (set as `A2A_AGENT_URL` on the orchestrator).
+4.  **Endpoint Handoff**: The AI CoE team deploys the specialist Reasoning Engine, which registers its **agent card** in the governance Agent Registry. PlatformOps re-runs `make deploy-gateway` (applies `gateways/direct`) and `make deploy-entrypoint` so the `ai-coe-mortgage-specialist.esmeralda.internal` route points at the new engine ID. The CX team receives only the stable URL `https://ai-coe-mortgage-specialist.esmeralda.internal` (set as `A2A_AGENT_URL` on the orchestrator).
 5.  **Tool Request**: The CX team requests access to legacy data systems via an MCP tool.
 6.  **Tool Compilation & Deployment**: The AppDev Tools team writes the tool code, builds the container in `esm-cicd-<sfx>` and deploys it as a private Cloud Run service (internal-LB ingress) in `esm-<env>-mcps-<sfx>`, registered in Agent Registry as `https://<svc>.esmeralda.internal/mcp`.
-7.  **IAM Access Grant**: PlatformOps applies least-privilege `roles/run.invoker` bindings on the tool and re-runs the `services/iap-egress` stack (`make deploy-iap-egress`) so the agents' identities hold `roles/iap.egressor` on the new registry entry.
+7.  **IAM Access Grant**: PlatformOps adds the tool to the service catalog (`catalog` in `env.yaml`, with its `callers`), which drives the least-privilege `roles/run.invoker` bindings and the entry point route, and re-runs the `services/iap-egress` stack (`make deploy-iap-egress`) so the agents' identities hold `roles/iap.egressor` on the new registry entry.
 
 ---
 

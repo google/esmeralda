@@ -332,6 +332,8 @@ locals {
     EVENTS_TABLE_ID                 = "${replace(local.yaml_name, "-", "_")}_events"
     SERVICE_ACCOUNT_EMAIL           = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account
     AGENT_GATEWAY_ROOT_CERTIFICATES = var.agent_gateway_root_certificates
+    # Hosts the agent calls with an OAuth2 access token instead of an ID token (esmeralda.auth.token_kind)
+    ACCESS_TOKEN_HOSTS = join(",", var.access_token_hosts)
   }
 
   final_env_vars = merge(

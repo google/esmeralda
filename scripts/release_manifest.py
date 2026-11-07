@@ -21,11 +21,11 @@ it; scripts/verify_images.sh compares running workloads against it.
 
 Standard library only (runs with any python3, outside the uv workspace).
 
-  release_manifest.py write --out release/prd.yaml --version v1.1.0 --source-tag dev-abc1234 \
-      --source-commit <sha> --verified-env dev --verified-date 2026-01-31 --verified-result PASS \
-      --image kong-gateway=sha256:... [--image ...]
+  release_manifest.py write --out release/prd.yaml --version v1.1.0 --source-tag dev-abc1234 \\
+      --source-commit <sha> --verified-env dev --verified-date 2026-01-31 --verified-result PASS \\
+      --image envoy-gateway=sha256:... [--image ...]
   release_manifest.py get --manifest release/prd.yaml --key version
-  release_manifest.py get --manifest release/prd.yaml --image kong-gateway
+  release_manifest.py get --manifest release/prd.yaml --image envoy-gateway
 """
 
 from __future__ import annotations

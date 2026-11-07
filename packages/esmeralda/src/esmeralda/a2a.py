@@ -15,14 +15,16 @@
 """Calling another agent over A2A, through the gateway.
 
 ``remote_agent(name, url=...)`` returns an ADK ``RemoteA2aAgent`` to use as a sub-agent. Every
-request carries an ID token for ``url``'s origin (cached; skipped for local URLs) and an
-``X-API-Key`` with the calling agent's name. Every message carries A2A metadata with:
+request carries an access token or ID token for the host, see ``esmeralda.auth.token_kind``
+(cached; skipped for local URLs), and an ``X-API-Key`` with the calling agent's name. Every message
+carries A2A metadata with:
 
 * ``caller_context``: this agent's identity, for the callee's telemetry;
 * ``user_auth_token``: the end user's token, when the invocation has one.
 
 The agent card is fetched from ``<url>/v1/card``, and its RPC address is pinned to ``url``, so calls
-always go through the gateway address configured here, whatever address the card advertises.
+always go through the gateway address configured here, whatever address the card advertises. This
+is on purpose: an agent on Agent Runtime advertises the engine's own aiplatform URL in its card.
 """
 
 from __future__ import annotations
@@ -47,13 +49,15 @@ def request_metadata(invocation_context: Any, a2a_message: Any = None) -> dict[s
     return metadata
 
 
-def _auth_hook(url: str, api_key: str | None):
-    audience = None if auth.is_local(url) else auth.audience_for(url)
+def _auth_hook(url: str, api_key: str | None, token: str | None = None):
+    authenticated = not auth.is_local(url)
+    if authenticated:
+        auth.audience_for(url)  # fail fast on a relative URL
 
     async def add_headers(request: Any) -> None:
         request.headers[API_KEY_HEADER] = api_key or os.environ.get("AGENT_NAME") or "esmeralda-agent"
-        if audience:
-            request.headers["Authorization"] = f"Bearer {await auth.id_token_async(audience)}"
+        if authenticated:
+            request.headers["Authorization"] = f"Bearer {await auth.bearer_token_async(url, token)}"
 
     return add_headers
 
@@ -65,12 +69,20 @@ def remote_agent(
     description: str = "",
     api_key: str | None = None,
     timeout: float = 60.0,
+    token: str | None = None,
 ) -> Any:
-    """An ADK sub-agent that calls the A2A agent served at ``url`` (e.g. its gateway address)."""
+    """An ADK sub-agent that calls the A2A agent served at ``url`` (e.g. its gateway address).
+
+    ``token`` (``"id"`` or ``"access"``) overrides the bearer token kind; by default it is
+    ``esmeralda.auth.token_kind(url)``. The agent card's RPC addresses are pinned to ``url`` (the
+    card of an agent on Agent Runtime advertises the engine's own aiplatform URL).
+    """
     import httpx
     from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 
     base_url = url.rstrip("/")
+    if token is not None and token not in auth.TOKEN_KINDS:
+        raise ValueError(f"Unknown token kind {token!r}; expected one of {auth.TOKEN_KINDS}")
 
     class _GatewayRemoteA2aAgent(RemoteA2aAgent):
         def _validate_card_rpc_targets(self, agent_card: Any) -> None:
@@ -86,7 +98,7 @@ def remote_agent(
             super()._validate_card_rpc_targets(agent_card)
 
     client = httpx.AsyncClient(
-        event_hooks={"request": [_auth_hook(base_url, api_key)]},
+        event_hooks={"request": [_auth_hook(base_url, api_key, token)]},
         timeout=httpx.Timeout(timeout),
     )
     return _GatewayRemoteA2aAgent(

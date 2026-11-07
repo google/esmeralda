@@ -71,7 +71,8 @@ make query AGENT=cx-mortgage-orchestrator     # CX orchestrator -> specialist ->
 
 If you have a deployed `dev` environment, `make test-e2e ENV=dev` checks the
 specialist and then the orchestrator -> specialist path through the Agent
-Gateway and Kong.
+Gateway and the entry point, and `make test-gateway ENV=dev` probes every
+catalog host through the entry point, including a real orchestrator query.
 
 ## Working with AI coding agents
 

@@ -33,5 +33,4 @@ images:
   cx-mortgage-orchestrator: "sha256:c81ee39a41e89d7a9691d7406fec78907ebcfe5846cfd0c4f7579437f8d5df62"
   envoy-gateway: "sha256:48f11bdedabd1ce4a0647718857ef69f3291ce8f212d835d558c1a7540557009"
   income-verification-api: "sha256:7ad2b85e5b5dbf0e8aafd9dd2b665de4e08ad366f1e98b1fa96cfcc7cb9a5d3c"
-  kong-gateway: "sha256:504aec7688238e46ede1f7ba1a6b61cf74213415ca0e8568bdf85dda5d497c69"
   legacy-dms: "sha256:605f01ee74759ebd2111722cf18004d3d5b79244d57225ff805956d59585c59d"

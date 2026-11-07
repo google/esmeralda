@@ -93,9 +93,6 @@ check_engine() { # label engine_name image
 check_cloud_run "corporate-email-${ENV_NAME}"     "${MCPS_PROJECT}" corporate-email
 check_cloud_run "income-verification-${ENV_NAME}" "${MCPS_PROJECT}" income-verification-api
 check_cloud_run "legacy-dms-${ENV_NAME}"          "${MCPS_PROJECT}" legacy-dms
-if [[ "${ENABLED_GATEWAYS}" == *'"kong"'* ]]; then
-  check_cloud_run "kong-gateway-${ENV_NAME}" "${GATEWAY_PROJECT}" kong-gateway
-fi
 if [[ "${ENABLED_GATEWAYS}" == *'"envoy"'* ]]; then
   check_cloud_run "envoy-gateway-${ENV_NAME}" "${GATEWAY_PROJECT}" envoy-gateway
 fi

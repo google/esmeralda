@@ -12,16 +12,17 @@ Google Cloud. Agents run as bring-your-own-container images on Vertex AI Agent E
 Runtime) with a SPIFFE Agent Identity; all their egress goes through the Central Agent Gateway, which
 only allows destinations registered in the Agent Registry. Private destinations live under
 `*.esmeralda.internal` and reach an internal HTTPS load balancer (the **entry point**) that routes
-each host to a **gateway** (Kong today), which forwards to the agent or MCP server. The sample use
-case is a mortgage-underwriting assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls
-`ai-coe-mortgage-specialist` (A2A, AI CoE team project), which calls three MCP servers.
+each host to the built-in **`direct`** backend by default (or an optional gateway adapter such as
+Envoy), which forwards to the agent or MCP server. The sample use case is a mortgage-underwriting
+assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls `ai-coe-mortgage-specialist`
+(A2A, AI CoE team project), which calls three MCP servers.
 
 ## Repo map
 
 | Path | What lives there |
 |---|---|
 | `apps/agents/<agent>/` | Agent packages: `agent.yaml` (framework, env, `local_env`, agent card), `agent/`, `tests/`, `Dockerfile` |
-| `apps/services/<svc>/` | FastMCP servers (`corporate-email`, `income-verification`, `legacy-dms`) + `tools.json`; `kong/` is the custom Kong image |
+| `apps/services/<svc>/` | FastMCP servers (`corporate-email`, `income-verification`, `legacy-dms`) + `tools.json`; `envoy/` is the digest-pinned Envoy adapter image |
 | `packages/esmeralda/` | Runtime library shared by agents: `esmeralda run/serve/query`, auth, MCP/A2A clients, telemetry |
 | `infrastructure/modules/` | Terraform modules, one folder per layer (`0-cicd` … `5-workloads`) |
 | `infrastructure/live/` | Terragrunt units: `root.hcl`, `shared/layer-0-cicd`, `<env>/env.yaml` + `<env>/layer-*` (envs: `dev`, `prd`) |
@@ -38,16 +39,16 @@ Terragrunt `dependency` blocks; never reverse that direction.
 1. **L0 CI/CD** (`live/shared/layer-0-cicd`, shared by all envs): CI/CD project, dev + release Artifact Registry repos, builder/promoter SAs.
 2. **L1 Projects** → **L2 Networking** (Shared VPC, PSC, entry point IP + `esmeralda.internal` DNS) → **L3 Security** (IAM, service accounts, internal Root CA, entry point certificate).
 3. **L4 Governance**: Agent Gateway, Agent Registry, Model Armor, telemetry sinks, alerts, FinOps views.
-4. Images (`make build-images`), then **L5 Workloads** in this order: MCP services → agents → gateways (`gateways/kong`) → **entry point** (`entrypoint`) → `iap-egress` (+ `test-vm`).
+4. Images (`make build-images`), then **L5 Workloads** in this order: MCP services → agents → gateways (`gateways/direct` + any enabled adapter) → **entry point** (`entrypoint`) → `iap-egress` (+ `test-vm`).
 
 `make deploy-workloads` runs `terragrunt run --all apply` in `layer-5-workloads`, which derives that order from the dependency blocks.
 
 ## Invariants and contracts
 
-- **Gateway adapter contract.** A gateway module (`infrastructure/modules/5-workloads/gateways/<name>/`) outputs `backend_service_id` (a regional `INTERNAL_MANAGED` backend service) and `routes` (`host` + `probe` = `mcp`|`a2a`|`none` per host). It owns no load balancer, certificate or DNS. Any gateway change must pass `make test-gateway ENV=<env>`. See `docs/src/2-workloads-and-catalog/01-ingress-gateways.md`.
-- **`gateways` block in `infrastructure/live/<env>/env.yaml`:** `enabled` (deployed gateway units), `default` (receives every host), `host_rules` (host label or FQDN → gateway). `default` and every `host_rules` value must be in `enabled`; the entrypoint module validates this.
+- **Gateway adapter contract.** A gateway module (`infrastructure/modules/5-workloads/gateways/<name>/`) outputs `backend_service_id` (a regional `INTERNAL_MANAGED` backend service, or `null` for `direct`) and `routes` (`host` + `probe` = `mcp`|`a2a`|`query`|`none` per host, plus per-route `backend_service_id` and rewrite rules for `direct`). It owns no load balancer, certificate or DNS. Any gateway change must pass `make test-gateway ENV=<env>`. See `docs/src/2-workloads-and-catalog/01-ingress-gateways.md`.
+- **`catalog` and `gateways` blocks in `infrastructure/live/<env>/env.yaml`:** `catalog` declares every MCP service and agent (`kind`, `unit`, `token`, `probe`, `callers`); `gateways` sets `default` (`"direct"` or an enabled adapter), `enabled` (optional adapter units such as `"envoy"`), and `host_rules` (host label or FQDN → `"direct"` or an enabled adapter). The entrypoint module validates these.
 - **Hostnames.** Agents reach MCP servers and other agents only via `https://<name>.esmeralda.internal` (MCP at `/mcp`, A2A card at `/v1/card`). Never call `run.app` or Reasoning Engine URLs directly from agent code.
-- **Kong routes use agent engine IDs**: after an agent engine is recreated, re-run `make deploy-gateway ENV=<env>`.
+- **Gateway routes use agent engine IDs**: after an agent engine is recreated, re-run `make deploy-gateway ENV=<env>` and `make deploy-entrypoint ENV=<env>`.
 - **Images are deployed by digest, never by tag.** `make test-terraform` fails on `image = var.…`; `make verify-images` checks running digests. Images contain no certificates (injected at deploy time), so one digest is promoted from dev to prd (`make promote TAG=vX.Y.Z`).
 - **Python is one uv workspace** (root `pyproject.toml`, single `uv.lock`). The Makefile exports `UV_FROZEN=1`: never run `uv lock` or `uv add` locally. Edit `pyproject.toml`, then `make lock` (runs `uv lock` in Cloud Build against public PyPI and writes `uv.lock` back) and commit `uv.lock`. `make lock-check` (also the pre-push hook and a PR workflow) fails on a stale lock.
 - **Terragrunt env vars** read by every `env.yaml`: `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional). Export them in your shell; never write them into a file in the repo.
@@ -71,7 +72,7 @@ Run `make help` for all targets. Most take `ENV=<env>` (default `dev`).
 | `make run-mcp-local` | The three MCP servers start on ports 8001-8003 |
 | `make deploy-<layer> ENV=<env>` | Applies one layer (`cicd`, `projects`, `networking`, `security`, `governance`, `workloads`) |
 | `make test-gateway ENV=<env>` | Every gateway route host answers through the entry point, from the test VM |
-| `make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=<env>` | The deployed orchestrator answers a real query end to end (Agent Gateway → entry point → Kong → specialist → MCP) |
+| `make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=<env>` | The deployed orchestrator answers a real query end to end (Agent Gateway → entry point → specialist → MCP) |
 | `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist, both deployed |
 | `make lock [PKG=...]` | Regenerates `uv.lock` in Cloud Build (needs `gcloud` access to the CI/CD project) |
 

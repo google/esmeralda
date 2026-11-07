@@ -43,4 +43,4 @@ specialist = a2a.remote_agent("mortgage_tools_agent", url=os.environ["A2A_AGENT_
 - `make test-agents`: agent + library unit tests.
 - `make query AGENT=<dir>`: in-process query with the local MCP servers started for you. `make serve AGENT=<dir> [WEB=1]`: local server as in the container.
 - After deploying: `make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=<env>` must return an answer.
-- A new agent also needs: a workspace member entry, `build-<agent>` / `deploy-<agent>` Make targets, a unit under `infrastructure/live/<env>/layer-5-workloads/agents/`, and (if called by other agents) a Kong route.
+- A new agent also needs: a workspace member entry, `build-<agent>` / `deploy-<agent>` Make targets, a unit under `infrastructure/live/<env>/layer-5-workloads/agents/`, and an entry in `env.yaml` `catalog` (+ dependency in `gateways/direct`).

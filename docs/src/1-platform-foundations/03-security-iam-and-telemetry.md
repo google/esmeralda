@@ -52,10 +52,10 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 * **In Esmeralda:** both agents run with Agent Identity (the default, `enable_agent_identity = true`). Because the CX and AI CoE agents live in separate projects, each team's agents get their **own** `principalSet`, so Layer 3 can grant the CX orchestrator and the AI CoE specialist different permissions. This identity is also the "who" the Agent Gateway authorizes (`roles/iap.egressor`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#32-agent-identity-spiffe).
 * **Decision:** Provision isolated service accounts per workload instead of one shared SA:
   1. `sa-esmeralda-mcps-<env>`: Cloud Run MCP tool execution.
-  2. `sa-mcp-invoker-<env>`: the only identity with `roles/run.invoker` on the MCPs project. Agents **impersonate** it to mint Google ID tokens for MCP calls; it is also on Kong's Cloud Run invoker list.
+  2. `sa-mcp-invoker-<env>`: the only identity with `roles/run.invoker` on the MCPs project. Agents **impersonate** it to mint Google ID tokens for MCP calls (and access tokens for A2A calls to agent hosts served by the built-in `direct` backend); the MCP servers see it as the caller.
   3. `sa-ai-coe-mortgage-spec-<env>`: AI CoE specialist. Used as the Cloud SQL IAM database user and by the database bootstrap job; runtime fallback if Agent Identity is disabled.
   4. `sa-cx-mortgage-orch-<env>`: CX orchestrator. Runtime fallback if Agent Identity is disabled.
-  5. `sa-esmeralda-kong-<env>` / `sa-esmeralda-envoy-<env>`: Kong and Envoy gateway runtimes (each used when its gateway is in `gateways.enabled`).
+  5. `sa-esmeralda-envoy-<env>`: Envoy adapter runtime (used when `envoy` is in `gateways.enabled`). The former Kong service account (`sa-esmeralda-kong-<env>`) is gone with Kong; the default `direct` backend has no runtime identity.
   6. `sa-esmeralda-test-vm-<env>`: Private test VM identity with scoped invoker permissions.
 
   The CI/CD identities `sa-esmeralda-builder` and `sa-esmeralda-promoter` are created in the shared Layer 0 project, not here.
@@ -73,7 +73,6 @@ flowchart TD
 
     subgraph GW["esm-env-gateway-sfx"]
         CA["Secret esmeralda-internal-root-ca-env<br/>(public Root CA cert only)"]
-        KongSA["SA: sa-esmeralda-kong-env"]
         Leaf["Regional SSL cert cert-esmeralda-ilb-*<br/>(entry point leaf)"]
     end
 
@@ -112,9 +111,10 @@ flowchart TD
 | **`sa-mcp-invoker-<env>`** | `esm-<env>-mcps-<sfx>` | `run.invoker` on the MCPs project. Both agent `principalSet`s hold `iam.serviceAccountTokenCreator` on it | Identity agents impersonate to call MCP tools. |
 | **`sa-ai-coe-mortgage-spec-<env>`** | `esm-<env>-ai-coe-agents-<sfx>` | `cloudsql.client`, `cloudsql.instanceUser`, `aiplatform.user`, `storage.objectAdmin`, `telemetry.writer`, logging/monitoring/trace writers, `secretmanager.secretAccessor` (on the PG secret); `compute.networkUser` on the core subnet | AI CoE specialist: Cloud SQL IAM user & bootstrap job. |
 | **`sa-cx-mortgage-orch-<env>`** | `esm-<env>-cx-agents-<sfx>` | `aiplatform.user`, `storage.objectAdmin`, `telemetry.writer`, logging/monitoring/trace writers; `compute.networkUser` on the core subnet; `iam.serviceAccountTokenCreator` on the specialist SA | CX orchestrator (fallback runtime identity). |
-| **`sa-esmeralda-kong-<env>`** | `esm-<env>-gateway-<sfx>` | `aiplatform.user`, `run.invoker`, logging/monitoring/trace writers | Kong on Cloud Run. |
 | **`sa-esmeralda-envoy-<env>`** | `esm-<env>-gateway-<sfx>` | `aiplatform.user`, `run.invoker`, logging/monitoring/trace writers; when `envoy` is enabled, Layer 5 adds it as invoker of the MCP services and the specialist, and grants it `aiplatform.user` in the CX agents project | Envoy on Cloud Run. |
 | **`sa-esmeralda-test-vm-<env>`** | `esm-<env>-cx-agents-<sfx>` | `run.invoker` (on the MCPs & AI CoE projects), `aiplatform.user`, logging/monitoring/trace writers, `iam.serviceAccountTokenCreator` (on self) | Private test VM debugging & testing. |
+
+Invoke rights on individual MCP services and agents also come from the `callers` list of each [service catalog](../2-workloads-and-catalog/01-ingress-gateways.md#1-the-service-catalog) entry, granted in Layer 5. When the callers include an agent, the unit also adds `sa-mcp-invoker-<env>` to the target's invokers: `roles/run.invoker` on an MCP service, and `roles/aiplatform.user` on the callee agent's project (granted by the a2a-agent module through `invoker_service_accounts`) for A2A over `direct`.
 
 ---
 

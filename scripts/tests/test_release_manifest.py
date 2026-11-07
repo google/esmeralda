@@ -39,7 +39,7 @@ def _render(**overrides):
         verified_env="dev",
         verified_date="2026-01-30",
         verified_result="PASS",
-        images={"kong-gateway": D1, "corporate-email": D2},
+        images={"envoy-gateway": D1, "corporate-email": D2},
     )
     kwargs.update(overrides)
     return rm.render(**kwargs)
@@ -55,7 +55,7 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(data["promoted_at"], "2026-01-31T12:34:56Z")
         self.assertEqual(data["repository"], "release")
         self.assertEqual(data["verified"], {"environment": "dev", "date": "2026-01-30", "result": "PASS"})
-        self.assertEqual(data["images"], {"corporate-email": D2, "kong-gateway": D1})
+        self.assertEqual(data["images"], {"corporate-email": D2, "envoy-gateway": D1})
 
     def test_images_sorted_and_deterministic(self):
         text = _render(images={"zeta": D1, "alpha": D2})
@@ -74,7 +74,7 @@ class RenderTest(unittest.TestCase):
         except ImportError:
             self.skipTest("PyYAML not installed")
         data = yaml.safe_load(_render())
-        self.assertEqual(data["images"]["kong-gateway"], D1)
+        self.assertEqual(data["images"]["envoy-gateway"], D1)
         self.assertEqual(data["verified"]["result"], "PASS")
 
     def test_rejects_bad_fields(self):
@@ -86,7 +86,7 @@ class RenderTest(unittest.TestCase):
             dict(verified_date="2026-13-01"),
             dict(verified_result="FAIL"),
             dict(images={}),
-            dict(images={"kong-gateway": "sha256:short"}),
+            dict(images={"envoy-gateway": "sha256:short"}),
             dict(images={"Bad_Name": D1}),
             dict(promoted_at=dt.datetime(2026, 1, 31)),
         ]
@@ -121,7 +121,7 @@ class CliTest(unittest.TestCase):
             code, _ = self._run(
                 "write", "--out", path, "--version", "v2.0.0", "--source-tag", "dev-1234567",
                 "--source-commit", "1234567", "--verified-date", "2026-01-30",
-                "--image", f"legacy-dms={D1}", "--image", f"kong-gateway={D2}",
+                "--image", f"legacy-dms={D1}", "--image", f"envoy-gateway={D2}",
             )
             self.assertEqual(code, 0)
             self.assertEqual(self._run("get", "--manifest", path, "--key", "version"), (0, "v2.0.0"))

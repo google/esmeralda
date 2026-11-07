@@ -16,8 +16,8 @@
 
 ``toolset(url, prefix=...)`` returns an ``McpToolset`` (streamable HTTP) whose every request carries:
 
-* ``Authorization: Bearer <ID token>`` for the server's origin (cached, see ``esmeralda.auth``);
-  skipped for local servers;
+* ``Authorization: Bearer <token>``: an ID token for the server's origin, or an access token for
+  hosts that take one (cached, see ``esmeralda.auth.token_kind``); skipped for local servers;
 * ``User-Auth-Token``: the end user's token for this invocation, when there is one
   (``esmeralda.context.user_token``);
 * ``X-API-Key``: the calling agent's name (the gateway rate-limits per key).
@@ -37,17 +37,20 @@ USER_TOKEN_HEADER = "User-Auth-Token"
 API_KEY_HEADER = "X-API-Key"
 
 
-def headers_for(url: str, ctx: Any = None, *, api_key: str | None = None) -> dict[str, str]:
-    """The request headers for one call to the MCP server at ``url``."""
+def headers_for(url: str, ctx: Any = None, *, api_key: str | None = None, token: str | None = None) -> dict[str, str]:
+    """The request headers for one call to the MCP server at ``url``.
+
+    ``token`` (``"id"`` or ``"access"``) overrides ``esmeralda.auth.token_kind(url)``.
+    """
     headers = _static_headers(api_key)
     if not auth.is_local(url):
         try:
-            headers["Authorization"] = f"Bearer {auth.id_token(auth.audience_for(url))}"
+            headers["Authorization"] = f"Bearer {auth.bearer_token(url, token)}"
         except Exception:
-            logger.exception("No ID token for %s; calling it without one", url)
-    token = context.user_token(ctx) if ctx is not None else None
-    if token:
-        headers[USER_TOKEN_HEADER] = token
+            logger.exception("No bearer token for %s; calling it without one", url)
+    user_token = context.user_token(ctx) if ctx is not None else None
+    if user_token:
+        headers[USER_TOKEN_HEADER] = user_token
     return headers
 
 
@@ -58,9 +61,14 @@ def toolset(
     api_key: str | None = None,
     timeout: float = 30.0,
     sse_read_timeout: float = 300.0,
+    token: str | None = None,
     **kwargs: Any,
 ) -> Any:
-    """An ADK ``McpToolset`` for the MCP server at ``url``; tool names get ``<prefix>_``."""
+    """An ADK ``McpToolset`` for the MCP server at ``url``; tool names get ``<prefix>_``.
+
+    ``token`` (``"id"`` or ``"access"``) overrides the bearer token kind (default
+    ``esmeralda.auth.token_kind(url)``).
+    """
     from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 
     return McpToolset(
@@ -70,7 +78,7 @@ def toolset(
             timeout=timeout,
             sse_read_timeout=sse_read_timeout,
         ),
-        header_provider=lambda ctx: headers_for(url, ctx, api_key=api_key),
+        header_provider=lambda ctx: headers_for(url, ctx, api_key=api_key, token=token),
         tool_name_prefix=prefix,
         **kwargs,
     )

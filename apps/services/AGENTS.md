@@ -1,8 +1,8 @@
 # apps/services/AGENTS.md
 
 Local rules for MCP tool servers. The root `AGENTS.md` still applies. Background:
-`docs/src/2-workloads-and-catalog/02-mcp-tool-servers.md`. `kong/` is the custom Kong image (see
-its `README.md`), not an MCP server.
+`docs/src/2-workloads-and-catalog/02-mcp-tool-servers.md`. `envoy/` is the digest-pinned Envoy
+adapter image (see its `README.md`), not an MCP server.
 
 ## Server conventions
 
