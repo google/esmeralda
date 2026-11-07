@@ -53,8 +53,8 @@ output "proxy_runtime_sa_email" {
 }
 
 output "entrypoint_target_server_name" {
-  description = "Name of the southbound Apigee target server pointing to the Esmeralda entrypoint (null when entrypoint_service_attachment is unset)."
-  value       = var.entrypoint_service_attachment != null ? google_apigee_target_server.entrypoint[0].name : null
+  description = "Name of the southbound Apigee target server pointing to the Esmeralda entrypoint or regional Vertex AI endpoint."
+  value       = google_apigee_target_server.entrypoint.name
 }
 
 output "entrypoint_endpoint_attachment_host" {

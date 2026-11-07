@@ -74,6 +74,11 @@ resource "google_apigee_api_product" "product" {
     name  = "llm_quota_time_unit"
     value = each.value.llm_quota_time_unit
   }
+
+  attributes {
+    name  = "llm_quota_timeunit"
+    value = each.value.llm_quota_time_unit
+  }
 }
 
 # ====================================================================

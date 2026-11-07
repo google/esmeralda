@@ -210,3 +210,42 @@ def test_non_streaming_json_response() -> None:
     assert state["llm.candidatesTokenCount"] == 34
     assert state["llm.totalTokenCount"] == state["llm.promptTokenCount"] + state["llm.candidatesTokenCount"]
     assert state["llm.totalTokenCount"] == 154
+
+
+def test_ndjson_stream_query_response() -> None:
+    """Verifies multi-line NDJSON response from Vertex AI Reasoning Engine :streamQuery extracts tokens."""
+    ndjson_body = "\r\n".join(
+        [
+            json.dumps(
+                {
+                    "model_version": "gemini-3.7-flash",
+                    "usage_metadata": {
+                        "prompt_token_count": 303,
+                        "candidates_token_count": 25,
+                        "total_token_count": 391,
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "content": {
+                        "parts": [{"text": "Julian Sterling's income is verified at $92,000."}],
+                        "role": "model",
+                    }
+                }
+            ),
+        ]
+    )
+    state = _run_apigee_js(
+        EXTRACT_TOKENS_JS,
+        {
+            "response.header.Content-Type": "application/json",
+            "response.content": ndjson_body,
+        },
+    )
+    assert state["isFinal"] is True
+    assert state["llm.model"] == "gemini-3.7-flash"
+    assert state["llm.promptTokenCount"] == 303
+    assert state["llm.candidatesTokenCount"] == 25
+    assert state["llm.totalTokenCount"] == 328
+

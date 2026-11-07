@@ -149,6 +149,7 @@ trap 'rm -f "${REMOTE}"' EXIT
   printf 'PARTNER_HOST=%q\n' "${PARTNER_HOST}"
   printf 'PARTNER_KEY=%q\n' "${PARTNER_KEY}"
   printf 'CA_PEM=%q\n' "${CA_PEM}"
+  printf 'ESMERALDA_TEST_QUOTA_EXHAUSTION=%q\n' "${ESMERALDA_TEST_QUOTA_EXHAUSTION:-0}"
   cat <<'REMOTE_EOF'
 set -euo pipefail
 WORK="$(mktemp -d)"
@@ -184,11 +185,12 @@ echo "  ✅ Probe 3: Unallowlisted MCP tool call rejected with HTTP 403"
 # Probe 4: Partner key -> cx-mortgage-orchestrator :streamQuery -> TTFB streaming + real answer
 timing="$(curl "${CURL_BASE[@]}" -N -o "${WORK}/p4.out" -w '%{http_code} %{time_starttransfer} %{time_total}' -m 180 \
   -X POST -H "x-api-key: ${PARTNER_KEY}" -H "Content-Type: application/json" -H "Accept: text/event-stream" \
-  -d '{"input":{"messages":[{"role":"user","content":"Can you verify Julian Sterling'\''s income?"}]}}' \
+  -d '{"class_method":"async_stream_query","input":{"message":"Can you verify Julian Sterling'\''s income?","user_id":"partner-smoke-test"}}' \
   "https://${PARTNER_HOST}/partner/v1/agents/cx-mortgage-orchestrator:streamQuery?alt=sse")"
 read -r code4 ttfb total <<< "${timing}"
 [ "${code4}" = "200" ] || { echo "❌ Probe 4 expected HTTP 200, got ${code4}"; cat "${WORK}/p4.out"; exit 1; }
 [ -s "${WORK}/p4.out" ] || { echo "❌ Probe 4 returned an empty response body"; exit 1; }
+grep -qi "Sterling" "${WORK}/p4.out" || { echo "❌ Probe 4 response did not contain Julian Sterling verification"; cat "${WORK}/p4.out"; exit 1; }
 awk -v ttfb="${ttfb}" -v total="${total}" 'BEGIN { if (ttfb <= 0 || ttfb > total) exit 1 }' || {
   echo "❌ Probe 4 invalid TTFB metrics (ttfb=${ttfb}s, total=${total}s)"
   exit 1
@@ -201,7 +203,7 @@ if [ "${ESMERALDA_TEST_QUOTA_EXHAUSTION:-0}" = "1" ]; then
   for _ in $(seq 1 25); do
     c="$(curl "${CURL_BASE[@]}" -o /dev/null -w '%{http_code}' -m 60 \
       -X POST -H "x-api-key: ${PARTNER_KEY}" -H "Content-Type: application/json" \
-      -d '{"input":{"messages":[{"role":"user","content":"Quota probe"}]}}' \
+      -d '{"class_method":"async_stream_query","input":{"message":"Quota probe","user_id":"partner-smoke-test"}}' \
       "https://${PARTNER_HOST}/partner/v1/agents/cx-mortgage-orchestrator:streamQuery?alt=sse")"
     if [ "${c}" = "429" ]; then
       got_429=1

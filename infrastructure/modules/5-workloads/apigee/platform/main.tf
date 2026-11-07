@@ -100,7 +100,7 @@ resource "google_apigee_organization" "org" {
 }
 
 resource "google_apigee_addons_config" "org_addons" {
-  count = var.byo_apigee_org ? 0 : 1
+  count = !var.byo_apigee_org && var.enable_analytics ? 1 : 0
   org   = google_apigee_organization.org[0].name
 
   addons_config {
@@ -108,6 +108,10 @@ resource "google_apigee_addons_config" "org_addons" {
       enabled = var.enable_analytics
     }
   }
+
+  depends_on = [
+    google_apigee_instance.instance,
+  ]
 }
 
 # ====================================================================
@@ -122,6 +126,12 @@ resource "google_apigee_instance" "instance" {
   location                 = var.region
   consumer_accept_list     = local.consumer_accept_list
   disk_encryption_key_name = local.use_cmek ? google_kms_crypto_key.instance_disk[0].id : null
+
+  lifecycle {
+    ignore_changes = [
+      consumer_accept_list,
+    ]
+  }
 
   depends_on = [
     google_kms_crypto_key_iam_member.instance_disk,
@@ -209,11 +219,9 @@ resource "google_apigee_endpoint_attachment" "entrypoint" {
 }
 
 resource "google_apigee_target_server" "entrypoint" {
-  count = var.entrypoint_service_attachment != null ? 1 : 0
-
   name   = "ts-esmeralda-entrypoint"
   env_id = google_apigee_environment.env.id
-  host   = google_apigee_endpoint_attachment.entrypoint[0].host
+  host   = var.entrypoint_service_attachment != null ? google_apigee_endpoint_attachment.entrypoint[0].host : "${var.region}-aiplatform.googleapis.com"
   port   = 443
 
   s_sl_info {
@@ -238,4 +246,10 @@ resource "google_service_account_iam_member" "apigee_service_agent_token_creator
   service_account_id = google_service_account.apigee_proxy_runtime.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${local.apigee_service_agent}"
+}
+
+resource "google_project_iam_member" "apigee_proxy_runtime_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.apigee_proxy_runtime.email}"
 }

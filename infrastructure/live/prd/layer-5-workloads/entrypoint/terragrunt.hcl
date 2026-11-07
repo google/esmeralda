@@ -76,6 +76,16 @@ dependency "envoy" {
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
+dependency "apigee" {
+  config_path = "../apigee/platform"
+  enabled     = contains(local.env_vars.locals.gateways.enabled, "apigee") || (try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee")
+  mock_outputs = {
+    backend_service_id = "projects/mock/regions/us-central1/backendServices/mock-apigee"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_merge_strategy_with_state  = "shallow"
+}
+
 inputs = {
   project_id  = dependency.projects.outputs.gateway_project_id
   environment = local.env_vars.locals.environment
@@ -103,9 +113,13 @@ inputs = {
   # Validated by the module: default and every host_rules value must be direct or an enabled adapter.
   adapters = {
     for name, id in {
-      envoy = try(dependency.envoy.outputs.backend_service_id, null)
-    } : name => id if contains(local.gateways.enabled, name)
+      envoy  = try(dependency.envoy.outputs.backend_service_id, null)
+      apigee = try(dependency.apigee.outputs.backend_service_id, null)
+    } : name => id if contains(local.gateways.enabled, name) || (name == "apigee" && try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee")
   }
   default_backend = local.gateways.default
-  host_rules      = local.gateways.host_rules
+  host_rules = merge(
+    try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee" ? { "partner" = "apigee" } : {},
+    local.gateways.host_rules
+  )
 }

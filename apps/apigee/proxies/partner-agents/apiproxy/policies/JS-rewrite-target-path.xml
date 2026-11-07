@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<Javascript name="JS-rewrite-target-path" timeLimit="200" continueOnError="false" enabled="true">
+  <DisplayName>JS-rewrite-target-path</DisplayName>
+  <ResourceURL>jsc://rewrite-target-path.js</ResourceURL>
+</Javascript>

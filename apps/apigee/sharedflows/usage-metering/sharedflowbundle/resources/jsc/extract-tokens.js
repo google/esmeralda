@@ -27,7 +27,22 @@
       return [];
     }
     if (text.charAt(0) === '{') {
-      return [text];
+      try {
+        JSON.parse(text);
+        return [text];
+      } catch (_ndjsonErr) {
+        var ndLines = text.split(/\r?\n/);
+        var ndPayloads = [];
+        for (var n = 0; n < ndLines.length; n++) {
+          var nl = ndLines[n].trim();
+          if (nl.charAt(0) === '{') {
+            ndPayloads.push(nl);
+          }
+        }
+        if (ndPayloads.length > 0) {
+          return ndPayloads;
+        }
+      }
     }
     var payloads = [];
     var blocks = text.split(/\r?\n\r?\n/);
@@ -188,14 +203,22 @@
         fin = true;
       }
 
+      function toIntVar(val) {
+        var rounded = Math.round(Number(val));
+        if (typeof java !== 'undefined' && java.lang && java.lang.Integer) {
+          return java.lang.Integer.valueOf(rounded);
+        }
+        return rounded;
+      }
+
       if (inTok != null) {
-        context.setVariable('llm.promptTokenCount', inTok);
+        context.setVariable('llm.promptTokenCount', toIntVar(inTok));
       }
       if (outTok != null) {
-        context.setVariable('llm.candidatesTokenCount', outTok);
+        context.setVariable('llm.candidatesTokenCount', toIntVar(outTok));
       }
       if (totalTok != null) {
-        context.setVariable('llm.totalTokenCount', totalTok);
+        context.setVariable('llm.totalTokenCount', toIntVar(totalTok));
       }
       if (fin) {
         context.setVariable('isFinal', true);

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<KeyValueMapOperations name="KVM-Get-Agent-Config" mapIdentifier="kvm-partner-agents" continueOnError="true" enabled="true">
+  <DisplayName>KVM-Get-Agent-Config</DisplayName>
+  <Scope>environment</Scope>
+  <Get assignTo="agent.orchestrator.engine_id">
+    <Key>
+      <Parameter>orchestrator_engine_id</Parameter>
+    </Key>
+  </Get>
+</KeyValueMapOperations>
