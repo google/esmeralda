@@ -6,7 +6,17 @@ The operational runtime shared by every Esmeralda agent on Agent Runtime:
 - `EsmeraldaTelemetryPlugin`, for caller context and telemetry in every serving mode;
 - `create_app()`;
 - `esmeralda serve`, the same server locally and in the container (ADK or A2A, from `agent.yaml`);
-- `esmeralda query`, one client for ADK and A2A agents: in-process, on a server, or on Agent Runtime.
+- `esmeralda query`, one client for ADK and A2A agents: in-process, on a server, or on Agent Runtime;
+- `esmeralda mcp`, a read-only MCP server (stdio) that lets any coding agent operate a checkout with few
+  tokens: `status`, `list_units`, `plan_unit`, `query_agent`, `test_gateway`, `agent_logs`, `describe_contracts`.
+
+MCP client configuration (run from the repository root; `fastmcp` comes from the workspace lock):
+
+```json
+{"mcpServers": {"esmeralda": {"command": "uv", "args": ["run", "--frozen", "--all-packages", "esmeralda", "mcp"]}}}
+```
+
+See [Operating a checkout from an agent](../../docs/src/4-esmeralda-library/guide.md#operating-a-checkout-from-an-agent-esmeralda-mcp).
 
 Documentation (also published on the docs site under **Esmeralda Library**):
 

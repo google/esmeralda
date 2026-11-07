@@ -249,6 +249,27 @@ esmeralda serve [--agent-dir DIR] [--host HOST] [--port PORT] [--local] [--web] 
 
 ADK agents: replaces itself with `adk api_server <dir> --host --port --no-reload --gemini_enterprise_app_name agent [--otel_to_cloud]`. A2A agents: runs uvicorn with `esmeralda.serve.a2a_server(config)`. Exit code `2` for a usage or configuration error.
 
+```text
+esmeralda mcp [--repo PATH]
+```
+
+Read-only MCP server on stdio (`fastmcp`). The repository root is `--repo`, else `ESMERALDA_REPO`, else the checkout containing the working directory (the first parent with `infrastructure/live/root.hcl`). Exit code `2` when there is no checkout or `fastmcp` is not installed. Tools: see [Operating a checkout from an agent](guide.md#operating-a-checkout-from-an-agent-esmeralda-mcp).
+
+## `esmeralda.ops`
+
+The functions behind `esmeralda mcp`, usable from scripts. Each returns a small JSON-serialisable dict and raises `esmeralda.ops.OpsError` with an actionable message.
+
+| Name | Description |
+|---|---|
+| `repo.repo_root(start=None)` | `ESMERALDA_REPO`, else the nearest checkout at or above `start` (default: cwd) |
+| `repo.units(root, env)` / `repo.unit_state(root, env, unit)` | Unit paths of an env; a unit's non-sensitive outputs and managed resource count (local state, else `terragrunt output -json`) |
+| `infra.status(root, env, unit=None)` / `infra.list_units(root, env)` | The `status` and `list_units` tools |
+| `infra.plan_unit(root, env, unit)` / `infra.summarize_plan(plan_json)` | Read-only plan of a unit; the summary of a `terraform show -json` plan document |
+| `runtime.query_agent(root, env, agent, message)` (async) / `runtime.test_gateway(root, env)` | Remote query through `esmeralda.query.run`; `scripts/test_gateway.sh` parsed per host |
+| `logs.agent_logs(root, env, agent, since=, severity=, limit=)` / `logs.reduce_entries(entries, limit)` | Reasoning Engine logs; the collapse / dedupe step on `{time, severity, payload}` entries |
+| `contracts.describe_contracts(root)` | Gateway contract sections from the docs and each env's `gateways` block |
+| `server.build_server(root=None)` | The `FastMCP` server (tests use it with the in-memory `fastmcp.Client`) |
+
 ## `esmeralda.serve`
 
 | Name | Description |
@@ -284,7 +305,7 @@ ADK agents: replaces itself with `adk api_server <dir> --host --port --no-reload
 | `load_package(config)` | Imports the agent package (`agent`) from the agent directory |
 | `load_app(config)` | The package's `app` (or its `root_agent` wrapped with `create_app`) |
 | `parse_caller("project/agent")` | A `CallerContext` |
-| `Report(stream=sys.stdout, verbose=False)` | Renders ADK events (`adk_event`) and A2A tasks (`a2a_task`); `summary(fail_on_tool_error=False)` prints the result and returns the exit code |
+| `Report(stream=sys.stdout, verbose=False)` | Renders ADK events (`adk_event`) and A2A tasks (`a2a_task`); `summary(fail_on_tool_error=False)` prints the result and returns the exit code. `answer`, `authors`, `tool_names`, `tool_errors`, `tokens` and `failures()` hold the result for programmatic use |
 
 ## Environment variables
 
@@ -300,4 +321,5 @@ ADK agents: replaces itself with `adk api_server <dir> --host --port --no-reload
 | `MODEL_NAME` | Plugin | Fallback `model` in token events, when the response has no model version |
 | `*_PROXY` | `log_egress_proxy` | Logged at startup |
 | `SERVICE_ACCOUNT_EMAIL` | `auth.id_token` | Service account to impersonate for ID tokens (set by Terraform) |
+| `ESMERALDA_REPO` | `esmeralda mcp`, `esmeralda.ops` | Repository root (default: the checkout containing the working directory) |
 | `USER_AUTH_ID` | `context.user_token` | Gemini Enterprise authorization id of the user token (default `user_auth_token`) |
