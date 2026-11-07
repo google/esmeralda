@@ -46,7 +46,8 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	verify test-release promote test-governance-chaos load-test docs-serve docs-build clean preflight
+	verify test-release promote test-governance-chaos load-test docs-serve docs-build clean preflight \
+	status doctor units plan apply logs guard hooks build-package
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -55,6 +56,9 @@ preflight: ## Run preflight checklist to validate active GCP project, credential
 	@chmod +x ./scripts/preflight.sh
 	@./scripts/preflight.sh
 
+hooks: ## Install the git hooks (.githooks: pre-commit sensitive scan, pre-push uv.lock check)
+	@git config core.hooksPath .githooks && echo "🪝 Git hooks installed (.githooks: pre-commit sensitive scan, pre-push uv.lock check)"
+
 bootstrap: preflight ## Setup local python virtual environments and sync workspace dependencies via uv
 	@echo "📦 Bootstrapping local monorepo environment with uv..."
 	@if ! command -v uv &>/dev/null; then \
@@ -62,7 +66,7 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 		exit 1; \
 	fi
 	@uv sync --all-packages --all-extras
-	@git config core.hooksPath .githooks && echo "🪝 Git hooks installed (.githooks: pre-push checks uv.lock)"
+	@$(MAKE) --no-print-directory hooks
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
 test-agents: ## Fast execution for agent unit tests only
@@ -304,6 +308,47 @@ deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (fi
 	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
 
 # ==============================================================================
+# Operations CLI (delegates to `uv run esmeralda ...`)
+# ==============================================================================
+
+UNIT ?=
+TARGET_NAME ?=
+ALLOW_DESTROY ?=
+
+status: ## Show git branch/SHA, active worktrees, local state units, image tags/digests, and deployed outputs: ENV=<env>
+	@uv run esmeralda status --env $(ENV)
+
+doctor: ## Workstation preflight check (tools, billing env var, ADC token, uv.lock, local states): ENV=<env>
+	@uv run esmeralda doctor --env $(ENV)
+
+units: ## List Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence: ENV=<env>
+	@uv run esmeralda units --env $(ENV)
+
+plan: ## Run read-only terragrunt plan on a unit (or --all) and print a compact summary: [UNIT=<unit>] ENV=<env>
+	@uv run esmeralda plan $(or $(UNIT),--all) --env $(ENV)
+
+apply: ## Plan a unit to a planfile, enforce the destroy guard, and apply the saved planfile: UNIT=<unit> ENV=<env> [ALLOW_DESTROY=1]
+	@uv run esmeralda apply $(UNIT) --env $(ENV) $(if $(filter 1 true,$(ALLOW_DESTROY)),--allow-destroy,)
+
+verify: ## Run gateway conformance probes and remote specialist + orchestrator queries: ENV=<env>
+	@uv run esmeralda verify --env $(ENV)
+
+logs: ## Fetch recent Cloud Logging entries for an agent or MCP service: TARGET_NAME=<target> ENV=<env>
+	@uv run esmeralda logs $(TARGET_NAME) --env $(ENV)
+
+guard: ## Scan all tracked files in the repository for secrets and forbidden internal strings
+	@uv run esmeralda guard --all
+
+build-package: ## Build the PyPI wheel and sdist (esmeralda-platform) into dist/ and verify contents
+	@rm -rf dist && mkdir -p dist
+	@TMP_PKG=$$(mktemp -d) && trap 'rm -rf "$$TMP_PKG"' EXIT && \
+		cp -R packages/esmeralda/src packages/esmeralda/README.md "$$TMP_PKG/" && \
+		sed 's/^name = "esmeralda"/name = "esmeralda-platform"/' packages/esmeralda/pyproject.toml > "$$TMP_PKG/pyproject.toml" && \
+		uv build "$$TMP_PKG" --wheel --sdist --out-dir dist --offline --quiet
+	@uv run python -m zipfile -l dist/esmeralda_platform-*.whl
+	@uv run python -c 'import glob, zipfile; from esmeralda.ops import guard; whl = glob.glob("dist/esmeralda_platform-*.whl")[0]; names = zipfile.ZipFile(whl).namelist(); assert "esmeralda/cli.py" in names and any(n.startswith("esmeralda/ops/") for n in names), names; bad = [f for n in names for f in guard.check_path(n)]; assert not bad, bad; print("✅ Verified wheel contents:", whl)'
+
+# ==============================================================================
 # Whole environment
 # ==============================================================================
 
@@ -331,11 +376,6 @@ destroy-all: ## Destroy an env's Layers 5 -> 1 (dev only; never touches the shar
 
 status-release: ## Show the prd release manifest (version, source, digests) and the shared repositories
 	@bash scripts/promote_release.sh status
-
-verify: ## Verify a deployed env before promoting: gateway probes + a real query to each agent (ENV=dev)
-	@$(MAKE) --no-print-directory test-gateway ENV=$(ENV)
-	@$(MAKE) --no-print-directory test-e2e ENV=$(ENV)
-	@echo "✅ $(ENV) verified on $$(date -u +%F). Promote with: make promote VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=$$(date -u +%F)"
 
 promote: ## Promote a verified dev build by digest + write release/prd.yaml: VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD; no deploy
 	@if [ -z "$(VERSION)" ] || [ -z "$(SOURCE)" ] || [ -z "$(VERIFIED)" ]; then \

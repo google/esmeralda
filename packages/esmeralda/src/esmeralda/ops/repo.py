@@ -246,11 +246,347 @@ def run(cmd: list[str], *, cwd: Path, timeout: float, what: str) -> subprocess.C
 
 
 INSTALL_HINTS = {
+    "git": "install Git",
+    "uv": "install uv (curl -LsSf https://astral.sh/uv/install.sh | sh)",
     "terragrunt": "install Terragrunt (see the repo README, Prerequisites)",
     "terraform": "install Terraform (see the repo README, Prerequisites)",
     "gcloud": "install the Google Cloud CLI",
     "bash": "bash is required",
 }
+
+_DIGEST_RE = re.compile(r"^(?P<repo>[^@\s]+)@sha256:(?P<sha>[0-9a-f]{64})$")
+_VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?)")
+
+
+def extract_image_digests(data: dict[str, Any]) -> list[str]:
+    """Every ``image`` / ``image_uri`` attribute pinned by ``@sha256:...`` in a Terraform state dict."""
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("image", "image_uri") and isinstance(value, str) and _DIGEST_RE.match(value):
+                    if value not in found:
+                        found.append(value)
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    for resource in data.get("resources") or []:
+        if resource.get("mode") == "managed":
+            walk([inst.get("attributes") for inst in resource.get("instances") or []])
+    return found
+
+
+def git_info(root: Path) -> dict[str, Any]:
+    """Git branch, HEAD SHA, dirty/clean status and active worktrees for ``root``."""
+    branch = "unknown"
+    head_sha = "unknown"
+    dirty = False
+    dirty_count = 0
+    worktrees: list[dict[str, str]] = []
+
+    try:
+        res_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if res_branch.returncode == 0 and res_branch.stdout.strip():
+            branch = res_branch.stdout.strip()
+
+        res_sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if res_sha.returncode == 0 and res_sha.stdout.strip():
+            head_sha = res_sha.stdout.strip()
+
+        res_status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if res_status.returncode == 0:
+            lines = [ln for ln in res_status.stdout.splitlines() if ln.strip()]
+            dirty_count = len(lines)
+            dirty = dirty_count > 0
+
+        res_wt = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if res_wt.returncode == 0:
+            current: dict[str, str] = {}
+            for line in res_wt.stdout.splitlines():
+                if not line.strip():
+                    if current:
+                        worktrees.append(current)
+                        current = {}
+                    continue
+                if line.startswith("worktree "):
+                    current["path"] = line.split(" ", 1)[1].strip()
+                elif line.startswith("HEAD "):
+                    current["head"] = line.split(" ", 1)[1].strip()[:8]
+                elif line.startswith("branch "):
+                    ref = line.split(" ", 1)[1].strip()
+                    current["branch"] = ref.removeprefix("refs/heads/")
+                elif line.strip() == "detached":
+                    current["branch"] = "(detached)"
+            if current:
+                worktrees.append(current)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    return {
+        "branch": branch,
+        "head_sha": head_sha,
+        "dirty": dirty,
+        "dirty_files": dirty_count,
+        "worktrees": worktrees,
+    }
+
+
+def status(root: Path, env: str = "dev") -> dict[str, Any]:
+    """Combined repository and environment status: git, worktrees, local states, image tags/digests, outputs."""
+    from esmeralda.ops import infra
+
+    env_dir(root, env)
+    ginfo = git_info(root)
+    text = env_locals(root, env)
+    image_repo = _hcl_string(text, "image_repository") or "dev"
+    container_tag = _hcl_string(text, "container_tag") or "dev-latest"
+    head_sha = ginfo["head_sha"]
+    expected_sha_tag = f"dev-{head_sha}" if head_sha != "unknown" else "unknown"
+
+    local_state_units: list[str] = []
+    image_digests: dict[str, list[str]] = {}
+    for u in units(root, env):
+        spath = state_path(root, env, u)
+        if spath.is_file():
+            local_state_units.append(u)
+            try:
+                raw_state = json.loads(spath.read_text())
+                digests = extract_image_digests(raw_state)
+                if digests:
+                    image_digests[u] = digests
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    infra_summary = infra.status(root, env)
+    return {
+        **infra_summary,
+        "git": ginfo,
+        "local_state_units": local_state_units,
+        "images": {
+            "image_repository": image_repo,
+            "container_tag": container_tag,
+            "expected_sha_tag": expected_sha_tag,
+            "matches_head_sha_tag": container_tag == expected_sha_tag,
+            "digests": image_digests,
+        },
+    }
+
+
+def _tool_version(binary: str, args: list[str], cwd: Path) -> str:
+    try:
+        res = subprocess.run(
+            [binary, *args],
+            cwd=cwd,
+            env=tool_env(),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+        out = f"{res.stdout}\n{res.stderr}".strip()
+        match = _VERSION_RE.search(out)
+        return match.group(1) if match else (out.splitlines()[0][:60] if out else "installed")
+    except (OSError, subprocess.SubprocessError):
+        return "installed"
+
+
+def _check_adc(root: Path) -> tuple[bool, str]:
+    adc_env = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    adc_path = (
+        Path(adc_env).expanduser()
+        if adc_env
+        else Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+    )
+    if which("gcloud"):
+        try:
+            res = subprocess.run(
+                ["gcloud", "auth", "application-default", "print-access-token"],
+                cwd=root,
+                env=tool_env(),
+                capture_output=True,
+                text=True,
+                timeout=15,
+                stdin=subprocess.DEVNULL,
+                check=False,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return True, "ADC token available"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if adc_path.is_file():
+        return (
+            False,
+            f"ADC file exists ({adc_path.name}) but token refresh failed: run `gcloud auth application-default login`",
+        )
+    return False, "missing Application Default Credentials: run `gcloud auth application-default login`"
+
+
+def _check_uv_lock(root: Path) -> tuple[bool, str]:
+    lock_file = root / "uv.lock"
+    if not lock_file.is_file():
+        return False, "uv.lock not found in repository root"
+    if not (root / "pyproject.toml").is_file() or not which("uv"):
+        return True, "uv.lock present"
+    try:
+        res = subprocess.run(
+            ["uv", "lock", "--check"],
+            cwd=root,
+            env=tool_env(),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+        if res.returncode == 0:
+            return True, "uv.lock is in sync with pyproject.toml"
+        return False, "uv.lock is out of sync with pyproject.toml (run `make lock`)"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"uv lock --check failed: {exc}"
+
+
+def _check_local_state_dir(root: Path, env: str) -> tuple[bool, str]:
+    live_dir = root / LIVE
+    env_path = live_dir / env
+    if not (env_path / "env.yaml").is_file():
+        return False, f"missing environment config {LIVE}/{env}/env.yaml"
+    state_root = live_dir / ".local_states" / env
+    if not state_root.exists():
+        if os.access(live_dir, os.R_OK | os.W_OK):
+            return True, f"{LIVE}/.local_states/{env} not created yet (parent directory is readable/writable)"
+        return False, f"{LIVE} is not readable/writable"
+    if not os.access(state_root, os.R_OK):
+        return False, f"{state_root.relative_to(root)} is not readable"
+    unreadable: list[str] = []
+    count = 0
+    for tfstate in state_root.rglob("terraform.tfstate"):
+        count += 1
+        try:
+            json.loads(tfstate.read_text())
+        except (OSError, json.JSONDecodeError):
+            unreadable.append(str(tfstate.relative_to(root)))
+    if unreadable:
+        return False, f"unreadable state file(s): {', '.join(unreadable)}"
+    return True, f"readable ({count} state file(s) in {LIVE}/.local_states/{env})"
+
+
+def doctor(root: Path, env: str = "dev") -> dict[str, Any]:
+    """Workstation preflight checks for ``root`` and ``env``."""
+    checks: list[dict[str, Any]] = []
+
+    required_tools = [
+        ("git", ["--version"]),
+        ("uv", ["--version"]),
+        ("terraform", ["version"]),
+        ("terragrunt", ["--version"]),
+        ("gcloud", ["--version"]),
+    ]
+    for name, ver_args in required_tools:
+        resolved = which(name)
+        if resolved:
+            ver = _tool_version(resolved, ver_args, root)
+            checks.append({"name": f"tool:{name}", "status": "ok", "required": True, "detail": f"{ver} ({resolved})"})
+        else:
+            checks.append(
+                {
+                    "name": f"tool:{name}",
+                    "status": "fail",
+                    "required": True,
+                    "detail": f"not found on PATH ({INSTALL_HINTS.get(name, f'install {name}')})",
+                }
+            )
+
+    billing = os.environ.get("ESMERALDA_BILLING_ACCOUNT", "").strip()
+    if billing:
+        checks.append(
+            {
+                "name": "env:ESMERALDA_BILLING_ACCOUNT",
+                "status": "ok",
+                "required": False,
+                "detail": "set",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "name": "env:ESMERALDA_BILLING_ACCOUNT",
+                "status": "warn",
+                "required": False,
+                "detail": "unset (export ESMERALDA_BILLING_ACCOUNT=... before terragrunt plan/apply)",
+            }
+        )
+
+    adc_ok, adc_detail = _check_adc(root)
+    checks.append(
+        {
+            "name": "adc_token",
+            "status": "ok" if adc_ok else "fail",
+            "required": True,
+            "detail": adc_detail,
+        }
+    )
+
+    lock_ok, lock_detail = _check_uv_lock(root)
+    checks.append(
+        {
+            "name": "uv_lock_frozen",
+            "status": "ok" if lock_ok else "fail",
+            "required": True,
+            "detail": lock_detail,
+        }
+    )
+
+    state_ok, state_detail = _check_local_state_dir(root, env)
+    checks.append(
+        {
+            "name": "local_state_dir",
+            "status": "ok" if state_ok else "fail",
+            "required": True,
+            "detail": state_detail,
+        }
+    )
+
+    ok = all(c["status"] == "ok" for c in checks if c["required"])
+    return {
+        "env": env,
+        "ok": ok,
+        "failed": sum(1 for c in checks if c["status"] == "fail" and c["required"]),
+        "warnings": sum(1 for c in checks if c["status"] == "warn"),
+        "checks": checks,
+    }
 
 # (pattern, hint): the first match wins. Patterns are matched case-insensitively against stderr.
 _HINTS = [

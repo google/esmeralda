@@ -39,13 +39,118 @@ _BLOB = 200  # scalar outputs longer than this are summarised, not returned
 # units and status
 # ------------------------------------------------------------------------------------------
 
+_LAYER_RE = re.compile(r"(?:^|/)layer-(\d+)-")
+_DEP_BLOCK_RE = re.compile(r'dependency\s+"([^"]+)"\s*\{(.*?)\n\}', re.DOTALL)
+_CONFIG_PATH_RE = re.compile(r'config_path\s*=\s*"([^"]+)"')
+_EXCLUDE_GW_RE = re.compile(r'exclude\s*\{[^}]*gateways\.enabled\s*,\s*"([^"]+)"', re.DOTALL)
+_PLAN_TEXT_SUMMARY_RE = re.compile(
+    r"Plan:\s*(\d+)\s+to\s+add,\s*(\d+)\s+to\s+change,\s*(\d+)\s+to\s+destroy"
+)
 
-def list_units(root: Path, env: str) -> dict[str, Any]:
+
+def unit_layer(unit: str) -> int | None:
+    match = _LAYER_RE.search(unit)
+    return int(match.group(1)) if match else None
+
+
+def resolve_unit(root: Path, env: str, unit: str) -> str:
+    """Resolves ``unit`` (exact path or unambiguous short name like ``entrypoint``) in ``env``."""
+    cleaned = unit.strip().strip("/")
+    known = repo.units(root, env)
+    if cleaned in known:
+        return cleaned
+    exact_tail = [u for u in known if u.rsplit("/", 1)[-1] == cleaned or u.endswith(f"/{cleaned}")]
+    if len(exact_tail) == 1:
+        return exact_tail[0]
+    repo.unit_dir(root, env, cleaned)
+    return cleaned
+
+
+def unit_dependencies(root: Path, env: str, unit: str) -> list[str]:
+    """Dependency unit paths declared in ``terragrunt.hcl`` for ``unit``."""
+    base = repo.env_dir(root, env)
+    hcl_path = base / unit / repo.UNIT_FILE
+    if not hcl_path.is_file():
+        return []
+    text = hcl_path.read_text(errors="replace")
+    deps: list[str] = []
+    for match in _DEP_BLOCK_RE.finditer(text):
+        dep_name, body = match.group(1), match.group(2)
+        cp_match = _CONFIG_PATH_RE.search(body)
+        if cp_match:
+            raw_path = cp_match.group(1)
+            resolved = (hcl_path.parent / raw_path).resolve()
+            try:
+                dep_unit = resolved.relative_to(base.resolve()).as_posix()
+            except ValueError:
+                try:
+                    dep_unit = resolved.relative_to((root / repo.LIVE).resolve()).as_posix()
+                except ValueError:
+                    dep_unit = raw_path
+            if dep_unit not in deps:
+                deps.append(dep_unit)
+        elif dep_name not in deps:
+            deps.append(dep_name)
+    return deps
+
+
+def unit_enabled(root: Path, env: str, unit: str) -> bool:
+    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks and ``gateways.enabled``)."""
+    hcl_path = repo.env_dir(root, env) / unit / repo.UNIT_FILE
+    gw = repo.gateways_block(root, env)
+    enabled_gws = gw.get("enabled")
+    if hcl_path.is_file():
+        text = hcl_path.read_text(errors="replace")
+        match = _EXCLUDE_GW_RE.search(text)
+        if match and isinstance(enabled_gws, list):
+            return match.group(1) in enabled_gws
+    if unit.startswith("layer-5-workloads/gateways/") and isinstance(enabled_gws, list) and enabled_gws:
+        gw_name = unit.rsplit("/", 1)[-1]
+        return gw_name in enabled_gws
+    return True
+
+
+def list_units(root: Path, env: str, *, layer: int | None = None) -> dict[str, Any]:
     states = repo.all_states(root, env)
+    items: list[dict[str, Any]] = []
+    if layer == 0:
+        cicd_hcl = root / repo.LIVE / "shared" / "layer-0-cicd" / repo.UNIT_FILE
+        if cicd_hcl.is_file():
+            cicd_state = root / repo.LIVE / ".local_states" / "shared" / "layer-0-cicd" / "terraform.tfstate"
+            items.append(
+                {
+                    "unit": "shared/layer-0-cicd",
+                    "layer": 0,
+                    "deployed": cicd_state.is_file(),
+                    "local_state": cicd_state.is_file(),
+                    "resources": None,
+                    "enabled": True,
+                    "excluded": False,
+                    "dependencies": [],
+                }
+            )
+    for s in states:
+        ulayer = unit_layer(s.unit)
+        if layer is not None and ulayer != layer:
+            continue
+        enabled = unit_enabled(root, env, s.unit)
+        items.append(
+            {
+                "unit": s.unit,
+                "layer": ulayer,
+                "deployed": s.deployed,
+                "local_state": repo.state_path(root, env, s.unit).is_file(),
+                "resources": s.resources,
+                "enabled": enabled,
+                "excluded": not enabled,
+                "dependencies": unit_dependencies(root, env, s.unit),
+            }
+        )
     return {
         "env": env,
         "backend": repo.backend(root, env),
-        "units": [{"unit": s.unit, "deployed": s.deployed, "resources": s.resources} for s in states],
+        "layer": layer,
+        "units": items,
     }
 
 
@@ -229,9 +334,19 @@ def plan_file(root: Path, env: str, unit: str) -> Path:
     return root / PLAN_DIR / env / f"{slug}.tfplan"
 
 
-def plan_unit(root: Path, env: str, unit: str, *, timeout: float = 900.0) -> dict[str, Any]:
-    """Read-only plan of one unit (``-lock=false``), summarised."""
-    directory = repo.unit_dir(root, env, unit)
+def plan_unit(
+    root: Path,
+    env: str,
+    unit: str = "--all",
+    *,
+    all_units: bool = False,
+    timeout: float = 900.0,
+) -> dict[str, Any]:
+    """Read-only plan of one unit (``-lock=false``) or ``--all`` enabled units, summarised."""
+    if all_units or unit == "--all":
+        return plan_all(root, env, timeout=timeout)
+    resolved = resolve_unit(root, env, unit)
+    directory = repo.unit_dir(root, env, resolved)
     unit = directory.relative_to(repo.env_dir(root, env)).as_posix()
     out = plan_file(root, env, unit)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -256,12 +371,88 @@ def plan_unit(root: Path, env: str, unit: str, *, timeout: float = 900.0) -> dic
         document = json.loads(_json_part(shown.stdout))
     except json.JSONDecodeError as exc:
         raise OpsError(f"terragrunt show -json returned non-JSON output for {unit}: {exc}") from exc
+    summary = summarize_plan(document)
     return {
         "env": env,
         "unit": unit,
-        **summarize_plan(document),
+        **summary,
         "plan_file": str(out.relative_to(root)),
         "seconds": round(time.monotonic() - started, 1),
+    }
+
+
+def plan_all(root: Path, env: str, *, timeout: float = 900.0) -> dict[str, Any]:
+    """Plans every enabled unit in ``env`` and aggregates the counts."""
+    started = time.monotonic()
+    enabled_units = [u for u in repo.units(root, env) if unit_enabled(root, env, u)]
+    results: list[dict[str, Any]] = []
+    totals = {"add": 0, "change": 0, "destroy": 0, "replace": 0, "read": 0}
+    total_changes = 0
+    for u in enabled_units:
+        res = plan_unit(root, env, u, timeout=timeout)
+        results.append(res)
+        total_changes += int(res.get("changes", 0))
+        for k, v in (res.get("counts") or {}).items():
+            totals[k] = totals.get(k, 0) + int(v)
+    return {
+        "env": env,
+        "unit": "--all",
+        "all": True,
+        "changes": total_changes,
+        "counts": {k: v for k, v in totals.items() if v},
+        "units": results,
+        "seconds": round(time.monotonic() - started, 1),
+    }
+
+
+def apply_unit(
+    root: Path,
+    env: str,
+    unit: str,
+    *,
+    allow_destroy: bool = False,
+    timeout: float = 900.0,
+) -> dict[str, Any]:
+    """Plans ``unit`` to a planfile first, enforces the destroy guard, and applies the saved planfile."""
+    resolved = resolve_unit(root, env, unit)
+    directory = repo.unit_dir(root, env, resolved)
+    planned = plan_unit(root, env, resolved, timeout=timeout)
+    counts = planned.get("counts") or {}
+    destroy_count = int(counts.get("destroy", 0)) + int(counts.get("replace", 0))
+    if destroy_count > 0 and not allow_destroy:
+        destructive = [
+            r for r in (planned.get("resources") or []) if r.startswith(("-", "-/+", "+/-"))
+        ]
+        return {
+            **planned,
+            "applied": False,
+            "refused": True,
+            "exit_code": 2,
+            "destroy_count": destroy_count,
+            "destructive_resources": destructive,
+            "reason": (
+                f"Refusing to apply {env}/{resolved}: plan has {destroy_count} destroy/replace action(s). "
+                "Pass --allow-destroy (or ALLOW_DESTROY=1) to permit destructive changes."
+            ),
+        }
+
+    out = root / planned["plan_file"]
+    started = time.monotonic()
+    applied = repo.run(
+        repo.terragrunt_cmd("apply", "-input=false", "-no-color", str(out)),
+        cwd=directory,
+        timeout=timeout,
+        what=f"terragrunt apply ({resolved})",
+    )
+    if applied.returncode != 0:
+        raise repo.failure(f"terragrunt apply ({resolved})", applied)
+    out.unlink(missing_ok=True)
+    return {
+        **planned,
+        "applied": True,
+        "refused": False,
+        "exit_code": 0,
+        "apply_seconds": round(time.monotonic() - started, 1),
     }
 
 

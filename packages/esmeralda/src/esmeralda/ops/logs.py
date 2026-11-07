@@ -248,26 +248,63 @@ def _client_available() -> bool:
     return True
 
 
+def build_service_filter(service_name: str, severity: str, start: datetime) -> str:
+    """Cloud Logging filter for one Cloud Run service."""
+    clauses = [
+        'resource.type="cloud_run_revision"',
+        f'resource.labels.service_name="{service_name}"',
+        f'timestamp>="{start.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")}"',
+    ]
+    if severity != "DEFAULT":
+        clauses.append(f"severity>={severity}")
+    return " AND ".join(clauses)
+
+
 def agent_logs(
     root: Path,
     env: str,
     agent: str,
     *,
     since: str = "30m",
+    minutes: int | None = None,
     severity: str = "WARNING",
     limit: int = 50,
     timeout: float = 90.0,
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    if minutes is not None:
+        since = f"{max(1, int(minutes))}m"
     window = parse_since(since)
     severity = parse_severity(severity)
     limit = max(1, min(int(limit), 200))
-    unit = f"layer-5-workloads/agents/{agent}"
-    repo.unit_dir(root, env, unit)
-    engine = repo.output(root, env, unit, "engine_id")
-    if not engine:
-        raise OpsError(f"No engine_id output for {agent} in {env}: deploy it (make deploy-{agent} ENV={env})")
-    project, filter_ = build_filter(engine, severity, (now or datetime.now(UTC)) - window)
+    known = repo.units(root, env)
+    agent_unit = f"layer-5-workloads/agents/{agent}"
+    service_unit = f"layer-5-workloads/services/{agent}"
+    gateway_unit = f"layer-5-workloads/gateways/{agent}"
+    start_time = (now or datetime.now(UTC)) - window
+
+    if agent_unit in known:
+        engine = repo.output(root, env, agent_unit, "engine_id")
+        if not engine:
+            raise OpsError(f"No engine_id output for {agent} in {env}: deploy it (make deploy-{agent} ENV={env})")
+        project, filter_ = build_filter(engine, severity, start_time)
+        resource_id = engine.rsplit("/", 1)[-1]
+    elif service_unit in known or gateway_unit in known:
+        unit = service_unit if service_unit in known else gateway_unit
+        service_name = repo.output(root, env, unit, "service_name") or f"{agent}-{env}"
+        project = (
+            repo.output(root, env, "layer-1-projects", "mcps_project_id")
+            if unit == service_unit
+            else repo.output(root, env, "layer-1-projects", "gateway_project_id")
+        )
+        if not project:
+            raise OpsError(f"No project_id output in layer-1-projects for {agent} in {env}")
+        filter_ = build_service_filter(str(service_name), severity, start_time)
+        resource_id = str(service_name)
+    else:
+        repo.unit_dir(root, env, agent_unit)
+        raise AssertionError("unreachable")
+
     max_entries = min(limit * 10, 1000)
     source = "google-cloud-logging" if _client_available() else "gcloud"
     if source == "gcloud":
@@ -282,7 +319,8 @@ def agent_logs(
     return {
         "env": env,
         "agent": agent,
-        "engine": engine.rsplit("/", 1)[-1],
+        "target": agent,
+        "engine": resource_id,
         "since": since,
         "severity": f">={severity}",
         "source": source,

@@ -18,6 +18,7 @@ care, and update both agents and the docs in the same PR):
 | `auth.id_token(audience)`, `auth.id_token_async(...)` | `auth.py` | Cached ID tokens; impersonates `SERVICE_ACCOUNT_EMAIL` when set; skipped for local URLs |
 | `context.user_token(ctx)`, `context.CallerContext` | `context.py` | End-user token and caller identity propagation |
 | `esmeralda run -- <cmd>` / `serve` / `query` | `cli.py` (+ `certs.py`, `serve.py`, `query.py`) | Container entrypoint (installs the Agent Gateway root CA), server from `agent.yaml`, one client for ADK and A2A |
+| `esmeralda mcp` / `status` / `doctor` / `units` / `plan` / `apply` / `verify` / `logs` / `contracts` / `guard` | `cli.py` + `ops/` | Read-only MCP server (`mcp`) and first-class platform operations CLI (`--json` + human formatters, destroy guard on `apply`, sensitive content `guard`) |
 | `AgentConfig` | `config.py` | Parsed `agent.yaml` (`framework`, `env`, `local_env`, `agent_card`) |
 
 The top-level `esmeralda` namespace exports only `prepare`, `finalize`, `create_app` and

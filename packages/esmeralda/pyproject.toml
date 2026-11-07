@@ -15,9 +15,19 @@
 [project]
 name = "esmeralda"
 version = "0.1.0"
-description = "Operational runtime for Esmeralda agents on Agent Runtime: lifecycle, ADK plugin, telemetry, gateway trust"
+description = "Operational runtime and CLI for Esmeralda agents on Agent Runtime: lifecycle, ADK plugin, telemetry, gateway trust, and platform ops"
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "google-adk>=2.4.0",
     "google-auth",
@@ -28,6 +38,12 @@ dependencies = [
     "httpx",
     "a2a-sdk>=0.3.26,<1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/google/esmeralda"
+Documentation = "https://google.github.io/esmeralda/"
+Repository = "https://github.com/google/esmeralda"
+Issues = "https://github.com/google/esmeralda/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -41,3 +57,9 @@ esmeralda = "esmeralda.cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/esmeralda"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/esmeralda", "README.md", "pyproject.toml"]

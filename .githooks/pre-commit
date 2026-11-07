@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Blocks a commit whose staged changes add secrets, key material, state/tfvars/.env files, or
+# forbidden internal strings (see esmeralda.ops.guard). This repository is public.
+# Installed by `make bootstrap` / `make hooks` (git config core.hooksPath .githooks).
+# Bypass once with SKIP_SENSITIVE_SCAN=1 git commit ...
+exec uv run --frozen --package esmeralda esmeralda guard --staged

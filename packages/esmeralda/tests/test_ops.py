@@ -220,8 +220,13 @@ def test_list_units(checkout):
     by_unit = {u["unit"]: u for u in result["units"]}
     assert by_unit["layer-5-workloads/gateways/kong"] == {
         "unit": "layer-5-workloads/gateways/kong",
+        "layer": 5,
         "deployed": True,
+        "local_state": True,
         "resources": 7,
+        "enabled": True,
+        "excluded": False,
+        "dependencies": [],
     }
     assert by_unit["layer-5-workloads/services/test-vm"]["deployed"] is False
 
