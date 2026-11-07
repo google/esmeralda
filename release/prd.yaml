@@ -1,0 +1,37 @@
+# Release manifest: the exact image bytes this environment deploys.
+# Written by `make promote VERSION=vX.Y.Z SOURCE=dev-<sha>` (scripts/promote_release.sh);
+# do not edit by hand. Merge it by PR, then deploy; roll back by reverting that PR.
+#
+# Schema (version 1):
+#   schema_version: 1
+#   version:        release version, also the immutable tag in the release repository (vX.Y.Z)
+#   source_tag:     dev repository tag the digests were resolved from (dev-<gitsha>)
+#   source_commit:  git commit the images were built from
+#   promoted_at:    UTC timestamp of the promotion (RFC 3339)
+#   repository:     layer-0 repository the digests live in (release); the registry URL itself
+#                   comes from the layer-0 Terragrunt outputs, so no project id is stored here
+#   verified:       the dev verification this release passed before promotion
+#     environment:  environment that was verified (dev)
+#     date:         YYYY-MM-DD
+#     result:       PASS (`make verify ENV=dev`: gateway probes + both agents answer)
+#   images:         image name => sha256 digest; every Layer 5 workload image must be listed.
+#                   Deployed as <release repository URL>/<image>@<digest>.
+
+schema_version: 1
+version: "v1.1.0"
+source_tag: "dev-690f5e2"
+source_commit: "690f5e26d2c827aca72106b0cc7e10237e8fcccf"
+promoted_at: "2026-11-07T04:15:38Z"
+repository: "release"
+verified:
+  environment: "dev"
+  date: "2026-11-07"
+  result: "PASS"
+images:
+  ai-coe-mortgage-specialist: "sha256:73c40bb9d02d223ceffdd2242a662b32352f2ab387d1e421542c93191db42562"
+  corporate-email: "sha256:f5fb4fc98605b23972283781d77055983c25d74af6cd4dc03825f724ddd79204"
+  cx-mortgage-orchestrator: "sha256:c81ee39a41e89d7a9691d7406fec78907ebcfe5846cfd0c4f7579437f8d5df62"
+  envoy-gateway: "sha256:48f11bdedabd1ce4a0647718857ef69f3291ce8f212d835d558c1a7540557009"
+  income-verification-api: "sha256:7ad2b85e5b5dbf0e8aafd9dd2b665de4e08ad366f1e98b1fa96cfcc7cb9a5d3c"
+  kong-gateway: "sha256:504aec7688238e46ede1f7ba1a6b61cf74213415ca0e8568bdf85dda5d497c69"
+  legacy-dms: "sha256:605f01ee74759ebd2111722cf18004d3d5b79244d57225ff805956d59585c59d"
