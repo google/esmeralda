@@ -14,6 +14,15 @@ locals {
     for k, v in var.governance_config.capabilities : k
     if v == "apigee"
   ]
+
+  effective_capability_routing = {
+    for capability, provider in var.governance_config.capabilities :
+    capability => {
+      provider                    = provider
+      semantic_governance_enabled = capability == "content_safety" && provider == "agent_gateway"
+      uap_enforcement_enabled     = capability == "egress_allowlist" && provider == "agent_gateway"
+    }
+  }
 }
 
 variable "governance_config" {
@@ -106,3 +115,23 @@ output "apigee_enabled" {
   value       = terraform_data.capabilities_contract.output.apigee.enabled
   description = "Whether the optional Apigee API-management platform is enabled in governance_config."
 }
+
+output "effective_capability_routing" {
+  value       = local.effective_capability_routing
+  description = "Resolved capability routing metadata including GEAP Semantic Governance (NLC) and Unified Access Policy (UAP) activation flags."
+}
+
+# 8. Submodule 7: GEAP Semantic Governance Policies (Natural Language Constraints) & UAPs
+module "semantic_governance" {
+  source = "./modules/7_semantic_governance"
+
+  governance_project_id      = var.governance_project_id
+  environment                = var.environment
+  region                     = var.region
+  enable_semantic_governance = var.enable_semantic_governance
+  enforcement_mode           = var.semantic_governance_enforcement_mode
+  custom_policies            = var.custom_semantic_governance_policies
+  content_safety_provider    = terraform_data.capabilities_contract.output.capabilities.content_safety
+  egress_allowlist_provider  = terraform_data.capabilities_contract.output.capabilities.egress_allowlist
+}
+

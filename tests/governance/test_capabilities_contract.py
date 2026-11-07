@@ -28,6 +28,8 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 GOVERNANCE_MODULE = REPO_ROOT / "infrastructure/modules/4-governance"
 CAPABILITIES_TF = GOVERNANCE_MODULE / "capabilities.tf"
+VARIABLES_TF = GOVERNANCE_MODULE / "variables.tf"
+SEMANTIC_GOVERNANCE_MODULE = GOVERNANCE_MODULE / "modules/7_semantic_governance"
 
 EXPECTED_DEFAULT_CAPABILITIES = {
     "egress_allowlist": "agent_gateway",
@@ -67,16 +69,42 @@ def _run_tf(workdir: pathlib.Path, *args: str) -> subprocess.CompletedProcess[st
     )
 
 
+def _ensure_governance_providers() -> pathlib.Path:
+    """Initialize `4-governance` once if needed and return its `.terraform/providers` directory."""
+    providers_dir = GOVERNANCE_MODULE / ".terraform/providers"
+    if not providers_dir.is_dir():
+        init_res = _run_tf(GOVERNANCE_MODULE, "init", "-backend=false", "-input=false", "-no-color")
+        assert init_res.returncode == 0, init_res.stdout + init_res.stderr
+    return providers_dir
+
+
 def evaluate_capabilities(workdir: pathlib.Path, governance_config: dict[str, Any] | None = None) -> dict[str, Any]:
     """Evaluate `capabilities.tf` offline with the given `governance_config` and return outputs."""
     workdir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(CAPABILITIES_TF, workdir / "capabilities.tf")
+    shutil.copy2(VARIABLES_TF, workdir / "variables.tf")
+    shutil.copytree(
+        SEMANTIC_GOVERNANCE_MODULE,
+        workdir / "modules/7_semantic_governance",
+        dirs_exist_ok=True,
+    )
+    tfvars: dict[str, Any] = {
+        "governance_project_id": "esm-dev-governance-mock",
+        "internal_root_ca_pem": "-----BEGIN CERTIFICATE-----\nMOCK\n-----END CERTIFICATE-----",
+    }
     if governance_config is not None:
-        (workdir / "terraform.tfvars.json").write_text(
-            json.dumps({"governance_config": governance_config}, indent=2)
-        )
+        tfvars["governance_config"] = governance_config
+    (workdir / "terraform.tfvars.json").write_text(json.dumps(tfvars, indent=2))
 
-    init_res = _run_tf(workdir, "init", "-backend=false", "-input=false", "-no-color")
+    providers_dir = _ensure_governance_providers()
+    init_res = _run_tf(
+        workdir,
+        "init",
+        "-backend=false",
+        "-input=false",
+        "-no-color",
+        f"-plugin-dir={providers_dir}",
+    )
     assert init_res.returncode == 0, init_res.stdout + init_res.stderr
 
     apply_res = _run_tf(workdir, "apply", "-auto-approve", "-input=false", "-no-color")
