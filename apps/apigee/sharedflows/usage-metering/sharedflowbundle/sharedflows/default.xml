@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<SharedFlow name="default">
+  <Step>
+    <Name>EV-ExtractTokenCount</Name>
+    <Condition>!(response.header.Content-Type =| "text/event-stream")</Condition>
+  </Step>
+  <Step>
+    <Name>JS-extract-tokens</Name>
+  </Step>
+</SharedFlow>

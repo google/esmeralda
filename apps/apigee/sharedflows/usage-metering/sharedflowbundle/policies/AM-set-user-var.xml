@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<AssignMessage name="AM-set-user-var" continueOnError="true" enabled="true">
+  <DisplayName>AM-set-user-var</DisplayName>
+  <!-- Snapshots verified consumer metadata into flow variables for PostClientFlow
+       telemetry and preserves the incoming caller Authorization header inside
+       X-Forwarded-Authorization before target <Authentication> overwrites Authorization. -->
+  <AssignVariable>
+    <Name>consumer.app.name</Name>
+    <Ref>verifyapikey.VAK-Verify-Partner-Key.app.name</Ref>
+    <Value>unknown-app</Value>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>consumer.developer.email</Name>
+    <Ref>verifyapikey.VAK-Verify-Partner-Key.developer.email</Ref>
+    <Value>partner@example.com</Value>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>consumer.client.id</Name>
+    <Ref>verifyapikey.VAK-Verify-Partner-Key.client_id</Ref>
+    <Value>unknown-client</Value>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>caller.identity</Name>
+    <Ref>jwt.VJ-Verify-Partner-JWT.claim.sub</Ref>
+    <Value>anonymous</Value>
+  </AssignVariable>
+  <Set>
+    <Headers>
+      <Header name="X-Forwarded-Authorization">{request.header.Authorization}</Header>
+    </Headers>
+  </Set>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+  <AssignTo createNew="false" transport="http" type="request"/>
+</AssignMessage>

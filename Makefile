@@ -40,7 +40,7 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 # Terraform CLI for validation and the gateway harness: terraform if installed, else OpenTofu.
 TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null || echo terraform)
 
-.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway-unit test-guards run-mcp-local \
+.PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway-unit test-guards test-apigee test-partner run-mcp-local \
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy \
@@ -91,7 +91,11 @@ test-guards: ## Run repository hygiene, manifest parity, and governance capabili
 	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/guards tests/governance -q
 	@echo "✅ Repository guards passed!"
 
-test-all: lock-check test test-guards test-terraform test-gateway-unit ## Run the uv.lock check, Python unit tests, repo guards, Terraform validation and the Envoy gateway harness
+test-apigee: ## Offline unit and policy conformance tests for Apigee capability bundles and modules
+	@echo "🧪 Running offline Apigee policy and JS conformance tests..."
+	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/apigee -q
+
+test-all: lock-check test test-guards test-terraform test-gateway-unit test-apigee ## Run the uv.lock check, Python unit tests, repo guards, Terraform validation, Envoy gateway harness, and Apigee policy tests
 
 lock: ## Regenerate uv.lock against public PyPI (in Cloud Build) from your working copy; PKG="a b==1.2" also upgrades those
 	@bash scripts/uv_lock.sh $(PKG)
@@ -292,6 +296,9 @@ deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, for
 
 test-gateway: ## Probe every gateway route host through the entry point from the test VM (IAP SSH): ENV=<env>
 	@bash scripts/test_gateway.sh $(ENV)
+
+test-partner: ## Run partner front-door conformance checks (401 unauth, 403/404 agent/MCP scope, SSE TTFB + answer, 429 quota): ENV=<env>
+	@bash scripts/test_partner.sh $(ENV)
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
 	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve

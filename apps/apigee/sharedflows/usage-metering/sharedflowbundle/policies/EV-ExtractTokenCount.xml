@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<ExtractVariables name="EV-ExtractTokenCount" continueOnError="true" enabled="true">
+  <DisplayName>EV-ExtractTokenCount</DisplayName>
+  <!-- Non-SSE JSON fallback: strictly conditioned in flows on
+       !(response.header.Content-Type =| "text/event-stream") so SSE streams
+       are never buffered in memory. Extracts both ADK snake_case and Vertex AI
+       camelCase token usage fields. -->
+  <Source clearPayload="false">response</Source>
+  <JSONPayload>
+    <Variable name="llm.promptTokenCount" type="integer">
+      <JSONPath>$.usage_metadata.prompt_token_count</JSONPath>
+      <JSONPath>$.result.usage_metadata.prompt_token_count</JSONPath>
+      <JSONPath>$.usageMetadata.promptTokenCount</JSONPath>
+    </Variable>
+    <Variable name="llm.candidatesTokenCount" type="integer">
+      <JSONPath>$.usage_metadata.candidates_token_count</JSONPath>
+      <JSONPath>$.result.usage_metadata.candidates_token_count</JSONPath>
+      <JSONPath>$.usageMetadata.candidatesTokenCount</JSONPath>
+    </Variable>
+    <Variable name="llm.totalTokenCount" type="integer">
+      <JSONPath>$.usage_metadata.total_token_count</JSONPath>
+      <JSONPath>$.result.usage_metadata.total_token_count</JSONPath>
+      <JSONPath>$.usageMetadata.totalTokenCount</JSONPath>
+    </Variable>
+    <Variable name="llm.model" type="string">
+      <JSONPath>$.model_version</JSONPath>
+      <JSONPath>$.modelVersion</JSONPath>
+      <JSONPath>$.model</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</ExtractVariables>

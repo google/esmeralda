@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<APIProxy revision="1" name="partner-mcp">
+  <DisplayName>partner-mcp</DisplayName>
+  <Description>North-south partner front door for MCP tool servers via the internal entrypoint with server-side tool scope enforcement.</Description>
+  <BasePaths>/partner/v1/mcp</BasePaths>
+  <Policies>
+    <Policy>AM-clean-headers</Policy>
+    <Policy>AM-set-user-var</Policy>
+    <Policy>JS-Enforce-Tool-Scope</Policy>
+    <Policy>ML-interaction</Policy>
+    <Policy>RF-Not-Found</Policy>
+    <Policy>RF-Tool-Forbidden</Policy>
+    <Policy>VAK-Verify-Partner-Key</Policy>
+  </Policies>
+  <ProxyEndpoints>
+    <ProxyEndpoint>default</ProxyEndpoint>
+  </ProxyEndpoints>
+  <Resources>
+    <Resource>jsc://enforce-tool-scope.js</Resource>
+  </Resources>
+  <TargetEndpoints>
+    <TargetEndpoint>default</TargetEndpoint>
+  </TargetEndpoints>
+</APIProxy>

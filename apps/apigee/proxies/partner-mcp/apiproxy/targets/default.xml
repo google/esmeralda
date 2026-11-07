@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<TargetEndpoint name="default">
+  <Description>Southbound MCP TargetEndpoint routing via the internal entrypoint with GoogleIDToken custom audience and strict TLS validation.</Description>
+  <FaultRules/>
+  <PreFlow name="PreFlow">
+    <Request/>
+    <Response/>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+  <Flows/>
+  <HTTPTargetConnection>
+    <LoadBalancer>
+      <Server name="ts-esmeralda-entrypoint"/>
+    </LoadBalancer>
+    <Path>/mcp</Path>
+    <Properties>
+      <Property name="response.streaming.enabled">true</Property>
+      <Property name="io.timeout.millis">300000</Property>
+      <Property name="api.timeout">300000</Property>
+    </Properties>
+    <SSLInfo>
+      <Enabled>true</Enabled>
+      <Enforce>true</Enforce>
+      <IgnoreValidationErrors>false</IgnoreValidationErrors>
+    </SSLInfo>
+    <Authentication>
+      <GoogleIDToken>
+        <Audience ref="target.audience">https://{mcp.service.host}.esmeralda.internal</Audience>
+      </GoogleIDToken>
+    </Authentication>
+  </HTTPTargetConnection>
+</TargetEndpoint>
