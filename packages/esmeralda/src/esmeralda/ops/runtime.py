@@ -101,7 +101,8 @@ async def query_agent(
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _HOST = re.compile(
-    r"^\s*(?P<mark>✅|❌)\s+(?P<host>\S+)\s+(?P<probe>\S+)\s+HTTP\s+(?P<code>\d{3})"
+    r"^\s*(?P<mark>✅|❌)\s+(?P<host>\S+)\s+(?P<probe>\S+)"
+    r"(?:\s+(?P<token>\S+)\s+(?P<backend>\S+))?\s+HTTP\s+(?P<code>\d{3})"
     r"(?:\s+\(DNS still resolves to (?P<dns>[^)]+)\))?\s*(?P<rest>.*)$"
 )
 _PROBING = re.compile(r"Probing (?P<n>\d+) host\(s\) through the entry point (?P<ip>\S+) \(\*\.(?P<domain>[^)]+)\)")

@@ -51,6 +51,26 @@ set_policy_for_members() {
     --quiet "$@" >/dev/null
 }
 
+resolve_registry_uid() {
+  local service_id="$1"
+  if [[ "${service_id}" == agentregistry-* ]]; then
+    echo "${service_id}"
+    return 0
+  fi
+  local token
+  token="$(gcloud auth print-access-token)"
+  local resp
+  resp="$(curl -sS -H "Authorization: Bearer ${token}" \
+    "https://agentregistry.googleapis.com/v1alpha/projects/${GOVERNANCE_PROJECT_ID}/locations/${REGION}/services/${service_id}")"
+  local reg_res
+  reg_res="$(jq -r '.registryResource // empty' <<<"${resp}")"
+  if [[ -n "${reg_res}" ]]; then
+    basename "${reg_res}"
+  else
+    echo "${service_id}"
+  fi
+}
+
 echo "🔒 Registry-wide IAP egress policy on ${GOVERNANCE_PROJECT_ID}/${REGION}..."
 set_policy_for_members "${IAP_MEMBERS_JSON}"
 
@@ -59,14 +79,16 @@ if [[ -n "${IAP_TARGET_POLICIES_JSON:-}" ]] && jq -e '((.mcp_servers // {}) | le
 
   for MCP_ID in $(jq -r '.mcp_servers // {} | keys[]' <<<"${IAP_TARGET_POLICIES_JSON}"); do
     TARGET_MEMBERS="$(jq -c --arg id "${MCP_ID}" '.mcp_servers[$id]' <<<"${IAP_TARGET_POLICIES_JSON}")"
-    echo "  -> mcp-server ${MCP_ID}"
-    set_policy_for_members "${TARGET_MEMBERS}" --mcp-server="${MCP_ID}"
+    RESOLVED_MCP_UID="$(resolve_registry_uid "${MCP_ID}")"
+    echo "  -> mcp-server ${MCP_ID} (${RESOLVED_MCP_UID})"
+    set_policy_for_members "${TARGET_MEMBERS}" --mcp-server="${RESOLVED_MCP_UID}"
   done
 
   for AGENT_ID in $(jq -r '.agents // {} | keys[]' <<<"${IAP_TARGET_POLICIES_JSON}"); do
     TARGET_MEMBERS="$(jq -c --arg id "${AGENT_ID}" '.agents[$id]' <<<"${IAP_TARGET_POLICIES_JSON}")"
-    echo "  -> agent ${AGENT_ID}"
-    set_policy_for_members "${TARGET_MEMBERS}" --agent="${AGENT_ID}"
+    RESOLVED_AGENT_UID="$(resolve_registry_uid "${AGENT_ID}")"
+    echo "  -> agent ${AGENT_ID} (${RESOLVED_AGENT_UID})"
+    set_policy_for_members "${TARGET_MEMBERS}" --agent="${RESOLVED_AGENT_UID}"
   done
 fi
 

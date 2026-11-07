@@ -227,12 +227,11 @@ resource "google_bigquery_dataset_iam_member" "agent_bq_writer" {
   member     = "serviceAccount:${var.agent_service_account}"
 }
 
-resource "google_bigquery_dataset_iam_member" "agent_identity_bq_writer" {
-  count      = var.enable_agent_identity ? 1 : 0
-  dataset_id = google_bigquery_dataset.analytics.dataset_id
-  project    = var.project_id
-  role       = "roles/bigquery.dataEditor"
-  member     = local.agent_identity_principal
+resource "google_project_iam_member" "agent_identity_bq_writer" {
+  count   = var.enable_agent_identity ? 1 : 0
+  project = var.project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = local.agent_identity_principal
 }
 
 resource "google_storage_bucket_iam_member" "agent_identity_storage_user" {

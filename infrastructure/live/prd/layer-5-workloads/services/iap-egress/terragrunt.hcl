@@ -64,21 +64,6 @@ dependency "legacy_dms" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
-
-  # Callers allowed to invoke the A2A specialist through the Agent Gateway (never the specialist itself)
-  specialist_agent_callers = [
-    dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal,
-    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-    dependency.security.outputs.test_vm_sa_email,
-  ]
-
-  # Callers allowed to invoke the MCP tool servers through the Agent Gateway (never cx-mortgage-orchestrator)
-  mcp_server_callers = [
-    dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
-    dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
-    dependency.security.outputs.mcp_invoker_sa_email,
-    dependency.security.outputs.test_vm_sa_email,
-  ]
 }
 
 inputs = {
@@ -93,12 +78,33 @@ inputs = {
   ]
   target_iap_members = {
     agents = {
-      "ai-coe-mortgage-specialist" = local.specialist_agent_callers
+      # Callers allowed to invoke the A2A specialist through the Agent Gateway (never the specialist itself)
+      "ai-coe-mortgage-specialist" = [
+        dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal,
+        dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
+        dependency.security.outputs.test_vm_sa_email,
+      ]
     }
     mcp_servers = {
-      "corporate-email"     = local.mcp_server_callers
-      "income-verification" = local.mcp_server_callers
-      "legacy-dms"          = local.mcp_server_callers
+      # Callers allowed to invoke the MCP tool servers through the Agent Gateway (never cx-mortgage-orchestrator)
+      "corporate-email" = [
+        dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
+        dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
+        dependency.security.outputs.mcp_invoker_sa_email,
+        dependency.security.outputs.test_vm_sa_email,
+      ]
+      "income-verification" = [
+        dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
+        dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
+        dependency.security.outputs.mcp_invoker_sa_email,
+        dependency.security.outputs.test_vm_sa_email,
+      ]
+      "legacy-dms" = [
+        dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
+        dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
+        dependency.security.outputs.mcp_invoker_sa_email,
+        dependency.security.outputs.test_vm_sa_email,
+      ]
     }
   }
 }
