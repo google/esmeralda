@@ -4,7 +4,7 @@ Welcome to the technical deep-dive for **Layer 5 Ingress Gateways**.
 
 **What an ingress gateway is:** an API gateway is a reverse proxy that sits in front of a set of backend services. It gives them one stable entry point and applies cross-cutting concerns (routing, authentication, rate limiting) so that each backend doesn't have to.
 
-**How Esmeralda uses it:** every private hostname under `*.esmeralda.internal` (the A2A specialist, the orchestrator and the three MCP servers) resolves to a single internal load balancer, the **entry point**. The entry point terminates TLS and hands each request to one of the enabled **gateways** (Kong today). The gateway routes the request by its `Host` header to the right Reasoning Engine or Cloud Run service and adds the Google credential that backend requires. This guide details the **Gateway Adapter Pattern** that keeps that contract stable regardless of which gateway product is behind the entry point, and how to move hosts from one gateway to another without touching callers.
+**How Esmeralda uses it:** every private hostname under `*.esmeralda.internal` (the A2A specialist, the orchestrator and the three MCP servers) resolves to a single internal load balancer, the **entry point**. The entry point terminates TLS and hands each request to one of the enabled **gateways** (Kong by default; Envoy, the reference adapter, is available as an option). The gateway routes the request by its `Host` header to the right Reasoning Engine or Cloud Run service and adds the Google credential that backend requires. This guide details the **Gateway Adapter Pattern** that keeps that contract stable regardless of which gateway product is behind the entry point, and how to move hosts from one gateway to another without touching callers.
 
 > [!NOTE]
 > The ingress gateway is **not** the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md). The Agent Gateway (Layer 4, governance project) controls where agents may go *out* to; the ingress gateway (Layer 5, gateway project) is the private front door that those calls arrive *at*. A typical call goes agent → Agent Gateway → entry point (internal HTTPS LB) → Kong → target.
@@ -16,6 +16,7 @@ Welcome to the technical deep-dive for **Layer 5 Ingress Gateways**.
 In enterprise environments, different business units and IT organizations have divergent API gateway standards:
 * **Large Financial Enterprises** mandate **Apigee X** for API product cataloging, rate limiting, and compliance auditing.
 * **Agile Cloud-Native Teams** prefer **Kong Gateway on Cloud Run** for lightweight, low-cost serverless DB-less execution.
+* **Teams that want no custom gateway code** can run **Envoy on Cloud Run**: upstream Envoy with built-in Google token injection (`gcp_authn`), configured entirely from Terraform.
 
 **Esmeralda enforces an abstracted Gateway Adapter Pattern: downstream AI agents and MCP tools expose the exact same interface contract regardless of which gateway adapter is active.**
 
@@ -26,7 +27,7 @@ To make that possible, the ingress is split in two:
 | **Entry point: IP + DNS** | Reserved internal IP `ilb-esmeralda-vip-<env>` (gateway project, shared core subnet) and the `esmeralda.internal` / `*.esmeralda.internal` A records (TTL 300) pointing at it. | Layer 2: [`2-networking/main.tf`](../../../infrastructure/modules/2-networking/main.tf) §7 (outputs `entrypoint_address_id`, `entrypoint_address`, `entrypoint_domain`; optional `entrypoint_ip_address` to pin the IP). | Almost never. |
 | **Entry point: certificate** | Leaf for `esmeralda.internal` + `*.esmeralda.internal` (only those two SANs), signed by the internal Root CA, stored as regional SSL certificate `cert-esmeralda-ilb-*` in the gateway project. | Layer 3: [`3-security/pki.tf`](../../../infrastructure/modules/3-security/pki.tf) (output `entrypoint_ssl_certificate_id`). The CA private key never leaves Layer 3. | When the leaf is re-issued. |
 | **Entry point: routing** | URL map `ilb-esmeralda-url-map-<env>`, target HTTPS proxy `ilb-esmeralda-https-proxy-<env>`, forwarding rule `ilb-esmeralda-rule-<env>` on port **443** of the reserved IP. | Layer 5: [`5-workloads/entrypoint`](../../../infrastructure/modules/5-workloads/entrypoint/main.tf), live unit `layer-5-workloads/entrypoint`. | A gateway is added or swapped, or a host moves between gateways. |
-| **Gateways** | Products that do host routing and token injection (Kong, Apigee, ...). Each one ends in a regional backend service. | Layer 5: `modules/5-workloads/gateways/<name>`, live units `layer-5-workloads/gateways/<name>`. | Routes or the gateway product change. |
+| **Gateways** | Products that do host routing and token injection (Kong, Envoy, Apigee, ...). Each one ends in a regional backend service. | Layer 5: `modules/5-workloads/gateways/<name>`, live units `layer-5-workloads/gateways/<name>`. | Routes or the gateway product change. |
 
 Because the IP, the DNS records and the certificate live in lower layers, the hostnames outlive any gateway: destroying, adding or swapping a gateway never changes what `*.esmeralda.internal` resolves to or which certificate callers see.
 
@@ -36,7 +37,7 @@ Because the IP, the DNS records and the certificate live in lower layers, the ho
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| **PlatformOps / Ingress Lead** | Managing the gateways, the entry point routing, ingress security policies, routes, and upstream token injection. | `infrastructure/modules/5-workloads/gateways/kong/` (and `gateways/apigee/`), `infrastructure/modules/5-workloads/entrypoint/`, the `gateways` block in `env.yaml`, `apps/services/kong/` (custom image + plugin), `templates/kong.yml.tpl`. | Internal agent prompt graphs, Python business logic. |
+| **PlatformOps / Ingress Lead** | Managing the gateways, the entry point routing, ingress security policies, routes, and upstream token injection. | `infrastructure/modules/5-workloads/gateways/kong/`, `gateways/envoy/` (and `gateways/apigee/`), `infrastructure/modules/5-workloads/entrypoint/`, the `gateways` block in `env.yaml`, `apps/services/kong/` (custom image + plugin), `templates/kong.yml.tpl`, `apps/services/envoy/` (pinned upstream image). | Internal agent prompt graphs, Python business logic. |
 | **NetOps Engineer** | Providing the Shared VPC subnets, the private DNS zone and the entry point address. | `sb-esmeralda-core-<env>` / `sb-esmeralda-proxy-<env>` subnets, the `esmeralda.internal.` zone, the reserved entry point IP and its `esmeralda.internal` / `*.esmeralda.internal` A records (all Layer 2). | Ingress route transformation policies. |
 | **SecOps Engineer** | Owning the internal Root CA and the entry point certificate. | `infrastructure/modules/3-security/pki.tf` (Layer 3). | Gateway routes. |
 | **AI Application Developer** (CX and AI CoE teams) | Calling targets via standard internal DNS hostnames. | Consuming `https://ai-coe-mortgage-specialist.esmeralda.internal` or `https://<svc>.esmeralda.internal/mcp`. | Gateway configuration, upstream token generation, or proxy infrastructure. |
@@ -72,6 +73,7 @@ flowchart TD
     subgraph Adapters["Selectable gateways: gateways.enabled (modules/5-workloads/gateways/)"]
         direction TB
         OptB["<b>kong (default)</b><br/>• Cloud Run, port 8000, DB-less<br/>• kong.yml from Secret Manager<br/>• gcp-service-account plugin<br/>• Serverless NEG + backend service"]
+        OptC["<b>envoy (reference adapter)</b><br/>• Cloud Run, port 8080, distroless Envoy 1.40<br/>• Bootstrap rendered by Terraform (config submodule)<br/>• gcp_authn tokens, cached<br/>• Serverless NEG + backend service"]
         OptA["<b>apigee (stub)</b><br/>• Apigee X org + instance<br/>• KVM route lookup<br/>• Token-injecting proxy policies<br/>• backend_service_id = null (placeholder)"]
     end
 
@@ -79,8 +81,9 @@ flowchart TD
 
     Req --> DNS --> EP
     EP -->|default| OptB
+    EP -.->|host_rules| OptC
     EP -.->|host_rules| OptA
-    OptB & OptA ==>|Host-based routing + Google token| Backend
+    OptB & OptC & OptA ==>|Host-based routing + Google token| Backend
 ```
 
 ---
@@ -93,11 +96,11 @@ A gateway is anything the entry point can route to. Adding one takes three piece
 
 1. **A module** under `infrastructure/modules/5-workloads/gateways/<name>/` that outputs:
    * `backend_service_id`: the ID of a **regional `INTERNAL_MANAGED` backend service** in the gateway project, in the entry point's region. The entry point URL map points hosts at it.
-   * `routes`: map of the hosts it serves and how `make test-gateway` probes each one (`host`, `probe` = `mcp`, `a2a` or `none`).
+   * `routes`: map of the hosts it serves and how `make test-gateway` probes each one (`host`, `probe` = `mcp`, `a2a` or `none`; the Envoy adapter also marks the orchestrator with `query`, a real query through `/api/stream_reasoning_engine`).
 2. **A live unit** under `infrastructure/live/<env>/layer-5-workloads/gateways/<name>/` with an `exclude` block that skips it when `<name>` is not in `gateways.enabled`.
 3. **One dependency block** in `infrastructure/live/<env>/layer-5-workloads/entrypoint/terragrunt.hcl` (with `enabled = contains(local.env_vars.locals.gateways.enabled, "<name>")`) plus its entry in `inputs.backends`.
 
-The gateway owns no load balancer, certificate or DNS record. See [`kong/outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/kong/outputs.tf) for the reference implementation.
+The gateway owns no load balancer, certificate or DNS record. See [`envoy/outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/envoy/outputs.tf) for the reference implementation (Kong's [`kong/outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/kong/outputs.tf) has the same shape).
 
 ### 2. The `gateways` Block in `env.yaml`
 
@@ -113,7 +116,7 @@ gateways = {
 
 * A `host_rules` key is a host label (`legacy-dms` is routed as `legacy-dms.esmeralda.internal`) or a full FQDN.
 * The entrypoint module validates the block: at least one gateway enabled, `default` and every `host_rules` value must be in `enabled`, and every enabled gateway must output a non-empty `backend_service_id`.
-* Both **dev and prd use `enabled = ["kong"]`, `default = "kong"`**, no host rules.
+* Both **dev and prd use `enabled = ["kong"]`, `default = "kong"`**, no host rules. Envoy is wired in (live unit + entrypoint dependency) but off until `envoy` is added to `enabled`.
 
 ### 3. The Entry Point (`entrypoint/`)
 
@@ -146,7 +149,32 @@ Why a private CA is needed, and how the Agent Gateway trusts it, is explained in
 
 ---
 
-### 5. Apigee X (`gateways/apigee/`, stub)
+### 5. Envoy on Cloud Run (`gateways/envoy/`, reference adapter)
+
+**What Envoy is:** an open-source, high-performance L7 proxy (CNCF). Its built-in [`gcp_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/gcp_authn_filter) filter fetches Google tokens from the metadata server and caches them, so no plugin or custom code is needed.
+
+**In Esmeralda:**
+* **Image:** `apps/services/envoy/Dockerfile` is upstream `envoyproxy/envoy:distroless-v1.40.2`, **pinned by digest** (Dependabot bumps it; the Gateway CI workflow runs the harness on every bump). Built with `make build-service-envoy` (image `envoy-gateway`) and deployed by digest like every other image. It contains no routes and no certificates.
+* **Bootstrap:** the pure [`config`](../../../infrastructure/modules/5-workloads/gateways/envoy/config/main.tf) submodule (no providers, no resources) renders the Envoy YAML from `agent_endpoints`. Terraform stores it in Secret Manager (`envoy-config-<env>`) and Cloud Run mounts the exact secret version at `/etc/envoy/envoy.yaml`, so every config change rolls out as a new revision (old versions are kept, so traffic can be rolled back to an earlier revision). For each target it creates:
+  * a **host route** `<name>.esmeralda.internal` and apex path routes (`/<name>/...`, `/agents/<name>/...`, prefix stripped), plus `GET /healthz` on the apex;
+  * an optional **`path_map`**: the orchestrator serves only `/api/stream_reasoning_engine` (the path `esmeralda serve` exposes locally), rewritten to `<engine>:streamQuery?alt=sse`, with **`streaming = true`** (no route timeout; `stream_idle_timeout` 300 s still applies);
+  * a cluster with upstream TLS verified against the system CA bundle and the target's SAN, an explicit 120 s route timeout and 5 retries on connect failure;
+  * **tokens:** an OAuth2 **access token** for `*.googleapis.com` audiences (Reasoning Engines), an OIDC **ID token** for the Cloud Run URI otherwise, cached until expiry.
+* **Hardening:** path normalization and slash merging, requests with encoded slashes rejected, query strings rejected on mapped paths, `x-envoy-original-*` headers only written by Envoy, upstream timing header removed, admin interface bound to `127.0.0.1`, JSON access log with the caller's host and path. Per-`X-API-Key` local rate limit (120/min per instance).
+* **Cloud Run service:** `envoy-gateway-<env>` in the gateway project, port 8080, running as **`sa-esmeralda-envoy-<env>`** (Layer 3 output `envoy_sa_email`). Ingress `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`, custom audiences for every served hostname, request timeout 3600 s (this also bounds requests through the load balancer: serverless NEG backend services take no `timeout_sec`). Direct VPC egress on the core subnet.
+* **Upstream grants:** when `envoy` is in `gateways.enabled`, the MCP service units add `sa-esmeralda-envoy-<env>` to their invokers, the specialist unit to its invokers, and the orchestrator unit grants it `roles/aiplatform.user` (adk-agent `invoker_service_accounts`).
+* **Gateway contract:** serverless NEG `neg-envoy-gateway-<env>` → regional backend service `backend-envoy-gateway-<env>` (`INTERNAL_MANAGED`, request logging on), exposed as `backend_service_id`. The `routes` output lists every host with its probe (`a2a` for the specialist, `query` for the orchestrator, `mcp` for the MCP servers). Module: [`gateways/envoy/main.tf`](../../../infrastructure/modules/5-workloads/gateways/envoy/main.tf); live unit: `layer-5-workloads/gateways/envoy`.
+* **Alerts (Layer 4):** when `envoy` is enabled, the governance unit passes `envoy-gateway-<env>` to the alert policies: a 5xx-ratio alert (threshold `monitoring_config.error_rate_threshold_pct`) and a token-fetch-failure alert, and the gateway is excluded from the P95 latency alert and SLO (SSE streams stay open for minutes).
+* **Tests:**
+  * `make test-gateway-unit`: offline harness ([`tests/gateway`](../../../tests/gateway)). It renders the `config` submodule with Terraform/OpenTofu and runs it in a real `envoy` 1.40 binary against a fake metadata server and TLS mock upstreams (routing, tokens and caching, streaming, rate limits, failure modes). Part of `make test-all`. See [Contributing](../contributing.md) for how to get the binary.
+  * [`tests/gateway/sandbox`](../../../tests/gateway/sandbox/README.md): a throwaway GCP project that runs the module for real behind the `entrypoint` module and checks it from a VM.
+
+> [!IMPORTANT]
+> Like Kong, Envoy routes use the agents' engine IDs. If an agent engine is recreated, re-apply `layer-5-workloads/gateways/envoy`.
+
+---
+
+### 6. Apigee X (`gateways/apigee/`, stub)
 
 **What Apigee is:** Google Cloud's managed enterprise API management platform (proxies, products, quotas, analytics).
 
@@ -163,9 +191,9 @@ Why a private CA is needed, and how the Agent Gateway trusts it, is explained in
 
 ## Migrating Between Gateways, Host by Host
 
-The entry point lets two gateways serve the same domain at once, so a new gateway (here a hypothetical `envoy`) can take over one host at a time while callers keep the same hostnames and certificate:
+The entry point lets two gateways serve the same domain at once, so a new gateway (here `envoy`) can take over one host at a time while callers keep the same hostnames and certificate:
 
-1. **Build the gateway.** Add `modules/5-workloads/gateways/envoy` (outputs `backend_service_id` and `routes`), its live unit `layer-5-workloads/gateways/envoy`, and a `dependency "envoy"` block + `backends` entry in the entrypoint unit.
+1. **Build the gateway.** For Envoy this is already done: `modules/5-workloads/gateways/envoy` (outputs `backend_service_id` and `routes`), its live unit `layer-5-workloads/gateways/envoy`, and the `dependency "envoy"` block + `backends` entry in the entrypoint unit. Apply Layer 3 (Envoy service account) and build the image (`make build-service-envoy`) first; with `envoy` enabled, re-apply the MCP services and agents so they grant the Envoy service account, and Layer 4 for its alerts.
 2. **Enable it and move one host** in `env.yaml`:
 
    ```hcl
@@ -194,7 +222,7 @@ To roll back at any step, revert `env.yaml` and re-apply the entry point.
 
 ## Apply Order
 
-For a new environment: L0 → L1 → L2 (includes the entry point IP + DNS) → L3 (includes the entry point certificate) → L4 → images → L5 services → agents → `gateways/kong` → `entrypoint` → `iap-egress` / `test-vm`. `make deploy-workloads` (`terragrunt run --all`) derives the Layer 5 order from the dependency blocks; the individual targets are `make deploy-gateway` (Kong) and `make deploy-entrypoint`.
+For a new environment: L0 → L1 → L2 (includes the entry point IP + DNS) → L3 (includes the entry point certificate and the gateway service accounts) → L4 → images → L5 services → agents → `gateways/kong` and/or `gateways/envoy` (whichever are in `gateways.enabled`) → `entrypoint` → `iap-egress` / `test-vm`. `make deploy-workloads` (`terragrunt run --all`) derives the Layer 5 order from the dependency blocks; the individual targets are `make deploy-gateway` (Kong) and `make deploy-entrypoint`.
 
 ---
 

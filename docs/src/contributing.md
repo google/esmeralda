@@ -39,8 +39,27 @@ a pull request, run at least:
 
 ```bash
 make bootstrap    # preflight checks + install all workspace packages with uv
-make test-all     # Python unit tests (MCP services + both agents) and `terraform validate` on every module
+make test-all     # Python unit tests (MCP services + both agents), `terraform validate` on every module and the Envoy gateway harness
 ```
+
+**Envoy for the gateway harness:** 1.40.x, the version the gateway image pins
+(at least 1.39: the Vertex AI routes need `gcp_authn` access tokens). On macOS,
+`brew install envoy`. On Linux, copy the binary out of that image, as the
+Gateway CI workflow does:
+
+```bash
+image="$(sed -n 's/^FROM //p' apps/services/envoy/Dockerfile)"
+docker create --name envoy-bin "$image" >/dev/null
+docker cp envoy-bin:/usr/local/bin/envoy ~/.local/bin/envoy && docker rm envoy-bin >/dev/null
+```
+
+The gateway harness (`make test-gateway-unit`) renders the Envoy config module and
+runs it in a real `envoy` against local fakes, so it needs `envoy` and
+`terraform` (or `tofu`) on your `PATH`, but no GCP access. The **Gateway**
+workflow runs it, and validates the sandbox Terraform, on every PR and push to
+`main` that touches the Envoy module or image, `tests/gateway`, the Makefile,
+`pyproject.toml` or `uv.lock`. (`make test-gateway` is a different target: it
+probes a deployed environment's routes from the test VM.)
 
 If you changed agent or MCP code, also exercise it locally (the targets start
 and stop the three MCP servers on ports 8001-8003 for you):
