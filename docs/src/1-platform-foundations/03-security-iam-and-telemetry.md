@@ -1,4 +1,4 @@
-# Layer 3: Security, IAM, CMEK & Internal PKI
+# Chapter 10: Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)
 
 ## 1. The Story & Business Why: Proving Who Is Calling Whom—Without Shared Secrets
 

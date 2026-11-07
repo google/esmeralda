@@ -1,4 +1,4 @@
-# Usage guide
+# Chapter 11: Developer Usage Guide (`esmeralda-platform`)
 
 ## The Story & Business Why: From Local Workstation to Zero-Trust Production Without Changing a Line of Code
 

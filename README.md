@@ -57,58 +57,59 @@ Throughout the repository and documentation, we follow a single end-to-end scena
 ### Architecture at a Glance
 
 ```mermaid
-flowchart TD
-    subgraph Clients["🌐 Ingress & Consumers"]
-        User["Loan Officer / Client\n(Vertex AI streamQuery)"]
-        TestVM["Verification Runner VM (IAP)"]
+flowchart LR
+    subgraph NS["1. North–South Front Door (Layer 5)"]
+        Partner["External Partner / B2B App<br/>(API Key / OAuth + 3LO Token)"]
+        Apigee["Apigee X Partner Front Door<br/>(partner.esmeralda.internal / 10.0.1.3)<br/>API Products • LLMTokenQuota • Metering"]
+        Caller["Internal Loan Officer / CLI<br/>(esmeralda query)"]
     end
 
-    subgraph Governance["🛡️ Layer 4: Central Governance & Trust Boundary"]
-        AGW["Central Agent Gateway\n(AGENT_TO_ANYWHERE egress)"]
-        AR["Central Agent Registry\n(allowlisted agents & MCP tools)"]
-        MA["Model Armor\n(optional inline inspection)"]
-        FinOps["Telemetry Sinks, FinOps\n& BigQuery Chargeback"]
+    subgraph Agents["2. Agent Runtime & Cryptographic Identity (Layers 3 & 5)"]
+        Orch["cx-mortgage-orchestrator<br/>(Google ADK • CX Project)<br/>SPIFFE Identity #1 (principal://)"]
+        Spec["ai-coe-mortgage-specialist<br/>(A2A Protocol • AI CoE Project)<br/>SPIFFE Identity #2 + Auth Manager 3LO"]
+        SQL[("Private Cloud SQL<br/>(A2A Task Store • CMEK)")]
     end
 
-    subgraph Agents["🧠 Layer 5: AI Reasoning (BYOC on Agent Runtime)"]
-        Orch["CX Mortgage Orchestrator\n(CX team project)"]
-        Spec["AI CoE Mortgage Specialist\n(A2A, AI CoE team project)"]
-        TaskDB[("Cloud SQL\nA2A Task Store (provisioned, inactive)")]
+    subgraph Gov["3. East–West Zero-Trust Control Plane (Layer 4)"]
+        AGW["GEAP Central Agent Gateway (10.200.0.2)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor"]
+        Gemini["Gemini 3.7 Flash<br/>(Vertex AI API)"]
+        FinOps["Central Telemetry & FinOps Hub<br/>(OTel Baggage • BigQuery Chargeback Views)"]
     end
 
-    subgraph Private["🔐 Layer 5: Private Front Door"]
-        EP["Entry point\n(internal HTTPS LB, *.esmeralda.internal)\nbuilt-in direct routing"]
-        Adapter["Optional adapter\n(e.g. Envoy, off by default)"]
+    subgraph EastWest["4. Private Entry Point & MCP Tools (Layer 5)"]
+        EP["Internal HTTPS Entry Point<br/>(*.esmeralda.internal / 10.0.1.2)<br/>Built-in direct routing (optional Envoy)"]
+        DMS["legacy-dms<br/>(Cloud Run FastMCP)"]
+        Inc["income-verification<br/>(Cloud Run FastMCP)"]
+        Email["corporate-email<br/>(Cloud Run FastMCP)"]
     end
 
-    subgraph Tools["🔌 Layer 5: MCP Tool Microservices"]
-        DMS["Legacy DMS Server\n(Cloud Run)"]
-        Income["Income Verification Server\n(Cloud Run)"]
-        Email["Corporate Email Server\n(Cloud Run)"]
-    end
+    Partner -->|"HTTPS + x-api-key"| Apigee
+    Apigee -->|"Curated route + quota check"| Orch
+    Caller -->|"Vertex AI streamQuery"| Orch
 
-    subgraph Models["⚡ Google Foundation Models"]
-        Gemini["Gemini 3.7 Flash\n(Vertex AI API)"]
-    end
+    Orch -->|"All outbound egress"| AGW
+    Spec -->|"All outbound egress"| AGW
 
-    User -->|Query| Orch
-    Orch -->|All egress| AGW
-    Spec -->|All egress| AGW
-    AGW -. allowlist .-> AR
-    AGW -. optional .-> MA
-    AGW -->|Authorized egress| Gemini
-    AGW -->|PSC attachment + private DNS| EP
-    TestVM -->|Private DNS| EP
-    EP -->|A2A, PSC NEG| Spec
-    EP -->|MCP, serverless NEG| DMS
-    EP -->|MCP, serverless NEG| Income
-    EP -->|MCP, serverless NEG| Email
-    EP -.->|host_rules| Adapter
-    Spec -->|IAM DB Auth| TaskDB
-    Agents -.->|Log sinks| FinOps
+    AGW -->|"Authorized model call"| Gemini
+    AGW -->|"UAP + Semantic NLC verified"| EP
+
+    EP -->|"A2A (PSC NEG)"| Spec
+    EP -->|"MCP + 3LO Claims"| DMS & Inc & Email
+    Spec -->|"IAM DB Auth"| SQL
+
+    Orch -.->|"Log sink + caller baggage"| FinOps
+    Spec -.->|"Log sink + caller baggage"| FinOps
+    Apigee -.->|"ML-interaction analytics"| FinOps
 ```
 
-Both agents run as **bring-your-own-container (BYOC)** images on **Vertex AI Agent Engine** (Agent Runtime), each with its own cryptographic SPIFFE Agent Identity. Every outbound call they make—to Gemini, to MCP tools, or to other agents—passes through the **Central Agent Gateway**, which enforces a deny-by-default allowlist backed by the **Agent Registry**. Private destinations under `*.esmeralda.internal` land at the internal HTTPS load balancer (**entry point**), which routes each host straight to its Cloud Run service or Agent Runtime engine via the built-in `direct` backend (zero extra proxy VMs), or optionally through a pluggable adapter (`envoy`, `apigee`) configured in `env.yaml`.
+#### How the Security, Identity, and Gateway Planes Fit Together
+
+| Plane | Component | Direction | What It Governs |
+| :--- | :--- | :--- | :--- |
+| **External / Partner API Plane** | **Apigee X** (`partner.esmeralda.internal` / `10.0.1.3`) | **North–South** | Authenticates external B2B partners (`VerifyAPIKey` / OAuth), curates exposed agents (`partner-agents`) and MCP tools (`partner-mcp`), enforces commercial `<LLMTokenQuota>` (`429`), and meters per-consumer token usage. |
+| **Workload & User Identity Plane** | **GEAP Agent Identity & Auth Manager** (`agents.global.org-<ORG>.system.id.goog`) | **End-to-End Identity** | Provisions a non-impersonatable X.509 **SPIFFE ID (`principal://`)** per Reasoning Engine and brokers **3-Legged OAuth (3LO)** end-user tokens (`X-Esmeralda-User-Token`) so tools can verify both *which agent* and *which human* initiated the action. |
+| **Internal Agent Egress Plane** | **GEAP Central Agent Gateway** (`10.200.0.2`) | **East–West** | Intercepts every outbound call an agent makes, enforcing **Agent Registry** allowlists, per-target **Unified Access Policies (UAP / IAP)**, **Semantic Governance (Natural Language Constraints, NLC)** against Confused Deputy tool calls, and **Model Armor** inspection. |
+| **Private Service Routing Plane** | **Internal HTTPS Entry Point** (`*.esmeralda.internal` / `10.0.1.2`) | **Private VPC Fabric** | Terminates internal TLS signed by the Layer 3 Root CA and routes each `*.esmeralda.internal` host directly to its Cloud Run serverless NEG or Agent Runtime PSC NEG (`direct` backend by default, or optional `envoy` / `apigee` adapters). |
 
 ---
 
@@ -117,12 +118,13 @@ Both agents run as **bring-your-own-container (BYOC)** images on **Vertex AI Age
 
 | Pillar | Capability | Description |
 | :--- | :--- | :--- |
-| **Multi-Track Parallelism** | **Decoupled 6-Layer Architecture** | Modular Terragrunt progression—Shared CI/CD (`L0`), Projects (`L1`), Networking (`L2`), Security & PKI (`L3`), Governance (`L4`), and Workloads (`L5`)—allowing platform, security, tool, and AI teams to ship independently. |
-| **Multi-Agent Engine** | **Agent-to-Agent (A2A) Protocol** | Open inter-agent delegation: the CX orchestrator discovers and invokes the AI CoE's reusable specialist via its published Agent Card. Includes a private Cloud SQL task store (`USE_CLOUD_SQL = "0"` by default; tasks kept in memory). |
-| **Zero-Trust Governance** | **Central Agent Gateway & SPIFFE Identity** | Google-managed egress proxy that verifies *who* is calling (SPIFFE Agent Identity), *where* it is going (Agent Registry allowlist + IAP `roles/iap.egressor`), and optionally *what* is sent (Model Armor, wired and toggleable). |
-| **Tool Ecosystem** | **Model Context Protocol (MCP)** | Serverless FastMCP microservices exposing corporate systems (DMS, income verification, email) at `https://<svc>.esmeralda.internal/mcp` with end-to-end caller identity preservation. |
-| **Observability & FinOps** | **OpenTelemetry & BigQuery Chargeback** | Automatic OpenTelemetry spans, per-request token attribution, central log sinks, automated chargeback SQL views (`vw_monthly_agent_chargeback`), and Cloud Monitoring golden signals. |
-| **Unified Developer CLI** | **`esmeralda` CLI & MCP Server** | First-class CLI (`uv run esmeralda ...`) and read-only MCP server (`uv run esmeralda mcp`) for local development, infrastructure planning, live verification, and AI-assisted operations. |
+| **Multi-Track Parallelism** | **Decoupled 6-Layer Architecture** | Modular Terragrunt progression—Shared CI/CD (`L0`), Projects (`L1`), Networking (`L2`), Security & PKI (`L3`), Governance (`L4`), and Workloads (`L5`)—allowing platform, security, tool, AI, and partner API teams to ship independently. |
+| **Cryptographic Identity** | **GEAP SPIFFE Identity & Auth Manager (3LO)** | Every Reasoning Engine runs with an attested SPIFFE identity (`principal://`) bound per target on the Central Agent Gateway (zero shared service accounts or org-wide wildcards), paired with Auth Manager 3LO user delegation and zero-latency MCP claims verification (`esmeralda.mcp_authz`). |
+| **Zero-Trust Governance** | **Central Agent Gateway, UAPs & Semantic NLC** | Google-managed egress control plane enforcing **Agent Registry** discovery, per-target **Unified Access Policies (UAPs)**, runtime **Semantic Governance (Natural Language Constraints)** to block Confused Deputy / SSN exfiltration attacks, and **Model Armor**. |
+| **Partner Monetization** | **Removable Apigee X Capability Modules** | Optional Layer 5 capability bundles (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`, `cross-cloud`) and tiered API Products (`bronze`, `silver`, `gold`) toggled declaratively via `governance.capabilities` in `env.yaml`. |
+| **Multi-Agent & MCP Ecosystem** | **A2A Protocol & Serverless FastMCP** | The CX orchestrator (Google ADK) delegates underwriting over **A2A** to the AI CoE specialist, which invokes private Cloud Run **FastMCP** servers (`legacy-dms`, `income-verification`, `corporate-email`) at `https://<svc>.esmeralda.internal/mcp`. |
+| **Observability & FinOps** | **OpenTelemetry Baggage & BigQuery Chargeback** | Cross-project W3C baggage propagation (`BaggageSpanProcessor`), structured token telemetry, hub-and-spoke log sinks, automated BigQuery chargeback SQL views (`vw_monthly_agent_chargeback`), and Cloud Monitoring Golden Signals. |
+| **Unified Developer CLI** | **`esmeralda` CLI & MCP Server** | First-class CLI (`uv run esmeralda ...`, published as `esmeralda-platform`) and read-only MCP server (`uv run esmeralda mcp`) for local development, guarded Terraform plans/applies, live partner & internal verification (`esmeralda verify --partner`), and AI-assisted operations. |
 
 ---
 

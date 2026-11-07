@@ -143,17 +143,17 @@ To close this gap at the platform control plane, Layer 4 Submodule 7 (`infrastru
 
 ```mermaid
 flowchart LR
-    U["Initiating User Intent\n(Julian Sterling)"] --> ORCH["CX Mortgage Orchestrator (ADK)"]
+    U["Initiating User Intent<br/>(Julian Sterling)"] --> ORCH["CX Mortgage Orchestrator (ADK)"]
     ORCH -->|"A2A (UAP: allowed)"| SPEC["AI CoE Mortgage Specialist (A2A)"]
     SPEC -->|"MCP Tool Call"| AGW["Central Agent Gateway"]
     subgraph GEAP["Layer 4: GEAP Policy Evaluation"]
-        UAP["1. Unified Access Policy (UAP)\nVerify SPIFFE principal:// & tool allowlist"]
-        NLC["2. Semantic Governance (NLC)\nVerify tool arguments match user intent & business rules"]
+        UAP["1. Unified Access Policy (UAP)<br/>Verify SPIFFE principal:// & tool allowlist"]
+        NLC["2. Semantic Governance (NLC)<br/>Verify tool arguments match user intent & business rules"]
         UAP --> NLC
     end
     AGW --> GEAP
-    NLC -->|"Aligned"| MCP["MCP Tool Servers\n(corporate-email, legacy-dms, income-verification)"]
-    NLC -.->|"Violates NLC (e.g. SSN exfiltration\nor cross-applicant query)"| DENY["403 Semantic Policy Deny + Audit Log"]
+    NLC -->|"Aligned"| MCP["MCP Tool Servers<br/>(corporate-email, legacy-dms, income-verification)"]
+    NLC -.->|"Violates NLC (e.g. SSN exfiltration<br/>or cross-applicant query)"| DENY["403 Semantic Policy Deny + Audit Log"]
 ```
 
 ### How UAP and NLC Work Together on Every Tool Call

@@ -1,4 +1,4 @@
-# Layer 2: Private Networking, DNS & Private Service Connect (PSC)
+# Chapter 9: Private Networking, Shared VPC & Private DNS (Layer 2)
 
 ## 1. The Story & Business Why: How Tenant-Hosted Agents Reach Private Bank Services with Zero Public IPs
 
