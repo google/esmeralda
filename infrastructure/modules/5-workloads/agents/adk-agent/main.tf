@@ -76,6 +76,13 @@ resource "google_project_iam_member" "agent_identity_bq_writer" {
   member  = local.agent_identity_principal
 }
 
+resource "google_project_iam_member" "agent_identity_governance_bq_writer" {
+  count   = var.governance_project_id != "" && var.enable_agent_identity ? 1 : 0
+  project = var.governance_project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = local.agent_principal
+}
+
 resource "google_storage_bucket_iam_member" "agent_identity_storage_user" {
   for_each = var.enable_agent_identity ? {
     staging   = google_storage_bucket.staging.name
@@ -173,7 +180,8 @@ locals {
     GCS_BUCKET                      = try(google_storage_bucket.logs.name, null)
     GATEWAY_MCP_URL                 = try(var.gateway_mcp_url, null)
     A2A_AGENT_URL                   = try(var.a2a_agent_url, null)
-    EVENTS_DATASET_ID               = try(google_bigquery_dataset.analytics.dataset_id, null)
+    EVENTS_PROJECT_ID               = var.governance_project_id != "" ? var.governance_project_id : var.project_id
+    EVENTS_DATASET_ID               = var.central_events_dataset_id != "" ? var.central_events_dataset_id : google_bigquery_dataset.analytics.dataset_id
     EVENTS_TABLE_ID                 = "${replace(local.yaml_name, "-", "_")}_events"
     SERVICE_ACCOUNT_EMAIL           = var.enable_native_spiffe_auth ? null : (var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account)
     AGENT_GATEWAY_ROOT_CERTIFICATES = var.agent_gateway_root_certificates
@@ -197,6 +205,7 @@ locals {
     startswith(local.effective_identity, "spiffe://") ? replace(local.effective_identity, "spiffe://", "principal://") :
     "principal://${local.trust_domain}/${local.spiffe_resource_path}"
   )
+  agent_principal = local.agent_identity_principal
 
   # Split the URI to get registry, repository, and image details dynamically.
   # agent_image_uri is either <registry>/<project>/<repo>/<image>:<tag> (resolved to a digest
@@ -340,7 +349,7 @@ resource "google_agent_registry_service" "core_gapi_services" {
   provider     = google-beta
   project      = var.project_id
   location     = var.region
-  service_id   = "core-gapi-services"
+  service_id   = "core-gapi-services-${var.agent_name}"
   display_name = "gapi.core.services"
   description  = "Core Google APIs and services required for Vertex AI Agent Engine and ADK runtime"
 

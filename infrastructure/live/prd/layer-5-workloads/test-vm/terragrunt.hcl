@@ -1,22 +1,22 @@
-# infrastructure/live/prd/layer-5-workloads/services/test-vm/terragrunt.hcl
+# infrastructure/live/prd/layer-5-workloads/test-vm/terragrunt.hcl
 include "root" {
   path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
-  source = "../../../../../modules//5-workloads/services/test-vm"
+  source = "../../../../modules//5-workloads/test-vm"
 }
 
 dependency "projects" {
-  config_path = "../../../layer-1-projects"
+  config_path = "../../layer-1-projects"
 }
 
 dependency "networking" {
-  config_path = "../../../layer-2-networking"
+  config_path = "../../layer-2-networking"
 }
 
 dependency "security" {
-  config_path = "../../../layer-3-security"
+  config_path = "../../layer-3-security"
 }
 
 locals {

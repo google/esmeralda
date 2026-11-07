@@ -349,7 +349,7 @@ test-partner: ## Run partner front-door conformance checks (401 unauth, 403/404 
 	@uv run esmeralda verify --partner --env $(ENV)
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
-	@cd $(LIVE_DIR)/layer-5-workloads/services/iap-egress && terragrunt --non-interactive apply -auto-approve
+	@cd $(LIVE_DIR)/layer-5-workloads/iap-egress && terragrunt --non-interactive apply -auto-approve
 
 # ==============================================================================
 # Operations CLI (delegates to `uv run esmeralda ...`)
