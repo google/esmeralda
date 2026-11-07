@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<SharedFlow name="default">
+  <Step>
+    <Name>LTQ-enforce</Name>
+    <Condition>(flow.apigee.token_quota.phase = "enforce") or (flow.apigee.token_quota.phase Is null)</Condition>
+  </Step>
+  <Step>
+    <Name>LTQ-count</Name>
+    <Condition>(flow.apigee.token_quota.phase = "count") and (llm.totalTokenCount != null)</Condition>
+  </Step>
+</SharedFlow>

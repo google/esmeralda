@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<ProxyEndpoint name="default">
+  <Description>North-south partner front door for allowlisted Esmeralda agents (SSE and JSON routes separated).</Description>
+  <FaultRules/>
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step>
+        <Name>VAK-Verify-Partner-Key</Name>
+      </Step>
+      <Step>
+        <Name>RF-Key-Identity-Mismatch</Name>
+        <Condition>(verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != null) and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != "") and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != request.header.x-verified-identity)</Condition>
+      </Step>
+      <Step>
+        <Name>RF-Agent-Not-Allowed</Name>
+        <Condition>!(proxy.pathsuffix MatchesPath "/cx-mortgage-orchestrator/**") and !(verifyapikey.VAK-Verify-Partner-Key.apiproduct.allowed_agents ~~ "(?i).*\\ball\\b.*")</Condition>
+      </Step>
+      <Step>
+        <Name>AM-set-user-var</Name>
+      </Step>
+      <Step>
+        <Name>LTQ-enforce</Name>
+      </Step>
+      <Step>
+        <Name>AM-clean-headers</Name>
+      </Step>
+    </Request>
+    <Response/>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+  <Flows>
+    <Flow name="streamQuery">
+      <Description>ADK streaming reasoning engine invocation over SSE</Description>
+      <Request/>
+      <Response/>
+      <Condition>((proxy.pathsuffix MatchesPath "/*:streamQuery") or (proxy.pathsuffix MatchesPath "/*/api/stream_reasoning_engine") or (proxy.pathsuffix MatchesPath "/*/v1/message:stream")) and (request.verb = "POST")</Condition>
+    </Flow>
+    <Flow name="agentCard">
+      <Description>A2A agent discovery card</Description>
+      <Request/>
+      <Response/>
+      <Condition>(proxy.pathsuffix MatchesPath "/*/v1/card") and (request.verb = "GET")</Condition>
+    </Flow>
+    <Flow name="syncQuery">
+      <Description>Synchronous ADK :query or A2A /v1/message:send invocation</Description>
+      <Request/>
+      <Response/>
+      <Condition>((proxy.pathsuffix MatchesPath "/*:query") or (proxy.pathsuffix MatchesPath "/*/v1/message:send")) and (request.verb = "POST")</Condition>
+    </Flow>
+    <Flow name="notFound">
+      <Description>Catch-all 404 for unknown paths or methods</Description>
+      <Request>
+        <Step>
+          <Name>RF-Not-Found</Name>
+        </Step>
+      </Request>
+      <Response/>
+    </Flow>
+  </Flows>
+  <EventFlow name="EventFlow" content-type="text/event-stream">
+    <Response/>
+  </EventFlow>
+  <HTTPProxyConnection>
+    <BasePath>/partner/v1/agents</BasePath>
+    <Properties>
+      <Property name="response.streaming.enabled">true</Property>
+      <Property name="api.timeout">300000</Property>
+    </Properties>
+  </HTTPProxyConnection>
+  <RouteRule name="sse">
+    <TargetEndpoint>sse</TargetEndpoint>
+    <Condition>(proxy.pathsuffix MatchesPath "/*:streamQuery") or (proxy.pathsuffix MatchesPath "/*/api/stream_reasoning_engine") or (proxy.pathsuffix MatchesPath "/*/v1/message:stream")</Condition>
+  </RouteRule>
+  <RouteRule name="default">
+    <TargetEndpoint>default</TargetEndpoint>
+  </RouteRule>
+  <PostClientFlow name="PostClientFlow">
+    <Response>
+      <Step>
+        <Name>ML-interaction</Name>
+      </Step>
+    </Response>
+  </PostClientFlow>
+</ProxyEndpoint>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<ExtractVariables name="EV-ExtractTokenCount" continueOnError="true" enabled="true">
+  <DisplayName>EV-ExtractTokenCount</DisplayName>
+  <Source clearPayload="false">response</Source>
+  <JSONPayload>
+    <Variable name="llm.promptTokenCount" type="integer">
+      <JSONPath>$.usage_metadata.prompt_token_count</JSONPath>
+      <JSONPath>$.result.usage_metadata.prompt_token_count</JSONPath>
+      <JSONPath>$.usageMetadata.promptTokenCount</JSONPath>
+    </Variable>
+    <Variable name="llm.candidatesTokenCount" type="integer">
+      <JSONPath>$.usage_metadata.candidates_token_count</JSONPath>
+      <JSONPath>$.result.usage_metadata.candidates_token_count</JSONPath>
+      <JSONPath>$.usageMetadata.candidatesTokenCount</JSONPath>
+    </Variable>
+    <Variable name="llm.totalTokenCount" type="integer">
+      <JSONPath>$.usage_metadata.total_token_count</JSONPath>
+      <JSONPath>$.result.usage_metadata.total_token_count</JSONPath>
+      <JSONPath>$.usageMetadata.totalTokenCount</JSONPath>
+    </Variable>
+    <Variable name="llm.model" type="string">
+      <JSONPath>$.model_version</JSONPath>
+      <JSONPath>$.modelVersion</JSONPath>
+      <JSONPath>$.model</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</ExtractVariables>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<APIProxy revision="1" name="partner-agents">
+  <DisplayName>partner-agents</DisplayName>
+  <Description>North-south partner front door for allowlisted Esmeralda agents (SSE and JSON routes separated).</Description>
+  <BasePaths>/partner/v1/agents</BasePaths>
+  <Policies>
+    <Policy>AM-clean-headers</Policy>
+    <Policy>AM-set-user-var</Policy>
+    <Policy>EV-ExtractTokenCount</Policy>
+    <Policy>JS-extract-tokens</Policy>
+    <Policy>LTQ-count</Policy>
+    <Policy>LTQ-enforce</Policy>
+    <Policy>ML-interaction</Policy>
+    <Policy>RF-Agent-Not-Allowed</Policy>
+    <Policy>RF-Key-Identity-Mismatch</Policy>
+    <Policy>RF-Not-Found</Policy>
+    <Policy>VAK-Verify-Partner-Key</Policy>
+  </Policies>
+  <ProxyEndpoints>
+    <ProxyEndpoint>default</ProxyEndpoint>
+  </ProxyEndpoints>
+  <Resources>
+    <Resource>jsc://extract-tokens.js</Resource>
+  </Resources>
+  <TargetEndpoints>
+    <TargetEndpoint>default</TargetEndpoint>
+    <TargetEndpoint>sse</TargetEndpoint>
+  </TargetEndpoints>
+</APIProxy>

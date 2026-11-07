@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<RaiseFault name="RF-Tool-Forbidden" continueOnError="false" enabled="true">
+  <DisplayName>RF-Tool-Forbidden</DisplayName>
+  <FaultResponse>
+    <Set>
+      <StatusCode>403</StatusCode>
+      <Payload contentType="application/json">{"error":"tool_forbidden","detail":"The requested MCP tool is not permitted by this API product's allowed_mcp_tools scope.","tool":"{mcp.tool.name}"}</Payload>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

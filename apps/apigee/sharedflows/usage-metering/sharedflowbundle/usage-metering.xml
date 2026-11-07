@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<SharedFlowBundle revision="1" name="usage-metering">
+  <DisplayName>usage-metering</DisplayName>
+  <Description>Removable Apigee capability shared flow for SSE/JSON LLM token metering, header hygiene, and body-free OTel GenAI Cloud Logging.</Description>
+  <Policies>
+    <Policy>AM-clean-headers</Policy>
+    <Policy>AM-set-user-var</Policy>
+    <Policy>EV-ExtractTokenCount</Policy>
+    <Policy>JS-extract-tokens</Policy>
+    <Policy>ML-interaction</Policy>
+  </Policies>
+  <Resources>
+    <Resource>jsc://extract-tokens.js</Resource>
+  </Resources>
+  <SharedFlows>
+    <SharedFlow>default</SharedFlow>
+  </SharedFlows>
+</SharedFlowBundle>

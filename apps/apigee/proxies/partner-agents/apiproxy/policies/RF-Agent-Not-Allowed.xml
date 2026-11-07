@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<RaiseFault name="RF-Agent-Not-Allowed" continueOnError="false" enabled="true">
+  <DisplayName>RF-Agent-Not-Allowed</DisplayName>
+  <!-- Enforces the server-side partner agent allowlist derived from the service
+       catalog (expose_to_partners = true, e.g. cx-mortgage-orchestrator). Direct
+       partner requests to internal specialist agents are rejected at the gateway. -->
+  <FaultResponse>
+    <Set>
+      <StatusCode>403</StatusCode>
+      <Payload contentType="application/json">{"error":"agent_not_allowed","detail":"The requested agent is not exposed to external partner consumers."}</Payload>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

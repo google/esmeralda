@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<LLMTokenQuota name="LTQ-enforce" continueOnError="false" enabled="true">
+  <DisplayName>LTQ-enforce</DisplayName>
+  <!-- Request-side quota enforcement: rejects with HTTP 429 before invoking the
+       upstream agent when the consumer's shared token counter has reached the
+       API product's configured limit. -->
+  <SharedName>esmeralda-partner-llm-quota</SharedName>
+  <EnforceOnly>true</EnforceOnly>
+  <Identifier ref="verifyapikey.VAK-Verify-Partner-Key.client_id"/>
+  <Allow count="50000" countRef="verifyapikey.VAK-Verify-Partner-Key.apiproduct.llm_quota_limit"/>
+  <Interval ref="verifyapikey.VAK-Verify-Partner-Key.apiproduct.llm_quota_interval">1</Interval>
+  <TimeUnit ref="verifyapikey.VAK-Verify-Partner-Key.apiproduct.llm_quota_timeunit">hour</TimeUnit>
+  <!-- Explicit model source prevents Apigee from defaulting to jsonPath($.model)
+       on agent request bodies that do not carry a top-level model field. -->
+  <LLMModelSource>{firstnonnull(llm.model,"gemini-2.5-flash")}</LLMModelSource>
+  <Distributed>true</Distributed>
+  <Synchronous>true</Synchronous>
+</LLMTokenQuota>

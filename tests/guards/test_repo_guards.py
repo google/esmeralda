@@ -54,10 +54,11 @@ EXPECTED_CAPABILITY_KEYS = {
     "cross_cloud",
 }
 
-# Match concrete 4-char random suffixes on Esmeralda project IDs (e.g. esm-dev-governance-1a2b),
-# while allowing suffix-less component names (`esm-dev-net-host`, `esm-dev-mcps`) and placeholders (`<sfx>`).
+# Match concrete 4-char random hex suffixes on Esmeralda project IDs,
+# while allowing suffix-less component names (`esm-dev-net-host`, `esm-dev-mcps`),
+# Terragrunt mock IDs (`*-mock`), and placeholders (`<sfx>`).
 REAL_PROJECT_ID_RE = re.compile(
-    r"\besm-(?:dev|prd|cicd)(?:-[a-z0-9]+)+-(?!host\b|mcps\b)[a-z0-9]{4}\b"
+    r"\besm-(?:dev|prd|cicd)(?:-[a-z0-9]+)+-(?!host\b|mcps\b|mock\b)[a-z0-9]{4}\b"
 )
 
 # Standard 18-hex-char GCP billing account identifier (XXXXXX-XXXXXX-XXXXXX).
@@ -132,12 +133,15 @@ def test_no_hardcoded_project_ids_billing_or_restricted_domains():
 
 def test_guard_regexes_catch_planted_violations():
     """Verify the hygiene regexes detect suffixed project IDs, billing IDs, and internal/demo domains."""
-    assert REAL_PROJECT_ID_RE.search("projects/esm-dev-governance-9f0a/locations/us-central1")
-    assert REAL_PROJECT_ID_RE.search("esm-prd-cx-agents-1b2c")
+    sample_dev_proj = "esm-dev-governance-" + "9f0a"
+    sample_prd_proj = "esm-prd-cx-agents-" + "1b2c"
+    assert REAL_PROJECT_ID_RE.search(f"projects/{sample_dev_proj}/locations/us-central1")
+    assert REAL_PROJECT_ID_RE.search(sample_prd_proj)
     assert not REAL_PROJECT_ID_RE.search("projects/esm-dev-cx-agents-<sfx>/locations/us-central1")
     assert not REAL_PROJECT_ID_RE.search("esm-dev-ai-coe-agents")
     assert not REAL_PROJECT_ID_RE.search("esm-dev-net-host")
     assert not REAL_PROJECT_ID_RE.search("esm-dev-mcps")
+    assert not REAL_PROJECT_ID_RE.search("esm-dev-gateway-mock")
 
     sample_billing = "01" + "ABCD-23EF45-6789AB"
     assert BILLING_ACCOUNT_ID_RE.search(f'billing_account = "{sample_billing}"')
@@ -257,9 +261,10 @@ def test_env_manifests_have_key_parity_and_valid_capabilities():
     dev = load_env_locals(DEV_ENV_PATH)
     prd = load_env_locals(PRD_ENV_PATH)
 
-    assert set(dev.keys()) == set(prd.keys()), (
+    prd_only_computed = {"release_manifest", "image_digests"}
+    assert set(dev.keys()) == (set(prd.keys()) - prd_only_computed), (
         f"Top-level keys differ between dev and prd env.yaml: "
-        f"dev-only={set(dev) - set(prd)}, prd-only={set(prd) - set(dev)}"
+        f"dev-only={set(dev) - set(prd)}, prd-only={set(prd) - set(dev) - prd_only_computed}"
     )
 
     assert "gateways" in dev and "gateways" in prd
