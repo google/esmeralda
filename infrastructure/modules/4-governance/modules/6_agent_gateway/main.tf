@@ -331,7 +331,7 @@ resource "google_secret_manager_secret_iam_member" "agw_ca_secret_accessors" {
   project   = var.governance_project_id
   secret_id = google_secret_manager_secret.agw_ca_cert[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
-  member    = startswith(each.value, "serviceAccount:") || startswith(each.value, "principalSet:") ? each.value : "serviceAccount:${each.value}"
+  member    = startswith(each.value, "serviceAccount:") || startswith(each.value, "principalSet:") || startswith(each.value, "principal:") ? each.value : "serviceAccount:${each.value}"
 }
 
 data "google_project" "agent_projects" {
@@ -344,9 +344,8 @@ locals {
     for proj_id, p in data.google_project.agent_projects : [
       "serviceAccount:service-${p.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
       "serviceAccount:service-${p.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
-      p.org_id != "" ? "principalSet://agents.global.org-${p.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${p.number}" : "",
-      p.org_id != "" ? "principalSet://agents.global.org-${p.org_id}.system.id.goog/attribute.container/projects/${p.number}" : "",
-      p.org_id != "" ? "principalSet://agents.global.org-${p.org_id}.system.id.goog/*" : ""
+      "principalSet://agents.global.${p.org_id != "" ? "org-${p.org_id}" : "proj-${p.number}"}.system.id.goog/attribute.platformContainer/aiplatform/projects/${p.number}",
+      "principalSet://agents.global.${p.org_id != "" ? "org-${p.org_id}" : "proj-${p.number}"}.system.id.goog/attribute.container/projects/${p.number}"
     ]
   ])
 

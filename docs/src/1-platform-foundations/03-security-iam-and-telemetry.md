@@ -46,15 +46,27 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
 
 ---
 
-### ADR-03.2: Agent Identity First, Service Accounts as Supporting Identities
-* **What Agent Identity is:** a Google-issued, SPIFFE-based identity given to each Agent Runtime (Reasoning Engine) deployed with `identity_type = AGENT_IDENTITY`. All engines of one project share a `principalSet`:
-  `principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformContainer/aiplatform/projects/<PROJECT_NUMBER>`
-* **In Esmeralda:** both agents run with Agent Identity (the default, `enable_agent_identity = true`). Because the CX and AI CoE agents live in separate projects, each team's agents get their **own** `principalSet`, so Layer 3 can grant the CX orchestrator and the AI CoE specialist different permissions. This identity is also the "who" the Agent Gateway authorizes (`roles/iap.egressor`); see the [Agent Gateway guide](../3-agentops-and-lifecycle/01-central-agent-gateway.md#32-agent-identity-spiffe).
-* **Decision:** Provision isolated service accounts per workload instead of one shared SA:
+### ADR-03.2: GEAP Agent Identity (`spiffe://` / `principal://`), Three-Identity Delegation, and Per-Target Agent Gateway IAP/UAP Policies
+* **What GEAP Agent Identity is:** a Google-issued, cryptographically attested [SPIFFE](https://spiffe.io/) identity given to each Agent Runtime (Vertex AI Reasoning Engine) deployed with `identity_type = AGENT_IDENTITY`, backed by auto-rotated 24-hour X.509 certificates, mTLS, and DPoP token binding:
+  * **Per-engine SPIFFE URI (`spiffe_id` output):**
+    `spiffe://agents.global.org-<ORG_ID>.system.id.goog/resources/aiplatform/projects/<PROJECT_NUMBER>/locations/<REGION>/reasoningEngines/<ENGINE_ID>`
+  * **Per-engine IAM Principal (`agent_identity_principal` output):**
+    `principal://agents.global.org-<ORG_ID>.system.id.goog/resources/aiplatform/projects/<PROJECT_NUMBER>/locations/<REGION>/reasoningEngines/<ENGINE_ID>`
+  * **Project-scoped PrincipalSet (never org-wide `system.id.goog/*`):**
+    `principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformContainer/aiplatform/projects/<PROJECT_NUMBER>`
+* **Three-Identity Delegation Architecture:** Following the Gemini Enterprise Agent Platform (GEAP) security model, Esmeralda separates and coordinates three distinct identity contexts across every request:
+  1. **User Identity:** The initiating human end user's identity, authenticated via OAuth 2.0 / OIDC (`user_auth_token`).
+  2. **Agent Identity (`spiffe://` / `principal://`):** Each Reasoning Engine's unique, cryptographically attested workload identity (`adk-agent` and `a2a-agent` export both `spiffe_id` and `agent_identity_principal`, and bind atomic BigQuery datasets and GCS buckets directly to `local.agent_identity_principal`). When `enable_native_spiffe_auth = true`, `SERVICE_ACCOUNT_EMAIL` is omitted so the runtime authenticates directly with its native SPIFFE identity rather than impersonating a shared service account.
+  3. **Delegated Identity:** Scoped 3-legged OAuth (3LO) or brokered tool credentials managed by Agent Identity Auth Manager (`agentidentitycredentials.googleapis.com`), attributing every downstream tool invocation to both the initiating end user and the calling agent's SPIFFE ID.
+* **Per-Target Agent Gateway IAP/UAP Policies (Eliminating Confused-Deputy Bypass):**
+  * Instead of granting an organization-wide wildcard (`principalSet://.../org-*/*`) or applying a single flat member list across every Agent Registry entry, [`grant_iap_egress.sh`](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh) and the Layer 5 [`services/iap-egress`](../../../infrastructure/modules/5-workloads/services/iap-egress/main.tf) module enforce **per-target `roles/iap.egressor` policies** (`IAP_TARGET_POLICIES_JSON` / `var.target_iap_members`):
+    * **On `--agent=ai-coe-mortgage-specialist`:** Only `cx-mortgage-orchestrator`'s attested `agent_identity_principal` (plus its fallback SA and the test VM SA) is granted `roles/iap.egressor`.
+    * **On `--mcp-server={corporate-email,income-verification,legacy-dms}`:** Only `ai-coe-mortgage-specialist`'s attested `agent_identity_principal` (plus its fallback SA, `sa-mcp-invoker-<env>`, and the test VM SA) is granted `roles/iap.egressor`. The CX orchestrator cannot bypass the specialist to call MCP servers directly.
+* **Supporting Service Accounts:** Provision isolated service accounts per workload for database IAM bootstrap, ingress gateways, and fallback execution when `enable_agent_identity = false`:
   1. `sa-esmeralda-mcps-<env>`: Cloud Run MCP tool execution.
-  2. `sa-mcp-invoker-<env>`: the only identity with `roles/run.invoker` on the MCPs project. Agents **impersonate** it to mint Google ID tokens for MCP calls (and access tokens for A2A calls to agent hosts served by the built-in `direct` backend); the MCP servers see it as the caller.
-  3. `sa-ai-coe-mortgage-spec-<env>`: AI CoE specialist. Used as the Cloud SQL IAM database user and by the database bootstrap job; runtime fallback if Agent Identity is disabled.
-  4. `sa-cx-mortgage-orch-<env>`: CX orchestrator. Runtime fallback if Agent Identity is disabled.
+  2. `sa-mcp-invoker-<env>`: backward-compatible OIDC/OAuth invoker SA when `enable_native_spiffe_auth = false`. Agents impersonate it to mint Google ID tokens for Cloud Run MCP calls (and access tokens for A2A calls to agent hosts served by the built-in `direct` backend).
+  3. `sa-ai-coe-mortgage-spec-<env>`: AI CoE specialist Cloud SQL IAM database user and schema bootstrap job; runtime fallback if Agent Identity is disabled.
+  4. `sa-cx-mortgage-orch-<env>`: CX orchestrator fallback runtime identity if Agent Identity is disabled.
   5. `sa-esmeralda-envoy-<env>`: Envoy adapter runtime (used when `envoy` is in `gateways.enabled`). The former Kong service account (`sa-esmeralda-kong-<env>`) is gone with Kong; the default `direct` backend has no runtime identity.
   6. `sa-esmeralda-test-vm-<env>`: Private test VM identity with scoped invoker permissions.
 
@@ -118,14 +130,14 @@ Invoke rights on individual MCP services and agents also come from the `callers`
 
 ---
 
-### 3. Agent Identity Grants ([`agent_identity.tf`](../../../infrastructure/modules/3-security/agent_identity.tf))
+### 3. Agent Identity Grants ([`agent_identity.tf`](../../../infrastructure/modules/3-security/agent_identity.tf)) & Per-Target IAP Egress ([`grant_iap_egress.sh`](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh))
 
-| `principalSet` of… | Roles in its own project | Agent Gateway egress (`roles/iap.egressor`) |
-| :--- | :--- | :--- |
-| **CX agents** project | `aiplatform.user`, `storage.objectAdmin`, `bigquery.dataEditor`, `bigquery.jobUser`, `telemetry.writer`, logging/monitoring/trace writers, `serviceusage.serviceUsageConsumer`, ... | on the `mcps` **and** `ai-coe-agents` projects (tools + the reusable specialist) |
-| **AI CoE agents** project | the above plus `cloudsql.client`, `cloudsql.instanceUser` | on the `mcps` project (tools) |
+| Identity (`principal://` / `principalSet://`) | Roles in its own project & atomic resources | Project-level `roles/iap.egressor` & `roles/run.invoker` | Agent Registry Per-Target IAP Egress (`services/iap-egress`) |
+| :--- | :--- | :--- | :--- |
+| **CX orchestrator** (`cx-mortgage-orchestrator`) | `aiplatform.user`, `storage.objectAdmin`, `bigquery.dataEditor`, `bigquery.jobUser`, `telemetry.writer`, logging/monitoring/trace writers; direct `principal://` bindings on its atomic BigQuery dataset and GCS buckets | `roles/iap.egressor` **only** on `ai-coe-agents` (never on `mcps`) | `--agent=ai-coe-mortgage-specialist` and registry-wide system Google APIs (**cannot** call MCP servers directly) |
+| **AI CoE specialist** (`ai-coe-mortgage-specialist`) | the above plus `cloudsql.client`, `cloudsql.instanceUser`; direct `principal://` bindings on its atomic BigQuery dataset and GCS buckets | `roles/iap.egressor` and `roles/run.invoker` on the `mcps` project | `--mcp-server=corporate-email`, `--mcp-server=income-verification`, `--mcp-server=legacy-dms`, and registry-wide system Google APIs |
 
-This encodes the team model: the **CX** orchestrator may call MCP tools and the **AI CoE** specialist; the specialist may call MCP tools. The registry-level `iap.egressor` grants used by the gateway are added later by [`grant_iap_egress.sh`](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh) (Layers 4 and 5).
+This enforces least-privilege separation at both the GCP project layer and the Central Agent Gateway: the **CX** orchestrator can only invoke the **AI CoE** specialist over A2A, and only the **AI CoE** specialist can invoke the downstream MCP tool servers.
 
 ---
 

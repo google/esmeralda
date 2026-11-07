@@ -227,6 +227,25 @@ resource "google_bigquery_dataset_iam_member" "agent_bq_writer" {
   member     = "serviceAccount:${var.agent_service_account}"
 }
 
+resource "google_bigquery_dataset_iam_member" "agent_identity_bq_writer" {
+  count      = var.enable_agent_identity ? 1 : 0
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = local.agent_identity_principal
+}
+
+resource "google_storage_bucket_iam_member" "agent_identity_storage_user" {
+  for_each = var.enable_agent_identity ? {
+    staging   = google_storage_bucket.staging.name
+    artifacts = google_storage_bucket.artifacts.name
+    logs      = google_storage_bucket.logs.name
+  } : {}
+  bucket = each.value
+  role   = "roles/storage.objectUser"
+  member = local.agent_identity_principal
+}
+
 resource "google_bigquery_dataset_iam_member" "vertex_re_bq_writer" {
   dataset_id = google_bigquery_dataset.analytics.dataset_id
   project    = var.project_id
@@ -251,14 +270,14 @@ resource "google_project_iam_member" "invokers_aiplatform_user" {
   for_each = toset(var.invoker_service_accounts)
   project  = var.project_id
   role     = "roles/aiplatform.user"
-  member   = "serviceAccount:${each.value}"
+  member   = startswith(each.value, "serviceAccount:") || startswith(each.value, "principal://") || startswith(each.value, "principalSet://") ? each.value : "serviceAccount:${each.value}"
 }
 
 resource "google_project_iam_member" "agent_identity_aiplatform_user" {
   count   = var.enable_agent_identity ? 1 : 0
   project = var.project_id
   role    = "roles/aiplatform.user"
-  member  = "principalSet://agents.global.org-${data.google_project.current.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.current.number}"
+  member  = "principalSet://${local.trust_domain}/attribute.platformContainer/aiplatform/projects/${data.google_project.current.number}"
 }
 
 resource "google_project_iam_member" "vertex_re_dns_peer" {
@@ -330,7 +349,7 @@ locals {
     USE_CLOUD_SQL                   = "0"
     EVENTS_DATASET_ID               = try(google_bigquery_dataset.analytics.dataset_id, null)
     EVENTS_TABLE_ID                 = "${replace(local.yaml_name, "-", "_")}_events"
-    SERVICE_ACCOUNT_EMAIL           = var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account
+    SERVICE_ACCOUNT_EMAIL           = var.enable_native_spiffe_auth ? null : (var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account)
     AGENT_GATEWAY_ROOT_CERTIFICATES = var.agent_gateway_root_certificates
     # Hosts the agent calls with an OAuth2 access token instead of an ID token (esmeralda.auth.token_kind)
     ACCESS_TOKEN_HOSTS = join(",", var.access_token_hosts)
@@ -339,6 +358,18 @@ locals {
   final_env_vars = merge(
     local.yaml_env_vars,
     { for k, v in local.runtime_overrides : k => v if v != "" && v != null }
+  )
+
+  # Canonical GEAP SPIFFE identity (spiffe://...) and IAM principal (principal://...)
+  trust_domain         = "agents.global.${data.google_project.current.org_id != "" ? "org-${data.google_project.current.org_id}" : "proj-${data.google_project.current.number}"}.system.id.goog"
+  engine_short_id      = element(split("/", google_vertex_ai_reasoning_engine.agent.id), length(split("/", google_vertex_ai_reasoning_engine.agent.id)) - 1)
+  spiffe_resource_path = "resources/aiplatform/projects/${data.google_project.current.number}/locations/${var.region}/reasoningEngines/${local.engine_short_id}"
+  spiffe_id            = "spiffe://${local.trust_domain}/${local.spiffe_resource_path}"
+  effective_identity   = try(google_vertex_ai_reasoning_engine.agent.spec[0].effective_identity, "")
+  agent_identity_principal = (
+    startswith(local.effective_identity, "principal://") ? local.effective_identity :
+    startswith(local.effective_identity, "spiffe://") ? replace(local.effective_identity, "spiffe://", "principal://") :
+    "principal://${local.trust_domain}/${local.spiffe_resource_path}"
   )
 
   # Split the URI to get registry, repository, and image details dynamically.

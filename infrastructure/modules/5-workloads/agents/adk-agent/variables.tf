@@ -26,6 +26,12 @@ variable "enable_agent_identity" {
   default     = true
 }
 
+variable "enable_native_spiffe_auth" {
+  description = "When true, omit SERVICE_ACCOUNT_EMAIL from container env vars so the agent authenticates with its native GEAP SPIFFE identity instead of impersonating mcp_invoker_sa_email"
+  type        = bool
+  default     = false
+}
+
 # Run-time Dependency Injections
 variable "gateway_mcp_url" {
   description = "The injected private or public endpoint URI of the active API Ingress Gateway (from Option A, B, or C)"

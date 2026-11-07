@@ -2,16 +2,23 @@
 # infrastructure/modules/_shared/scripts/grant_iap_egress.sh
 #
 # Grants roles/iap.egressor on the central Agent Registry so agents may egress through the
-# Agent Gateway: registry-wide, plus on every registered MCP server and A2A agent.
+# Agent Gateway:
+#   - Registry-wide (for system Google API endpoints such as aiplatform, telemetry, logging)
+#   - Per-target on each registered MCP server (--mcp-server) and A2A agent (--agent) when
+#     IAP_TARGET_POLICIES_JSON is provided.
 #
 # Idempotent (set-iam-policy). Called by:
-#   - layer 4 governance (registry-wide + system endpoints, right after the gateway exists)
-#   - layer 5 workloads `iap-egress` stack (after MCP services and agents registered themselves)
+#   - layer 4 governance (registry-wide system endpoints, right after the gateway exists)
+#   - layer 5 workloads `iap-egress` stack (per-target least-privilege policies after MCP
+#     services and agents have registered themselves)
 #
 # Required env:
-#   GOVERNANCE_PROJECT_ID  central governance project hosting the Agent Registry
-#   REGION                 registry location
-#   IAP_MEMBERS_JSON       JSON list of IAM members (serviceAccount:/principalSet:/principal:)
+#   GOVERNANCE_PROJECT_ID     central governance project hosting the Agent Registry
+#   REGION                    registry location
+#   IAP_MEMBERS_JSON          JSON list of IAM members for registry-wide system endpoints
+# Optional env:
+#   IAP_TARGET_POLICIES_JSON  JSON object mapping per-target member lists:
+#                             {"mcp_servers": {"<id>": [...]}, "agents": {"<id>": [...]}}
 set -euo pipefail
 
 : "${GOVERNANCE_PROJECT_ID:?}" "${REGION:?}" "${IAP_MEMBERS_JSON:?}"
@@ -19,18 +26,24 @@ set -euo pipefail
 POLICY_FILE="$(mktemp)"
 trap 'rm -f "${POLICY_FILE}"' EXIT
 
-cat > "${POLICY_FILE}" <<EOF
+write_policy_file() {
+  local members_json="$1"
+  cat > "${POLICY_FILE}" <<EOF
 {
   "bindings": [
     {
       "role": "roles/iap.egressor",
-      "members": ${IAP_MEMBERS_JSON}
+      "members": ${members_json}
     }
   ]
 }
 EOF
+}
 
-set_policy() {
+set_policy_for_members() {
+  local members_json="$1"
+  shift
+  write_policy_file "${members_json}"
   gcloud iap web set-iam-policy "${POLICY_FILE}" \
     --project="${GOVERNANCE_PROJECT_ID}" \
     --resource-type=agent-registry \
@@ -39,19 +52,22 @@ set_policy() {
 }
 
 echo "🔒 Registry-wide IAP egress policy on ${GOVERNANCE_PROJECT_ID}/${REGION}..."
-set_policy
+set_policy_for_members "${IAP_MEMBERS_JSON}"
 
-TOKEN="$(gcloud auth print-access-token)"
-API="https://agentregistry.googleapis.com/v1alpha/projects/${GOVERNANCE_PROJECT_ID}/locations/${REGION}"
+if [[ -n "${IAP_TARGET_POLICIES_JSON:-}" ]] && jq -e '((.mcp_servers // {}) | length > 0) or ((.agents // {}) | length > 0)' >/dev/null 2>&1 <<<"${IAP_TARGET_POLICIES_JSON}"; then
+  echo "🎯 Applying per-target least-privilege IAP egress policies..."
 
-for MCP_ID in $(curl -sf -H "Authorization: Bearer ${TOKEN}" "${API}/mcpServers" | jq -r '.mcpServers[]?.name | split("/") | last'); do
-  echo "  -> mcp-server ${MCP_ID}"
-  set_policy --mcp-server="${MCP_ID}"
-done
+  for MCP_ID in $(jq -r '.mcp_servers // {} | keys[]' <<<"${IAP_TARGET_POLICIES_JSON}"); do
+    TARGET_MEMBERS="$(jq -c --arg id "${MCP_ID}" '.mcp_servers[$id]' <<<"${IAP_TARGET_POLICIES_JSON}")"
+    echo "  -> mcp-server ${MCP_ID}"
+    set_policy_for_members "${TARGET_MEMBERS}" --mcp-server="${MCP_ID}"
+  done
 
-for AGENT_ID in $(curl -sf -H "Authorization: Bearer ${TOKEN}" "${API}/agents" | jq -r '.agents[]?.name | split("/") | last'); do
-  echo "  -> agent ${AGENT_ID}"
-  set_policy --agent="${AGENT_ID}"
-done
+  for AGENT_ID in $(jq -r '.agents // {} | keys[]' <<<"${IAP_TARGET_POLICIES_JSON}"); do
+    TARGET_MEMBERS="$(jq -c --arg id "${AGENT_ID}" '.agents[$id]' <<<"${IAP_TARGET_POLICIES_JSON}")"
+    echo "  -> agent ${AGENT_ID}"
+    set_policy_for_members "${TARGET_MEMBERS}" --agent="${AGENT_ID}"
+  done
+fi
 
 echo "✅ IAP egress policies applied."
