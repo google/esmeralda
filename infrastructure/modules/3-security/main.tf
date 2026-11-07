@@ -422,6 +422,29 @@ resource "google_project_iam_member" "kong_roles" {
   member  = "serviceAccount:${google_service_account.kong_sa.email}"
 }
 
+# Dedicated Service Account for the Envoy ingress gateway (modules/5-workloads/gateways/envoy).
+# Upstreams see this identity: Layer 5 makes it an invoker of each MCP service and grants it
+# aiplatform.user on the agent projects when envoy is in gateways.enabled. The roles below apply
+# to the gateway project itself.
+resource "google_service_account" "envoy_sa" {
+  account_id   = "sa-esmeralda-envoy-${var.environment}"
+  display_name = "Envoy Ingress Gateway Service Account"
+  project      = var.gateway_project_id
+}
+
+resource "google_project_iam_member" "envoy_roles" {
+  for_each = toset([
+    "roles/aiplatform.user",
+    "roles/run.invoker",
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+    "roles/cloudtrace.agent"
+  ])
+  project = var.gateway_project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.envoy_sa.email}"
+}
+
 # Standard VM logging and Vertex user permissions in local project
 resource "google_project_iam_member" "test_vm_roles" {
   for_each = toset([

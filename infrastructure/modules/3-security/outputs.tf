@@ -42,6 +42,11 @@ output "kong_sa_email" {
   value       = google_service_account.kong_sa.email
 }
 
+output "envoy_sa_email" {
+  description = "The email address of the Envoy ingress gateway service account"
+  value       = google_service_account.envoy_sa.email
+}
+
 output "telemetry_dataset_id" {
   description = "The BigQuery dataset ID capturing agentic telemetry and audit logs"
   value       = "esmeralda_telemetry_logs_${var.environment}"
