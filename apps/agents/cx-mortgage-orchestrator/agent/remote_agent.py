@@ -14,8 +14,9 @@
 
 """The AI CoE mortgage specialist, as the orchestrator's sub-agent.
 
-Deployed: an A2A call through the gateway (``A2A_AGENT_URL``), with ID-token auth, this agent's
-caller context and the user's token handled by ``esmeralda.a2a.remote_agent``.
+Deployed: an A2A call through the gateway (``A2A_AGENT_URL``), with the right bearer token for the
+host (access token or ID token, see ``esmeralda.auth.token_kind``), this agent's caller context and
+the user's token handled by ``esmeralda.a2a.remote_agent``.
 
 ``LOCAL_MODE=true`` (workstation runs): the specialist's agent runs in-process instead.
 """

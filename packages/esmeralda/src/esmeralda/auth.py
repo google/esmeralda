@@ -12,14 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Service-to-service authentication: Google-signed ID tokens, cached per audience.
+"""Service-to-service authentication: the right bearer token for each host, cached.
 
-Calls through the gateway (MCP servers, other agents behind Kong) carry an OIDC ID token for the
-target's audience. With ``SERVICE_ACCOUNT_EMAIL`` set, the token is minted for that service account
-through IAM impersonation; otherwise for the runtime identity (metadata server or ADC).
+Calls through the gateway entry point (MCP servers, other agents) carry a bearer token of the kind
+the host's backend checks. The entry point routes each host either to Cloud Run (an MCP server, or
+a bring-your-own gateway adapter), which checks a Google-signed **ID token** whose audience is the
+URL's origin, or to Agent Runtime, which checks an OAuth2 **access token** (it rejects ID tokens).
+``token_kind(url)`` picks the kind: ``access`` for hosts listed in ``ACCESS_TOKEN_HOSTS`` and for
+``*.googleapis.com``, ``id`` otherwise; ``bearer_token(url)`` mints it.
 
-Tokens are cached per audience and refreshed shortly before they expire (google-auth credentials
-handle the expiry), so a tool call or an A2A request doesn't pay one or two IAM round trips.
+With ``SERVICE_ACCOUNT_EMAIL`` set, tokens are minted for that service account through IAM
+impersonation; otherwise for the runtime identity (metadata server or ADC).
+
+Tokens are cached (ID tokens per audience) and refreshed shortly before they expire (google-auth
+credentials handle the expiry), so a tool call or an A2A request doesn't pay one or two IAM round
+trips.
 """
 
 from __future__ import annotations
@@ -30,13 +37,18 @@ import logging
 import os
 import threading
 import urllib.parse
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
 CLOUD_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+ACCESS_TOKEN_HOSTS_ENV = "ACCESS_TOKEN_HOSTS"
+TOKEN_KINDS = ("id", "access")
+
+TokenKind = Literal["id", "access"]
 
 _credentials: dict[tuple[str, str], Any] = {}
+_access_credentials: dict[str, Any] = {}
 _lock = threading.Lock()
 
 
@@ -111,6 +123,95 @@ async def id_token_async(audience: str) -> str:
     return await asyncio.to_thread(id_token, audience)
 
 
+def _new_access_credentials(service_account: str) -> Any:
+    import google.auth
+    from google.auth import impersonated_credentials
+
+    source, _ = google.auth.default(scopes=[CLOUD_SCOPE])
+    if service_account:
+        return impersonated_credentials.Credentials(
+            source_credentials=source, target_principal=service_account, target_scopes=[CLOUD_SCOPE]
+        )
+    return source
+
+
+def access_token() -> str:
+    """An OAuth2 access token (scope ``cloud-platform``; cached, refreshed before expiry).
+
+    Minted for ``SERVICE_ACCOUNT_EMAIL`` through impersonation when set; if that fails, falls back
+    to the runtime identity and logs a warning. Raises if no token can be minted.
+    """
+    from google.auth.transport.requests import Request
+
+    service_account = os.environ.get("SERVICE_ACCOUNT_EMAIL", "")
+    with _lock:
+        credentials = _access_credentials.get(service_account)
+        if credentials is None:
+            credentials = _access_credentials[service_account] = _new_access_credentials(service_account)
+        if not credentials.valid:
+            try:
+                credentials.refresh(Request())
+            except Exception as exc:
+                if not service_account:
+                    raise
+                logger.warning(
+                    "Access token via impersonation of %s failed (%s); using the runtime identity.",
+                    service_account,
+                    exc,
+                )
+                credentials = _access_credentials[service_account] = _new_access_credentials("")
+                credentials.refresh(Request())
+        return credentials.token
+
+
+async def access_token_async() -> str:
+    """``access_token`` off the event loop (minting may do blocking network calls)."""
+    return await asyncio.to_thread(access_token)
+
+
+def _access_token_hosts() -> set[str]:
+    raw = os.environ.get(ACCESS_TOKEN_HOSTS_ENV, "")
+    return {host.strip().lower().rstrip(".") for host in raw.split(",") if host.strip()}
+
+
+def token_kind(url: str) -> TokenKind:
+    """The bearer token kind the host of ``url`` takes: ``"access"`` or ``"id"``.
+
+    ``"access"`` (OAuth2 access token) for hosts listed in ``ACCESS_TOKEN_HOSTS`` (comma-separated
+    hostnames, read at call time; agents on Agent Runtime routed straight through the entry point)
+    and for ``*.googleapis.com``; ``"id"`` (ID token, audience = the URL's origin) otherwise.
+    """
+    host = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
+    if host and (host in _access_token_hosts() or host.endswith(".googleapis.com")):
+        return "access"
+    return "id"
+
+
+def _resolve_kind(url: str, kind: str | None) -> str:
+    kind = kind or token_kind(url)
+    if kind not in TOKEN_KINDS:
+        raise ValueError(f"Unknown token kind {kind!r}; expected one of {TOKEN_KINDS}")
+    return kind
+
+
+def bearer_token(url: str, kind: str | None = None) -> str:
+    """The bearer token for a call to ``url``: an ID token for its origin or an access token.
+
+    ``kind`` (``"id"`` or ``"access"``) overrides ``token_kind(url)``.
+    """
+    if _resolve_kind(url, kind) == "access":
+        return access_token()
+    return id_token(audience_for(url))
+
+
+async def bearer_token_async(url: str, kind: str | None = None) -> str:
+    """``bearer_token`` off the event loop."""
+    if _resolve_kind(url, kind) == "access":
+        return await access_token_async()
+    return await id_token_async(audience_for(url))
+
+
 def clear_cache() -> None:
     with _lock:
         _credentials.clear()
+        _access_credentials.clear()

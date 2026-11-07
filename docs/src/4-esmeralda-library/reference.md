@@ -125,6 +125,10 @@ A frozen dataclass.
 |---|---|
 | `id_token(audience) -> str` | A Google-signed ID token for `audience`. With `SERVICE_ACCOUNT_EMAIL`, minted through impersonation of that service account (falls back to the runtime identity, with a warning, if impersonation fails); otherwise for the runtime identity. Cached per audience and service account; refreshed before expiry. Raises if no token can be minted |
 | `id_token_async(audience)` | `id_token` in a worker thread |
+| `access_token() -> str` | An OAuth2 access token (scope `cloud-platform`), for `SERVICE_ACCOUNT_EMAIL` through impersonation when set (same fallback as `id_token`). Cached; refreshed before expiry |
+| `access_token_async()` | `access_token` in a worker thread |
+| `token_kind(url) -> "id" \| "access"` | `"access"` for hosts listed in `ACCESS_TOKEN_HOSTS` and for `*.googleapis.com`; `"id"` otherwise |
+| `bearer_token(url, kind=None) -> str` | `access_token()` or `id_token(audience_for(url))`; `kind` (`"id"` or `"access"`) overrides `token_kind(url)` |
 | `audience_for(url)` | The URL's origin, `scheme://host[:port]` |
 | `is_local(url)` | `True` for `localhost`, `127.0.0.1`, `::1` |
 | `clear_cache()` | Drops cached credentials (tests) |
@@ -133,14 +137,14 @@ A frozen dataclass.
 
 | Name | Description |
 |---|---|
-| `toolset(url, *, prefix, api_key=None, timeout=30.0, sse_read_timeout=300.0, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
-| `headers_for(url, ctx=None, *, api_key=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <ID token>` (not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `context.user_token(ctx)` has one) |
+| `toolset(url, *, prefix, api_key=None, timeout=30.0, sse_read_timeout=300.0, token=None, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. `token` (`"id"` or `"access"`) overrides `auth.token_kind(url)`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
+| `headers_for(url, ctx=None, *, api_key=None, token=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `context.user_token(ctx)` has one) |
 
 ## `esmeralda.a2a`
 
 | Name | Description |
 |---|---|
-| `remote_agent(name, *, url, description="", api_key=None, timeout=60.0)` | An ADK `RemoteA2aAgent` for the agent at `url`. Card from `<url>/v1/card`, with every RPC address pinned to `url` before ADK's checks. Every request gets an ID token for `url`'s origin (not for local URLs) and `X-API-Key` |
+| `remote_agent(name, *, url, description="", api_key=None, timeout=60.0, token=None)` | An ADK `RemoteA2aAgent` for the agent at `url`. Card from `<url>/v1/card`, with every RPC address pinned to `url` before ADK's checks. Every request gets a bearer token for `url` (kind from `token`, else `auth.token_kind(url)`; not for local URLs) and `X-API-Key` |
 | `request_metadata(invocation_context, a2a_message=None)` | The A2A request metadata: `caller_context`, plus `user_auth_token` when the invocation has one. Usable as `a2a_request_meta_provider` |
 
 ## `esmeralda.telemetry`
@@ -351,6 +355,7 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | `MODEL_LOCATION` | `genai_client_defaults` | Location for every genai client (for example `global`) |
 | `MODEL_NAME` | Plugin | Fallback `model` in token events, when the response has no model version |
 | `*_PROXY` | `log_egress_proxy` | Logged at startup |
-| `SERVICE_ACCOUNT_EMAIL` | `auth.id_token` | Service account to impersonate for ID tokens (set by Terraform) |
+| `SERVICE_ACCOUNT_EMAIL` | `auth.id_token`, `auth.access_token` | Service account to impersonate for ID and access tokens (set by Terraform) |
+| `ACCESS_TOKEN_HOSTS` | `auth.token_kind` | Comma-separated hostnames that take an access token instead of an ID token (agent hosts served by `direct`; set by Terraform from the service catalog) |
 | `ESMERALDA_REPO` | `esmeralda mcp`, `esmeralda.ops` | Repository root (default: the checkout containing the working directory) |
 | `USER_AUTH_ID` | `context.user_token` | Gemini Enterprise authorization id of the user token (default `user_auth_token`) |

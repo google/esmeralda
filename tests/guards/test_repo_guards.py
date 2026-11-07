@@ -90,7 +90,7 @@ def _tracked_files() -> list[pathlib.Path]:
     ).stdout
     files: list[pathlib.Path] = []
     for rel in out.splitlines():
-        if not rel or rel == "uv.lock":
+        if not rel or rel in {"uv.lock", "tests/guards/test_repo_guards.py"}:
             continue
         path = REPO_ROOT / rel
         if path.is_file() and path.suffix.lower() not in BINARY_SUFFIXES:

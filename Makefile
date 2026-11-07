@@ -43,7 +43,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 .PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway-unit test-guards test-apigee test-partner run-mcp-local \
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
-	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy \
+	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	verify test-release promote test-governance-chaos load-test docs-serve docs-build clean preflight \
@@ -248,14 +248,11 @@ build-service-corporate-email: ## Build and push the Corporate Email MCP image
 build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
 	$(call build_image,apps/services/legacy-dms,legacy-dms,legacy-dms)
 
-build-service-kong: ## Build and push the custom Kong Gateway image
-	$(call build_image,apps/services/kong,kong-gateway)
-
 build-service-envoy: ## Build and push the Envoy gateway image (digest-pinned upstream Envoy, no custom code)
 	$(call build_image,apps/services/envoy,envoy-gateway)
 
-build-services: ## Build all MCP service + gateway (Kong, Envoy) images concurrently
-	@$(MAKE) -j5 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy
+build-services: ## Build all MCP service + Envoy gateway images concurrently
+	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy
 	@echo "✅ All service images built and pushed!"
 
 build-images: build-services build-agents ## Build every image deployed by Layer 5
@@ -290,15 +287,15 @@ deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasonin
 deploy-agents: ## Deploy both Reasoning Engine agents, in parallel (no deploy-time dependency between them)
 	@$(MAKE) --no-print-directory -j2 deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator
 
-deploy-gateway: ## Deploy the Kong gateway: Cloud Run + backend service (re-run after agents are recreated: routes use engine IDs)
-	@echo "🚀 Deploying Kong API Gateway..."
-	@cd $(LIVE_DIR)/layer-5-workloads/gateways/kong && terragrunt --non-interactive apply -auto-approve
+deploy-gateway: ## Deploy the built-in direct backends (gateways/direct; re-run after agents are recreated: routes use engine IDs)
+	@echo "🚀 Deploying the direct backends (serverless NEGs + aiplatform PSC NEG)..."
+	@cd $(LIVE_DIR)/layer-5-workloads/gateways/direct && terragrunt --non-interactive apply -auto-approve
 
 deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, forwarding rule) after the gateways
 	@echo "🚪 Deploying the internal entry point..."
 	@cd $(LIVE_DIR)/layer-5-workloads/entrypoint && terragrunt --non-interactive apply -auto-approve
 
-test-gateway: ## Probe every gateway route host through the entry point from the test VM (IAP SSH): ENV=<env>
+test-gateway: ## Probe every catalog host through the entry point from the test VM (IAP SSH), incl. a real orchestrator query: ENV=<env>
 	@bash scripts/test_gateway.sh $(ENV)
 
 test-partner: ## Run partner front-door conformance checks (401 unauth, 403/404 agent/MCP scope, SSE TTFB + answer, 429 quota): ENV=<env>

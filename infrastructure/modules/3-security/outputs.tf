@@ -37,11 +37,6 @@ output "test_vm_sa_email" {
   value       = google_service_account.test_vm_sa.email
 }
 
-output "kong_sa_email" {
-  description = "The email address of the Kong Gateway service account"
-  value       = google_service_account.kong_sa.email
-}
-
 output "envoy_sa_email" {
   description = "The email address of the Envoy ingress gateway service account"
   value       = google_service_account.envoy_sa.email

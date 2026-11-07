@@ -136,7 +136,7 @@ An A2A agent is written like any other agent: the package exports `app` (`esmera
 
 ## Calling MCP servers and other agents
 
-Calls through the gateway need the same things every time: an ID token for the target, the end user's token when there is one, and the agent's API key, which the gateway uses for rate limiting. The library adds them for you.
+Calls through the gateway need the same things every time: a bearer token for the target (an ID token or an access token, see [Token kinds](#token-kinds)), the end user's token when there is one, and the agent's API key, which an adapter can use for rate limiting. The library adds them for you.
 
 ### MCP tool servers
 
@@ -151,7 +151,7 @@ root_agent = Agent(..., tools=[dms_toolset])
 ```
 
 Each request carries:
-- `Authorization: Bearer <ID token>` for the server's origin. Not sent to `localhost`, so local MCP servers work as-is.
+- `Authorization: Bearer <token>`: by default an ID token for the server's origin (see [Token kinds](#token-kinds)). Not sent to `localhost`, so local MCP servers work as-is.
 - `User-Auth-Token`, when the invocation has a user token (see below).
 - `X-API-Key: <AGENT_NAME>`.
 
@@ -169,11 +169,17 @@ specialist = a2a.remote_agent(
 root_agent = Agent(..., sub_agents=[specialist])
 ```
 
-The remote agent fetches the card from `<url>/v1/card`, and pins every RPC address on it to `url`, so calls always go through the configured gateway address. ADK's own checks still apply: https, or http on a loopback host. Each request carries an ID token for `url`'s origin and the API key. Each message carries this agent's caller context and the user token in A2A metadata.
+The remote agent fetches the card from `<url>/v1/card`, and pins every RPC address on it to `url`, so calls always go through the configured gateway address (the card of an agent on Agent Runtime advertises the engine's own `aiplatform.googleapis.com` URL). ADK's own checks still apply: https, or http on a loopback host. Each request carries a bearer token for `url` (an access token for an agent host served by the entry point's `direct` backend, see [Token kinds](#token-kinds)) and the API key. Each message carries this agent's caller context and the user token in A2A metadata.
 
-### ID tokens
+### Token kinds
 
-ID tokens come from `esmeralda.auth`. With `SERVICE_ACCOUNT_EMAIL` set, they are minted for that service account through impersonation; otherwise for the runtime identity. Each is cached per audience and refreshed shortly before it expires, so tool calls don't pay for IAM round trips. If impersonation fails, the library logs a warning and falls back to the runtime identity.
+The entry point's targets take different credentials: Cloud Run MCP servers (and hosts routed to an adapter such as Envoy) take an **ID token** for the host, while agents on Agent Runtime served by the built-in `direct` backend take an **OAuth2 access token** (see [Entry point → token kinds](../2-workloads-and-catalog/01-ingress-gateways.md#5-token-kinds-and-the-client-library)).
+
+`esmeralda.auth.token_kind(url)` picks the kind: `"access"` for hosts listed in `ACCESS_TOKEN_HOSTS` (comma-separated hostnames; Terraform sets it on each agent from the service catalog and the routing) and for `*.googleapis.com`, `"id"` otherwise. `esmeralda.auth.bearer_token(url, kind=None)` returns the matching token. `mcp.toolset(..., token=...)` and `a2a.remote_agent(..., token=...)` take `"id"` or `"access"` to override the kind.
+
+### ID tokens and access tokens
+
+ID tokens and access tokens come from `esmeralda.auth`. With `SERVICE_ACCOUNT_EMAIL` set, they are minted for that service account through impersonation; otherwise for the runtime identity. Each is cached (ID tokens per audience) and refreshed shortly before it expires, so tool calls don't pay for IAM round trips. If impersonation fails, the library logs a warning and falls back to the runtime identity.
 
 ### The user's token
 

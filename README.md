@@ -46,14 +46,14 @@ The reference use case is a mortgage-underwriting assistant, split across two ag
 | **CX team** | User-facing **orchestrator** agents (ADK) that *consume* reusable agents | `cx-mortgage-orchestrator` | `esm-<env>-cx-agents-<sfx>` |
 | **AI CoE team** | Reusable **specialist** agents exposed over the **A2A** (Agent-to-Agent) protocol, which any team can call | `ai-coe-mortgage-specialist` (Document Search, Income Verification, Corporate Email skills via MCP tools) | `esm-<env>-ai-coe-agents-<sfx>` |
 
-The orchestrator never calls the specialist directly: every call goes through the Central Agent Gateway and the private entry point + Kong gateway, so each team stays isolated and every hop is authorized.
+The orchestrator never calls the specialist directly: every call goes through the Central Agent Gateway and the private entry point, so each team stays isolated and every hop is authorized.
 
 ---
 
 #### Architectural Pillars
 
 * **Enterprise Standard:** Zero-trust security by default, SecOps audit trails, and strict enterprise compliance.
-* **Multi-Agent Engine:** Seamless agent-to-agent (A2A) collaboration and orchestration governed by the Central Agent Gateway and a private Kong gateway.
+* **Multi-Agent Engine:** Seamless agent-to-agent (A2A) collaboration and orchestration governed by the Central Agent Gateway and a private entry point.
 * **Reasoning & Action Layer:** Advanced reasoning powered by Gemini models and open tool standards with MCP.
 * **Deployment Accelerator:** End-to-end automation from local development to production through reproducible CI/CD pipelines and built-in observability.
 
@@ -83,8 +83,8 @@ flowchart TD
     end
 
     subgraph Private["🔐 Private Ingress (Layer 5)"]
-        EP["Entry point\n(internal HTTPS LB, *.esmeralda.internal)"]
-        Kong["Kong gateway\n(Cloud Run)"]
+        EP["Entry point\n(internal HTTPS LB, *.esmeralda.internal)\nbuilt-in direct routing"]
+        Adapter["Optional adapter\n(e.g. Envoy, off by default)"]
     end
 
     subgraph Tools["🔌 MCP Tool Microservices (Layer 5)"]
@@ -105,16 +105,16 @@ flowchart TD
     AGW -->|Authorized egress| Gemini
     AGW -->|PSC attachment + private DNS| EP
     TestVM -->|Private DNS| EP
-    EP -->|Host routing| Kong
-    Kong -->|A2A| Spec
-    Kong -->|MCP| DMS
-    Kong -->|MCP| Income
-    Kong -->|MCP| Email
+    EP -->|A2A, PSC NEG| Spec
+    EP -->|MCP, serverless NEG| DMS
+    EP -->|MCP, serverless NEG| Income
+    EP -->|MCP, serverless NEG| Email
+    EP -.->|host_rules| Adapter
     Spec -->|IAM DB Auth| TaskDB
     Agents -.->|Log sinks| FinOps
 ```
 
-Both agents are **bring-your-own-container (BYOC)** images running on **Vertex AI Agent Engine** (Agent Runtime), each with its own SPIFFE Agent Identity. Every outbound call they make (Gemini, MCP tools, other agents) is transparently routed through the **Central Agent Gateway**, which only allows destinations registered in the **Agent Registry**. Private destinations under `*.esmeralda.internal` reach an internal HTTPS load balancer (the **entry point**) that routes them to the **Kong** gateway; its certificate is signed by Esmeralda's own internal Root CA. See the [Central Agent Gateway guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md) for the full request path and certificate chain.
+Both agents are **bring-your-own-container (BYOC)** images running on **Vertex AI Agent Engine** (Agent Runtime), each with its own SPIFFE Agent Identity. Every outbound call they make (Gemini, MCP tools, other agents) is transparently routed through the **Central Agent Gateway**, which only allows destinations registered in the **Agent Registry**. Private destinations under `*.esmeralda.internal` reach an internal HTTPS load balancer (the **entry point**) that routes each host straight to its Cloud Run MCP server or Agent Runtime engine (the built-in `direct` backend, no proxy in between); its certificate is signed by Esmeralda's own internal Root CA. See the [Central Agent Gateway guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md) for the full request path and certificate chain.
 
 ---
 
@@ -125,7 +125,7 @@ Both agents are **bring-your-own-container (BYOC)** images running on **Vertex A
 | :--- | :--- | :--- |
 | **Multi-Agent Engine** | **Agent-to-Agent (A2A) Protocols** | Standard inter-agent protocol: the CX orchestrator delegates to the AI CoE's reusable specialist through its published agent card. A Cloud SQL task store is provisioned but not yet enabled (`USE_CLOUD_SQL = "0"`; tasks are kept in memory). |
 | **Zero-Trust Governance** | **Central Agent Gateway & SPIFFE Identity** | Google-managed egress proxy that checks *who* is calling (SPIFFE Agent Identity), *where* it is going (Agent Registry allowlist + IAP `roles/iap.egressor`), and optionally *what* is sent (Model Armor, wired but disabled by default). |
-| **Tool Ecosystem** | **Model Context Protocol (MCP)** | Decoupled, serverless tool microservices exposing corporate systems (DMS, email, payroll) via standardized MCP endpoints, reachable only privately at `https://<svc>.esmeralda.internal/mcp` through Kong. |
+| **Tool Ecosystem** | **Model Context Protocol (MCP)** | Decoupled, serverless tool microservices exposing corporate systems (DMS, email, payroll) via standardized MCP endpoints, reachable only privately at `https://<svc>.esmeralda.internal/mcp` through the private entry point. |
 | **Observability & FinOps** | **OpenTelemetry & BQ Analytics** | OpenTelemetry instrumentation in the agents, per-request token usage tracking, central log sinks, automated chargeback SQL views, and Cloud Monitoring golden signal dashboards. |
 | **Declarative Platform** | **Layered Terragrunt Progression** | Modular infrastructure stack built from the ground up: shared CI/CD (L0), then per environment Projects (L1), Networking (L2), Security (L3), Governance (L4), and Workloads (L5). |
 
@@ -153,7 +153,7 @@ Run `make help` for every target (per-layer deploys, local agent tests, image pr
 **Read the documentation site: <https://google.github.io/esmeralda/>** (search, diagrams, light/dark mode). The same pages live in [`docs/src/`](docs/src/index.md):
 
 * **[Platform Foundations (Layer 1-3)](docs/src/1-platform-foundations/index.md)** — Shared VPC, KMS CMEK encryption, IAM hierarchies, and Secret Manager architecture.
-* **[Workloads & Service Catalog (Layer 5)](docs/src/2-workloads-and-catalog/index.md)** — Reasoning Engine deployment specs, MCP server contracts, and Swappable Ingress Gateways.
+* **[Workloads & Service Catalog (Layer 5)](docs/src/2-workloads-and-catalog/index.md)** — Reasoning Engine deployment specs, MCP server contracts, and the private entry point with its service catalog.
 * **[AgentOps, Governance & FinOps (Layer 4)](docs/src/3-agentops-and-lifecycle/index.md)** — Centralized monitoring, Multi-repo SDLC, and BigQuery FinOps views.
 * **[Central Agent Gateway Guide](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md)** — How agent egress, the Agent Registry, private certificates and BYOC agents fit together.
 * **[Architecture Overview & Documentation Hub](docs/src/index.md)** — Mental model, team ownership, request lifecycle, and the layered blueprint.

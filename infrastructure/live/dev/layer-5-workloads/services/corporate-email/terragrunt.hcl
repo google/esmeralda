@@ -26,6 +26,10 @@ dependency "security" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  gateways = local.env_vars.locals.gateways
+  # This service's catalog entry (env.yaml catalog), keyed by the unit's directory name.
+  name    = basename(get_terragrunt_dir())
+  callers = try(local.env_vars.locals.catalog[local.name].callers, [])
 
   # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
   # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
@@ -43,10 +47,15 @@ inputs = {
   subnet_id             = dependency.networking.outputs.subnet_id
   container_image       = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"
   tools_spec_path       = "${get_repo_root()}/apps/services/corporate-email/tools.json"
-  # The Envoy gateway's identity is added when envoy is in gateways.enabled (env.yaml).
-  invoker_service_accounts = concat([
-    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-    dependency.security.outputs.test_vm_sa_email,
-    dependency.security.outputs.kong_sa_email
-  ], contains(local.env_vars.locals.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, null)] : [])
+  internal_hostname     = "${local.name}.${dependency.networking.outputs.entrypoint_domain}"
+
+  # roles/run.invoker: the service accounts of the catalog callers; when an agent calls, also the
+  # identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared MCP invoker service account); and
+  # the identity of each enabled adapter, which calls with its own token. direct adds none: callers
+  # reach the service with their own ID token.
+  invoker_service_accounts = distinct(compact(concat(
+    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
+    length([for caller in local.callers : caller if caller != "test-vm"]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
+  )))
 }

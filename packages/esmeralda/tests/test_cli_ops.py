@@ -41,8 +41,8 @@ locals {
   image_repository = "dev"
   container_tag    = "dev-latest"
   gateways = {
-    enabled    = ["kong"]
-    default    = "kong"
+    enabled    = []
+    default    = "direct"
     host_rules = {}
   }
 }
@@ -83,9 +83,7 @@ def ops_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             'dependency "projects" {\n  config_path = "../../layer-1-projects"\n}\n'
             'dependency "networking" {\n  config_path = "../../layer-2-networking"\n}\n'
         ),
-        "layer-5-workloads/gateways/kong": (
-            'exclude {\n  if = !contains(local.env_vars.locals.gateways.enabled, "kong")\n  actions = ["all"]\n}\n'
-        ),
+        "layer-5-workloads/gateways/direct": "",
         "layer-5-workloads/gateways/envoy": (
             'exclude {\n  if = !contains(local.env_vars.locals.gateways.enabled, "envoy")\n  actions = ["all"]\n}\n'
         ),
@@ -101,10 +99,10 @@ def ops_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "layer-2-networking": _state({"entrypoint_address": "10.0.1.3", "entrypoint_domain": "example.internal"}, 3),
         "layer-5-workloads/agents/ai-coe-mortgage-specialist": _state({"engine_id": ENGINE}, 1),
         "layer-5-workloads/agents/cx-mortgage-orchestrator": _state({"engine_id": ENGINE}, 2),
-        "layer-5-workloads/entrypoint": _state({"ip_address": "10.0.1.3", "routing": {"default": "kong"}}, 2),
-        "layer-5-workloads/gateways/kong": _state(
+        "layer-5-workloads/entrypoint": _state({"ip_address": "10.0.1.3", "routing": {"default": "direct"}}, 2),
+        "layer-5-workloads/gateways/direct": _state(
             {
-                "backend_service_id": "projects/demo-gw/regions/r/backendServices/bs-kong",
+                "backend_service_id": None,
                 "routes": {"legacy-dms": {"host": "legacy-dms.example.internal", "probe": "mcp"}},
             },
             4,
@@ -216,7 +214,7 @@ def test_cli_units_layer_filter_dependencies_and_enabled(ops_checkout, capsys):
     by_unit = {u["unit"]: u for u in data["units"]}
     assert "layer-1-projects" not in by_unit
     assert by_unit["layer-5-workloads/entrypoint"]["dependencies"] == ["layer-1-projects", "layer-2-networking"]
-    assert by_unit["layer-5-workloads/gateways/kong"]["enabled"] is True
+    assert by_unit["layer-5-workloads/gateways/direct"]["enabled"] is True
     assert by_unit["layer-5-workloads/gateways/envoy"]["enabled"] is False
     assert by_unit["layer-5-workloads/gateways/envoy"]["excluded"] is True
     assert by_unit["layer-5-workloads/gateways/envoy"]["local_state"] is False
@@ -337,12 +335,12 @@ def test_cli_apply_refuses_destroy_without_allow_destroy(ops_checkout, monkeypat
 def test_cli_apply_refuses_replace_without_allow_destroy_and_applies_with_flag(ops_checkout, monkeypatch, capsys):
     calls = _mock_terragrunt(monkeypatch, REPLACE_PLAN)
 
-    assert cli.main(["apply", "kong", "--env", "dev"]) == 2
+    assert cli.main(["apply", "direct", "--env", "dev"]) == 2
     capsys.readouterr()
     assert not any("apply" in cmd for cmd in calls)
 
     calls.clear()
-    assert cli.main(["apply", "kong", "--env", "dev", "--allow-destroy", "--json"]) == 0
+    assert cli.main(["apply", "direct", "--env", "dev", "--allow-destroy", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["applied"] is True and payload["refused"] is False and payload["exit_code"] == 0
     assert any("apply" in cmd for cmd in calls)

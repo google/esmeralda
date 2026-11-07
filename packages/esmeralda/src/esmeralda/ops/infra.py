@@ -95,10 +95,15 @@ def unit_dependencies(root: Path, env: str, unit: str) -> list[str]:
 
 
 def unit_enabled(root: Path, env: str, unit: str) -> bool:
-    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks and ``gateways.enabled``)."""
+    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks and ``gateways``)."""
     hcl_path = repo.env_dir(root, env) / unit / repo.UNIT_FILE
     gw = repo.gateways_block(root, env)
     enabled_gws = gw.get("enabled")
+    if unit == "layer-5-workloads/gateways/direct":
+        host_rules = gw.get("host_rules") or {}
+        if gw.get("default") or host_rules:
+            return gw.get("default") == "direct" or "direct" in host_rules.values()
+        return True
     if hcl_path.is_file():
         text = hcl_path.read_text(errors="replace")
         match = _EXCLUDE_GW_RE.search(text)

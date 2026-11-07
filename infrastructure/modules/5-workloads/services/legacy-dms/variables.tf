@@ -70,7 +70,7 @@ variable "tools_spec_path" {
 }
 
 variable "internal_hostname" {
-  description = "Internal hostname served by Kong for this MCP server"
+  description = "Entry point hostname of this MCP server (<name>.<domain>), published in the Agent Registry"
   type        = string
   default     = "legacy-dms.esmeralda.internal"
 }

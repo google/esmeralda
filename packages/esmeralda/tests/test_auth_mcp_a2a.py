@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""esmeralda.auth (cached ID tokens), esmeralda.mcp, esmeralda.a2a and the user token."""
+"""esmeralda.auth (cached ID and access tokens), esmeralda.mcp, esmeralda.a2a and the user token."""
 
 import asyncio
 from types import MappingProxyType, SimpleNamespace
@@ -26,7 +26,7 @@ from esmeralda import a2a, auth, context, mcp
 @pytest.fixture(autouse=True)
 def clean(monkeypatch):
     auth.clear_cache()
-    for var in ("SERVICE_ACCOUNT_EMAIL", "USER_AUTH_ID"):
+    for var in ("SERVICE_ACCOUNT_EMAIL", "USER_AUTH_ID", "ACCESS_TOKEN_HOSTS"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("AGENT_NAME", "test_agent")
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
@@ -116,6 +116,104 @@ def test_id_token_async(minted):
     assert asyncio.run(auth.id_token_async("https://a")) == "https://a|runtime-token-1"
 
 
+@pytest.fixture
+def minted_access(monkeypatch):
+    created = []
+
+    def new(service_account):
+        creds = FakeCredentials(f"access|{service_account or 'runtime'}", fail=service_account == "denied@sa")
+        created.append(creds)
+        return creds
+
+    monkeypatch.setattr(auth, "_new_access_credentials", new)
+    return created
+
+
+def test_access_tokens_are_cached_until_expiry(minted_access):
+    assert auth.access_token() == "access|runtime-token-1"
+    assert auth.access_token() == "access|runtime-token-1"
+    assert len(minted_access) == 1
+    minted_access[0].valid = False  # expired
+    assert auth.access_token() == "access|runtime-token-2"
+    assert len(minted_access) == 1
+    auth.clear_cache()
+    assert auth.access_token() == "access|runtime-token-1" and len(minted_access) == 2
+
+
+def test_access_token_impersonation_and_fallback(minted_access, monkeypatch):
+    monkeypatch.setenv("SERVICE_ACCOUNT_EMAIL", "mcp-invoker@sa")
+    assert auth.access_token() == "access|mcp-invoker@sa-token-1"
+
+    monkeypatch.setenv("SERVICE_ACCOUNT_EMAIL", "denied@sa")
+    assert auth.access_token() == "access|runtime-token-1"  # falls back to the runtime identity
+    assert asyncio.run(auth.access_token_async()) == "access|runtime-token-1"
+
+
+def test_access_token_without_impersonation_raises(monkeypatch):
+    monkeypatch.setattr(auth, "_new_access_credentials", lambda sa: FakeCredentials("x", fail=True))
+    with pytest.raises(RuntimeError):
+        auth.access_token()
+
+
+def test_new_access_credentials_impersonates(monkeypatch):
+    import google.auth
+    from google.auth import impersonated_credentials
+
+    source = object()
+    calls = {}
+    monkeypatch.setattr(google.auth, "default", lambda scopes: (source, "p"))
+
+    def fake_impersonated(**kwargs):
+        calls.update(kwargs)
+        return "impersonated"
+
+    monkeypatch.setattr(impersonated_credentials, "Credentials", fake_impersonated)
+    assert auth._new_access_credentials("") is source
+    assert auth._new_access_credentials("sa@x") == "impersonated"
+    assert calls == {"source_credentials": source, "target_principal": "sa@x", "target_scopes": [auth.CLOUD_SCOPE]}
+
+
+@pytest.mark.parametrize(
+    ("url", "kind"),
+    [
+        ("https://specialist.esmeralda.internal/v1/card", "access"),  # listed
+        ("https://SPECIALIST.esmeralda.internal./v1", "access"),  # case and trailing dot
+        ("https://other-agent.esmeralda.internal:443", "access"),  # listed with spaces
+        ("https://us-central1-aiplatform.googleapis.com/v1beta1/x", "access"),
+        ("https://legacy-dms.esmeralda.internal/mcp", "id"),
+        ("https://googleapis.com.example.com", "id"),
+        ("http://localhost:8080", "id"),
+    ],
+)
+def test_token_kind(monkeypatch, url, kind):
+    monkeypatch.setenv("ACCESS_TOKEN_HOSTS", " specialist.esmeralda.internal , Other-Agent.esmeralda.internal.,")
+    assert auth.token_kind(url) == kind
+
+
+def test_token_kind_defaults_to_id_and_reads_env_at_call_time(monkeypatch):
+    monkeypatch.delenv("ACCESS_TOKEN_HOSTS", raising=False)
+    assert auth.token_kind("https://specialist.esmeralda.internal") == "id"
+    monkeypatch.setenv("ACCESS_TOKEN_HOSTS", "specialist.esmeralda.internal")
+    assert auth.token_kind("https://specialist.esmeralda.internal") == "access"
+
+
+def test_bearer_token_dispatch(monkeypatch):
+    monkeypatch.setenv("ACCESS_TOKEN_HOSTS", "agent.esmeralda.internal")
+    monkeypatch.setattr(auth, "id_token", lambda audience: f"id:{audience}")
+    monkeypatch.setattr(auth, "access_token", lambda: "access")
+
+    assert auth.bearer_token("https://mcp.esmeralda.internal/mcp") == "id:https://mcp.esmeralda.internal"
+    assert auth.bearer_token("https://agent.esmeralda.internal/v1/card") == "access"
+    assert auth.bearer_token("https://agent.esmeralda.internal", "id") == "id:https://agent.esmeralda.internal"
+    assert auth.bearer_token("https://mcp.esmeralda.internal", "access") == "access"
+    assert asyncio.run(auth.bearer_token_async("https://agent.esmeralda.internal")) == "access"
+    assert asyncio.run(auth.bearer_token_async("https://mcp.esmeralda.internal/x")).startswith("id:https://mcp.")
+    with pytest.raises(ValueError):
+        auth.bearer_token("https://mcp.esmeralda.internal", "jwt")
+    with pytest.raises(ValueError):
+        asyncio.run(auth.bearer_token_async("https://mcp.esmeralda.internal", "jwt"))
+
+
 # ---- user token -----------------------------------------------------------------------------
 
 
@@ -158,6 +256,16 @@ def test_mcp_headers_without_token_still_call(monkeypatch):
     assert "Authorization" not in mcp.headers_for("https://x.esmeralda.internal/mcp")
 
 
+def test_mcp_headers_token_kind(minted, minted_access, monkeypatch):
+    monkeypatch.setenv("ACCESS_TOKEN_HOSTS", "tools.esmeralda.internal")
+    listed = mcp.headers_for("https://tools.esmeralda.internal/mcp")
+    assert listed["Authorization"] == "Bearer access|runtime-token-1"
+    forced = mcp.headers_for("https://tools.esmeralda.internal/mcp", token="id")
+    assert forced["Authorization"] == "Bearer https://tools.esmeralda.internal|runtime-token-1"
+    forced = mcp.headers_for("https://legacy-dms.esmeralda.internal/mcp", token="access")
+    assert forced["Authorization"] == "Bearer access|runtime-token-1"
+
+
 def test_mcp_toolset(minted):
     from google.adk.tools.mcp_tool import McpToolset
 
@@ -188,6 +296,27 @@ def test_a2a_auth_hook(minted):
     local = httpx.Request("POST", "http://localhost:8081/v1/message:send")
     asyncio.run(a2a._auth_hook("http://localhost:8081", None)(local))
     assert "Authorization" not in local.headers
+
+
+def test_a2a_auth_hook_sends_access_token_to_listed_hosts(minted, minted_access, monkeypatch):
+    monkeypatch.setenv("ACCESS_TOKEN_HOSTS", "specialist.esmeralda.internal")
+    request = httpx.Request("POST", "https://specialist.esmeralda.internal/v1/message:send")
+    asyncio.run(a2a._auth_hook("https://specialist.esmeralda.internal", None)(request))
+    assert request.headers["Authorization"] == "Bearer access|runtime-token-1"
+
+    forced = httpx.Request("POST", "https://specialist.esmeralda.internal/v1/message:send")
+    asyncio.run(a2a._auth_hook("https://specialist.esmeralda.internal", None, "id")(forced))
+    assert forced.headers["Authorization"] == "Bearer https://specialist.esmeralda.internal|runtime-token-1"
+
+    local = httpx.Request("POST", "http://localhost:8081/v1/message:send")
+    asyncio.run(a2a._auth_hook("http://localhost:8081", None, "access")(local))
+    assert "Authorization" not in local.headers
+
+
+def test_a2a_remote_agent_rejects_unknown_token_kind():
+    with pytest.raises(ValueError):
+        a2a.remote_agent("specialist", url="https://specialist.esmeralda.internal", token="jwt")
+    assert a2a.remote_agent("specialist", url="https://specialist.esmeralda.internal", token="access") is not None
 
 
 @pytest.mark.parametrize("base", ["https://specialist.esmeralda.internal", "http://localhost:8081"])

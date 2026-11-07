@@ -122,3 +122,9 @@ variable "invoker_service_accounts" {
   type        = list(string)
   default     = []
 }
+
+variable "access_token_hosts" {
+  description = "Entry point hosts this agent calls with an OAuth2 access token instead of an ID token: catalog agents served by the built-in direct backend (Agent Runtime only takes access tokens). Set as ACCESS_TOKEN_HOSTS; empty sets nothing"
+  type        = list(string)
+  default     = []
+}

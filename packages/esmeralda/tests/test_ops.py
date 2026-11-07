@@ -37,8 +37,8 @@ locals {
   state_project  = ""
   state_bucket   = ""
   gateways = {
-    enabled    = ["kong", "envoy"]
-    default    = "kong"
+    enabled    = ["envoy"]
+    default    = "direct"
     host_rules = { "legacy-dms" = "envoy" } # moved
   }
 }
@@ -49,7 +49,7 @@ UNITS = [
     "layer-2-networking",
     "layer-5-workloads/agents/cx-mortgage-orchestrator",
     "layer-5-workloads/entrypoint",
-    "layer-5-workloads/gateways/kong",
+    "layer-5-workloads/gateways/direct",
     "layer-5-workloads/services/legacy-dms",
     "layer-5-workloads/services/test-vm",
 ]
@@ -70,10 +70,10 @@ STATES = {
     "layer-5-workloads/agents/cx-mortgage-orchestrator": _state(
         {"engine_id": ENGINE, "endpoint_url": "https://x/" + ENGINE, "token": "s3cret"}, 4, sensitive=("token",)
     ),
-    "layer-5-workloads/entrypoint": _state({"ip_address": "10.0.1.3", "routing": {"default": "kong"}}, 3),
-    "layer-5-workloads/gateways/kong": _state(
+    "layer-5-workloads/entrypoint": _state({"ip_address": "10.0.1.3", "routing": {"default": "direct"}}, 3),
+    "layer-5-workloads/gateways/direct": _state(
         {
-            "backend_service_id": "projects/demo-gw/regions/r/backendServices/backend-kong-dev",
+            "backend_service_id": None,
             "routes": {"legacy-dms": {"host": "legacy-dms.example.internal", "probe": "mcp"}},
         },
         7,
@@ -110,7 +110,7 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             ## Specs
             ### 1. The Gateway Contract
 
-            A gateway outputs `backend_service_id` and `routes`. See [`kong/outputs.tf`](../../x.tf).
+            A gateway outputs `backend_service_id` and `routes`. See [`direct/outputs.tf`](../../x.tf).
 
             ### 2. The `gateways` Block in `env.yaml`
 
@@ -153,8 +153,8 @@ def test_units_skip_caches_and_validate(checkout):
 
 def test_gateways_block(checkout):
     assert repo.gateways_block(checkout, "dev") == {
-        "enabled": ["kong", "envoy"],
-        "default": "kong",
+        "enabled": ["envoy"],
+        "default": "direct",
         "host_rules": {"legacy-dms": "envoy"},
     }
 
@@ -201,8 +201,8 @@ def test_status_summary(checkout):
     assert result["deployed"] == 6 and result["units"] == 7
     assert result["not_deployed"] == ["layer-5-workloads/services/test-vm"]
     assert result["projects"] == {"cx_agents": "demo-cx"}
-    assert result["entry_point"] == {"ip": "10.0.1.3", "domain": "example.internal", "routing": {"default": "kong"}}
-    assert result["gateways"]["kong"]["routes"] == ["legacy-dms.example.internal (mcp)"]
+    assert result["entry_point"] == {"ip": "10.0.1.3", "domain": "example.internal", "routing": {"default": "direct"}}
+    assert result["gateways"]["direct"]["routes"] == ["legacy-dms.example.internal (mcp)"]
     assert result["agents"]["cx-mortgage-orchestrator"]["engine_id"] == ENGINE
     assert result["mcp_services"] == {"legacy-dms": "https://legacy-dms.run.app"}
     assert "test_vm" not in result
@@ -218,8 +218,8 @@ def test_status_of_one_unit_summarises_blobs(checkout):
 def test_list_units(checkout):
     result = infra.list_units(checkout, "dev")
     by_unit = {u["unit"]: u for u in result["units"]}
-    assert by_unit["layer-5-workloads/gateways/kong"] == {
-        "unit": "layer-5-workloads/gateways/kong",
+    assert by_unit["layer-5-workloads/gateways/direct"] == {
+        "unit": "layer-5-workloads/gateways/direct",
         "layer": 5,
         "deployed": True,
         "local_state": True,
@@ -498,10 +498,10 @@ def test_query_agent_failure_is_reported(checkout, monkeypatch):
 
 def test_describe_contracts(checkout):
     result = contracts.describe_contracts(checkout)
-    assert result["gateway_contract"] == "A gateway outputs `backend_service_id` and `routes`. See [`kong/outputs.tf`]."
+    assert result["gateway_contract"] == "A gateway outputs `backend_service_id` and `routes`. See [`direct/outputs.tf`]."
     assert result["gateways_block"] == "`enabled`, `default`, `host_rules`."
     assert result["envs"]["dev"]["host_rules"] == {"legacy-dms": "envoy"}
-    assert result["gateway_units"] == {"dev": ["kong"]}
+    assert result["gateway_units"] == {"dev": ["direct"]}
 
 
 # ---- MCP server -----------------------------------------------------------------------------

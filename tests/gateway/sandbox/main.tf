@@ -238,7 +238,7 @@ module "gateway" {
 }
 
 # --- The front door, as in an environment: reserved VIP + DNS (layer 2), a private-CA leaf (layer 3)
-# and the layer-5 entrypoint module routing every host to the gateway's backend service.
+# and the layer-5 entrypoint module routing every host to the Envoy adapter's backend service.
 
 resource "google_compute_address" "entrypoint" {
   name         = "ilb-esmeralda-vip-sbx"
@@ -303,8 +303,14 @@ module "entrypoint" {
   ip_address         = google_compute_address.entrypoint.address
   domain             = "esmeralda.internal"
   ssl_certificate_id = google_compute_region_ssl_certificate.entrypoint.id
-  backends           = { envoy = module.gateway.backend_service_id }
-  default_backend    = "envoy"
+  # Every host goes to the Envoy adapter (no direct backends in the sandbox), so callers send ID tokens.
+  catalog = {
+    legacy-dms                 = { kind = "mcp", token = "id", probe = "mcp" }
+    ai-coe-mortgage-specialist = { kind = "a2a", token = "access", probe = "none" }
+    cx-mortgage-orchestrator   = { kind = "adk", token = "access", probe = "none" }
+  }
+  adapters        = { envoy = module.gateway.backend_service_id }
+  default_backend = "envoy"
 
   depends_on = [google_compute_subnetwork.proxy]
 }

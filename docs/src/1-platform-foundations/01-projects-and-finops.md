@@ -43,7 +43,7 @@ In AI agent architectures, putting everything into a single GCP project causes t
   | # | Project | Owner (`team` label) | Purpose |
   | :- | :--- | :--- | :--- |
   | 1 | `esm-<env>-net-host-<sfx>` | **NetOps** (`netops`) | Shared VPC, routing, Cloud NAT and the private DNS zone `esmeralda.internal.` |
-  | 2 | `esm-<env>-gateway-<sfx>` | **PlatformOps** (`platformops`) | API ingress: the entry point (internal HTTPS load balancer) in front of Kong on Cloud Run (gateways selected with the `gateways` block in `env.yaml`; Apigee is a stub) |
+  | 2 | `esm-<env>-gateway-<sfx>` | **PlatformOps** (`platformops`) | API ingress: the entry point (internal HTTPS load balancer) with its built-in `direct` backend, plus optional bring-your-own adapters such as Envoy on Cloud Run (selected with the `gateways` block in `env.yaml`; Apigee is a stub) |
   | 3 | `esm-<env>-mcps-<sfx>` | **AppDev Tools** (`appdev-tools`) | Reusable serverless Model Context Protocol (MCP) tool servers (`legacy-dms`, `income-verification`, `corporate-email`) |
   | 4 | `esm-<env>-ai-coe-agents-<sfx>` | **AI CoE team** (`ai-coe`) | Reusable A2A specialist agents (`ai-coe-mortgage-specialist`) and their private Cloud SQL task store |
   | 5 | `esm-<env>-cx-agents-<sfx>` | **CX team** (`cx`) | User-facing orchestrator agents (`cx-mortgage-orchestrator`), which consume the AI CoE agents; also hosts the test VM |
@@ -107,7 +107,7 @@ flowchart TD
     end
 
     subgraph PlatformOps["PlatformOps Budget (esm-env-gateway-sfx)"]
-        C_GW["Entry point internal HTTPS LB & Kong on Cloud Run<br/>Label: cost-center=ingress-gateways"]
+        C_GW["Entry point internal HTTPS LB (+ optional adapter on Cloud Run)<br/>Label: cost-center=ingress-gateways"]
     end
 
     subgraph AppDev["Tools Budget (esm-env-mcps-sfx)"]
@@ -135,7 +135,7 @@ flowchart TD
 ### Key FinOps Guarantees:
 1. **Serverless vs. Persistent Segregation:** The continuous 24/7 cost of Cloud SQL is isolated inside the AI CoE budget (`esm-<env>-ai-coe-agents-<sfx>`), while serverless MCP tools (`esm-<env>-mcps-<sfx>`) scale to zero when idle.
 2. **Consumer vs. Provider Segregation:** When the CX orchestrator calls the AI CoE specialist, each agent's model tokens land on its own team's project, so a reusable agent's cost is visible separately from the agents that consume it.
-3. **Private Service-to-Service Traffic:** Agent-to-tool and agent-to-agent traffic reaches Kong over private IPs inside the Shared VPC in `us-central1`, not over the public internet.
+3. **Private Service-to-Service Traffic:** Agent-to-tool and agent-to-agent traffic reaches the entry point over private IPs inside the Shared VPC in `us-central1`, not over the public internet.
 
 ---
 

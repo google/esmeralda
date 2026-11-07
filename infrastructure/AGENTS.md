@@ -29,7 +29,7 @@ terraform {
 
 - Inputs come from `local.env_vars.locals.*` and `dependency.<x>.outputs.*`. Never hardcode project IDs, SA emails or URLs.
 - Paths to repo files use `get_repo_root()` (e.g. `tools_spec_path`, `agent_config_path`).
-- Optional units use an `exclude { if = ..., actions = ["all"] }` block driven by `env.yaml` (see `gateways/kong`).
+- Optional units use an `exclude { if = ..., actions = ["all"] }` block driven by `env.yaml` (see `gateways/envoy`).
 
 ## Dependencies and mocks
 
@@ -53,7 +53,7 @@ terraform {
 3. In `live/<env>/layer-5-workloads/entrypoint/terragrunt.hcl`: one `dependency "<name>"` block (`enabled = contains(local.env_vars.locals.gateways.enabled, "<name>")`, mocked `backend_service_id`) plus its entry in `inputs.backends`.
 4. Enable it in `env.yaml` `gateways` (move hosts one at a time with `host_rules`), apply the gateway, then `make deploy-entrypoint ENV=<env>`, then `make test-gateway ENV=<env>` and a real `make query ... TARGET=remote`.
 
-Reference: `modules/5-workloads/gateways/kong/` and `docs/src/2-workloads-and-catalog/01-ingress-gateways.md`. `gateways/apigee` is a stub (`backend_service_id = null`) with no live unit.
+Reference: `modules/5-workloads/gateways/envoy/` and `docs/src/2-workloads-and-catalog/01-ingress-gateways.md`. `gateways/direct` is the built-in default backend (`backend_service_id = null`, per-route backends).
 
 ## State
 

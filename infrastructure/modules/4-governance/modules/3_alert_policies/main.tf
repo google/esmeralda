@@ -344,33 +344,14 @@ EOF
   notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
 }
 
-# 8. Synthetic Uptime Probe (Active Ingress Health Check)
-resource "google_monitoring_uptime_check_config" "gateway_health" {
-  project      = var.governance_project_id
-  display_name = "[Esmeralda ${var.environment}] Ingress Gateway Synthetic Uptime Probe"
-  timeout      = "10s"
-  period       = "60s"
-
-  http_check {
-    path         = "/healthz"
-    port         = "443"
-    use_ssl      = true
-    validate_ssl = true
-  }
-
-  monitored_resource {
-    type = "uptime_url"
-    labels = {
-      project_id = var.governance_project_id
-      host       = "gateway.esmeralda.internal"
-    }
-  }
-}
+# 8. Entry point health: no synthetic uptime check. A public uptime check can't reach the internal
+# entry point (a private one, with VPC checkers and an OIDC token, could: a follow-up). The ingress
+# dashboard charts the entry point's request rate by response code class (internal ALB metrics), and
+# `make test-gateway` probes every catalog host from inside the VPC.
 
 # 8a. Alert Policy: Ingress Gateway 5xx Ratio (Envoy gateway only; skipped when gateway_service_name is empty)
-# Public uptime checks can't reach the gateway's internal LB (a private uptime check, with VPC checkers and
-# an OIDC token, could: a follow-up). Operators can GET https://esmeralda.internal/healthz from inside the
-# VPC. This alert watches what callers see instead: the share of 5xx among the requests Cloud Run served
+# Only when the Envoy adapter is enabled (gateways.enabled): the built-in direct backend has no proxy
+# service to watch (see the entry point tile on the ingress dashboard). This alert watches what callers see: the share of 5xx among the requests Cloud Run served
 # for the gateway service (envoy-gateway-<env>, modules/5-workloads/gateways/envoy) in the last 5 minutes.
 # It is silent without traffic, and blind to failures before Cloud Run (LB, certificate, DNS).
 locals {
