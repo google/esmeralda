@@ -8,6 +8,7 @@
 | :--- | :--- |
 | **[01. Central Agent Gateway: How It Works and How to Deploy It](./01-central-agent-gateway.md)** | The featured deep-dive. How Agent Gateway intercepts, inspects and authorizes agent traffic; every component (Agent Registry, IAP authz, ACT, TrustConfig, PSC attachment); why the gateway needs our self-signed internal Root CA; how BYOC agents get the gateway's trust bundle at deploy time. |
 | **[03. Centralized Governance, Observability & FinOps](./03-centralized-monitoring-and-dashboards.md)** | Layer 4 telemetry: log sinks, the BigQuery dataset and views, Cloud Monitoring dashboards, alert policies, SLOs and the DLP template. |
+| **[04. Operating with Agents / Automation](./04-operating-with-agents.md)** | Token-efficient, non-interactive operations for coding agents and CI: `make plan` / `make apply` (saved plans only, destroy guard), `make status`, `make verify`, `make doctor`, and the sensitive-content commit hook. |
 
 ---
 
@@ -207,7 +208,7 @@ To ensure that only tested container images run in production, Esmeralda builds 
 ### 3. Deploy to dev
 *   `make deploy-workloads ENV=dev` (or the per-component `make deploy-*` targets) applies Layer 5. Agent modules resolve the tag to its SHA256 digest, so the Reasoning Engine always runs a pinned image.
 *   The AI CoE specialist module also runs its database schema bootstrap as a private Cloud Run job.
-*   Verify with `make test-e2e ENV=dev`.
+*   Verify with `make verify ENV=dev` (gateway probes + both agents, one summary table) or `make test-e2e ENV=dev`. For one unit at a time, review then apply a saved plan: `make plan UNIT=... ENV=dev` and `make apply UNIT=... ENV=dev` (see [04. Operating with Agents](./04-operating-with-agents.md)).
 
 ### 4. Promote to release (prd)
 *   `make promote TAG=vX.Y.Z` (or `make promote-patch` / `make promote-minor`) runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh): it copies the dev images **by digest** into the **immutable release repository** `esmeralda-containers-release` (writable by `sa-esmeralda-promoter`) and rewrites `container_tag` in `infrastructure/live/prd/env.yaml`. It does not deploy.

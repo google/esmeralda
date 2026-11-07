@@ -39,13 +39,24 @@ export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 # Terraform CLI for validation and the gateway harness: terraform if installed, else OpenTofu.
 TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null || echo terraform)
 
+# Quiet, non-interactive Terraform/Terragrunt for every target (override from the environment, e.g.
+# TG_LOG_LEVEL=info make deploy-security). Terraform output itself is always shown.
+export TF_IN_AUTOMATION ?= 1
+export TG_NON_INTERACTIVE ?= true
+export TG_LOG_LEVEL ?= warn
+
+# Ops helpers (scripts/*.py) use only the standard library: run them with uv's Python, without
+# syncing the workspace environment.
+OPS_PY = uv run --no-project -q python
+
 .PHONY: help bootstrap lock lock-check test test-all test-agents test-terraform test-gateway-unit run-mcp-local \
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	promote-patch promote-minor promote test-governance-chaos load-test docs-serve docs-build clean preflight
+	promote-patch promote-minor promote test-governance-chaos load-test docs-serve docs-build clean preflight \
+	doctor hooks plan apply status verify test-scripts
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -54,6 +65,12 @@ preflight: ## Run preflight checklist to validate active GCP project, credential
 	@chmod +x ./scripts/preflight.sh
 	@./scripts/preflight.sh
 
+doctor: ## Extended, non-fatal workstation check, one line each: tools, auth/ADC, env vars, hooks, disk (+ preflight)
+	@bash scripts/doctor.sh $(ENV)
+
+hooks: ## Install the git hooks (.githooks: pre-commit/commit-msg sensitive-content scan, pre-push uv.lock check)
+	@git config core.hooksPath .githooks && echo "🪝 Git hooks installed (.githooks: sensitive-content scan on commit, uv.lock check on push)"
+
 bootstrap: preflight ## Setup local python virtual environments and sync workspace dependencies via uv
 	@echo "📦 Bootstrapping local monorepo environment with uv..."
 	@if ! command -v uv &>/dev/null; then \
@@ -61,7 +78,7 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 		exit 1; \
 	fi
 	@uv sync --all-packages --all-extras
-	@git config core.hooksPath .githooks && echo "🪝 Git hooks installed (.githooks: pre-push checks uv.lock)"
+	@$(MAKE) --no-print-directory hooks
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
 test-agents: ## Fast execution for agent unit tests only
@@ -101,7 +118,11 @@ test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
 	@$(MAKE) test-agents
+	@$(MAKE) --no-print-directory test-scripts
 	@echo "✅ All unit tests passed!"
+
+test-scripts: ## Unit tests for the ops scripts (plan summary, apply guard, status, sensitive scan)
+	@uv run --package esmeralda --extra dev pytest -q tests/scripts/
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@[ -n "$$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null)" ] && kill -9 $$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null) 2>/dev/null || true
@@ -278,6 +299,28 @@ deploy-gateway: ## Deploy the Kong gateway: Cloud Run + backend service (re-run 
 deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, forwarding rule) after the gateways
 	@echo "🚪 Deploying the internal entry point..."
 	@cd $(LIVE_DIR)/layer-5-workloads/entrypoint && terragrunt --non-interactive apply -auto-approve
+
+# ==============================================================================
+# Operating with agents / automation: plan -> apply the saved plan, status, verify
+# (token-efficient output; full logs under .plans/<env>/, gitignored)
+# ==============================================================================
+
+UNIT ?=
+
+plan: ## Plan one unit, compact summary: UNIT=<path under live/ENV> ENV=<env> [FULL=1]; exit 0 no changes, 2 changes (or error)
+	@[ -n "$(UNIT)" ] || { echo "❌ Set UNIT=<path under $(LIVE_DIR)>, e.g. UNIT=layer-5-workloads/gateways/kong"; exit 1; }
+	@$(OPS_PY) scripts/tf_plan.py plan --env $(ENV) --unit $(UNIT) $(if $(FULL),--full)
+
+apply: ## Apply ONLY the saved plan of `make plan`: UNIT=... ENV=... [ALLOW_DESTROY=1 to allow deletes/replaces]
+	@[ -n "$(UNIT)" ] || { echo "❌ Set UNIT=<path under $(LIVE_DIR)>"; exit 1; }
+	@$(OPS_PY) scripts/tf_plan.py apply --env $(ENV) --unit $(UNIT) $(if $(ALLOW_DESTROY),--allow-destroy)
+
+status: ## Key outputs of every deployed unit (entry point, gateways, engines, MCP URIs, digests): ENV=<env> [JSON=1] [ALL=1] [HEALTH=1]
+	@$(OPS_PY) scripts/env_status.py $(ENV) $(if $(JSON),--json) $(if $(ALL),--all)
+	$(if $(HEALTH),@$(MAKE) --no-print-directory test-gateway ENV=$(ENV))
+
+verify: ## End-to-end check, one summary table: test-gateway + specialist + orchestrator queries: ENV=<env> [VERBOSE=1]
+	@$(OPS_PY) scripts/verify_env.py $(ENV) $(if $(VERBOSE),--verbose)
 
 test-gateway: ## Probe every gateway route host through the entry point from the test VM (IAP SSH): ENV=<env>
 	@bash scripts/test_gateway.sh $(ENV)
