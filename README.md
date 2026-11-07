@@ -187,6 +187,7 @@ Run `uv run esmeralda --help` or `make help` for the complete command reference.
   * [Ch 1: Two Teams, Two Agents — Orchestration vs. Specialization](docs/src/2-workloads-and-catalog/03-ai-agents-and-database.md)
   * [Ch 2: Wrapping Enterprise Systems as MCP Tool Servers](docs/src/2-workloads-and-catalog/02-mcp-tool-servers.md)
   * [Ch 3: The Private Front Door & Pluggable Gateways](docs/src/2-workloads-and-catalog/01-ingress-gateways.md)
+  * [Ch 3B: Partner API Management & Token Monetization with Apigee X](docs/src/2-workloads-and-catalog/04-apigee-partner-gateway.md)
 * **[Part II — The Trust Boundary: Governance, Security & Operations (Layer 4)](docs/src/3-agentops-and-lifecycle/index.md)**
   * [Ch 4: The Central Agent Gateway & Private PKI](docs/src/3-agentops-and-lifecycle/01-central-agent-gateway.md)
   * [Ch 5: Capability-Based Governance](docs/src/3-agentops-and-lifecycle/04-capability-based-governance.md)

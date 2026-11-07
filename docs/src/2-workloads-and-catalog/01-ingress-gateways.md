@@ -193,12 +193,14 @@ Agents mint outbound tokens by impersonating `sa-mcp-invoker-<env>`, which holds
   * Enforces path normalization, rejects encoded slashes, strips upstream timing headers, and applies a per-`X-API-Key` local rate limit (120 req/min per instance).
 * **Offline & Sandbox Test Harnesses:** `make test-gateway-unit` renders the Terraform config and tests a real Envoy 1.40 binary against a mock metadata server and TLS upstreams ([`tests/gateway`](../../../tests/gateway)).
 
-### 7. Apigee X (`gateways/apigee/`, stub)
+### 7. Apigee X (`gateways/apigee/` & `apigee/capabilities/*`, optional partner front door)
 
-The repository also includes a starter module (`infrastructure/modules/5-workloads/gateways/apigee/`) illustrating how to wire **Apigee X** (`google_apigee_organization`, `google_apigee_instance`, and a `agent-routes` Key-Value Map with `KVM-Lookup.xml` and `Generate-Bearer-Token.xml` policies) to the same adapter contract.
+When an environment needs to expose curated agents or MCP tools to **external B2B partners** with commercial API Products (`bronze`, `silver`, `gold`), developer app API keys/OAuth, per-partner `<LLMTokenQuota>` enforcement (`HTTP 429`), and token monetization analytics, Esmeralda provides a complete **Apigee X** integration:
 
-> [!WARNING]
-> The Apigee module is a structural stub: its [`outputs.tf`](../../../infrastructure/modules/5-workloads/gateways/apigee/outputs.tf) currently returns `backend_service_id = null` and empty `routes`. To activate it, attach a regional PSC NEG targeting the Apigee instance service attachment and expose a regional `INTERNAL_MANAGED` backend service ID.
+* **Platform & PSC NEG Bridge ([`infrastructure/modules/5-workloads/gateways/apigee/`](../../../infrastructure/modules/5-workloads/gateways/apigee/main.tf)):** Provisions (or adopts via `byo = true`) the `google_apigee_organization`, regional `google_apigee_instance`, `esmeralda-<env>` environment (`BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`), `envgroup-esmeralda-<env>` (`partner.esmeralda.internal`), southbound PSC endpoint attachment to `*.esmeralda.internal`, and a regional PSC NEG (`neg-apigee-psc-<env>`) + `INTERNAL_MANAGED` backend service (`backend-apigee-gateway-<env>`) consumed by `entrypoint` on the partner VIP (`10.0.1.3`).
+* **Removable Capability Modules (`apigee/capabilities/*` & `apigee/products`):** Deploys the `partner-agents` and `partner-mcp` proxy bundles, `token-quota` (`<LLMTokenQuota>` `EnforceOnly` + SSE `EventFlow` `CountOnly`) and `usage-metering` (`DataCapture` + `PostClientFlow` `ML-interaction`) shared flows, and tiered API products whenever `governance.capabilities` in `env.yaml` selects `"apigee"`.
+
+For the complete architecture, packet flow, XML/JavaScript policy mechanics, and live conformance probes (`uv run esmeralda verify --env dev --partner`), see **[Chapter 3B: Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**.
 
 ---
 

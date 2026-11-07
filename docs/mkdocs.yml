@@ -95,6 +95,7 @@ nav:
     - "Ch 1: Two Teams, Two Agents (ADK & A2A)": 2-workloads-and-catalog/03-ai-agents-and-database.md
     - "Ch 2: MCP Tool Servers": 2-workloads-and-catalog/02-mcp-tool-servers.md
     - "Ch 3: Private Front Door & Gateways": 2-workloads-and-catalog/01-ingress-gateways.md
+    - "Ch 3B: Apigee X Partner Gateway": 2-workloads-and-catalog/04-apigee-partner-gateway.md
   - "Part II — Governance & Trust Boundary":
     - "Part II Overview": 3-agentops-and-lifecycle/index.md
     - "Ch 4: Central Agent Gateway": 3-agentops-and-lifecycle/01-central-agent-gateway.md
