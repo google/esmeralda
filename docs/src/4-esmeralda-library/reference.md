@@ -255,19 +255,50 @@ esmeralda mcp [--repo PATH]
 
 Read-only MCP server on stdio (`fastmcp`). The repository root is `--repo`, else `ESMERALDA_REPO`, else the checkout containing the working directory (the first parent with `infrastructure/live/root.hcl`). Exit code `2` when there is no checkout or `fastmcp` is not installed. Tools: see [Operating a checkout from an agent](guide.md#operating-a-checkout-from-an-agent-esmeralda-mcp).
 
+### Operational CLI subcommands
+
+Every operational subcommand accepts `--repo PATH` (defaults to `$ESMERALDA_REPO` or the git checkout root) and `--json` for machine-readable JSON output:
+
+```text
+esmeralda status [--env dev|prd] [--unit UNIT] [--json] [--repo PATH]
+esmeralda doctor [--env dev|prd] [--json] [--repo PATH]
+esmeralda units [--env dev|prd] [--layer 0..5] [--json] [--repo PATH]
+esmeralda plan [<unit> | --all] [--env dev|prd] [--json] [--repo PATH]
+esmeralda apply <unit> [--env dev|prd] [--allow-destroy] [--json] [--repo PATH]
+esmeralda verify [--env dev|prd] [--probe NAME] [--skip-query] [--json] [--repo PATH]
+esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json] [--repo PATH]
+esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json] [--repo PATH]
+esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json] [--repo PATH]
+```
+
+| Subcommand | Backed by | Description |
+|---|---|---|
+| `status` | `esmeralda.ops.repo.status` / `infra.status` | Git branch, HEAD SHA, dirty/clean state, active worktrees, local state units, image tags/digests vs HEAD, and deployed environment outputs |
+| `doctor` | `esmeralda.ops.repo.doctor` | Preflight check: required tools (`git`, `uv`, `terraform`, `terragrunt`, `gcloud`), `ESMERALDA_BILLING_ACCOUNT` (warns if unset), ADC token, `uv.lock` frozen check, and local state readability. Exits non-zero if required checks fail |
+| `units` | `esmeralda.ops.infra.list_units` | Lists Terragrunt units for `<env>`, their layer (`0..5`), dependencies, whether enabled/excluded in `env.yaml`, and whether local state exists |
+| `plan` | `esmeralda.ops.infra.plan_unit` | Runs read-only `terragrunt plan -lock=false` on a unit (full path or short name such as `entrypoint`) or `--all` enabled units, and prints the resource change summary (`to add`, `to change`, `to destroy`, `to replace`) |
+| `apply` | `esmeralda.ops.infra.apply_unit` | Plans `<unit>` to a planfile first, inspects the plan for `destroy` or `replace` actions, **refuses to apply with exit code `2` if `destroy > 0` unless `--allow-destroy` is passed**, and otherwise applies the saved planfile |
+| `verify` | `esmeralda.ops.runtime.verify` | Runs gateway conformance probes (`runtime.test_gateway`, optionally filtered by `--probe`) and, unless `--skip-query` is passed, runs remote queries against `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator`. Exits non-zero if any check fails |
+| `logs` | `esmeralda.ops.logs.agent_logs` | Pulls recent Cloud Logging entries for an agent (Reasoning Engine) or MCP/gateway service (Cloud Run), collapsing tracebacks and deduplicating repeats |
+| `contracts` | `esmeralda.ops.contracts.describe_contracts` | Prints architectural contracts (`all`, `entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
+| `guard` | `esmeralda.ops.guard.run_guard` | Public-repository sensitive-content scanner across `--staged` changes, `--diff <range>`, `--all` tracked files, or `--message-file`. Exits non-zero if any secret, forbidden path, or internal/customer marker is detected |
+
 ## `esmeralda.ops`
 
-The functions behind `esmeralda mcp`, usable from scripts. Each returns a small JSON-serialisable dict and raises `esmeralda.ops.OpsError` with an actionable message.
+The functions behind the operational CLI subcommands and `esmeralda mcp`, usable from scripts. Each returns a small JSON-serialisable dict and raises `esmeralda.ops.OpsError` with an actionable message.
 
 | Name | Description |
 |---|---|
 | `repo.repo_root(start=None)` | `ESMERALDA_REPO`, else the nearest checkout at or above `start` (default: cwd) |
+| `repo.status(root, env="dev")` / `repo.doctor(root, env="dev")` | Combined git/worktree/image/infra status; workstation preflight checks |
 | `repo.units(root, env)` / `repo.unit_state(root, env, unit)` | Unit paths of an env; a unit's non-sensitive outputs and managed resource count (local state, else `terragrunt output -json`) |
-| `infra.status(root, env, unit=None)` / `infra.list_units(root, env)` | The `status` and `list_units` tools |
-| `infra.plan_unit(root, env, unit)` / `infra.summarize_plan(plan_json)` | Read-only plan of a unit; the summary of a `terraform show -json` plan document |
-| `runtime.query_agent(root, env, agent, message)` (async) / `runtime.test_gateway(root, env)` | Remote query through `esmeralda.query.run`; `scripts/test_gateway.sh` parsed per host |
-| `logs.agent_logs(root, env, agent, since=, severity=, limit=)` / `logs.reduce_entries(entries, limit)` | Reasoning Engine logs; the collapse / dedupe step on `{time, severity, payload}` entries |
-| `contracts.describe_contracts(root)` | Gateway contract sections from the docs and each env's `gateways` block |
+| `infra.status(root, env, unit=None)` / `infra.list_units(root, env, layer=None)` | Environment/unit outputs; unit catalog with layer, dependencies, `enabled`/`excluded`, and `local_state` |
+| `infra.plan_unit(root, env, unit)` / `infra.summarize_plan(plan_json)` | Read-only plan of a unit (or `--all`); the summary of a `terraform show -json` plan document |
+| `infra.apply_unit(root, env, unit, allow_destroy=False)` | Plan-first apply of a unit with the destroy guard (returns `refused=True, exit_code=2` when `destroy > 0` without `allow_destroy`) |
+| `runtime.query_agent(root, env, agent, message)` (async) / `runtime.test_gateway(root, env, probe=None)` / `runtime.verify(root, env, probe=None, skip_query=False)` (async) | Remote query through `esmeralda.query.run`; `scripts/test_gateway.sh` parsed per host; end-to-end verification |
+| `logs.agent_logs(root, env, agent, since=, minutes=, severity=, limit=)` / `logs.reduce_entries(entries, limit)` | Reasoning Engine or Cloud Run logs; the collapse / dedupe step on `{time, severity, payload}` entries |
+| `contracts.describe_contracts(root, section_name="all")` | Architectural contract sections (`entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) and each env's `gateways` block |
+| `guard.run_guard(root, mode="staged", diff_range=None, message_file=None)` | Public-repository sensitive-content and forbidden-path scanner |
 | `server.build_server(root=None)` | The `FastMCP` server (tests use it with the in-memory `fastmcp.Client`) |
 
 ## `esmeralda.serve`

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Applies the sensitive-content rules to the commit message.
+# Installed by `make bootstrap` / `make hooks`. Bypass once with SKIP_SENSITIVE_SCAN=1.
+exec uv run --frozen --package esmeralda esmeralda guard --message-file "$1"

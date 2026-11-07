@@ -107,6 +107,7 @@ nav:
     - Central Agent Gateway: 3-agentops-and-lifecycle/01-central-agent-gateway.md
     - Monitoring, Dashboards & FinOps: 3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md
     - Capability-Based Governance: 3-agentops-and-lifecycle/04-capability-based-governance.md
+    - Operating with Agents & CLI: 3-agentops-and-lifecycle/04-operating-with-agents.md
   - Esmeralda Library:
     - 4-esmeralda-library/index.md
     - Usage Guide: 4-esmeralda-library/guide.md

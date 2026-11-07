@@ -132,7 +132,13 @@ def parse_gateway_output(text: str) -> dict[str, Any]:
     return {"entry_point": entry, "hosts": hosts}
 
 
-def test_gateway(root: Path, env: str, *, timeout: float = 300.0) -> dict[str, Any]:
+def test_gateway(
+    root: Path,
+    env: str,
+    *,
+    probe: str | None = None,
+    timeout: float = 300.0,
+) -> dict[str, Any]:
     repo.env_dir(root, env)
     script = root / "scripts" / "test_gateway.sh"
     if not script.is_file():
@@ -141,18 +147,86 @@ def test_gateway(root: Path, env: str, *, timeout: float = 300.0) -> dict[str, A
     result = repo.run(["bash", str(script), env], cwd=root, timeout=timeout, what="scripts/test_gateway.sh")
     parsed = parse_gateway_output(result.stdout + "\n" + result.stderr)
     hosts = parsed["hosts"]
+    if probe:
+        needle = probe.strip().lower()
+        hosts = [
+            h
+            for h in hosts
+            if needle in str(h.get("host", "")).lower() or needle == str(h.get("probe", "")).lower()
+        ]
+        parsed["hosts"] = hosts
+        passed = bool(hosts) and all(h["ok"] for h in hosts)
+    else:
+        passed = result.returncode == 0
     summary: dict[str, Any] = {
         "env": env,
-        "passed": result.returncode == 0,
+        "passed": passed,
+        "probe_filter": probe,
         "ok": sum(h["ok"] for h in hosts),
         "failed": sum(not h["ok"] for h in hosts),
         **parsed,
         "seconds": round(time.monotonic() - started, 1),
     }
-    if result.returncode != 0:
+    if not passed:
         text = f"{result.stderr}\n{result.stdout}"
         fatal = [line.strip() for line in _ANSI.sub("", text).splitlines() if line.strip().startswith("❌ ")]
-        summary["error"] = repo.short(fatal[-1] if fatal else " | ".join(repo.error_lines(text, 4)), 300)
+        if probe and not hosts:
+            summary["error"] = f"No gateway host matched --probe '{probe}'"
+        else:
+            summary["error"] = repo.short(fatal[-1] if fatal else " | ".join(repo.error_lines(text, 4)), 300)
         if found := repo.hint(text):
             summary["hint"] = found
     return summary
+
+
+DEFAULT_VERIFY_MESSAGE = "Can you verify Julian Sterling's income?"
+DEFAULT_VERIFY_AGENTS = ("ai-coe-mortgage-specialist", "cx-mortgage-orchestrator")
+
+
+async def verify(
+    root: Path,
+    env: str,
+    *,
+    probe: str | None = None,
+    skip_query: bool = False,
+    message: str = DEFAULT_VERIFY_MESSAGE,
+    timeout: float = 300.0,
+) -> dict[str, Any]:
+    """End-to-end verification: gateway conformance probes + remote specialist and orchestrator queries."""
+    started = time.monotonic()
+    gw = test_gateway(root, env, probe=probe, timeout=timeout)
+    steps: list[dict[str, Any]] = [
+        {
+            "step": "gateway",
+            "passed": bool(gw.get("passed")),
+            "seconds": gw.get("seconds", 0.0),
+            "detail": f"{gw.get('ok', 0)} ok, {gw.get('failed', 0)} failed",
+        }
+    ]
+    queries: dict[str, dict[str, Any]] = {}
+    if not skip_query:
+        for agent_name in DEFAULT_VERIFY_AGENTS:
+            try:
+                qres = await query_agent(root, env, agent_name, message, timeout=timeout)
+            except OpsError as exc:
+                qres = {"env": env, "agent": agent_name, "passed": False, "errors": [str(exc)], "seconds": 0.0}
+            queries[agent_name] = qres
+            steps.append(
+                {
+                    "step": agent_name,
+                    "passed": bool(qres.get("passed")),
+                    "seconds": qres.get("seconds", 0.0),
+                    "detail": repo.short(qres.get("answer") or (qres.get("errors") or ["failed"])[0], 120),
+                }
+            )
+    passed = all(s["passed"] for s in steps)
+    return {
+        "env": env,
+        "passed": passed,
+        "skip_query": skip_query,
+        "probe": probe,
+        "steps": steps,
+        "gateway": gw,
+        "queries": queries,
+        "seconds": round(time.monotonic() - started, 1),
+    }

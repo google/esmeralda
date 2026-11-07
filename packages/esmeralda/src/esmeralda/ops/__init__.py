@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Read-only operations on an Esmeralda checkout, for agents (``esmeralda mcp``) and scripts.
+"""Operations on an Esmeralda checkout, backing the ``esmeralda`` CLI and ``esmeralda mcp``.
 
 Every function returns a small JSON-serialisable dict, never raw Terraform or log dumps:
 
-* ``repo``: repository root, environments, units, state outputs, subprocess helpers, error hints;
-* ``infra``: ``list_units``, ``status`` and ``plan_unit`` (read-only plan summary);
+* ``repo``: repository root, git/worktree status, doctor preflight checks, environments, units,
+  state outputs, subprocess helpers, error hints;
+* ``infra``: ``list_units``, ``status``, ``plan_unit`` (read-only plan summary), and ``apply_unit``
+  (plan-first apply with destroy guard);
 * ``logs``: ``agent_logs`` (Cloud Logging, tracebacks collapsed, repeats deduplicated);
-* ``runtime``: ``query_agent`` (Agent Runtime) and ``test_gateway`` (``scripts/test_gateway.sh``);
-* ``contracts``: ``describe_contracts`` (gateway adapter contract and ``gateways`` blocks);
-* ``server``: the MCP server (stdio) exposing all of the above as tools.
-
-Nothing here applies, destroys or writes cloud resources.
+* ``runtime``: ``query_agent`` (Agent Runtime), ``test_gateway`` (``scripts/test_gateway.sh``), and ``verify``;
+* ``contracts``: ``describe_contracts`` (architectural contracts and ``gateways`` blocks);
+* ``guard``: ``run_guard`` (public-repository sensitive-content scanner);
+* ``server``: the read-only MCP server (stdio) exposing the read-only tools.
 """
 
 from esmeralda.ops.repo import OpsError

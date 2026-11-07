@@ -27,8 +27,19 @@ from typing import Any
 from esmeralda.ops import repo
 
 GATEWAY_DOC = Path("docs/src/2-workloads-and-catalog/01-ingress-gateways.md")
-SECTIONS = {"gateway_contract": "The Gateway Contract", "gateways_block": "The `gateways` Block"}
+SECTIONS = {
+    "gateway_contract": "The Gateway Contract",
+    "gateways_block": "The `gateways` Block",
+    "entrypoint": "The Entry Point",
+}
+VALID_SECTIONS = ("all", "entrypoint", "gateway_adapter", "agent_card", "env_yaml")
 SECTION_LIMIT = 2500
+
+_DEFAULT_AGENT_CARD_CONTRACT = (
+    "A2A agents declare `framework: a2a` and an `agent_card` mapping in `apps/agents/<name>/agent.yaml` "
+    "(`name`, `description`, `version`, `url`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`). "
+    "`esmeralda serve` serves the card at `/v1/card` and `/.well-known/agent-card.json`."
+)
 
 
 def section(markdown: str, title: str) -> str:
@@ -54,15 +65,68 @@ def _compact(text: str) -> str:
     return text if len(text) <= SECTION_LIMIT else text[: SECTION_LIMIT - 1] + "…"
 
 
-def describe_contracts(root: Path) -> dict[str, Any]:
+def _agent_cards(root: Path) -> dict[str, Any]:
+    agents_dir = root / "apps" / "agents"
+    cards: dict[str, Any] = {}
+    if not agents_dir.is_dir():
+        return cards
+    for agent_yaml in sorted(agents_dir.glob("*/agent.yaml")):
+        text = agent_yaml.read_text(errors="replace")
+        if "agent_card:" in text or "framework: a2a" in text:
+            cards[agent_yaml.parent.name] = f"apps/agents/{agent_yaml.parent.name}/agent.yaml"
+    return cards
+
+
+def describe_contracts(root: Path, *, section_name: str = "all") -> dict[str, Any]:
+    if section_name not in VALID_SECTIONS:
+        raise repo.OpsError(f"Unknown contract section '{section_name}'. Choose from: {', '.join(VALID_SECTIONS)}")
     doc = root / GATEWAY_DOC
     markdown = doc.read_text() if doc.is_file() else ""
-    result: dict[str, Any] = {"source": GATEWAY_DOC.as_posix() if markdown else None}
-    for key, title in SECTIONS.items():
-        result[key] = section(markdown, title) or None
-    result["envs"] = {env: repo.gateways_block(root, env) for env in repo.environments(root)}
-    result["gateway_units"] = {
+    gw_contract = section(markdown, SECTIONS["gateway_contract"]) or None
+    gw_block = section(markdown, SECTIONS["gateways_block"]) or None
+    ep_contract = section(markdown, SECTIONS["entrypoint"]) or None
+    envs = {env: repo.gateways_block(root, env) for env in repo.environments(root)}
+    gw_units = {
         env: [u.rsplit("/", 1)[-1] for u in repo.units(root, env) if u.startswith("layer-5-workloads/gateways/")]
         for env in repo.environments(root)
+    }
+    agent_card_info = {
+        "contract": _DEFAULT_AGENT_CARD_CONTRACT,
+        "a2a_agents": _agent_cards(root),
+    }
+
+    if section_name == "entrypoint":
+        return {
+            "section": "entrypoint",
+            "source": GATEWAY_DOC.as_posix() if markdown else None,
+            "entrypoint": ep_contract,
+        }
+    if section_name == "gateway_adapter":
+        return {
+            "section": "gateway_adapter",
+            "source": GATEWAY_DOC.as_posix() if markdown else None,
+            "gateway_adapter": gw_contract,
+            "gateway_units": gw_units,
+        }
+    if section_name == "env_yaml":
+        return {
+            "section": "env_yaml",
+            "source": GATEWAY_DOC.as_posix() if markdown else None,
+            "env_yaml": gw_block,
+            "envs": envs,
+        }
+    if section_name == "agent_card":
+        return {"section": "agent_card", "agent_card": agent_card_info}
+
+    result: dict[str, Any] = {
+        "source": GATEWAY_DOC.as_posix() if markdown else None,
+        "gateway_contract": gw_contract,
+        "gateways_block": gw_block,
+        "entrypoint": ep_contract,
+        "gateway_adapter": gw_contract,
+        "env_yaml": gw_block,
+        "agent_card": agent_card_info,
+        "envs": envs,
+        "gateway_units": gw_units,
     }
     return result
