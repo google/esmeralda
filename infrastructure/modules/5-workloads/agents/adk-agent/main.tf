@@ -265,6 +265,15 @@ resource "google_project_iam_member" "agent_identity_aiplatform_user" {
   member  = "principalSet://agents.global.org-${data.google_project.current.org_id}.system.id.goog/attribute.platformContainer/aiplatform/projects/${data.google_project.current.number}"
 }
 
+# Callers allowed to query the engine, e.g. the ingress gateway serving cx-mortgage-orchestrator.esmeralda.internal
+# (same grant the a2a-agent module gives its invokers).
+resource "google_project_iam_member" "invokers_aiplatform_user" {
+  for_each = toset(var.invoker_service_accounts)
+  project  = var.project_id
+  role     = "roles/aiplatform.user"
+  member   = "serviceAccount:${each.value}"
+}
+
 
 
 

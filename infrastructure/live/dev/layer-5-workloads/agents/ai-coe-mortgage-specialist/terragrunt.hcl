@@ -48,11 +48,12 @@ inputs = {
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle
 
-  invoker_service_accounts = [
+  # The Envoy gateway's identity is added when envoy is in gateways.enabled (env.yaml).
+  invoker_service_accounts = concat([
     dependency.security.outputs.test_vm_sa_email,
     dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
     dependency.security.outputs.kong_sa_email
-  ]
+  ], contains(local.env_vars.locals.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, null)] : [])
 
   # BYOC image from the shared layer-0 CI/CD project (resolved to a digest by the module)
   agent_image_uri = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/ai-coe-mortgage-specialist:${local.env_vars.locals.container_tag}"

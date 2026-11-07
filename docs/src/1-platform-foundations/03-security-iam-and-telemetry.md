@@ -55,7 +55,7 @@ In AI agent platforms, security vulnerabilities fall into three distinct vectors
   2. `sa-mcp-invoker-<env>`: the only identity with `roles/run.invoker` on the MCPs project. Agents **impersonate** it to mint Google ID tokens for MCP calls; it is also on Kong's Cloud Run invoker list.
   3. `sa-ai-coe-mortgage-spec-<env>`: AI CoE specialist. Used as the Cloud SQL IAM database user and by the database bootstrap job; runtime fallback if Agent Identity is disabled.
   4. `sa-cx-mortgage-orch-<env>`: CX orchestrator. Runtime fallback if Agent Identity is disabled.
-  5. `sa-esmeralda-kong-<env>`: Kong gateway runtime.
+  5. `sa-esmeralda-kong-<env>` / `sa-esmeralda-envoy-<env>`: Kong and Envoy gateway runtimes (each used when its gateway is in `gateways.enabled`).
   6. `sa-esmeralda-test-vm-<env>`: Private test VM identity with scoped invoker permissions.
 
   The CI/CD identities `sa-esmeralda-builder` and `sa-esmeralda-promoter` are created in the shared Layer 0 project, not here.
@@ -113,6 +113,7 @@ flowchart TD
 | **`sa-ai-coe-mortgage-spec-<env>`** | `esm-<env>-ai-coe-agents-<sfx>` | `cloudsql.client`, `cloudsql.instanceUser`, `aiplatform.user`, `storage.objectAdmin`, `telemetry.writer`, logging/monitoring/trace writers, `secretmanager.secretAccessor` (on the PG secret); `compute.networkUser` on the core subnet | AI CoE specialist: Cloud SQL IAM user & bootstrap job. |
 | **`sa-cx-mortgage-orch-<env>`** | `esm-<env>-cx-agents-<sfx>` | `aiplatform.user`, `storage.objectAdmin`, `telemetry.writer`, logging/monitoring/trace writers; `compute.networkUser` on the core subnet; `iam.serviceAccountTokenCreator` on the specialist SA | CX orchestrator (fallback runtime identity). |
 | **`sa-esmeralda-kong-<env>`** | `esm-<env>-gateway-<sfx>` | `aiplatform.user`, `run.invoker`, logging/monitoring/trace writers | Kong on Cloud Run. |
+| **`sa-esmeralda-envoy-<env>`** | `esm-<env>-gateway-<sfx>` | `aiplatform.user`, `run.invoker`, logging/monitoring/trace writers; when `envoy` is enabled, Layer 5 adds it as invoker of the MCP services and the specialist, and grants it `aiplatform.user` in the CX agents project | Envoy on Cloud Run. |
 | **`sa-esmeralda-test-vm-<env>`** | `esm-<env>-cx-agents-<sfx>` | `run.invoker` (on the MCPs & AI CoE projects), `aiplatform.user`, logging/monitoring/trace writers, `iam.serviceAccountTokenCreator` (on self) | Private test VM debugging & testing. |
 
 ---

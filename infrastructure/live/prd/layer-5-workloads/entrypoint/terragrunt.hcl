@@ -3,7 +3,7 @@
 # Routes every host to gateways.default and the hosts in gateways.host_rules to their gateway
 # (env.yaml). The reserved IP + DNS records come from layer 2, the certificate from layer 3.
 # Applied after the gateways: one dependency block per known gateway, enabled only when the
-# gateway is listed in gateways.enabled. Adding a gateway (e.g. envoy) = one more dependency
+# gateway is listed in gateways.enabled. Adding a gateway (e.g. apigee) = one more dependency
 # block below plus its entry in inputs.backends.
 # Mocks below only serve `validate`/`plan` before the inputs exist; `apply` requires real outputs.
 include "root" {
@@ -56,6 +56,16 @@ dependency "kong" {
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
+dependency "envoy" {
+  config_path = "../gateways/envoy"
+  enabled     = contains(local.env_vars.locals.gateways.enabled, "envoy")
+  mock_outputs = {
+    backend_service_id = "projects/mock/regions/us-central1/backendServices/mock-envoy"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_merge_strategy_with_state  = "shallow"
+}
+
 inputs = {
   project_id  = dependency.projects.outputs.gateway_project_id
   environment = local.env_vars.locals.environment
@@ -71,7 +81,8 @@ inputs = {
   # Validated by the module: default and every host_rules value must be an enabled gateway.
   backends = {
     for name, id in {
-      kong = try(dependency.kong.outputs.backend_service_id, null)
+      kong  = try(dependency.kong.outputs.backend_service_id, null)
+      envoy = try(dependency.envoy.outputs.backend_service_id, null)
     } : name => id if contains(local.gateways.enabled, name)
   }
   default_backend = local.gateways.default
