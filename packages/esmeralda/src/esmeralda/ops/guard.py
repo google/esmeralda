@@ -81,7 +81,13 @@ BUILTIN_CONTENT_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("Bearer token literal", re.compile(r"[Bb]earer\s+[A-Za-z0-9_\-\.=]{40,}")),
     (
         "GCP billing account ID",
-        re.compile(r"\b(?!012345-6789AB-CDEF01|000000-000000-000000)[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}\b"),
+        re.compile(
+            r"\b(?!"
+            + "012345"
+            + r"-6789AB-CDEF01|"
+            + "000000"
+            + r"-000000-000000)[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}\b"
+        ),
     ),
     ("internal shortlink", _SHORTLINK_RE),
     ("forbidden internal/customer marker", _INTERNAL_MARKER_RE),

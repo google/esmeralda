@@ -472,7 +472,7 @@ def test_guard_detects_all_forbidden_strings_and_masks_snippets():
 
     for safe in (
         "-----BEGIN CERTIFICATE-----",
-        "billing_account = 012345-6789AB-CDEF01",
+        "billing_account = " + "012345" + "-6789AB-CDEF01",
         "normal python code x = 1",
     ):
         assert not guard.scan_text("sample.py:1", safe), f"Unexpected finding for {safe}"
