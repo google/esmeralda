@@ -339,8 +339,11 @@ locals {
     { for k, v in local.runtime_overrides : k => v if v != "" && v != null }
   )
 
-  # Split the URI to get registry, repository, and image details dynamically
-  image_uri_parts  = split("/", var.agent_image_uri)
+  # Split the URI to get registry, repository, and image details dynamically.
+  # agent_image_uri is either <registry>/<project>/<repo>/<image>:<tag> (resolved to a digest
+  # below) or already pinned, <registry>/<project>/<repo>/<image>@sha256:... (used as-is).
+  image_pinned     = can(regex("@sha256:[0-9a-f]{64}$", var.agent_image_uri))
+  image_uri_parts  = split("/", split("@", var.agent_image_uri)[0])
   registry_host    = local.image_uri_parts[0]
   registry_project = local.image_uri_parts[1]
   registry_repo    = local.image_uri_parts[2]
@@ -355,7 +358,7 @@ locals {
 }
 
 data "google_artifact_registry_docker_image" "agent_image" {
-
+  count         = local.image_pinned ? 0 : 1
   project       = local.registry_project
   location      = local.registry_region
   repository_id = local.registry_repo
@@ -411,7 +414,7 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
     ])
 
     container_spec {
-      image_uri = "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image.name)[1]}"
+      image_uri = local.image_pinned ? var.agent_image_uri : "${local.registry_host}/${local.registry_project}/${local.registry_repo}/${local.image_name}@${split("@", data.google_artifact_registry_docker_image.agent_image[0].name)[1]}"
     }
 
 

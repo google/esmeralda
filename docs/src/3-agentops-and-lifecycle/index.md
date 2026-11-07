@@ -105,20 +105,22 @@ When migrating from this monorepo developer blueprint to a production-ready deco
 
 ### The Parameter Linkage Pattern
 
-Decoupling repositories requires a clear mechanism to link them. Rather than allowing application repos to directly execute Terraform, the platform infrastructure repository (`platform-infra-iac.git`) acts as the central binder. Each environment declares **which image tag to run** in one place, `infrastructure/live/<env>/env.yaml`:
+Decoupling repositories requires a clear mechanism to link them. Rather than allowing application repos to directly execute Terraform, the platform infrastructure repository (`platform-infra-iac.git`) acts as the central binder. Each environment declares **which images to run** in one place, `infrastructure/live/<env>/env.yaml`:
 
 ```hcl
 # infrastructure/live/<env>/env.yaml (HCL locals, read by Terragrunt)
 image_repository = "dev"         # dev → esmeralda-containers; prd uses "release" → esmeralda-containers-release
-container_tag    = "dev-latest"  # prd: "vX.Y.Z", rewritten by `make promote`
+container_tag    = "dev-latest"  # prd: fallback only, used while release/prd.yaml does not exist
+# prd only: every image pinned by digest from the release manifest (see "Releases and promotion")
+image_digests    = try(yamldecode(file("${get_repo_root()}/release/prd.yaml")).images, {})
 ```
 
-Terragrunt then builds every image URI from the Layer 0 repository outputs plus that tag:
+Terragrunt then builds every image URI from the Layer 0 repository outputs plus the digest listed in `image_digests` (`<repo>/<image>@sha256:...`) or, when the image is not listed, the tag (`<repo>/<image>:<container_tag>`):
 
 #### 1. Tool Container Image (`live/<env>/layer-5-workloads/services/corporate-email/terragrunt.hcl`)
 ```hcl
 inputs = {
-  container_image = "${<dev or release repository_url from layer-0-cicd>}/corporate-email:${local.env_vars.locals.container_tag}"
+  container_image = "${<dev or release repository_url from layer-0-cicd>}/${local.image_ref}" # corporate-email@sha256:... or corporate-email:<tag>
   invoker_service_accounts = [
     dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
     dependency.security.outputs.test_vm_sa_email,
@@ -128,10 +130,10 @@ inputs = {
 ```
 
 #### 2. Agent Container Digest Pinning (`live/<env>/layer-5-workloads/agents/ai-coe-mortgage-specialist/terragrunt.hcl`)
-To prevent container drift and guarantee that the Vertex AI Reasoning Engine runs exactly the code validated by the owning team, the agent modules resolve the tag to its **immutable digest** at apply time (`data.google_artifact_registry_docker_image`) and deploy `image@sha256:...`:
+To prevent container drift and guarantee that the Vertex AI Reasoning Engine runs exactly the code validated by the owning team, the agent modules always deploy `image@sha256:...`: a digest from the release manifest is used as-is, and a tag is resolved to its **immutable digest** at plan time (`data.google_artifact_registry_docker_image`):
 ```hcl
 inputs = {
-  agent_image_uri       = "${<dev or release repository_url>}/ai-coe-mortgage-specialist:${local.env_vars.locals.container_tag}"
+  agent_image_uri       = "${<dev or release repository_url>}/${local.image_ref}" # ai-coe-mortgage-specialist@sha256:... or :<tag>
   agent_service_account = dependency.security.outputs.ai_coe_mortgage_specialist_sa_email
 }
 ```
@@ -205,14 +207,35 @@ To ensure that only tested container images run in production, Esmeralda builds 
 *   The image is pushed to the **mutable dev repository** `esmeralda-containers` with two tags: `:dev-latest` and `:dev-<gitsha>`.
 
 ### 3. Deploy to dev
-*   `make deploy-workloads ENV=dev` (or the per-component `make deploy-*` targets) applies Layer 5. Agent modules resolve the tag to its SHA256 digest, so the Reasoning Engine always runs a pinned image.
+*   `make deploy-workloads ENV=dev` (or the per-component `make deploy-*` targets) applies Layer 5. The modules resolve the tag to its SHA256 digest, so every workload runs a pinned image.
 *   The AI CoE specialist module also runs its database schema bootstrap as a private Cloud Run job.
-*   Verify with `make test-e2e ENV=dev`.
 
-### 4. Promote to release (prd)
-*   `make promote TAG=vX.Y.Z` (or `make promote-patch` / `make promote-minor`) runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh): it copies the dev images **by digest** into the **immutable release repository** `esmeralda-containers-release` (writable by `sa-esmeralda-promoter`) and rewrites `container_tag` in `infrastructure/live/prd/env.yaml`. It does not deploy.
-*   `make status-release` shows what is in the release repository.
-*   prd pulls **only** from the release repository; deploy it with `make deploy-workloads ENV=prd`.
+### 4. Releases and promotion
+
+prd never builds and never follows a tag: it deploys the exact digests listed in a **release manifest**, `release/prd.yaml`, which is reviewed and merged like any other change.
+
+```mermaid
+flowchart LR
+    B["make build-images<br/>(:dev-sha)"] --> D["deploy dev<br/>make deploy-workloads ENV=dev"]
+    D --> V["make verify ENV=dev<br/>gateway probes + both agents answer"]
+    V --> P["make promote VERSION=vX.Y.Z<br/>SOURCE=dev-sha VERIFIED=date"]
+    P --> PR["PR: release/prd.yaml"]
+    PR --> PRD["deploy prd<br/>make deploy-workloads ENV=prd"]
+```
+
+1.  **Build once.** `make build-images` pushes every image to the dev repository as `:dev-<gitsha>` (and `:dev-latest`).
+2.  **Verify in dev.** Deploy dev on those images, then `make verify ENV=dev`: gateway probes through the entry point (`make test-gateway`) and a real query to each agent (`make test-e2e`). Both must pass.
+3.  **Promote by digest.** `make promote VERSION=vX.Y.Z SOURCE=dev-<gitsha> VERIFIED=<date dev passed>` runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh). It resolves the digest of every image tagged `dev-<gitsha>`, copies each digest into the **immutable release repository** `esmeralda-containers-release` as `vX.Y.Z` (writable by `sa-esmeralda-promoter`), and writes `release/prd.yaml`. It refuses a `vX.Y.Z` that already exists with a different digest; re-running the same promotion is a no-op. It never deploys and never edits `env.yaml`.
+4.  **Manifest PR.** Commit `release/prd.yaml` on a branch and open a PR. The diff shows exactly which images change, from which commit, and when dev verified them.
+5.  **Deploy prd.** After the merge, `make deploy-workloads ENV=prd`. prd units read the manifest (`image_digests` in `infrastructure/live/prd/env.yaml`) and deploy `<release repository>/<image>@sha256:...`; `make verify-images ENV=prd` checks the running digests against the manifest.
+6.  **Roll back** = revert the manifest PR and deploy prd again. The previous digests are still in the release repository, because release tags are immutable.
+
+The manifest stores image names and digests only; the registry URL comes from the Layer 0 outputs, so the file holds no project ids. Its schema is documented in its own header (written by [`scripts/release_manifest.py`](../../../scripts/release_manifest.py)). `make status-release` prints the current manifest. Until a first promotion creates `release/prd.yaml`, prd units fall back to `container_tag`.
+
+**Follow-ups (not automated yet):**
+
+*   **CI automation:** run build → dev deploy → `make verify ENV=dev` → promote in a pipeline, with the pipeline opening the manifest PR, and deploy prd on merge.
+*   **Binary Authorization:** have prd admit only attested digests from the release repository, so a workload can't run an image that skipped the manifest.
 
 ---
 

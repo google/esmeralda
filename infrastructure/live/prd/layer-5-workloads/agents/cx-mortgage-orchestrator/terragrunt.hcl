@@ -31,6 +31,12 @@ dependency "governance" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+
+  # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
+  # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
+  image_name   = "cx-mortgage-orchestrator"
+  image_digest = lookup(lookup(local.env_vars.locals, "image_digests", {}), local.image_name, "")
+  image_ref    = local.image_digest != "" ? "${local.image_name}@${local.image_digest}" : "${local.image_name}:${local.env_vars.locals.container_tag}"
 }
 
 inputs = {
@@ -49,7 +55,7 @@ inputs = {
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle
 
   # BYOC image from the shared layer-0 CI/CD project (resolved to a digest by the module)
-  agent_image_uri = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/cx-mortgage-orchestrator:${local.env_vars.locals.container_tag}"
+  agent_image_uri = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"
 
   vpc_id              = dependency.networking.outputs.network_id
   subnet_id           = dependency.networking.outputs.subnet_id

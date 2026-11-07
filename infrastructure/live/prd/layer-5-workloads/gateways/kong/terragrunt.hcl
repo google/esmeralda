@@ -9,6 +9,12 @@ include "root" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+
+  # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
+  # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
+  image_name   = "kong-gateway"
+  image_digest = lookup(lookup(local.env_vars.locals, "image_digests", {}), local.image_name, "")
+  image_ref    = local.image_digest != "" ? "${local.image_name}@${local.image_digest}" : "${local.image_name}:${local.env_vars.locals.container_tag}"
 }
 
 terraform {
@@ -88,7 +94,7 @@ inputs = {
   region      = local.env_vars.locals.region
   vpc_id      = dependency.networking.outputs.network_id
   subnet_id   = dependency.networking.outputs.subnet_id
-  kong_image  = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/kong-gateway:${local.env_vars.locals.container_tag}"
+  kong_image  = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"
 
   invoker_service_accounts = [
     dependency.security.outputs.test_vm_sa_email,

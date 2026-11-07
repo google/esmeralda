@@ -24,9 +24,10 @@ CICD_DIR = infrastructure/live/shared/layer-0-cicd
 BUILD_TAG ?= dev-latest
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
-# Promotion (make promote TAG=vX.Y.Z [SOURCE_TAG=...])
-TAG ?=
-SOURCE_TAG ?= dev-latest
+# Promotion (make promote VERSION=vX.Y.Z SOURCE=dev-<sha> [VERIFIED=YYYY-MM-DD]): see "Releases" below
+VERSION ?=
+SOURCE ?=
+VERIFIED ?= $(shell date -u +%F)
 
 # uv: always install exactly what uv.lock says and never re-resolve locally. The lock is generated
 # against public PyPI by `make lock` (scripts/uv_lock.sh, runs in Cloud Build); re-locking on a machine
@@ -45,7 +46,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-kong build-service-envoy \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	promote-patch promote-minor promote test-governance-chaos load-test docs-serve docs-build clean preflight
+	verify test-release promote test-governance-chaos load-test docs-serve docs-build clean preflight
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -101,7 +102,12 @@ test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
 	@$(MAKE) test-agents
+	@$(MAKE) --no-print-directory test-release
 	@echo "✅ All unit tests passed!"
+
+test-release: ## Unit tests for the release manifest writer (scripts/release_manifest.py, stdlib only)
+	@echo "🧪 Running unit tests for the release manifest..."
+	@python3 -m unittest discover -s scripts/tests -q
 
 run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
 	@[ -n "$$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null)" ] && kill -9 $$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null) 2>/dev/null || true
@@ -186,7 +192,7 @@ deploy-governance: ## Deploy Layer 4: Governance, Agent Gateway, Observability &
 
 # ==============================================================================
 # Image builds: env-neutral, always pushed to the shared dev repository
-# (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote TAG=vX.Y.Z`.
+# (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote VERSION=vX.Y.Z SOURCE=dev-<sha>`.
 # ==============================================================================
 
 # $(1) = build context, $(2) = image name, $(3) = uv workspace package (optional),
@@ -251,7 +257,7 @@ deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, g
 	@echo "✨ Layer 5 workloads deployed!"
 	@$(MAKE) --no-print-directory verify-images ENV=$(ENV)
 
-verify-images: ## Check every Layer 5 workload runs the digest its tag points to (runs after deploy-workloads)
+verify-images: ## Check every Layer 5 workload runs the expected digest: release/<env>.yaml if present, else its tag
 	@bash scripts/verify_images.sh $(ENV)
 
 deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Registry entries)
@@ -311,18 +317,18 @@ destroy-all: ## Destroy an env's Layers 5 -> 1 (dev only; never touches the shar
 # Releases: copy dev images by digest into the immutable release repository
 # ==============================================================================
 
-status-release: ## Show the prd release tag and the shared repositories
+status-release: ## Show the prd release manifest (version, source, digests) and the shared repositories
 	@bash scripts/promote_release.sh status
 
-promote-patch: ## Promote dev-latest as v1.0.1 (copy by digest, update prd/env.yaml, no deploy)
-	@bash scripts/promote_release.sh promote --tag v1.0.1
+verify: ## Verify a deployed env before promoting: gateway probes + a real query to each agent (ENV=dev)
+	@$(MAKE) --no-print-directory test-gateway ENV=$(ENV)
+	@$(MAKE) --no-print-directory test-e2e ENV=$(ENV)
+	@echo "✅ $(ENV) verified on $$(date -u +%F). Promote with: make promote VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=$$(date -u +%F)"
 
-promote-minor: ## Promote dev-latest as v1.1.0 (copy by digest, update prd/env.yaml, no deploy)
-	@bash scripts/promote_release.sh promote --tag v1.1.0
-
-promote: ## Promote dev images as TAG (e.g. make promote TAG=v1.2.0 [SOURCE_TAG=dev-<sha>]); no deploy
-	@if [ -z "$(TAG)" ]; then echo "❌ Usage: make promote TAG=vX.Y.Z [SOURCE_TAG=dev-latest]"; exit 1; fi
-	@bash scripts/promote_release.sh promote --tag $(TAG) --source-tag $(SOURCE_TAG)
+promote: ## Promote a verified dev build by digest + write release/prd.yaml: VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD; no deploy
+	@if [ -z "$(VERSION)" ] || [ -z "$(SOURCE)" ] || [ -z "$(VERIFIED)" ]; then \
+		echo "❌ Usage: make promote VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD (the date 'make verify ENV=dev' passed)"; exit 1; fi
+	@bash scripts/promote_release.sh promote --version $(VERSION) --source $(SOURCE) --verified $(VERIFIED)
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
