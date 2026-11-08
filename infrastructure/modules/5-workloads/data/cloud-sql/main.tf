@@ -69,6 +69,12 @@ resource "google_sql_database_instance" "task_store" {
 
   deletion_protection = false # Configured for elastic dev/sandbox environments
   depends_on          = [google_kms_crypto_key_iam_member.sqladmin_cmek]
+
+  lifecycle {
+    # Existing instances created before CMEK wiring keep their disk encryption in-place
+    # instead of being force-replaced on upgrade; greenfield instances use encryption_key_name.
+    ignore_changes = [encryption_key_name]
+  }
 }
 
 # Provisions the task store database
