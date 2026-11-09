@@ -14,15 +14,17 @@
 
 """Zero-latency end-user and agent delegation claim guard for MCP tool servers.
 
-Verifies ``User-Auth-Token`` and ``X-Agent-Spiffe-Id`` headers locally without making
+Verifies the delegated user credential header (``X-User-Token`` by default, configurable with
+``$USER_CREDENTIAL_HEADER``; the legacy ``User-Auth-Token`` is still accepted) and
+``X-Agent-Spiffe-Id`` locally without making
 synchronous outbound calls to ``oauth2.googleapis.com/tokeninfo`` (which fail inside
 VPC Service Controls perimeters) and without hardcoding fictional user allowlists:
 
 * Rejects workload service account tokens (``*.gserviceaccount.com``) presented as
-  ``User-Auth-Token`` so an agent's own service account cannot masquerade as an end user.
+  the user credential so an agent's own service account cannot masquerade as an end user.
 * Decodes JWT payload claims locally (or accepts opaque OAuth2 access tokens /
   ``AUTHZ_MOCK_USER`` when configured).
-* Fails closed when ``MCP_ENFORCE_USER_AUTH=true`` and ``User-Auth-Token`` is missing,
+* Fails closed when ``MCP_ENFORCE_USER_AUTH=true`` and the user credential is missing,
   expired, or belongs to a service account.
 """
 
@@ -36,7 +38,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-USER_TOKEN_HEADER = "User-Auth-Token"
+USER_TOKEN_HEADER = "X-User-Token"
+"""Default header of the delegated user credential (``esmeralda.user_credential.DEFAULT_HEADER``)."""
+LEGACY_USER_TOKEN_HEADER = "User-Auth-Token"
+"""Header used before the credential became opt-in per target; still accepted."""
+USER_TOKEN_HEADER_ENV = "USER_CREDENTIAL_HEADER"
+"""Server-side override: the header this server was configured (in the catalog) to read."""
 SPIFFE_ID_HEADER = "X-Agent-Spiffe-Id"
 ENFORCE_ENV = "MCP_ENFORCE_USER_AUTH"
 MOCK_USER_ENV = "AUTHZ_MOCK_USER"
@@ -102,19 +109,33 @@ def _is_truthy(val: str | None) -> bool:
     return (val or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def user_token_headers() -> list[str]:
+    """The headers the user credential is read from, in order: ``$USER_CREDENTIAL_HEADER`` (else
+    ``X-User-Token``), then the legacy ``User-Auth-Token``."""
+    configured = os.environ.get(USER_TOKEN_HEADER_ENV, "").strip() or USER_TOKEN_HEADER
+    return list(dict.fromkeys([configured, USER_TOKEN_HEADER, LEGACY_USER_TOKEN_HEADER]))
+
+
 def verify_request(
     headers: Mapping[str, str] | None = None,
     *,
     enforce: bool | None = None,
     allowed_domains: Iterable[str] | None = None,
 ) -> VerifiedCaller:
-    """Verifies ``User-Auth-Token`` and ``X-Agent-Spiffe-Id`` headers on an incoming MCP request."""
+    """Verifies the user credential header (see ``user_token_headers``) and ``X-Agent-Spiffe-Id``.
+
+    Error messages never contain the credential itself.
+    """
     is_enforced = enforce if enforce is not None else _is_truthy(os.environ.get(ENFORCE_ENV))
     spiffe = _header(headers, SPIFFE_ID_HEADER) or None
     if spiffe and not spiffe.startswith(SPIFFE_PREFIXES):
         raise AuthorizationError(f"Invalid {SPIFFE_ID_HEADER}: '{spiffe}'", status_code=403)
 
-    raw_token = _header(headers, USER_TOKEN_HEADER)
+    raw_token = ""
+    for name in user_token_headers():
+        raw_token = _header(headers, name)
+        if raw_token:
+            break
     if raw_token.lower().startswith("bearer "):
         raw_token = raw_token[7:].strip()
 
@@ -131,7 +152,9 @@ def verify_request(
                 enforced=False,
             )
         if is_enforced:
-            raise AuthorizationError(f"Missing required {USER_TOKEN_HEADER} header", status_code=401)
+            raise AuthorizationError(
+                f"Missing required user credential header ({user_token_headers()[0]})", status_code=401
+            )
         return VerifiedCaller(agent_spiffe_id=spiffe, enforced=False)
 
     if is_service_account_email(raw_token):

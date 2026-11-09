@@ -52,6 +52,8 @@ def _clean_env(monkeypatch):
         "ESMERALDA_USER_TOKEN",
         "USER_AUTH_ID",
         "SERVICE_ACCOUNT_EMAIL",
+        "ESMERALDA_USER_CREDENTIAL_TARGETS",
+        "USER_CREDENTIAL_HEADER",
     ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("AGENT_NAME", "ai_coe_mortgage_specialist")
@@ -98,15 +100,23 @@ def test_delegated_context_and_spiffe_id(monkeypatch, tmp_path):
     assert auth_manager.spiffe_id() == spiffe_uri
 
 
-def test_resolve_user_token_prefers_invocation_token_before_auth_manager(monkeypatch):
-    monkeypatch.setattr(
-        auth_manager,
-        "acquire_token",
-        lambda *a, **kw: pytest.fail("Should not call Auth Manager when context already has user_token"),
-    )
-    ctx = SimpleNamespace(state={"temp:user_auth_token": "existing-ge-3lo-token"})
+def test_resolve_user_token_prefers_auth_manager_over_invocation_token(monkeypatch):
+    monkeypatch.setattr(auth_manager, "acquire_token", lambda *a, **kw: "brokered-3lo-token")
+    ctx = SimpleNamespace(state={"temp:user_auth_token": "raw-ge-token"})
     token = auth_manager.resolve_user_token(ctx, auth_provider="projects/p/locations/global/authProviders/dms")
-    assert token == "existing-ge-3lo-token"
+    assert token == "brokered-3lo-token"
+    # Without Auth Manager configured, the invocation's own token is used.
+    assert auth_manager.resolve_user_token(ctx) == "raw-ge-token"
+
+
+def test_resolve_user_token_fails_closed_when_auth_manager_fails(monkeypatch):
+    def broken(*a, **kw):
+        raise RuntimeError("Auth Manager down")
+
+    monkeypatch.setattr(auth_manager, "acquire_token", broken)
+    ctx = SimpleNamespace(state={"temp:user_auth_token": "raw-ge-token"})
+    with pytest.raises(RuntimeError):
+        auth_manager.resolve_user_token(ctx, auth_provider="projects/p/locations/global/authProviders/dms")
 
 
 def test_resolve_user_token_acquires_3lo_token_from_auth_manager(monkeypatch):
@@ -171,6 +181,7 @@ def test_mcp_headers_for_attaches_delegated_user_token_and_spiffe_id(monkeypatch
     )
 
     ctx = SimpleNamespace(user_id="analyst@example.com", state={})
+    monkeypatch.setenv("ESMERALDA_USER_CREDENTIAL_TARGETS", '{"legacy-dms.esmeralda.internal": "X-Dms-User"}')
     headers = mcp.headers_for(
         "https://legacy-dms.esmeralda.internal/mcp",
         ctx,
@@ -178,9 +189,18 @@ def test_mcp_headers_for_attaches_delegated_user_token_and_spiffe_id(monkeypatch
     )
 
     assert headers["Authorization"] == "Bearer id-token-for-https://legacy-dms.esmeralda.internal"
-    assert headers["User-Auth-Token"] == "3lo-delegated-tok"
+    assert headers["X-Dms-User"] == "3lo-delegated-tok"
     assert headers["X-Agent-Spiffe-Id"] == spiffe_uri
     assert headers["X-API-Key"] == "ai_coe_mortgage_specialist"
+
+    # A host that isn't listed gets nothing, and Auth Manager isn't even called for it.
+    monkeypatch.setattr(auth_manager, "acquire_token", lambda *a, **kw: pytest.fail("Auth Manager called"))
+    other = mcp.headers_for(
+        "https://corporate-email.esmeralda.internal/mcp",
+        ctx,
+        auth_provider="projects/p/locations/global/authProviders/dms-3lo",
+    )
+    assert "3lo-delegated-tok" not in other.values() and "X-Dms-User" not in other
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +213,16 @@ def test_mcp_authz_fails_closed_when_enforced_and_token_missing(monkeypatch):
     with pytest.raises(mcp_authz.AuthorizationError) as exc_info:
         mcp_authz.verify_request({"X-API-Key": "ai_coe_mortgage_specialist"})
     assert exc_info.value.status_code == 401
-    assert "User-Auth-Token" in str(exc_info.value)
+    assert "X-User-Token" in str(exc_info.value)
+
+    # The configured header, the default and the legacy header are all read.
+    monkeypatch.setenv("MCP_ENFORCE_USER_AUTH", "false")
+    jwt = _make_jwt({"sub": "u-1", "email": "user@example.org", "exp": int(time.time()) + 600})
+    for header in ("X-User-Token", "User-Auth-Token"):
+        assert mcp_authz.verify_request({header: jwt}).email == "user@example.org"
+    monkeypatch.setenv("USER_CREDENTIAL_HEADER", "X-Dms-User")
+    assert mcp_authz.verify_request({"X-Dms-User": jwt}).email == "user@example.org"
+    assert mcp_authz.user_token_headers() == ["X-Dms-User", "X-User-Token", "User-Auth-Token"]
 
 
 def test_mcp_authz_rejects_service_account_tokens_masquerading_as_user():

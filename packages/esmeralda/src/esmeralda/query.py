@@ -34,10 +34,10 @@ import os
 import re
 import sys
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from esmeralda import auth, context
+from esmeralda import auth, context, user_credential
 from esmeralda.config import AgentConfig
 from esmeralda.report import Report
 
@@ -51,7 +51,7 @@ class Query:
     user_id: str = "esmeralda-cli"
     session_id: str | None = None
     caller: context.CallerContext | None = None
-    user_token: str | None = None
+    user_token: str | None = field(default=None, repr=False)  # a secret: kept out of repr() and logs
     timeout: float = 300.0
 
     def caller_context(self) -> dict[str, str]:
@@ -169,7 +169,12 @@ async def query_in_process(config: AgentConfig, query: Query, report: Report) ->
         new_message=types.Content(role="user", parts=[types.Part(text=query.message)]),
         state_delta=query.state_delta(),
     ):
-        report.adk_event(event.model_dump(mode="json", exclude_none=True))
+        report.adk_event(_redacted(query, event.model_dump(mode="json", exclude_none=True)))
+
+
+def _redacted(query: Query, event: Any) -> Any:
+    """``event`` with the user's token masked, before it reaches the report (``--verbose`` prints it raw)."""
+    return user_credential.redact(event, [query.user_token]) if query.user_token else event
 
 
 # ------------------------------------------------------------------------------------------
@@ -192,7 +197,10 @@ async def query_adk_http(url: str, query: Query, report: Report, headers: dict[s
         async with client.stream("POST", url, json=payload, headers=headers) as response:
             if response.status_code != 200:
                 await response.aread()
-                raise RuntimeError(f"HTTP {response.status_code} from {url}: {response.text[:1000]}")
+                raise RuntimeError(
+                    f"HTTP {response.status_code} from {url}: "
+                    + _redacted(query, response.text[:1000])  # error bodies can echo the request
+                )
             async for line in response.aiter_lines():
                 line = line.strip()
                 if not line:
@@ -200,9 +208,9 @@ async def query_adk_http(url: str, query: Query, report: Report, headers: dict[s
                 if line.startswith("data:"):
                     line = line[5:].strip()
                 try:
-                    report.adk_event(json.loads(line))
+                    report.adk_event(_redacted(query, json.loads(line)))
                 except json.JSONDecodeError:
-                    report.adk_event(line)
+                    report.adk_event(_redacted(query, line))
 
 
 # ------------------------------------------------------------------------------------------
@@ -275,6 +283,15 @@ async def run(
     engine: str | None = None,
 ) -> None:
     """Runs ``query`` against the chosen target and feeds ``report``."""
+    try:
+        await _run(config, query, report, url=url, engine=engine)
+    except Exception as exc:
+        if query.user_token and query.user_token in str(exc):
+            raise RuntimeError(user_credential.describe_error(exc, [query.user_token])) from None
+        raise
+
+
+async def _run(config: AgentConfig, query: Query, report: Report, *, url: str | None, engine: str | None) -> None:
     if url and engine:
         raise ValueError("Use either --url or --engine, not both")
 
