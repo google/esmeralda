@@ -1,49 +1,36 @@
 -- FinOps Monthly Agent Chargeback & TCO Summary SQL View
--- Connects BigQuery telemetry events to Gemini 3.7 SKU pricing models
-WITH combined_token_events AS (
-  SELECT
-    timestamp,
-    agent_id,
-    COALESCE(JSON_VALUE(payload, '$.model'), 'gemini-3.7-flash') AS model,
-    STRUCT(
-      CAST(JSON_VALUE(payload, '$.tokens.prompt_tokens') AS INT64) AS prompt_tokens,
-      CAST(JSON_VALUE(payload, '$.tokens.completion_tokens') AS INT64) AS completion_tokens,
-      CAST(JSON_VALUE(payload, '$.tokens.thoughts_tokens') AS INT64) AS thoughts_tokens,
-      CAST(JSON_VALUE(payload, '$.tokens.cached_tokens') AS INT64) AS cached_tokens,
-      CAST(JSON_VALUE(payload, '$.tokens.total_tokens') AS INT64) AS total_tokens
-    ) AS tokens
-  FROM `${dataset_id}.genai_telemetry_events`
-  WHERE event_type = 'genai_token_consumption'
-  UNION ALL
-  SELECT
-    timestamp,
-    jsonPayload.agent_id,
-    jsonPayload.model,
-    STRUCT(
-      CAST(jsonPayload.tokens.prompt_tokens AS INT64) AS prompt_tokens,
-      CAST(jsonPayload.tokens.completion_tokens AS INT64) AS completion_tokens,
-      CAST(jsonPayload.tokens.thoughts_tokens AS INT64) AS thoughts_tokens,
-      CAST(jsonPayload.tokens.cached_tokens AS INT64) AS cached_tokens,
-      CAST(jsonPayload.tokens.total_tokens AS INT64) AS total_tokens
-    ) AS tokens
-  FROM `${dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout`
-  WHERE jsonPayload.event = 'genai_token_consumption'
-),
-raw_token_metrics AS (
+-- Built on vw_usage_billable (esmeralda.usage records joined with the legacy token events; gateway and
+-- workload records of one request joined on trace_id, gateway tokens and identity preferred).
+--
+-- Billing groups by the verified team (billed_team): a caller's team counts only when it comes from
+-- authentication (caller.verified, or the principal_teams table compiled from the catalog). Anything
+-- else lands in billed_team = 'unattributed' with verified = FALSE and `attribution` saying why
+-- (declared = an unverified team claim, unattributed = no caller, legacy = pre-contract record).
+--
+-- Columns up to net_total_chargeback_usd keep their historical names and meaning; total_requests now
+-- counts billable units (one request trace through one agent) instead of individual model turns
+-- (see total_llm_calls). Rates are estimates for the Gemini 3.7 Flash tier: update them to your contract.
+WITH raw_token_metrics AS (
   SELECT
     TIMESTAMP_TRUNC(timestamp, MONTH) AS billing_month,
     agent_id,
     COALESCE(model, 'gemini-3.7-flash') AS model,
+    billed_team,
+    verified,
+    attribution,
+    workload_team,
     COUNT(1) AS total_requests,
-    SUM(tokens.total_tokens) AS total_tokens,
-    SUM(tokens.prompt_tokens - COALESCE(tokens.cached_tokens, 0)) AS uncached_prompt_tokens,
-    SUM(COALESCE(tokens.cached_tokens, 0)) AS cached_prompt_tokens,
-    SUM(tokens.completion_tokens) AS response_tokens,
-    SUM(COALESCE(tokens.thoughts_tokens, 0)) AS reasoning_tokens
+    SUM(llm_calls) AS total_llm_calls,
+    SUM(total_tokens) AS total_tokens,
+    SUM(GREATEST(input_tokens - cached_tokens, 0)) AS uncached_prompt_tokens,
+    SUM(cached_tokens) AS cached_prompt_tokens,
+    SUM(GREATEST(output_tokens - reasoning_tokens, 0)) AS response_tokens,
+    SUM(reasoning_tokens) AS reasoning_tokens,
+    COUNTIF(token_source = 'gateway') AS gateway_metered_requests
   FROM
-    combined_token_events
+    `${dataset_id}.vw_usage_billable`
   GROUP BY
-    1, 2, 3
+    1, 2, 3, 4, 5, 6, 7
 )
 SELECT
   billing_month,
@@ -63,6 +50,13 @@ SELECT
   ((uncached_prompt_tokens / 1000000.0) * 0.075) +
   ((cached_prompt_tokens / 1000000.0) * 0.01875) +
   ((response_tokens / 1000000.0) * 0.30) +
-  ((reasoning_tokens / 1000000.0) * 0.30) AS net_total_chargeback_usd
+  ((reasoning_tokens / 1000000.0) * 0.30) AS net_total_chargeback_usd,
+  -- Attribution (who pays) and provenance
+  billed_team,
+  verified,
+  attribution,
+  workload_team,
+  total_llm_calls,
+  gateway_metered_requests
 FROM
   raw_token_metrics;

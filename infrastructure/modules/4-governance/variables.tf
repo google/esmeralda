@@ -28,6 +28,55 @@ variable "runaway_loop_token_threshold" {
   description = "Single-request token threshold cap triggering runaway loop alert"
 }
 
+# ------------------------------------------------------------------------------
+# Usage analytics (esmeralda.usage contract) and SLOs
+# ------------------------------------------------------------------------------
+variable "usage_landing_tables" {
+  type = list(string)
+  default = [
+    "aiplatform_googleapis_com_reasoning_engine_stdout", # esmeralda library on Agent Engine (stdout)
+    "aiplatform_googleapis_com_reasoning_engine_stderr", # esmeralda library on Agent Engine (Python logging default stream)
+    "run_googleapis_com_stdout",                         # Cloud Run workloads and the Envoy gateway access log
+    "run_googleapis_com_stderr",
+    "esmeralda_apigee_interactions", # Apigee ML-interaction MessageLogging policy
+    "esmeralda_usage",               # producers writing through the Cloud Logging API (OTel collector, other clouds)
+  ]
+  nullable    = false
+  description = "Usage landing tables, one per producer log ID (log ID with non-alphanumerics as underscores). The usage sinks match records by jsonPayload.schema; this list only decides which landing tables the usage_events view reads."
+
+  validation {
+    condition     = length(var.usage_landing_tables) > 0 && alltrue([for t in var.usage_landing_tables : can(regex("^[A-Za-z0-9_]+$", t))])
+    error_message = "usage_landing_tables needs at least one table, each made of letters, digits and underscores only."
+  }
+}
+
+variable "slo_mcp_services" {
+  type        = list(string)
+  default     = ["corporate-email", "income-verification", "legacy-dms"]
+  nullable    = false
+  description = "MCP servers (catalog names) that get Cloud Run availability and latency SLOs; the Cloud Run service is <name>-<environment>."
+}
+
+variable "slo_config" {
+  type = object({
+    mcp_availability_goal   = optional(number, 0.995)
+    mcp_latency_goal        = optional(number, 0.95)
+    mcp_latency_ms          = optional(number, 5000)
+    agent_availability_goal = optional(number, 0.995)
+    agent_latency_goal      = optional(number, 0.95)
+    agent_latency_ms        = optional(number, 10000)
+  })
+  default     = {}
+  nullable    = false
+  description = "SLO goals (fractions) and latency thresholds (ms) for the MCP Cloud Run services and the Agent Engine agents."
+}
+
+variable "alert_on_unattributed_usage" {
+  type        = bool
+  default     = true
+  description = "Alert when any esmeralda.usage record lacks a verified caller (expected count: 0, design principle 'fail closed')."
+}
+
 # env.yaml's monitoring_config. Only error_rate_threshold_pct is wired so far (the ingress gateway 5xx
 # alert); the other attributes there are dropped on type conversion until something uses them.
 variable "monitoring_config" {

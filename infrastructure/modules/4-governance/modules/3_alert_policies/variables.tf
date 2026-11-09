@@ -37,3 +37,29 @@ variable "gateway_error_rate_threshold_pct" {
   description = "Alert when more than this percentage of the ingress gateway's requests return 5xx over 5 minutes"
   default     = 2.0
 }
+
+variable "slo_mcp_services" {
+  type        = list(string)
+  description = "MCP servers (catalog names) with Cloud Run SLOs; the Cloud Run service is <name>-<environment>"
+  default     = []
+}
+
+variable "slo_config" {
+  type = object({
+    mcp_availability_goal   = optional(number, 0.995)
+    mcp_latency_goal        = optional(number, 0.95)
+    mcp_latency_ms          = optional(number, 5000)
+    agent_availability_goal = optional(number, 0.995)
+    agent_latency_goal      = optional(number, 0.95)
+    agent_latency_ms        = optional(number, 10000)
+  })
+  description = "SLO goals (fractions) and latency thresholds (ms) for the MCP Cloud Run services and the Agent Engine agents"
+  default     = {}
+  nullable    = false
+}
+
+variable "alert_on_unattributed_usage" {
+  type        = bool
+  description = "Alert when any esmeralda.usage record lacks a verified caller"
+  default     = true
+}

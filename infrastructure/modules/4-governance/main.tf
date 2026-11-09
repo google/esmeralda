@@ -27,12 +27,13 @@ resource "google_monitoring_monitored_project" "spoke_projects" {
   name          = each.value
 }
 
-# 2. Submodule 1: Telemetry Sinks (Log Sinks & Dataset Permissions)
+# 2. Submodule 1: Telemetry Sinks (Log Sinks & Dataset Permissions; esmeralda.usage sink and landing tables)
 module "telemetry_sinks" {
   source                = "./modules/1_telemetry_sinks"
   environment           = var.environment
   governance_project_id = var.governance_project_id
   spoke_project_ids     = var.spoke_project_ids
+  usage_landing_tables  = var.usage_landing_tables
 }
 
 # 3. Submodule 2: DLP Inspection Templates
@@ -41,7 +42,7 @@ module "dlp_inspection" {
   governance_project_id = var.governance_project_id
 }
 
-# 4. Submodule 3: Alert Policies & Pub/Sub notification channel
+# 4. Submodule 3: Alert Policies, usage metrics, dashboards, SLOs & Pub/Sub notification channel
 module "alert_policies" {
   source                           = "./modules/3_alert_policies"
   environment                      = var.environment
@@ -51,13 +52,18 @@ module "alert_policies" {
   runaway_loop_token_threshold     = var.runaway_loop_token_threshold
   gateway_service_name             = var.ingress_gateway_service_name
   gateway_error_rate_threshold_pct = var.monitoring_config.error_rate_threshold_pct
+  slo_mcp_services                 = var.slo_mcp_services
+  slo_config                       = var.slo_config
+  alert_on_unattributed_usage      = var.alert_on_unattributed_usage
 }
 
-# 5. Submodule 4: FinOps Analytics (Token Events Table & Chargeback View)
+# 5. Submodule 4: FinOps Analytics (usage_events, attribution table, normalized + chargeback views)
 module "finops_analytics" {
   source                = "./modules/4_finops_analytics"
   environment           = var.environment
   governance_project_id = var.governance_project_id
+  usage_dataset_id      = module.telemetry_sinks.usage_dataset_id
+  usage_landing_tables  = module.telemetry_sinks.usage_landing_table_ids
   depends_on            = [module.telemetry_sinks]
 }
 
@@ -117,11 +123,6 @@ moved {
 moved {
   from = google_monitoring_notification_channel.pubsub_alert
   to   = module.alert_policies.google_monitoring_notification_channel.pubsub_alert
-}
-
-moved {
-  from = google_logging_metric.realtime_token_consumption
-  to   = module.alert_policies.google_logging_metric.realtime_token_consumption
 }
 
 moved {
