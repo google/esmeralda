@@ -18,19 +18,19 @@
 #                   Deployed as <release repository URL>/<image>@<digest>.
 
 schema_version: 1
-version: "v1.1.0"
-source_tag: "dev-690f5e2"
-source_commit: "690f5e26d2c827aca72106b0cc7e10237e8fcccf"
-promoted_at: "2026-11-07T04:15:38Z"
+version: "v1.2.0"
+source_tag: "dev-1a9e9d1"
+source_commit: "1a9e9d19045e94bbcaa14aba29b6c5fc908009c5"
+promoted_at: "2026-11-07T06:51:12Z"
 repository: "release"
 verified:
   environment: "dev"
   date: "2026-11-07"
   result: "PASS"
 images:
-  ai-coe-mortgage-specialist: "sha256:73c40bb9d02d223ceffdd2242a662b32352f2ab387d1e421542c93191db42562"
+  ai-coe-mortgage-specialist: "sha256:a270394527a276051c9c4af335fc57ce7ea9d742af822762ff99005a9ea1d64e"
   corporate-email: "sha256:f5fb4fc98605b23972283781d77055983c25d74af6cd4dc03825f724ddd79204"
-  cx-mortgage-orchestrator: "sha256:c81ee39a41e89d7a9691d7406fec78907ebcfe5846cfd0c4f7579437f8d5df62"
+  cx-mortgage-orchestrator: "sha256:6183c85af5c97d63167e18641cc17ffe7e36abca5b9bb0b0fe2167f683878c13"
   envoy-gateway: "sha256:48f11bdedabd1ce4a0647718857ef69f3291ce8f212d835d558c1a7540557009"
   income-verification-api: "sha256:7ad2b85e5b5dbf0e8aafd9dd2b665de4e08ad366f1e98b1fa96cfcc7cb9a5d3c"
   legacy-dms: "sha256:605f01ee74759ebd2111722cf18004d3d5b79244d57225ff805956d59585c59d"
