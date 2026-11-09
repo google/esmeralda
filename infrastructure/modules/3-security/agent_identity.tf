@@ -14,6 +14,19 @@ locals {
   ai_coe_mortgage_specialist_identity_principal = "principalSet://${local.ai_coe_agents_trust_domain}/attribute.platformContainer/aiplatform/projects/${data.google_project.ai_coe_agents.number}"
 }
 
+# 0. Vertex AI Service Identities for Agent Identity projects
+resource "google_project_service_identity" "aiplatform_agent_identity_a2a" {
+  provider = google-beta
+  project  = var.ai_coe_agents_project_id
+  service  = "aiplatform.googleapis.com"
+}
+
+resource "google_project_service_identity" "aiplatform_agent_identity_adk" {
+  provider = google-beta
+  project  = var.cx_agents_project_id
+  service  = "aiplatform.googleapis.com"
+}
+
 # 1. Shared Invoker Service Account for MCP Microservices
 resource "google_service_account" "mcp_invoker_sa" {
   account_id   = "sa-mcp-invoker-${var.environment}"
@@ -37,6 +50,8 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_mcp_ru
 }
 
 # 3a. Allow CX mortgage orchestrator identity PrincipalSet to Impersonate the Invoker SA
+# (Required when enable_native_spiffe_auth = false so cx-mortgage-orchestrator can mint an OAuth2 access token
+# as sa-mcp-invoker to invoke ai-coe-mortgage-specialist; per-target IAP egress still blocks MCP servers.)
 resource "google_service_account_iam_member" "cx_mortgage_orchestrator_identity_impersonates_mcp_invoker" {
   service_account_id = google_service_account.mcp_invoker_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
@@ -50,8 +65,8 @@ resource "google_service_account_iam_member" "ai_coe_mortgage_specialist_identit
   member             = local.ai_coe_mortgage_specialist_identity_principal
 }
 
-# 4a. Grant Full Role Parity to CX mortgage orchestrator PrincipalSet in the CX agents project
-# (roles/aiplatform.user and roles/bigquery.dataEditor are managed per-agent by Layer 5 adk-agent)
+# 4a. Baseline observability & runtime roles for CX mortgage orchestrator PrincipalSet in the CX agents project
+# (roles/aiplatform.user and roles/bigquery.dataEditor are bound in Layer 5 adk-agent to avoid duplicate bindings)
 resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
   for_each = toset([
     "roles/storage.objectAdmin",
@@ -70,12 +85,13 @@ resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
   member  = local.cx_mortgage_orchestrator_identity_principal
 }
 
-# 4b. Grant Full Role Parity to AI CoE mortgage specialist PrincipalSet in the AI CoE agents project
-# (roles/aiplatform.user and roles/bigquery.dataEditor are managed per-agent by Layer 5 a2a-agent)
+# 4b. Baseline observability, DLP & runtime roles for AI CoE mortgage specialist PrincipalSet in the AI CoE agents project
+# (roles/aiplatform.user and roles/bigquery.dataEditor are bound in Layer 5 a2a-agent to avoid duplicate bindings)
 resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles" {
   for_each = toset([
     "roles/cloudsql.client",
     "roles/cloudsql.instanceUser",
+    "roles/dlp.user",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
     "roles/cloudtrace.agent",
@@ -92,23 +108,16 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles"
   member  = local.ai_coe_mortgage_specialist_identity_principal
 }
 
-# Forget Layer 5-owned duplicate IAM bindings from Layer 3 state without deleting the live GCP bindings:
-# - ai_coe_mortgage_specialist_identity_roles["roles/aiplatform.user"] -> owned by L5 a2a-agent (google_project_iam_member.agent_identity_aiplatform_user[0])
-# - cx_mortgage_orchestrator_identity_roles["roles/aiplatform.user"]   -> owned by L5 adk-agent (google_project_iam_member.agent_identity_aiplatform_user[0])
-# - ai_coe_mortgage_specialist_identity_roles["roles/bigquery.dataEditor"] -> owned by L5 a2a-agent (agent_identity_bq_writer)
-# - cx_mortgage_orchestrator_identity_roles["roles/bigquery.dataEditor"]   -> owned by L5 adk-agent (agent_identity_bq_writer)
-moved {
-  from = google_project_iam_member.ai_coe_mortgage_specialist_identity_roles["roles/aiplatform.user"]
-  to   = google_project_iam_member.l5_owned_ai_coe_specialist_id_aiplatform_user
+# 5. Per-target IAP egress policies (agentregistry-...) are bound per SPIFFE principal:// in Layer 5 iap-egress.
+resource "google_project_iam_member" "cx_mortgage_orchestrator_iap_egressor" {
+  # Project-wide roles/iap.egressor is disabled here (scoped only to var.ai_coe_agents_project_id when enabled).
+  for_each = toset([])
+  project  = each.key
+  role     = "roles/iap.egressor"
+  member   = local.cx_mortgage_orchestrator_identity_principal
 }
 
-removed {
-  from = google_project_iam_member.l5_owned_ai_coe_specialist_id_aiplatform_user
-  lifecycle {
-    destroy = false
-  }
-}
-
+# Forget duplicate bindings now owned by Layer 5 (adk-agent / a2a-agent) without deleting them in GCP IAM
 moved {
   from = google_project_iam_member.cx_mortgage_orchestrator_identity_roles["roles/aiplatform.user"]
   to   = google_project_iam_member.l5_owned_cx_orchestrator_id_aiplatform_user
@@ -116,18 +125,6 @@ moved {
 
 removed {
   from = google_project_iam_member.l5_owned_cx_orchestrator_id_aiplatform_user
-  lifecycle {
-    destroy = false
-  }
-}
-
-moved {
-  from = google_project_iam_member.ai_coe_mortgage_specialist_identity_roles["roles/bigquery.dataEditor"]
-  to   = google_project_iam_member.l5_owned_ai_coe_specialist_id_bq_editor
-}
-
-removed {
-  from = google_project_iam_member.l5_owned_ai_coe_specialist_id_bq_editor
   lifecycle {
     destroy = false
   }
@@ -145,20 +142,26 @@ removed {
   }
 }
 
-# 5a. Grant roles/iap.egressor to CX mortgage orchestrator identity ONLY on the AI CoE agents project
-# (never on mcps_project_id: the orchestrator must call the A2A specialist, not MCP servers directly)
-resource "google_project_iam_member" "cx_mortgage_orchestrator_iap_egressor" {
-  for_each = toset([
-    var.ai_coe_agents_project_id,
-  ])
-  project = each.key
-  role    = "roles/iap.egressor"
-  member  = local.cx_mortgage_orchestrator_identity_principal
+moved {
+  from = google_project_iam_member.ai_coe_mortgage_specialist_identity_roles["roles/aiplatform.user"]
+  to   = google_project_iam_member.l5_owned_ai_coe_specialist_id_aiplatform_user
 }
 
-# 5b. Grant roles/iap.egressor to A2A Agent Identity for Agent Gateway Egress Authz
-resource "google_project_iam_member" "ai_coe_mortgage_specialist_iap_egressor" {
-  project = var.mcps_project_id
-  role    = "roles/iap.egressor"
-  member  = local.ai_coe_mortgage_specialist_identity_principal
+removed {
+  from = google_project_iam_member.l5_owned_ai_coe_specialist_id_aiplatform_user
+  lifecycle {
+    destroy = false
+  }
+}
+
+moved {
+  from = google_project_iam_member.ai_coe_mortgage_specialist_identity_roles["roles/bigquery.dataEditor"]
+  to   = google_project_iam_member.l5_owned_ai_coe_specialist_id_bq_editor
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_ai_coe_specialist_id_bq_editor
+  lifecycle {
+    destroy = false
+  }
 }

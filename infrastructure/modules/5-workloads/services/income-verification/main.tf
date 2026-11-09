@@ -19,16 +19,6 @@ module "mcp_service" {
   memory_limit             = var.memory_limit
   tools_spec_path          = var.tools_spec_path
   internal_hostname        = var.internal_hostname
-  service_account_email    = var.service_account_email
-  custom_audiences = [
-    "http://income-verification.internal.gateway",
-    "https://income-verification.internal.gateway",
-    "https://income-verification.internal.gateway/mcp",
-    "http://income-verification.esmeralda.internal",
-    "http://income-verification.esmeralda.internal/mcp",
-    "https://income-verification.esmeralda.internal",
-    "https://income-verification.esmeralda.internal/mcp",
-  ]
 }
 
 moved {

@@ -132,24 +132,32 @@ locals {
 # ====================================================================
 
 # --------------------------------------------------------------------
-# A. AppDev Tools Project Identity (MCP Tool Servers)
+# A. Agent Platform Service Identity (Governance)
 # --------------------------------------------------------------------
-resource "google_service_account" "mcps_sa" {
-  account_id   = "sa-esmeralda-mcps-${var.environment}"
-  display_name = "Esmeralda MCP Server Workload Service Account"
-  project      = var.mcps_project_id
+# Forget the legacy shared MCP SA (sa-esmeralda-mcps-<env>) and its bindings from Layer 3
+# state without destroying the live remote objects during this transition release. Layer 5
+# services/* switch to dedicated per-service SAs (sa-<service>-<env>); keeping the remote
+# SA alive for one release makes Layer 3 -> Layer 5 apply order safe with zero downtime,
+# after which sa-esmeralda-mcps-<env> can be deleted in a follow-up cleanup.
+removed {
+  from = google_service_account.mcps_sa
+  lifecycle {
+    destroy = false
+  }
 }
 
-# Grant telemetry and tracing permissions
-resource "google_project_iam_member" "mcps_roles" {
-  for_each = toset([
-    "roles/logging.logWriter",
-    "roles/monitoring.metricWriter",
-    "roles/cloudtrace.agent"
-  ])
-  project = var.mcps_project_id
-  role    = each.key
-  member  = "serviceAccount:${google_service_account.mcps_sa.email}"
+removed {
+  from = google_project_iam_member.mcps_roles
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_compute_subnetwork_iam_member.mcps_subnet_user
+  lifecycle {
+    destroy = false
+  }
 }
 
 # Provision the Google-managed Agent Platform Service Identity in Governance project
@@ -159,23 +167,25 @@ resource "google_project_service_identity" "agentplatform_sa" {
   service  = "networkservices.googleapis.com"
 }
 
-
-
-
-
 # --------------------------------------------------------------------
-# B. Core AI Platform Agent Identity (A2A Agent & Bootstrapping Job)
+# B. Core AI Platform Agent Identity (A2A Bootstrapping SA & Legacy Runtime Fallback)
 # --------------------------------------------------------------------
+# Always provisioned so Cloud SQL IAM user / schema_bootstrap job (a2a-agent) and
+# Layer 4/5 IAM consumers always receive a valid service account email, with zero
+# destruction of SAs in use. Runtime IAM roles are gated by enable_agent_identity = false.
 resource "google_service_account" "ai_coe_mortgage_specialist_sa" {
   account_id   = "sa-ai-coe-mortgage-spec-${var.environment}"
   display_name = "AI CoE Mortgage Specialist Agent Workload Service Account"
   project      = var.ai_coe_agents_project_id
 }
 
-# Full-parity roles derived from the monolithic test-sa setup
-# (roles/cloudsql.client and roles/cloudsql.instanceUser are managed by Layer 5 a2a-agent)
+# Full-parity roles derived from the monolithic test-sa setup (gated by enable_agent_identity = false;
+# roles/logging.logWriter is kept unconditionally for the a2a-agent Cloud SQL schema_bootstrap job, and
+# roles/cloudsql.{client,instanceUser} are owned by Layer 5 a2a-agent).
 resource "google_project_iam_member" "ai_coe_mortgage_specialist_roles" {
-  for_each = toset([
+  for_each = var.enable_agent_identity ? toset([
+    "roles/logging.logWriter",
+    ]) : toset([
     "roles/aiplatform.user",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
@@ -192,9 +202,8 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_roles" {
   member  = "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}"
 }
 
-# Forget Layer 5-owned Cloud SQL IAM bindings from Layer 3 state without deleting the live GCP bindings:
-# - ai_coe_mortgage_specialist_roles["roles/cloudsql.client"]       -> owned by L5 a2a-agent (google_project_iam_member.cloudsql_client_role)
-# - ai_coe_mortgage_specialist_roles["roles/cloudsql.instanceUser"] -> owned by L5 a2a-agent (google_project_iam_member.cloudsql_user_role)
+# Forget duplicate Cloud SQL bindings now owned by Layer 5 a2a-agent (cloudsql_client_role, cloudsql_user_role)
+# without deleting the underlying GCP IAM bindings needed by schema_bootstrap.
 moved {
   from = google_project_iam_member.ai_coe_mortgage_specialist_roles["roles/cloudsql.client"]
   to   = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_client
@@ -221,6 +230,7 @@ removed {
 
 # Grant A2A Service account reading rights on the Database Master secret (resolves to existing or new)
 resource "google_secret_manager_secret_iam_member" "ai_coe_mortgage_specialist_secret_accessor" {
+  count     = var.enable_agent_identity ? 0 : 1
   secret_id = local.resolved_db_password_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}"
@@ -250,7 +260,7 @@ resource "google_project_iam_member" "ai_coe_agents_vertex_token_creator" {
 
 # Grant Token Creator on the SA so it and Vertex AI agents can generate OIDC tokens via IAM API
 resource "google_service_account_iam_member" "ai_coe_mortgage_specialist_token_creator" {
-  for_each = toset([
+  for_each = var.enable_agent_identity ? toset([]) : toset([
     "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}",
     "serviceAccount:service-${data.google_project.ai_coe_agents.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
     "serviceAccount:service-${data.google_project.ai_coe_agents.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
@@ -261,17 +271,19 @@ resource "google_service_account_iam_member" "ai_coe_mortgage_specialist_token_c
 }
 
 # --------------------------------------------------------------------
-# C. CX mortgage orchestrator identity (CX team)
+# C. CX mortgage orchestrator identity (Legacy Runtime Fallback SA)
 # --------------------------------------------------------------------
+# Always provisioned so Layer 4/5 IAM consumers always receive a valid service account email,
+# with zero destruction of SAs in use. Runtime IAM roles are gated by enable_agent_identity = false.
 resource "google_service_account" "cx_mortgage_orchestrator_sa" {
   account_id   = "sa-cx-mortgage-orch-${var.environment}"
   display_name = "CX Mortgage Orchestrator Agent Workload Service Account"
   project      = var.cx_agents_project_id
 }
 
-# Full-parity roles derived from the monolithic test-sa setup
+# Full-parity roles derived from the monolithic test-sa setup (gated by enable_agent_identity = false)
 resource "google_project_iam_member" "cx_mortgage_orchestrator_roles" {
-  for_each = toset([
+  for_each = var.enable_agent_identity ? toset([]) : toset([
     "roles/aiplatform.user",
     "roles/storage.objectAdmin",
     "roles/logging.logWriter",
@@ -311,7 +323,7 @@ resource "google_project_iam_member" "cx_agents_vertex_token_creator" {
 
 # Grant Token Creator on the SA so it and Vertex AI agents can generate OIDC tokens via IAM API
 resource "google_service_account_iam_member" "cx_mortgage_orchestrator_token_creator" {
-  for_each = toset([
+  for_each = var.enable_agent_identity ? toset([]) : toset([
     "serviceAccount:${google_service_account.cx_mortgage_orchestrator_sa.email}",
     "serviceAccount:service-${data.google_project.cx_agents.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
     "serviceAccount:service-${data.google_project.cx_agents.number}@gcp-sa-aiplatform.iam.gserviceaccount.com"
@@ -410,10 +422,11 @@ resource "google_project_iam_member" "re_net_host_user" {
 
 
 
-# STRICT SERVICE-TO-SERVICE IMPERSONATION BINDING:
+# STRICT SERVICE-TO-SERVICE IMPERSONATION BINDING (Legacy SA fallback):
 # CX mortgage orchestrator may mint ID tokens as the AI CoE mortgage specialist
 # to securely invoke upstream cross-project Reasoning Engines privately.
 resource "google_service_account_iam_member" "cx_mortgage_orchestrator_impersonates_ai_coe_mortgage_specialist" {
+  count              = var.enable_agent_identity ? 0 : 1
   service_account_id = google_service_account.ai_coe_mortgage_specialist_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "serviceAccount:${google_service_account.cx_mortgage_orchestrator_sa.email}"
@@ -486,10 +499,11 @@ resource "google_service_account_iam_member" "test_vm_token_creator" {
 }
 
 # --------------------------------------------------------------------
-# Direct VPC Egress Subnet User Permissions (AUDIT-01 Fix)
+# Direct VPC Egress Subnet User Permissions
 # --------------------------------------------------------------------
 
 # Grant Network User role to the A2A Agent Service Account on the backend subnet
+# (used by the a2a-agent Cloud SQL schema_bootstrap job and legacy SA mode)
 resource "google_compute_subnetwork_iam_member" "ai_coe_mortgage_specialist_subnet_user" {
   project    = var.net_host_project_id
   region     = var.region
@@ -498,17 +512,9 @@ resource "google_compute_subnetwork_iam_member" "ai_coe_mortgage_specialist_subn
   member     = "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}"
 }
 
-# Grant Network User role to the MCP tools Service Account on the backend subnet (for Direct VPC Egress)
-resource "google_compute_subnetwork_iam_member" "mcps_subnet_user" {
-  project    = var.net_host_project_id
-  region     = var.region
-  subnetwork = var.backend_subnet_id
-  role       = "roles/compute.networkUser"
-  member     = "serviceAccount:${google_service_account.mcps_sa.email}"
-}
-
 # Grant Network User role to the CX mortgage orchestrator service account on the backend subnet
 resource "google_compute_subnetwork_iam_member" "cx_mortgage_orchestrator_subnet_user" {
+  count      = var.enable_agent_identity ? 0 : 1
   project    = var.net_host_project_id
   region     = var.region
   subnetwork = var.backend_subnet_id

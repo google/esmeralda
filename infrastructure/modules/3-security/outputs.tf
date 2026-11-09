@@ -17,11 +17,6 @@ output "db_password_secret_name" {
   value       = local.resolved_db_password_secret_id
 }
 
-output "mcps_sa_email" {
-  description = "The email address of the MCP tools server service account"
-  value       = google_service_account.mcps_sa.email
-}
-
 output "ai_coe_mortgage_specialist_sa_email" {
   description = "The email address of the A2A agent service account"
   value       = google_service_account.ai_coe_mortgage_specialist_sa.email

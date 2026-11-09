@@ -122,3 +122,10 @@ variable "internal_domain" {
   type        = string
   default     = "esmeralda.internal"
 }
+
+variable "enable_agent_identity" {
+  description = "When true (default), agents run with native Google Cloud Agent Identity (SPIFFE) instead of legacy workload service accounts."
+  type        = bool
+  default     = true
+}
+

@@ -51,12 +51,6 @@ variable "invoker_service_accounts" {
   type        = list(string)
 }
 
-variable "service_account_email" {
-  description = "Optional workload service account email for the Cloud Run service (uses project default when null)"
-  type        = string
-  default     = null
-}
-
 variable "environment" {
   description = "The active deployment environment name"
   type        = string
