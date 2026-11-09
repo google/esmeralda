@@ -554,14 +554,6 @@ resource "google_agent_registry_service" "core_gapi_services" {
     protocol_binding = "JSONRPC"
     url              = "https://agentregistry.googleapis.com"
   }
-  interfaces {
-    protocol_binding = "JSONRPC"
-    url              = "https://bigquerystorage.googleapis.com"
-  }
-  interfaces {
-    protocol_binding = "JSONRPC"
-    url              = "https://bigquerystorage.mtls.googleapis.com"
-  }
 }
 
 # -----------------------------------------------------------------------------
