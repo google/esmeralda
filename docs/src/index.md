@@ -43,6 +43,23 @@ Throughout the documentation, we follow a single real-world scenario (**Julian S
     * **[4.1 Developer Usage Guide](./4-esmeralda-library/guide.md)** — Recipes for serving ADK/A2A agents, calling MCP servers and remote agents, propagating 3LO user tokens, and running local full-stack queries.
     * **[4.2 Package & CLI Reference](./4-esmeralda-library/reference.md)** — Complete specification of every module (`esmeralda.app`, `auth`, `auth_manager`, `mcp`, `mcp_authz`, `a2a`, `telemetry`, `certs`, `ops`, `cli`), CLI flag, and environment variable.
 
+??? abstract "5. Multi-Cloud & Interoperability"
+    *Best for Cloud & Security Architects, Identity Teams, FinOps, and Platform Engineers.*
+
+    * **[5.0 Why Multi-Cloud Agents](./5-multi-cloud/index.md)** — Why agents end up on more than one cloud, the four principles that carry across clouds, and how inbound and outbound cross-cloud traffic share one model.
+    * **[5.1 Identity Across Clouds](./5-multi-cloud/01-identity-across-clouds.md)** — Workload identity federation, OIDC `iss#sub` verified at the gateway (the Apigee cross-cloud shared flow), SPIFFE federation, mTLS, `federated` callers in the catalog, and fail-closed enforcement.
+    * **[5.2 Cross-Cloud Connectivity & Protocols](./5-multi-cloud/02-cross-cloud-connectivity.md)** — The gateway per hop (Apigee best path, Envoy and `direct` alternatives, Agent Gateway for egress), public endpoints vs. HA VPN vs. Cross-Cloud Interconnect, and A2A and MCP as the interoperable protocols.
+    * **[5.3 Unified Observability & Chargeback](./5-multi-cloud/03-unified-observability-and-chargeback.md)** — The `esmeralda.usage` record as the normalized schema, producers on other clouds (OTel GenAI span adapter, OpenTelemetry Collector), landing in BigQuery, and chargeback by verified team.
+    * **[5.4 Bringing an Agent from Another Cloud, End to End](./5-multi-cloud/04-bringing-an-agent-from-another-cloud.md)** — A worked example: a synthetic underwriting agent on another cloud calls `ai-coe-mortgage-specialist`, with its catalog entries, request flow, and usage records.
+    * **[5.5 Status & Roadmap](./5-multi-cloud/05-status-and-roadmap.md)** — What is available on `main`, what is in open pull requests, and what is planned.
+
+??? abstract "6. Reference & Contributing"
+    *Best for Contributors and AI Coding Agents.*
+
+    * **[6.1 Make Targets](./reference/make-targets.md)** — Every Make target, generated from the Makefile.
+    * **[6.2 Contributing Guide](./contributing.md)** — CLA, local testing, docs build, dependency workflow, and conventions.
+    * **[6.3 Code of Conduct](./code-of-conduct.md)** — Community standards.
+
 ---
 
 ## 1. Why 90% of Enterprise Agents Stall
@@ -210,7 +227,7 @@ flowchart LR
 
 ## 4. Section Guide & Quick Start
 
-The documentation is organized into **four numbered sections (`1.`–`4.`)** that follow Julian Sterling's request from the application surface down to the cloud foundation and developer tooling:
+The documentation is organized into **six numbered sections (`1.`–`6.`)**: the first four follow Julian Sterling's request from the application surface down to the cloud foundation and developer tooling, the fifth takes it across clouds, and the sixth collects reference material:
 
 | Section | Focus | Subsections | Best For |
 | :--- | :--- | :--- | :--- |
@@ -218,6 +235,8 @@ The documentation is organized into **four numbered sections (`1.`–`4.`)** tha
 | **[2. Governance, Identity & AgentOps](./3-agentops-and-lifecycle/index.md)** | How **Layer 4** governs every outbound call, inspects content, tracks FinOps costs, and powers day-2 operations. | • [2.1 Central Agent Gateway & Private PKI](./3-agentops-and-lifecycle/01-central-agent-gateway.md)<br/>• [2.2 Capability & Semantic Governance](./3-agentops-and-lifecycle/04-capability-based-governance.md)<br/>• [2.3 FinOps, Telemetry & Chargeback](./3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)<br/>• [2.4 Day-2 Operations (CLI & MCP)](./3-agentops-and-lifecycle/04-operating-with-agents.md) | SecOps, Governance Leads, FinOps, SRE / Platform Operators |
 | **[3. Platform Foundations (Layers 1–3)](./1-platform-foundations/index.md)** | The zero-trust landing zone (**Layers 0–3**) that makes Sections 1 and 2 possible. | • [3.1 Projects & FinOps Isolation (Layer 1)](./1-platform-foundations/01-projects-and-finops.md)<br/>• [3.2 Private Networking, PSC & DNS (Layer 2)](./1-platform-foundations/02-private-networking.md)<br/>• [3.3 Security, SPIFFE Identity & PKI (Layer 3)](./1-platform-foundations/03-security-iam-and-telemetry.md) | Cloud Architects, NetOps, Infrastructure Engineers |
 | **[4. Esmeralda Library & CLI](./4-esmeralda-library/index.md)** | The `esmeralda` Python runtime package, CLI, and read-only MCP server. | • [4.1 Developer Usage Guide](./4-esmeralda-library/guide.md)<br/>• [4.2 Package & CLI Reference](./4-esmeralda-library/reference.md) | All Developers & AI Coding Agents |
+| **[5. Multi-Cloud & Interoperability](./5-multi-cloud/index.md)** | Agents on other clouds calling Esmeralda (and back) with verified identity, governed paths, and one usage and chargeback view. | • [5.1 Identity Across Clouds](./5-multi-cloud/01-identity-across-clouds.md)<br/>• [5.2 Cross-Cloud Connectivity & Protocols](./5-multi-cloud/02-cross-cloud-connectivity.md)<br/>• [5.3 Unified Observability & Chargeback](./5-multi-cloud/03-unified-observability-and-chargeback.md)<br/>• [5.4 Bringing an Agent from Another Cloud](./5-multi-cloud/04-bringing-an-agent-from-another-cloud.md)<br/>• [5.5 Status & Roadmap](./5-multi-cloud/05-status-and-roadmap.md) | Cloud & Security Architects, Identity Teams, FinOps |
+| **6. Reference & Contributing** | Generated Make target reference and the contribution workflow. | • [6.1 Make Targets](./reference/make-targets.md)<br/>• [6.2 Contributing Guide](./contributing.md)<br/>• [6.3 Code of Conduct](./code-of-conduct.md) | Contributors & AI Coding Agents |
 
 ### Try It Now with the `esmeralda` CLI
 
