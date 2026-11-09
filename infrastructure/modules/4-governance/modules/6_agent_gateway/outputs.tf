@@ -27,5 +27,5 @@ output "agw_root_ca_bundle" {
 
 output "iap_egress_members" {
   value       = local.iap_egress_members
-  description = "IAM members granted roles/iap.egressor on the central Agent Registry."
+  description = "IAM members of the registry-root roles/iap.egressor binding, conditioned to system endpoint entries only."
 }
