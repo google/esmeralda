@@ -120,21 +120,32 @@ class _ExecutorBuilder:
 
 
 def _enable_otel_to_cloud() -> None:
-    """The A2A equivalent of adk api_server --otel_to_cloud: Cloud Trace and Cloud Logging exporters."""
+    """The A2A equivalent of adk api_server --otel_to_cloud: Cloud Trace, Logging, and Monitoring exporters."""
     from google.adk.telemetry.google_cloud import get_gcp_exporters, get_gcp_resource
     from google.adk.telemetry.setup import maybe_set_otel_providers
-    from opentelemetry.sdk.resources import OTELResourceDetector
 
-    resource = get_gcp_resource(os.environ.get("GOOGLE_CLOUD_PROJECT")).merge(OTELResourceDetector().detect())
-    hooks = get_gcp_exporters(enable_cloud_tracing=True, enable_cloud_logging=True)
-    maybe_set_otel_providers(otel_hooks_to_setup=[hooks], otel_resource=resource)
-    logger.info("OpenTelemetry Cloud Trace and Cloud Logging exporters enabled.")
+    os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "EVENT_ONLY")
+    os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental")
+    os.environ.setdefault("ADK_EXPERIMENTAL_TELEMETRY_FEATURES", "token_usage")
+
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    hooks = get_gcp_exporters(
+        enable_cloud_tracing=True,
+        enable_cloud_logging=True,
+        enable_cloud_metrics=True,
+    )
+    maybe_set_otel_providers(
+        otel_hooks_to_setup=[hooks],
+        otel_resource=get_gcp_resource(project_id),
+    )
+    logger.info("OpenTelemetry Cloud Trace, Cloud Logging, and Cloud Monitoring exporters enabled.")
 
 
 def a2a_server(config: AgentConfig, *, otel_to_cloud: bool = False) -> Any:
     """The FastAPI application serving the agent over A2A (REST transport)."""
     from a2a.server.apps import A2ARESTFastAPIApplication
     from fastapi import FastAPI
+    from google.adk.telemetry._agent_engine import maybe_install_request_metrics_middleware
     from vertexai.preview.reasoning_engines.templates.a2a import A2aAgent
 
     import esmeralda
@@ -164,6 +175,7 @@ def a2a_server(config: AgentConfig, *, otel_to_cloud: bool = False) -> Any:
     server = FastAPI(title=f"{card.name} (A2A)")
     for path in A2A_MOUNTS:
         server.mount(path, rest)
+    maybe_install_request_metrics_middleware(server, otel_to_cloud=otel_to_cloud)
     return server
 
 

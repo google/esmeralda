@@ -294,6 +294,12 @@ resource "google_agent_registry_service" "system_endpoints" {
     protocol_binding = can(regex("bigquerystorage", each.key)) ? "GRPC" : "HTTP_JSON"
   }
 
+  # gRPC clients send host:443 as :authority; register both forms.
+  interfaces {
+    url              = "${each.value.url}:443"
+    protocol_binding = can(regex("bigquerystorage", each.key)) ? "GRPC" : "HTTP_JSON"
+  }
+
   endpoint_spec {
     type = "NO_SPEC"
   }
