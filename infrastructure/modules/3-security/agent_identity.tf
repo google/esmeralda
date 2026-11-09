@@ -51,9 +51,9 @@ resource "google_service_account_iam_member" "ai_coe_mortgage_specialist_identit
 }
 
 # 4a. Grant Full Role Parity to CX mortgage orchestrator PrincipalSet in the CX agents project
+# (roles/aiplatform.user and roles/bigquery.dataEditor are managed per-agent by Layer 5 adk-agent)
 resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
   for_each = toset([
-    "roles/aiplatform.user",
     "roles/storage.objectAdmin",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
@@ -63,7 +63,6 @@ resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
     "roles/browser",
     "roles/cloudapiregistry.viewer",
     "roles/iam.serviceAccountTokenCreator",
-    "roles/bigquery.dataEditor",
     "roles/bigquery.jobUser"
   ])
   project = var.cx_agents_project_id
@@ -72,11 +71,11 @@ resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
 }
 
 # 4b. Grant Full Role Parity to AI CoE mortgage specialist PrincipalSet in the AI CoE agents project
+# (roles/aiplatform.user and roles/bigquery.dataEditor are managed per-agent by Layer 5 a2a-agent)
 resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles" {
   for_each = toset([
     "roles/cloudsql.client",
     "roles/cloudsql.instanceUser",
-    "roles/aiplatform.user",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
     "roles/cloudtrace.agent",
@@ -86,12 +85,64 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles"
     "roles/browser",
     "roles/cloudapiregistry.viewer",
     "roles/iam.serviceAccountTokenCreator",
-    "roles/bigquery.dataEditor",
     "roles/bigquery.jobUser"
   ])
   project = var.ai_coe_agents_project_id
   role    = each.key
   member  = local.ai_coe_mortgage_specialist_identity_principal
+}
+
+# Forget Layer 5-owned duplicate IAM bindings from Layer 3 state without deleting the live GCP bindings:
+# - ai_coe_mortgage_specialist_identity_roles["roles/aiplatform.user"] -> owned by L5 a2a-agent (google_project_iam_member.agent_identity_aiplatform_user[0])
+# - cx_mortgage_orchestrator_identity_roles["roles/aiplatform.user"]   -> owned by L5 adk-agent (google_project_iam_member.agent_identity_aiplatform_user[0])
+# - ai_coe_mortgage_specialist_identity_roles["roles/bigquery.dataEditor"] -> owned by L5 a2a-agent (agent_identity_bq_writer)
+# - cx_mortgage_orchestrator_identity_roles["roles/bigquery.dataEditor"]   -> owned by L5 adk-agent (agent_identity_bq_writer)
+moved {
+  from = google_project_iam_member.ai_coe_mortgage_specialist_identity_roles["roles/aiplatform.user"]
+  to   = google_project_iam_member.l5_owned_ai_coe_specialist_id_aiplatform_user
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_ai_coe_specialist_id_aiplatform_user
+  lifecycle {
+    destroy = false
+  }
+}
+
+moved {
+  from = google_project_iam_member.cx_mortgage_orchestrator_identity_roles["roles/aiplatform.user"]
+  to   = google_project_iam_member.l5_owned_cx_orchestrator_id_aiplatform_user
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_cx_orchestrator_id_aiplatform_user
+  lifecycle {
+    destroy = false
+  }
+}
+
+moved {
+  from = google_project_iam_member.ai_coe_mortgage_specialist_identity_roles["roles/bigquery.dataEditor"]
+  to   = google_project_iam_member.l5_owned_ai_coe_specialist_id_bq_editor
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_ai_coe_specialist_id_bq_editor
+  lifecycle {
+    destroy = false
+  }
+}
+
+moved {
+  from = google_project_iam_member.cx_mortgage_orchestrator_identity_roles["roles/bigquery.dataEditor"]
+  to   = google_project_iam_member.l5_owned_cx_orchestrator_id_bq_editor
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_cx_orchestrator_id_bq_editor
+  lifecycle {
+    destroy = false
+  }
 }
 
 # 5a. Grant roles/iap.egressor to CX mortgage orchestrator identity ONLY on the AI CoE agents project
