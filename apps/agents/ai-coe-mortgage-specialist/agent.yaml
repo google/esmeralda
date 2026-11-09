@@ -30,13 +30,15 @@ resources:
 env:
   AGENT_NAME: "ai_coe_mortgage_specialist"
   # --- Resource Identity & Dashboard Triggers ---
-  OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai,gcp.resource_type=reasoning_engine"
+  OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai"
   OTEL_SERVICE_NAME: "ai-coe-mortgage-specialist"
 
   # --- Agent Engine Trace Provider ---
   USE_CUSTOM_TELEMETRY: false
   GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
-  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
+  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "EVENT_ONLY"
+  OTEL_SEMCONV_STABILITY_OPT_IN: "gen_ai_latest_experimental"
+  ADK_EXPERIMENTAL_TELEMETRY_FEATURES: "token_usage"
 
   DMS_MCP_URL: "https://legacy-dms.esmeralda.internal/mcp"
   INCOME_VERIFICATION_URL: "https://income-verification.esmeralda.internal/mcp"

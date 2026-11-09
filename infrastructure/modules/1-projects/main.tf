@@ -50,6 +50,8 @@ locals {
     "artifactregistry.googleapis.com",
     "secretmanager.googleapis.com",
     "logging.googleapis.com",
+    "monitoring.googleapis.com",
+    "telemetry.googleapis.com",
     "cloudbuild.googleapis.com",
     "agentregistry.googleapis.com"
   ]

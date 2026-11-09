@@ -31,12 +31,14 @@ env:
   AGENT_NAME: "cx_mortgage_orchestrator"
   # --- Resource Identity & Dashboard Triggers ---
   # Essential for grouping traces into the 'Vertex AI' specialized UI
-  OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai,gcp.resource_type=reasoning_engine"
+  OTEL_RESOURCE_ATTRIBUTES: "gen_ai.system=vertex_ai"
   OTEL_SERVICE_NAME: "cx-mortgage-orchestrator"
   
   # --- Agent Engine Trace Provider ---
   GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY: true
-  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: true
+  OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "EVENT_ONLY"
+  OTEL_SEMCONV_STABILITY_OPT_IN: "gen_ai_latest_experimental"
+  ADK_EXPERIMENTAL_TELEMETRY_FEATURES: "token_usage"
   MODEL_NAME: "gemini-3.7-flash"
   MODEL_LOCATION: "global"
   GOOGLE_CLOUD_LOCATION: "us-central1"

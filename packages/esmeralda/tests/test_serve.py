@@ -127,3 +127,60 @@ def test_serve_web_is_adk_only(a2a_dir):
 def test_cli_serve_without_agent_yaml(tmp_path, capsys):
     assert cli.main(["serve", "--agent-dir", str(tmp_path)]) == 2
     assert "agent.yaml" in capsys.readouterr().err
+
+
+def test_enable_otel_to_cloud_enables_metrics_and_semconv_defaults(monkeypatch):
+    import google.adk.telemetry.google_cloud as gcp_tel
+    import google.adk.telemetry.setup as tel_setup
+    from opentelemetry.sdk.resources import Resource
+
+    monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
+    monkeypatch.delenv("OTEL_SEMCONV_STABILITY_OPT_IN", raising=False)
+    monkeypatch.delenv("ADK_EXPERIMENTAL_TELEMETRY_FEATURES", raising=False)
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj")
+
+    seen_exporters = {}
+    seen_setup = {}
+    fake_resource = Resource.create({"gcp.project_id": "test-proj"})
+
+    monkeypatch.setattr(gcp_tel, "get_gcp_resource", lambda proj: fake_resource if proj == "test-proj" else None)
+
+    def fake_get_gcp_exporters(**kwargs):
+        seen_exporters.update(kwargs)
+        return "fake-hooks"
+
+    def fake_maybe_set_otel_providers(**kwargs):
+        seen_setup.update(kwargs)
+
+    monkeypatch.setattr(gcp_tel, "get_gcp_exporters", fake_get_gcp_exporters)
+    monkeypatch.setattr(tel_setup, "maybe_set_otel_providers", fake_maybe_set_otel_providers)
+
+    serve._enable_otel_to_cloud()
+
+    assert os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "EVENT_ONLY"
+    assert os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] == "gen_ai_latest_experimental"
+    assert os.environ["ADK_EXPERIMENTAL_TELEMETRY_FEATURES"] == "token_usage"
+    assert seen_exporters == {
+        "enable_cloud_tracing": True,
+        "enable_cloud_logging": True,
+        "enable_cloud_metrics": True,
+    }
+    assert seen_setup["otel_hooks_to_setup"] == ["fake-hooks"]
+    assert seen_setup["otel_resource"] == fake_resource
+
+
+def test_a2a_server_installs_request_metrics_middleware(a2a_dir, monkeypatch):
+    import google.adk.telemetry._agent_engine as ae_tel
+
+    calls = []
+    monkeypatch.setattr(serve, "_enable_otel_to_cloud", lambda: calls.append(("enable_otel", True)))
+    monkeypatch.setattr(
+        ae_tel,
+        "maybe_install_request_metrics_middleware",
+        lambda app, *, otel_to_cloud: calls.append(("middleware", app.title, otel_to_cloud)),
+    )
+
+    config = AgentConfig.load(a2a_dir)
+    app = serve.a2a_server(config, otel_to_cloud=True)
+    assert ("enable_otel", True) in calls
+    assert ("middleware", app.title, True) in calls
