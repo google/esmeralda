@@ -1,4 +1,4 @@
-# 2.5 Service Catalog: Teams, Callers, Targets & Policy
+# 2.6 Service Catalog: Teams, Callers, Targets & Policy
 
 The **catalog** is the single place that says which targets exist (agents, MCP servers, models,
 legacy APIs), which team owns each one, which callers may call it, through which gateway, and who
