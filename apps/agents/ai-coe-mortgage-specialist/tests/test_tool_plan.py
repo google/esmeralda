@@ -225,6 +225,7 @@ class TestThinkingConfig:
     def test_level(self):
         assert _thinking_config_kwargs("low") == {"thinking_level": "LOW"}
         assert _thinking_config_kwargs(" High ") == {"thinking_level": "HIGH"}
+        assert _thinking_config_kwargs("minimal") == {"thinking_level": "MINIMAL"}  # live-test option
 
     def test_budget(self):
         assert _thinking_config_kwargs("1024") == {"thinking_budget": 1024}
