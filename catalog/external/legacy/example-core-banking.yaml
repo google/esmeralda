@@ -1,0 +1,20 @@
+# catalog/external/legacy/example-core-banking.yaml
+# EXAMPLE ONLY (example: true): a brownfield HTTP API that Esmeralda does not deploy
+# (managed: false + endpoint). Not part of the entry-point catalog map. Owned by platform + security.
+schema: esmeralda.catalog
+schema_version: 1
+
+name: example-core-banking
+kind: http
+description: Synthetic legacy core-banking REST API reached through the gateway.
+owner_team: platform
+deploy: { managed: false, endpoint: "https://core-banking.example.com" }
+gateway: apigee
+example: true
+
+callers:
+  ai-coe-mortgage-specialist: { gateway: apigee, product: tier-internal }
+  aws-underwriter: { gateway: apigee, product: tier-premium }
+
+observability:
+  usage_sources: [gateway]

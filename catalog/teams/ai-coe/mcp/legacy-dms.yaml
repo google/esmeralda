@@ -1,0 +1,19 @@
+# catalog/teams/ai-coe/mcp/legacy-dms.yaml
+schema: esmeralda.catalog
+schema_version: 1
+
+name: legacy-dms
+kind: mcp
+description: MCP server on Cloud Run over the legacy document management system (synthetic data).
+owner_team: ai-coe
+deploy: { unit: services/legacy-dms }
+serving: { token: id, probe: mcp }
+
+callers:
+  ai-coe-mortgage-specialist: {}
+  cx-mortgage-orchestrator: {}
+  test-vm: {}
+
+observability:
+  usage_sources: [workload]
+  framework: custom

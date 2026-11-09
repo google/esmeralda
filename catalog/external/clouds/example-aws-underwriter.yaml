@@ -1,0 +1,24 @@
+# catalog/external/clouds/example-aws-underwriter.yaml
+# EXAMPLE ONLY (example: true): a workload on another cloud, verified at the gateway by its OIDC
+# (issuer, subject) through workload identity federation. Not compiled into enforcement until a
+# non-example target lists it under callers. Owned by platform + security.
+schema: esmeralda.catalog
+schema_version: 1
+
+teams:
+  example-cloud-underwriting:
+    description: Synthetic underwriting team running on another cloud.
+    cost_centers: [cc-underwriting-example]
+    country: BR
+    external: true
+    example: true
+
+callers:
+  aws-underwriter:
+    team: example-cloud-underwriting
+    description: Underwriting workload on another cloud (federated identity).
+    identity:
+      type: federated
+      issuer: https://oidc.example.com
+      subject: example-underwriter-role
+    example: true

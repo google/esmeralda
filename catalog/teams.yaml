@@ -1,0 +1,18 @@
+# catalog/teams.yaml: the team registry (who can own targets and who pays). Owned by platform.
+# Synthetic teams and cost centres. Teams add their own metadata in teams/<team>/team.yaml.
+schema: esmeralda.catalog
+schema_version: 1
+
+teams:
+  ai-coe:
+    description: AI Center of Excellence. Owns the mortgage specialist agent and its MCP servers.
+    cost_centers: [cc-ai-coe]
+    country: BR
+  cx:
+    description: Customer experience. Owns the customer-facing mortgage orchestrator.
+    cost_centers: [cc-cx-br, cc-cx-mx]
+    country: BR
+  platform:
+    description: Platform team. Owns shared models, ops identities and the test VM.
+    cost_centers: [cc-platform]
+    country: BR

@@ -1,0 +1,30 @@
+# catalog/sources.yaml: which sources `esmeralda catalog resolve` merges, in order.
+# Owned by platform + security (see README.md, CODEOWNERS).
+#
+# Later sources may add entries or fill fields that earlier sources left unset; a conflicting value
+# fails the resolve. Duplicates inside the `files` source always fail. environments/<env>.yaml
+# overrides are applied last.
+schema: esmeralda.catalog
+schema_version: 1
+
+sources:
+  - name: catalog-files
+    type: files
+    paths:
+      - teams.yaml
+      - policy.yaml
+      - teams
+      - external
+
+  # Inventory from Agent Registry (agents, MCP servers, endpoints). Extension point, not implemented yet.
+  - name: agent-registry
+    type: agent_registry
+    enabled: false
+
+  # Team attribution from project labels (e.g. team, cost-center). Extension point, not implemented yet.
+  - name: project-labels
+    type: project_labels
+    enabled: false
+
+environments_dir: environments
+resolved_dir: .resolved

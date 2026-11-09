@@ -1,0 +1,27 @@
+# catalog/teams/ai-coe/agents/ai-coe-mortgage-specialist.yaml
+schema: esmeralda.catalog
+schema_version: 1
+
+name: ai-coe-mortgage-specialist
+kind: a2a
+description: A2A mortgage underwriting specialist on Agent Runtime; calls the three MCP servers.
+owner_team: ai-coe
+deploy: { unit: agents/ai-coe-mortgage-specialist }
+# The identity it calls out as (layer-3-security output), when it is itself a caller.
+identity: { type: service_account, ref: "layer-3-security:ai_coe_mortgage_specialist_sa_email" }
+serving: { token: access, probe: a2a }
+models: [gemini-flash]
+
+# Who may call it. Workload callers are other targets; the rest are declared under callers.
+# The calling team pays: cost_centers limits what a caller may declare.
+callers:
+  cx-mortgage-orchestrator: { cost_centers: [cc-cx-br, cc-cx-mx] }
+  test-vm: {}
+
+observability:
+  usage_sources: [gateway, workload]
+  framework: adk
+  content_capture: none
+  dimensions: [loan_product]
+  slo: { latency_p95_ms: 10000, availability: 0.995 }
+  alerts: { route_to: ai-coe-oncall, token_budget_per_invocation: 50000 }

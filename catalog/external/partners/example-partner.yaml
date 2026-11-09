@@ -1,0 +1,21 @@
+# catalog/external/partners/example-partner.yaml
+# EXAMPLE ONLY (example: true): a partner that reaches agents through Apigee with an API app.
+# Resolved and shown by `esmeralda catalog show`, but not compiled into enforcement until a
+# non-example target lists it under callers. Owned by platform + security.
+schema: esmeralda.catalog
+schema_version: 1
+
+teams:
+  example-partner:
+    description: Synthetic external partner (mortgage broker) billed for its calls.
+    cost_centers: [cc-partner-example]
+    country: MX
+    external: true
+    example: true
+
+callers:
+  example-partner-app:
+    team: example-partner
+    description: The partner's Apigee developer app (identity verified by its API key).
+    identity: { type: apigee_app, id: example-partner-app, product: tier-standard }
+    example: true
