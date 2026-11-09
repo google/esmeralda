@@ -72,8 +72,10 @@ variable "slo_config" {
 }
 
 variable "alert_on_unattributed_usage" {
-  type        = bool
-  default     = true
+  type    = bool
+  default = false
+  # Off until verified attribution lands (observability design, phase 6): until then workloads send
+  # caller.verified = false and every record would count as unattributed. Flip the default to true then.
   description = "Alert when any esmeralda.usage record lacks a verified caller (expected count: 0, design principle 'fail closed')."
 }
 

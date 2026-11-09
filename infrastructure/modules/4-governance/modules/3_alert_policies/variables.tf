@@ -60,6 +60,6 @@ variable "slo_config" {
 
 variable "alert_on_unattributed_usage" {
   type        = bool
-  description = "Alert when any esmeralda.usage record lacks a verified caller"
-  default     = true
+  description = "Alert when any esmeralda.usage record lacks a verified caller (off until verified attribution, phase 6)"
+  default     = false
 }

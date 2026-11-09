@@ -19,12 +19,12 @@ When Julian Sterling asks `cx-mortgage-orchestrator` to check his loan status, h
 
 1. **Caller Context Propagation (`caller.project_id`, `caller.agent_name`):**
    When `cx-mortgage-orchestrator` (in `esm-<env>-cx-agents-<sfx>`) calls `ai-coe-mortgage-specialist` (in `esm-<env>-ai-coe-agents-<sfx>`) over A2A, the `esmeralda` library attaches W3C OpenTelemetry baggage carrying `caller.project_id` and `caller.agent_name`. Inside the specialist container, `BaggageSpanProcessor` ([`telemetry.py`](../../../packages/esmeralda/src/esmeralda/telemetry.py)) automatically copies those attributes onto every child Cloud Trace span—including the specialist's Gemini model calls and MCP tool calls.
-2. **Structured JSON Token & Tool Events on `stdout`:**
-   After every LLM turn and every MCP tool invocation, `TelemetryEmitter` writes a single-line structured JSON event (`genai_token_consumption` or `mcp_tool_execution`) to `stdout`, recording `prompt_tokens`, `completion_tokens`, `thoughts_tokens`, `cached_tokens`, `cache_hit_ratio`, `execution_path`, `session_id`, and the W3C `trace_id`/`span_id`.
-3. **Hub-and-Spoke Log Sinks to BigQuery:**
-   Every workload spoke project (`cx-agents`, `ai-coe-agents`, `mcps`, `gateway`, `net-host`) has a Layer 4 `google_logging_project_sink` that streams Reasoning Engine `stdout`, Cloud Run request logs, and Cloud Audit logs into a single BigQuery dataset (`esmeralda_telemetry_logs_<env>`) in the central governance project.
-4. **Instant Executive Rollups (`vw_monthly_agent_chargeback` & `vw_request_level_telemetry`):**
-   In BigQuery, pre-built analytical views calculate the exact USD cost of Julian's turn, quantify how much money Gemini context caching saved (`cache_hit_ratio_pct`), and roll up monthly chargeback per agent and model.
+2. **One usage record per model call, tool call and gateway request (`esmeralda.usage`):**
+   Every producer writes the same structured JSON record: the agents (any framework, through the `esmeralda` library), and gateways such as the Apigee partner proxies. Each record carries `"schema": "esmeralda.usage"`, a `schema_version`, the `event` (`llm.call`, `tool.call`, `agent.invocation`, `gateway.request`), `source` (`gateway` or `workload`), the serving `workload`, the `caller` (`principal`, `team`, `verified`), OpenTelemetry GenAI token counts (`gen_ai."usage.input_tokens"`, ...), tool details and the W3C `trace_id`. The contract lives in `contracts/usage-event.schema.json`.
+3. **A sink keyed on the record type, not on a log name:**
+   A Layer 4 sink in every project routes `jsonPayload.schema = "esmeralda.usage"` into a dedicated BigQuery dataset (`esmeralda_usage_<env>`), wherever the record was logged (Agent Engine stdout, Cloud Run, Apigee, the Cloud Logging API).
+4. **Gateway and workload records joined, billed to the verified team (`vw_monthly_agent_chargeback` & `vw_request_level_telemetry`):**
+   In BigQuery, the views join the gateway and workload records of one request on `trace_id`, prefer the gateway's tokens and caller identity, calculate the USD cost of Julian's request, quantify how much Gemini context caching saved (`cache_hit_ratio_pct`), and roll up monthly chargeback by **verified team**, agent and model.
 
 ---
 
@@ -33,8 +33,9 @@ When Julian Sterling asks `cx-mortgage-orchestrator` to check his loan status, h
 | Architectural Choice | Alternative Considered | Why Esmeralda Chose This Design |
 | :--- | :--- | :--- |
 | **Hub-and-Spoke Log Sinks into a Central Governance BigQuery Dataset** | Querying logs separately inside each team's project, or running a single shared project for all teams | Separate log silos make cross-agent trace correlation and enterprise FinOps reporting impossible, while a single shared project destroys IAM blast-radius isolation. Hub-and-spoke sinks let each team work in an isolated spoke project while SecOps and FinOps query one unified hub in `esm-<env>-governance-<sfx>`. |
-| **Structured `stdout` JSON Events (`genai_token_consumption`) + OTel Baggage (`caller.project_id`, `caller.agent_name`)** | Estimating token cost from raw GCP project billing exports alone | Cloud Billing exports show aggregate SKU spend per project with a multi-hour delay, cannot distinguish which *initiating caller* triggered a shared A2A specialist, and cannot detect a runaway prompt loop in 60 seconds. Emitting per-turn token counters with W3C trace IDs and caller baggage gives both real-time Cloud Monitoring metrics and request-level BigQuery chargeback. |
-| **Pre-Created BigQuery Schemas & Views in Layer 4 (`4_finops_analytics`)** | Waiting for Cloud Logging sinks to auto-create tables on first traffic before deploying SQL views | If SQL views depend on tables that only appear after an agent serves traffic, fresh environments fail `terraform apply` or require manual two-phase deployments. Pre-creating the core `reasoning_engine_stdout` schema in Terraform ensures `vw_monthly_agent_chargeback` and `vw_request_level_telemetry` deploy cleanly on Day 1. |
+| **One usage contract (`esmeralda.usage`) for every producer, matched on `jsonPayload.schema`** | Parsing each framework's or gateway's own log format, or matching on log names | Cloud Billing exports show aggregate SKU spend per project with a multi-hour delay and can't tell which *caller* triggered a shared A2A specialist. Framework-specific events (the old `genai_token_consumption`) only cover one framework and one log stream. A single contract, selected by its `schema` field, lets agents of any framework, Apigee, Envoy and other clouds feed the same sink, metrics and views. |
+| **Bill the verified team; gateway records win over workload records** | Trusting the team a caller declares in its payload | Attribution comes from authentication, never from the payload. A team counts for billing only when the identity was verified (by the gateway, or through the catalog's `principal_teams` table); everything else is reported as `unattributed`. When a gateway saw the request, its tokens and identity are the primary source; workload records are the floor on `direct` hops. |
+| **Pre-Created BigQuery Schemas & Views in Layer 4** | Waiting for Cloud Logging sinks to auto-create tables on first traffic before deploying SQL views | If SQL views depend on tables that only appear after an agent serves traffic, fresh environments fail `terraform apply` or require manual two-phase deployments. Pre-creating the usage landing tables and the legacy tables in Terraform lets every view deploy cleanly on Day 1. |
 
 ---
 
@@ -47,42 +48,54 @@ flowchart TD
     subgraph Spokes["Workload Spoke Projects"]
         CX["esm-ENV-cx-agents<br/>(CX orchestrator Reasoning Engine)"]
         AICOE["esm-ENV-ai-coe-agents<br/>(AI CoE A2A specialist Reasoning Engine)"]
-        GW["esm-ENV-gateway<br/>(Entry point / optional adapter)"]
+        GW["esm-ENV-gateway<br/>(Entry point, Apigee, optional adapter)"]
         MCP["esm-ENV-mcps<br/>(Cloud Run MCP Tools)"]
         NET["esm-ENV-net-host<br/>(Shared VPC)"]
     end
 
     subgraph Hub["Central Governance Hub: esm-ENV-governance"]
-        SINK["Log sink per spoke project<br/>(google_logging_project_sink)"]
+        SINK["Central sink per spoke<br/>(audit, stdout, Cloud Run)"]
+        USINK["Usage sink per project<br/>(jsonPayload.schema = esmeralda.usage)"]
+
+        subgraph UsageDS["BigQuery Dataset: esmeralda_usage_ENV"]
+            LAND["Landing tables<br/>(one per producer log ID)"]
+        end
 
         subgraph BigQuery["BigQuery Dataset: esmeralda_telemetry_logs_ENV"]
-            ENV["genai_telemetry_events<br/>(Unified Event Envelope)"]
-            AUDIT_TBL["cloudaudit_googleapis_com_activity<br/>(Cloud Audit Logs)"]
-            STDOUT_TBL["aiplatform_googleapis_com_reasoning_engine_stdout<br/>(Agent stdout events)"]
-            RUN_TBL["run_googleapis_com_requests<br/>(Cloud Run HTTP Telemetry)"]
-
-            VW1["vw_monthly_agent_chargeback<br/>(FinOps TCO & Cache ROI)"]
-            VW2["vw_request_level_telemetry<br/>(Turn-by-Turn Cost Breakdown)"]
-            VW3["vw_security_audit_trail<br/>(IAM & Secret SecOps Audit)"]
+            UE["usage_events<br/>(flattened usage records)"]
+            LEG["Legacy token events<br/>(reasoning_engine_stdout, genai_telemetry_events)"]
+            PT["principal_teams<br/>(verified principal to team)"]
+            NORM["vw_usage_normalized"]
+            BILL["vw_usage_billable<br/>(gateway + workload joined on trace_id)"]
+            VW1["vw_monthly_agent_chargeback"]
+            VW2["vw_request_level_telemetry"]
+            VWP["vw_partner_apigee_chargeback"]
+            AUDIT_TBL["cloudaudit_googleapis_com_activity"]
+            VW3["vw_security_audit_trail"]
         end
 
         GCS["Coldline GCS Archive Bucket<br/>(7-year retention, not yet wired to a sink)"]
 
         subgraph Monitoring["Cloud Monitoring & Safety"]
-            MQL["FinOps Token Dashboard<br/>(Token & MCP Charts)"]
-            GOLD["Golden Signals Dashboard<br/>(Latency P50/P95/P99, Request Rates)"]
-            SLO["SLOs<br/>(99.5% Availability, 95% under 8s)"]
-            ALERTS["Alert Policies & Pub/Sub<br/>(Runaway Loops, IAM Changes)"]
+            FIN["FinOps Token Dashboard<br/>(usage metrics, PromQL)"]
+            GOLD["Golden Signals Dashboard<br/>(latency, request rates, native ADK OTel)"]
+            SLO["SLOs<br/>(MCP servers and agents)"]
+            ALERTS["Alert Policies & Pub/Sub<br/>(Runaway Loops, Unattributed Usage, IAM Changes)"]
             DLP["Cloud DLP Inspection Template<br/>(Email, SSN, Credit Card)"]
         end
     end
 
     Spokes -->|Reasoning Engine, Cloud Run & Audit Logs| SINK
-    SINK -->|Stream Ingestion| BigQuery
-    ENV --> VW1 & VW2
-    STDOUT_TBL --> VW1 & VW2
+    Spokes -->|esmeralda.usage records| USINK
+    SINK --> LEG & AUDIT_TBL
+    USINK --> LAND
+    LAND --> UE
+    UE & LEG & PT --> NORM
+    NORM --> BILL
+    NORM --> VWP
+    BILL --> VW1 & VW2
     AUDIT_TBL --> VW3
-    Spokes -->|Metrics scope + log-based metrics| Monitoring
+    Spokes -->|Metrics scope + usage log-based metrics| Monitoring
 ```
 
 ---
@@ -93,15 +106,34 @@ flowchart TD
 
 **What it is:** a Cloud Logging *sink* is a routing rule on a project that copies every log entry matching a filter to a destination (BigQuery, Cloud Storage, Pub/Sub or another log bucket).
 
-**In Esmeralda:** one sink, `esmeralda-central-telemetry-sink-<env>` (`google_logging_project_sink.central_sinks`), is created in each of the five spoke projects: net-host, gateway, mcps, ai-coe-agents and cx-agents. Each sink writes into the governance BigQuery dataset with partitioned tables, and its writer identity gets `roles/bigquery.dataEditor` on that dataset.
+**In Esmeralda:** two kinds of sink.
+
+**Central telemetry sink.** `esmeralda-central-telemetry-sink-<env>` (`google_logging_project_sink.central_sinks`) is created in each of the five spoke projects: net-host, gateway, mcps, ai-coe-agents and cx-agents. Each sink writes into the governance dataset `esmeralda_telemetry_logs_<env>` with partitioned tables, and its writer identity gets `roles/bigquery.dataEditor` on that dataset.
 
 * **Routing Filter**:
   ```hcl
-  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
+  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR logName=~\"esmeralda-apigee-interactions\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
   ```
-* **Exclusions**: Debug logs (`severity < INFO`) are excluded unless they contain structured `genai_token_consumption` events, to reduce BigQuery ingestion costs.
+* **Exclusions**: Debug logs (`severity < INFO`) are excluded, except usage records (`jsonPayload.schema = "esmeralda.usage"`) and the legacy `genai_token_consumption` / `apigee.gateway.interaction` events, to reduce BigQuery ingestion costs.
 * **Metrics scope**: the spoke projects are also attached to the governance project's Cloud Monitoring metrics scope (`google_monitoring_monitored_project`), so dashboards and alerts in the hub can see spoke metrics.
 * **Agent Gateway audit logs**: `ADMIN_READ`, `DATA_READ` and `DATA_WRITE` audit logs are enabled on the governance project for `iap`, `networkservices` and `agentregistry`, and the `_Default` log buckets have Log Analytics enabled (with a linked BigQuery dataset `default_logs_analytics` in governance).
+
+**Usage sink.** `esmeralda-usage-sink-<env>` (`google_logging_project_sink.usage_events`) is created in the governance project and every spoke project (the Apigee organization lives in the gateway project). It writes to the dataset `esmeralda_usage_<env>`:
+
+* **Routing Filter**: `jsonPayload.schema="esmeralda.usage"`, never a log name, so a new producer needs no sink change.
+* **Landing tables**: a BigQuery sink writes one table per log ID, so Terraform pre-creates one typed, day-partitioned table per producer log ID (Layer 4 variable `usage_landing_tables`):
+
+  | Landing table | Producer |
+  | :--- | :--- |
+  | `aiplatform_googleapis_com_reasoning_engine_stdout`, `..._stderr` | `esmeralda` library on Agent Engine |
+  | `run_googleapis_com_stdout`, `run_googleapis_com_stderr` | Cloud Run workloads, the Envoy gateway access log |
+  | `esmeralda_apigee_interactions` | Apigee `ML-interaction` MessageLogging policy |
+  | `esmeralda_usage` | Producers writing through the Cloud Logging API (OTel collector, other clouds) |
+
+  Cloud Logging exports dotted keys with underscores (`gen_ai."usage.input_tokens"` becomes `gen_ai.usage_input_tokens`) and every JSON number as `FLOAT`; the `usage_events` view casts. A producer writing under another log ID needs its table name added to `usage_landing_tables`; until then the sink auto-creates the table and its rows are stored but not visible in `usage_events`.
+
+> [!NOTE]
+> The list is explicit on purpose. A `dataset.*` wildcard view takes the schema of the newest table, so one auto-created table missing a column would break `usage_events`. And BigQuery only clusters on top-level columns, while every usage field sits under `jsonPayload`, so the landing tables are partitioned but not clustered.
 
 ### 7-Year Regulatory Coldline Archival
 * **Bucket Name**: `esmeralda-telemetry-archive-<governance_project_id>`
@@ -117,26 +149,43 @@ flowchart TD
 
 **What it is:** BigQuery is Google Cloud's serverless data warehouse. A *view* is a saved SQL query that behaves like a read-only table.
 
-**In Esmeralda:** the dataset `esmeralda_telemetry_logs_<env>` in the governance project hosts the sink tables and the analytical views below.
+**In Esmeralda:** the dataset `esmeralda_telemetry_logs_<env>` in the governance project hosts the tables and the analytical views below; the usage landing tables live in `esmeralda_usage_<env>`.
 
 ### Primary Tables
 
 | Table ID | Created by | Partitioning & Clustering | Description |
 | :--- | :--- | :--- | :--- |
-| **`genai_telemetry_events`** | Terraform | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Unified JSON Event Envelope storing `timestamp`, `event_type`, `session_id`, `user_id`, `agent_id`, `execution_path`, and `payload` (`JSON`). |
+| **`principal_teams`** | Terraform (empty), filled by the catalog compiler | None | Verified attribution lookup: `principal` (as in `caller.principal`), `team`, `cost_centers` (repeated), `verified_by` (`spiffe`, `service_account`, `group`, `apigee_app`, `workload_identity_federation`, `oidc`). |
 | **`cloudaudit_googleapis_com_activity`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Cloud Audit Activity logs for IAM, Secret Manager, and Reasoning Engine operations. |
-| **`aiplatform_googleapis_com_reasoning_engine_stdout`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Reasoning Engine stdout from both agent projects, including the agents' structured `genai_token_consumption` and `mcp_tool_execution` events. |
+| **`aiplatform_googleapis_com_reasoning_engine_stdout`** | Terraform (schema), filled by the central sinks | Partitioned `DAY` (`timestamp`) | Reasoning Engine stdout, including the agents' legacy `genai_token_consumption` events (historical data, still read by `vw_usage_normalized`). |
+| **`genai_telemetry_events`** | Terraform | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Legacy unified JSON event envelope (historical data, read by `vw_usage_normalized`). |
+| **`esmeralda_apigee_interactions`** | Terraform (schema), filled by the central sinks | Partitioned `DAY` (`timestamp`) | Apigee partner interactions in the legacy pre-contract shape (historical data, read by `vw_partner_apigee_chargeback`). |
 | **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (the MCP servers, and the Envoy adapter when enabled). |
+
+> [!NOTE]
+> The `principal_teams` table is created empty. The catalog compiler (observability design, phases 5 and 6) will replace its content on each compile; until then, attribution relies on the `caller.verified` flag the gateway writes.
 
 ### Analytical Views
 
+The FinOps views are layered, each one built on the previous:
+
+| View | Grain | What it does |
+| :--- | :--- | :--- |
+| **`usage_events`** | One row per usage record | Unions the landing tables into flat, typed columns (`schema_version`, `event`, `source`, `trace_id`, `workload_name`, `workload_team`, `caller_principal`, `caller_team`, `caller_verified`, `input_tokens`, ..., `tool_name`, `tool_status`, `gateway_product`, `latency_ms`, `dimensions`). |
+| **`vw_usage_normalized`** | One row per record, any era | Adds the legacy `genai_token_consumption` rows (stdout and `genai_telemetry_events`) mapped onto the contract's OpenTelemetry semantics (`input_tokens` includes cached, `output_tokens` includes reasoning), and the attribution: `verified`, `billed_team`, `attribution` (`verified`, `principal_table`, `declared`, `unattributed`, `legacy`). |
+| **`vw_usage_billable`** | One **billable unit** per (`trace_id`, agent) | Joins the gateway and workload records of a request on `trace_id`. Tokens come from the gateway when it recorded them, else from the workload's `llm.call` records, else from legacy events (`token_source`). Identity: the verified gateway caller first. `agent.invocation` records are never billed (they roll up the calls), and while agents emit both the legacy and the contract events nothing is counted twice. |
+| **`vw_monthly_agent_chargeback`** | Month × team × agent × model | Monthly cost and context-caching savings (below). |
+| **`vw_request_level_telemetry`** | One row per billable unit | Per-request cost (`request_cost_usd`), token counts (`prompt`, `completion`, `thoughts`, `cached`), session and trace IDs, plus `billed_team`, `verified`, `caller_principal` and `token_source`. |
+| **`vw_partner_apigee_chargeback`** | Month × partner app × proxy × model | Partner token metering, quota exhaustion and latency (below). |
+| **`vw_security_audit_trail`** | One row per audit event | SecOps audit (below). |
+
 > [!NOTE]
-> All three views are created by `make deploy-governance`, including on a fresh environment. `vw_monthly_agent_chargeback` and `vw_request_level_telemetry` read the stdout table, which Terraform pre-creates with the columns they query (the sinks add the remaining log columns on write), so they return rows as soon as the agents have served traffic.
+> All views are created by `make deploy-governance`, including on a fresh environment: Terraform pre-creates every table they read.
 >
 > Upgrading an environment where the sinks already created the stdout table: import it once before applying, e.g. `cd infrastructure/live/<env>/layer-4-governance && terragrunt import module.finops_analytics.google_bigquery_table.reasoning_engine_stdout projects/<governance-project>/datasets/esmeralda_telemetry_logs_<env>/tables/aiplatform_googleapis_com_reasoning_engine_stdout`.
 
 #### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
-Calculates monthly agent cost and context-caching savings. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:
+Calculates monthly cost and context-caching savings per **verified team** (`billed_team`), agent and model. A caller's team counts only when it comes from authentication; anything else lands in `billed_team = 'unattributed'` with `verified = FALSE`, and `attribution` says why. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:
 * **Uncached Prompt Tokens**: `\$0.075` per 1M tokens
 * **Cached Prompt Tokens**: `\$0.01875` per 1M tokens (**75% cost reduction**)
 * **Response & Reasoning Tokens**: `\$0.30` per 1M tokens
@@ -144,20 +193,29 @@ Calculates monthly agent cost and context-caching savings. The rates are **estim
 ```sql
 SELECT
   billing_month,
+  billed_team,
+  verified,
   agent_id,
   model,
   total_requests,
+  total_llm_calls,
   total_tokens,
   cache_hit_ratio_pct,
   net_total_chargeback_usd
 FROM `esm-<env>-governance-<sfx>.esmeralda_telemetry_logs_<env>.vw_monthly_agent_chargeback`
-ORDER BY billing_month DESC;
+ORDER BY billing_month DESC, net_total_chargeback_usd DESC;
 ```
 
-#### 2. `vw_request_level_telemetry` (Turn-by-Turn Cost Breakdown)
-Unifies the stdout stream and the event envelope to output per-request costs (`request_cost_usd`), token counts (`prompt`, `completion`, `thoughts`, `cached`), `execution_path`, and session context.
+> [!IMPORTANT]
+> `total_requests` counts **billable units** (one request trace through one agent), no longer individual model turns: a request that made three model calls counts once. The model-call count is in `total_llm_calls`. Token and cost totals are unchanged on legacy data. The historical columns keep their names and order; `billed_team`, `verified`, `attribution`, `workload_team`, `total_llm_calls` and `gateway_metered_requests` are appended.
 
-#### 3. `vw_security_audit_trail` (SecOps Compliance Audit)
+#### 2. `vw_request_level_telemetry` (Per-Request Cost Breakdown)
+One row per billable unit (a request through one agent): per-request costs (`request_cost_usd`), token counts (`prompt`, `completion`, `thoughts`, `cached`), `execution_path`, session and trace context, and who pays (`billed_team`, `verified`, `caller_principal`). `token_source` says whether the tokens came from the gateway, the workload or legacy events.
+
+#### 3. `vw_partner_apigee_chargeback` (Partner Gateway Chargeback)
+Monthly partner app chargeback through the Apigee partner proxies: requests, errors, quota exhaustion (`429`), input/output/thinking tokens, estimated cost, and the paying partner team (`billed_team`, `verified`). Contract records come from `vw_usage_normalized` (`source = 'gateway'`, `gateway.product = 'apigee'`, `caller.principal` = the Apigee app), and only carry the end-to-end latency. Legacy records (`apigee.gateway.interaction`) still provide the gateway vs. backend latency breakdown for historical traffic.
+
+#### 4. `vw_security_audit_trail` (SecOps Compliance Audit)
 Filters audit logs for security-critical methods:
 * `SetIamPolicy`: Tracks IAM role modifications and privilege escalations.
 * `AccessSecretVersion`: Audits Secret Manager credential reads.
@@ -169,28 +227,32 @@ Filters audit logs for security-critical methods:
 
 **What it is:** a *log-based metric* turns matching log entries into a Cloud Monitoring time series (a counter or a distribution of an extracted value). Dashboards and alert policies can then use it like any built-in metric.
 
-**In Esmeralda:** the agents print structured JSON events to stdout ([`agent/telemetry.py`](../../../apps/agents/cx-mortgage-orchestrator/agent/telemetry.py)), and Layer 4 turns them into metrics. Token and MCP metrics are created in the governance project **and** every spoke project; security metrics only in the governance project.
+**In Esmeralda:** every FinOps metric keys on `jsonPayload.schema="esmeralda.usage"`, so it covers every producer. Usage metrics are created in the governance project **and** every spoke project; security metrics only in the governance project.
 
-| Metric (`logging.googleapis.com/user/...`) | Source event / filter | Labels |
+| Metric (`logging.googleapis.com/user/...`) | Source / filter | Labels |
 | :--- | :--- | :--- |
-| `genai/realtime_token_consumption` | `genai_token_consumption` (`tokens.total_tokens`) | `agent_id`, `user_id`, ... |
-| `genai/prompt_tokens`, `genai/completion_tokens`, `genai/cached_tokens`, `genai/thoughts_tokens` | `genai_token_consumption` (per token type) | |
-| `genai/mcp_tool_execution_count` | `mcp_tool_execution` | `tool_name`, `mcp_service`, `status` |
+| `usage/input_tokens`, `usage/output_tokens`, `usage/cached_tokens`, `usage/reasoning_tokens` | Usage records with that token count > 0 (distribution of the per-record count) | `caller_team`, `verified`, `workload`, `workload_team`, `model`, `source`, `event` |
+| `usage/tool_calls` | Usage records with `event = "tool.call"` | `tool`, `server`, `status`, `workload`, `caller_team` |
+| `usage/unattributed_records` | Usage records without `caller.verified = true` | `workload`, `source`, `event`, `caller_team` |
 | `security/iam_privilege_changes`, `security/secret_access_operations`, `security/reasoning_engine_deployments` | Cloud Audit Logs (`SetIamPolicy`, `AccessSecretVersion`, `ReasoningEngine`) | |
+
+In PromQL a log-based metric is `logging_googleapis_com:user_<name>` with `/` replaced by `_`, and a distribution's total is its `_sum` series, e.g. `sum by (caller_team) (increase(logging_googleapis_com:user_usage_input_tokens_sum[1h]))`.
 
 Two dashboards are provisioned in the governance project. Get their IDs with `terragrunt output golden_signals_dashboard_id` / `finops_dashboard_id` in `infrastructure/live/<env>/layer-4-governance`.
 
 ### 1. `[Esmeralda <env>] FinOps - Real-Time Token Budget & Usage`
-* **Widgets**:
-  1. **Total LLM Token Consumption Volume over Time** (MQL: `fetch aiplatform.googleapis.com/ReasoningEngine | metric 'logging.googleapis.com/user/genai/realtime_token_consumption' | align delta(1m) | sum`)
-  2. **Prompt Cache Hit Token Savings over Time** (MQL on `genai/cached_tokens`)
-  3. **Gemini 3.7 Reasoning (Thoughts) Tokens over Time** (MQL on `genai/thoughts_tokens`)
-  4. **MCP Tool Executions Count over Time** (`genai/mcp_tool_execution_count`)
-  5. **P99 Token Consumption Spike (Runaway Loop Detector)** (`ALIGN_PERCENTILE_99`)
-  6. **MCP Tool Execution Frequency per Microservice** (grouped by `metric.label.tool_name`)
+All tiles are PromQL over the usage metrics:
+1. **Tokens per Minute by Caller Team** (input + output, split by `verified`)
+2. **Tokens per Minute by Workload & Model**
+3. **Prompt Cache Hit Token Savings over Time** (`usage/cached_tokens`)
+4. **Reasoning (Thinking) Tokens over Time** (`usage/reasoning_tokens`)
+5. **Tool Calls per Minute by Tool & Status** and **by MCP Server** (`usage/tool_calls`)
+6. **P99 Input Tokens per Call (Runaway Loop Detector)** (`histogram_quantile` on `usage/input_tokens`)
+7. **Unattributed Usage Records (expected: 0)**
 
 ### 2. `[Esmeralda <env>] Agent Platform - Golden Signals & Health`
-* **Widgets**: Cloud Run latencies (P50/P95/P99), Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, and the entry point's request rate by response code class (internal Application Load Balancer metrics).
+* **Widgets**: Cloud Run latencies, Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, the entry point's request rate by response code class (internal Application Load Balancer metrics), and Agent Engine query latency P95.
+* **Native ADK OpenTelemetry tiles** (PromQL; series land as `prometheus.googleapis.com/<name>/histogram`): agent invocation duration P95 by `gen_ai.agent.name`, tool executions by agent and tool (`gen_ai.execute_tool.duration_count`), model tokens per agent (`adk.experimental.invoke_agent.total_tokens_sum`) and client tokens by model and token type (`gen_ai.client.token.usage_sum`). These feed the ops view only; FinOps uses the usage records.
 
 > [!NOTE]
 > The former synthetic uptime check of the ingress gateway was removed: it targeted an internal host, which a public uptime check can't reach. The entry point request-rate tile replaces it.
@@ -207,24 +269,34 @@ Two dashboards are provisioned in the governance project. Get their IDs with `te
 
 | Alert Policy (`[Esmeralda <env>] ...`) | Condition | Channels |
 | :--- | :--- | :--- |
-| **Runaway Agent Loop - Token Budget Exceeded** | P99 of `genai/realtime_token_consumption` > `runaway_loop_token_threshold` (50,000 in dev) for 60s | Email + Pub/Sub |
+| **Runaway Agent Loop - Token Budget Exceeded** | P99 of `usage/input_tokens` (per model call or gateway request) > `runaway_loop_token_threshold` (50,000 in dev) for 60s | Email + Pub/Sub |
 | **Reasoning Engine High Query Rate / 429 Quota** | Reasoning Engine `request_count` rate > 80 for 3 min | Email + Pub/Sub |
 | **High P95 Latency (>10s)** | Cloud Run `request_latencies` P95 > 10,000 ms for 5 min | Email |
-| **Token Rate-of-Change Anomaly (>300% Spike)** | P99 of `genai/realtime_token_consumption` > 500,000 over 5 min | Email + Pub/Sub |
+| **Token Rate-of-Change Anomaly (>300% Spike)** | PromQL: input + output tokens over 5 min (all producers) > 500,000 | Email + Pub/Sub |
+| **Unattributed Usage - Records Without a Verified Caller** | Any `usage/unattributed_records` in 5 min (expected: 0). **Off by default** (`alert_on_unattributed_usage = false`) | Email + Pub/Sub |
 | **SecOps - Privilege Escalation & IAM Modification Alert** | Any `security/iam_privilege_changes` event | Email + Pub/Sub |
+
+> [!IMPORTANT]
+> The unattributed-usage alert stays off until verified attribution lands (observability design, phase 6): until then the agents write `caller.verified = false` and every record would count. Turn it on then by setting `alert_on_unattributed_usage = true` (the default will flip). The **Unattributed Usage Records** dashboard tile and the `attribution` column of the views already show the gap.
 
 > [!NOTE]
 > Secret access and Reasoning Engine deployments are tracked as metrics and in `vw_security_audit_trail`, but have no alert policy. The Pub/Sub topic has no subscriber in the IaC yet.
 >
-> When the optional Envoy adapter is enabled (`envoy` in `gateways.enabled`), Layer 4 also creates a 5xx-ratio alert and a token-fetch-failure alert for `envoy-gateway-<env>`, and excludes it from the P95 latency alert and SLO. The default `direct` backend has no proxy of its own, so it adds no alert.
+> When the optional Envoy adapter is enabled (`envoy` in `gateways.enabled`), Layer 4 also creates a 5xx-ratio alert and a token-fetch-failure alert for `envoy-gateway-<env>`, and excludes it from the P95 latency alert. The default `direct` backend has no proxy of its own, so it adds no alert.
 
-### Platform Service Level Objectives (SLOs)
+### Service Level Objectives (SLOs)
 
 **What it is:** an *SLO* is a reliability target over a time window (e.g. "99.5% of requests succeed over 30 days"); the shortfall you may still afford is the *error budget*.
 
-**In Esmeralda:** a custom monitored service `esmeralda-agent-platform-<env>` carries two SLOs, both on a 30-day rolling window:
-* **Availability SLO**: 99.5% success rate (`platform-availability-995`).
-* **Latency SLO**: 95% of Cloud Run requests served under 8,000 ms (`reasoning-latency-95-8s`).
+**In Esmeralda:** custom monitored services with request-based SLIs, all on a 30-day rolling window, evaluated over the governance metrics scope (goals and thresholds in the Layer 4 variable `slo_config`):
+
+| Service | SLO | Metric |
+| :--- | :--- | :--- |
+| `esmeralda-mcp-<name>-<env>`, one per MCP server in `slo_mcp_services` (Cloud Run service `<name>-<env>`) | `availability`: 99.5% non-5xx requests; `latency`: 95% under 5,000 ms | `run.googleapis.com/request_count`, `run.googleapis.com/request_latencies` |
+| `esmeralda-agents-<env>` (all Agent Engine agents) | `availability`: 99.5% non-5xx queries; `latency`: 95% under 10,000 ms (end to end, streamed queries included) | `aiplatform.googleapis.com/reasoning_engine/request_count`, `.../request_latencies` |
+
+> [!NOTE]
+> The former platform SLOs pointed at `cx-mortgage-orchestrator` as a Cloud Run service, but it runs on Agent Engine, so they never had data. The agent SLOs now use the Agent Engine platform metrics, which every Reasoning Engine emits whatever its framework.
 
 ### Cloud Data Loss Prevention (DLP) PII Template
 
@@ -267,7 +339,7 @@ flowchart LR
    * The gateway's `CONTENT_AUTHZ` extension that would send decrypted payloads to Model Armor is written but **disabled** (`count = 0`); the service-agent grants are already in place.
 3. **Gateway Request Logs**:
    * Every gateway decision (host, status, allow/deny) is logged in the governance project: `gcloud logging read 'logName:"gateway_requests"' --project=<governance-project-id>`.
-   * Token counts for FinOps do **not** come from the gateway; they come from the agents' own `genai_token_consumption` events (sections 2 and 3).
+   * Token counts for FinOps come from `esmeralda.usage` records (sections 1 to 3): the agents' own records today, and gateway records when a gateway on the hop writes them (Apigee does; Agent Gateway request logs would need an adapter view).
 
 ---
 
