@@ -37,9 +37,18 @@ The running narrative follows a loan officer asking *"Can you verify Julian Ster
 - [4.1 Developer Usage Guide](https://google.github.io/esmeralda/4-esmeralda-library/guide/): building ADK and A2A agents, calling MCP servers, local execution, and operating a checkout with `esmeralda mcp`.
 - [4.2 Package & CLI Reference](https://google.github.io/esmeralda/4-esmeralda-library/reference/): Python modules, CLI subcommands, environment variables, and telemetry schemas.
 
-## 5. Reference & Contributing
+## 5. Multi-Cloud & Interoperability
 
-- [5.1 Make Targets](https://google.github.io/esmeralda/reference/make-targets/): every Make target, generated from the Makefile.
-- [5.2 Contributing Guide](https://google.github.io/esmeralda/contributing/): CLA, local testing, docs build, dependency workflow, and conventions.
+- [5.0 Why Multi-Cloud Agents](https://google.github.io/esmeralda/5-multi-cloud/): why agents end up on more than one cloud, the four principles (contracts, gateway per hop, attribution from authentication, fail closed), and inbound vs. outbound cross-cloud traffic.
+- [5.1 Identity Across Clouds](https://google.github.io/esmeralda/5-multi-cloud/01-identity-across-clouds/): workload identity federation, OIDC `iss#sub` verified at the gateway (Apigee cross-cloud shared flow), SPIFFE federation, mTLS, `federated` catalog callers, and fail-closed enforcement.
+- [5.2 Cross-Cloud Connectivity & Protocols](https://google.github.io/esmeralda/5-multi-cloud/02-cross-cloud-connectivity/): the gateway per hop (Apigee, Envoy, `direct`, Agent Gateway), network options (public endpoints, HA VPN, Cross-Cloud Interconnect), and A2A and MCP as interoperable protocols.
+- [5.3 Unified Observability & Chargeback](https://google.github.io/esmeralda/5-multi-cloud/03-unified-observability-and-chargeback/): the `esmeralda.usage` record as the normalized schema, producers on other clouds (OTel GenAI span adapter, OpenTelemetry Collector), BigQuery landing, and chargeback by verified team.
+- [5.4 Bringing an Agent from Another Cloud, End to End](https://google.github.io/esmeralda/5-multi-cloud/04-bringing-an-agent-from-another-cloud/): worked example of a synthetic underwriting agent on another cloud calling `ai-coe-mortgage-specialist`, with catalog entries and usage records.
+- [5.5 Status & Roadmap](https://google.github.io/esmeralda/5-multi-cloud/05-status-and-roadmap/): what is on `main`, in open pull requests, and planned for multi-cloud support.
+
+## 6. Reference & Contributing
+
+- [6.1 Make Targets](https://google.github.io/esmeralda/reference/make-targets/): every Make target, generated from the Makefile.
+- [6.2 Contributing Guide](https://google.github.io/esmeralda/contributing/): CLA, local testing, docs build, dependency workflow, and conventions.
 - [AGENTS.md](https://github.com/google/esmeralda/blob/main/AGENTS.md): rules for AI coding agents working in the repository.
-- [5.3 Code of Conduct](https://google.github.io/esmeralda/code-of-conduct/): community standards.
+- [6.3 Code of Conduct](https://google.github.io/esmeralda/code-of-conduct/): community standards.

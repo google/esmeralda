@@ -199,4 +199,10 @@ Run `uv run esmeralda --help` or `make help` for the complete command reference.
   * [3.3 Security, SPIFFE Identity, CMEK & Internal PKI (Layer 3)](docs/src/1-platform-foundations/03-security-iam-and-telemetry.md)
 * **[4. Esmeralda Library & CLI](docs/src/4-esmeralda-library/index.md)**
   * [4.1 Developer Usage Guide](docs/src/4-esmeralda-library/guide.md) & [4.2 Package & CLI Reference](docs/src/4-esmeralda-library/reference.md)
-* **[5. Reference & Contributing](docs/src/contributing.md)** — [5.1 Make Targets](docs/src/reference/make-targets.md), [5.2 Contributing Guide](docs/src/contributing.md), [AGENTS.md](AGENTS.md), [`llms.txt`](docs/src/llms.txt), and [5.3 Code of Conduct](docs/src/code-of-conduct.md).
+* **[5. Multi-Cloud & Interoperability](docs/src/5-multi-cloud/index.md)**
+  * [5.1 Identity Across Clouds](docs/src/5-multi-cloud/01-identity-across-clouds.md)
+  * [5.2 Cross-Cloud Connectivity & Protocols](docs/src/5-multi-cloud/02-cross-cloud-connectivity.md)
+  * [5.3 Unified Observability & Chargeback](docs/src/5-multi-cloud/03-unified-observability-and-chargeback.md)
+  * [5.4 Bringing an Agent from Another Cloud, End to End](docs/src/5-multi-cloud/04-bringing-an-agent-from-another-cloud.md)
+  * [5.5 Status & Roadmap](docs/src/5-multi-cloud/05-status-and-roadmap.md)
+* **[6. Reference & Contributing](docs/src/contributing.md)** — [6.1 Make Targets](docs/src/reference/make-targets.md), [6.2 Contributing Guide](docs/src/contributing.md), [AGENTS.md](AGENTS.md), [`llms.txt`](docs/src/llms.txt), and [6.3 Code of Conduct](docs/src/code-of-conduct.md).

@@ -110,7 +110,14 @@ nav:
     - "4.0 Overview": 4-esmeralda-library/index.md
     - "4.1 Developer Usage Guide": 4-esmeralda-library/guide.md
     - "4.2 Package & CLI Reference": 4-esmeralda-library/reference.md
-  - "5. Reference & Contributing":
-    - "5.1 Make Targets": reference/make-targets.md
-    - "5.2 Contributing Guide": contributing.md
-    - "5.3 Code of Conduct": code-of-conduct.md
+  - "5. Multi-Cloud & Interoperability":
+    - "5.0 Why Multi-Cloud Agents": 5-multi-cloud/index.md
+    - "5.1 Identity Across Clouds": 5-multi-cloud/01-identity-across-clouds.md
+    - "5.2 Cross-Cloud Connectivity & Protocols": 5-multi-cloud/02-cross-cloud-connectivity.md
+    - "5.3 Unified Observability & Chargeback": 5-multi-cloud/03-unified-observability-and-chargeback.md
+    - "5.4 Bringing an Agent from Another Cloud": 5-multi-cloud/04-bringing-an-agent-from-another-cloud.md
+    - "5.5 Status & Roadmap": 5-multi-cloud/05-status-and-roadmap.md
+  - "6. Reference & Contributing":
+    - "6.1 Make Targets": reference/make-targets.md
+    - "6.2 Contributing Guide": contributing.md
+    - "6.3 Code of Conduct": code-of-conduct.md
