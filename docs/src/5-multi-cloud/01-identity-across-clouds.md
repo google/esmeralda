@@ -166,7 +166,7 @@ The other identity types follow the same shape:
 Identities the platform creates are referenced from Terraform unit outputs (`ref: layer-3-security:<output>`), never pasted by hand. Identities owned elsewhere, such as an external issuer, are written as literals and reviewed by platform and security through CODEOWNERS.
 
 > [!NOTE]
-> The team-owned `catalog/` folder, the `federated` identity type, and `esmeralda catalog resolve` / `show` are in an open pull request. On `main`, the service catalog still lives in the `catalog` block of `infrastructure/live/<env>/env.yaml`, whose `callers` lists agents and the test VM. See [5.5 Status & Roadmap](./05-status-and-roadmap.md).
+> The team-owned `catalog/` folder, the `federated` identity type and `esmeralda catalog resolve` / `show` are on `main` ([2.6 Service Catalog](../3-agentops-and-lifecycle/06-service-catalog.md)). Today only agents and `service_account` callers are compiled into enforcement (IAM grants); `federated` callers are resolved and shown, and compiling them into Apigee products and apps is planned. See [5.5 Status & Roadmap](./05-status-and-roadmap.md).
 
 ---
 

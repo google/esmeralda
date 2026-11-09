@@ -1,4 +1,4 @@
-# catalog/external/clouds/example-aws-underwriter.yaml
+# catalog/external/clouds/example-cloud-underwriter.yaml
 # EXAMPLE ONLY (example: true): a workload on another cloud, verified at the gateway by its OIDC
 # (issuer, subject) through workload identity federation. Not compiled into enforcement until a
 # non-example target lists it under callers. Owned by platform + security.

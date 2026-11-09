@@ -16,11 +16,11 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | Apigee partner authentication (`VerifyAPIKey`), API products and `owner_identity` app attribute | ✅ | See [1.4 Apigee X Partner Gateway](../2-workloads-and-catalog/04-apigee-partner-gateway.md). |
 | Apigee `cross-cloud` capability unit: trusted-issuer KeyValueMap | ✅ | The KeyValueMap is managed; nothing on `main` reads it yet. |
 | Cross-cloud shared flow: fail-closed OIDC verification (`401` / `403`), `iss#sub` principal, spoof-proof `x-verified-*` headers, key-to-identity binding | 🚧 | Open pull request (Apigee cross-cloud shared flow and partner chargeback). |
-| `federated` and `spiffe` caller types in the catalog | 🚧 | Part of the team-owned `catalog/` pull request. |
+| `federated` and `spiffe` caller types in the catalog | ✅ | Declared and validated in the team-owned `catalog/`; only `service_account` callers and agents are compiled into IAM today. |
 | Per-agent outbound identity (no shared invoker identity across agents) | 🗺️ | Prerequisite for verified per-agent attribution on every path. |
 | Compile catalog callers into Apigee products, apps and `owner_identity` | 🗺️ | Today configured directly in Terraform ([5.4 Steps 3–4](./04-bringing-an-agent-from-another-cloud.md#step-3-trust-the-issuer-platform-security)). |
 | Envoy cross-cloud path (JWT verification against an external issuer) | 🗺️ | The non-Apigee inbound alternative. |
-| SPIFFE federation and mTLS callers, end to end | 🗺️ | Catalog shape exists in the catalog pull request; enforcement planned. |
+| SPIFFE federation and mTLS callers, end to end | 🗺️ | The catalog shape exists; enforcement planned. |
 
 ### Connectivity & Protocols
 
@@ -51,8 +51,8 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 
 | Building Block | Status | Notes |
 | :--- | :---: | :--- |
-| `catalog` block in `env.yaml` (targets, routes, probes, `callers` for agents and the test VM) | ✅ | Drives the entry point, IAM grants and `esmeralda verify`. |
-| Team-owned `catalog/` folder, `contracts/catalog.schema.json`, `esmeralda catalog resolve` / `show` | 🚧 | Open pull request; compiles to the same Terraform input with no behavior change. |
+| `catalog` map consumed by the Terraform units (targets, routes, probes, `callers` for agents and the test VM) | ✅ | Drives the entry point, IAM grants and `esmeralda verify`; `env.yaml` decodes it from `catalog/.resolved/<env>.json`. |
+| Team-owned `catalog/` folder, `contracts/catalog.schema.json`, `esmeralda catalog resolve` / `show` | ✅ | Compiles to the same Terraform input as the former inline `env.yaml` block. See [2.6 Service Catalog](../3-agentops-and-lifecycle/06-service-catalog.md). |
 | Additional catalog sources (Agent Registry inventory, project labels, enterprise adapters) | 🗺️ | Extension points are declared in `catalog/sources.yaml`. |
 
 ---
