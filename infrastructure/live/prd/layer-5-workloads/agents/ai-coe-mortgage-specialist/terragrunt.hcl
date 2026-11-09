@@ -95,8 +95,10 @@ inputs = {
   psc_subnet_id      = dependency.networking.outputs.psc_subnet_id
   enable_psc_network = true
 
+  # Keep use_cloud_sql = false until the specialist image ships greenlet + async PG driver
+  # dependencies required by a2a-sdk's DatabaseTaskStore (follow-up PR).
   database_name                      = "a2a_tasks"
-  use_cloud_sql                      = try(dependency.cloud_sql.outputs.enabled, false)
+  use_cloud_sql                      = false
   db_secret_id                       = try(dependency.cloud_sql.outputs.db_secret_id, "")
   cloud_sql_instance_connection_name = try(dependency.cloud_sql.outputs.instance_connection_name, "")
 

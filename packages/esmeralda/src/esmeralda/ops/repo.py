@@ -41,6 +41,13 @@ LIVE = Path("infrastructure/live")
 UNIT_FILE = "terragrunt.hcl"
 _SKIP_DIRS = {".terragrunt-cache", ".terraform", ".local_states"}
 
+# One-release fallback for units flattened from layer-5-workloads/services/* to layer-5-workloads/*.
+_MOVED_UNITS: dict[str, str] = {
+    "layer-5-workloads/services/test-vm": "layer-5-workloads/test-vm",
+    "layer-5-workloads/services/iap-egress": "layer-5-workloads/iap-egress",
+}
+_LEGACY_UNIT_PATHS: dict[str, str] = {v: k for k, v in _MOVED_UNITS.items()}
+
 
 class OpsError(Exception):
     """An operation failed; the message says what to do about it."""
@@ -98,6 +105,8 @@ def units(root: Path, env: str) -> list[str]:
 def unit_dir(root: Path, env: str, unit: str) -> Path:
     unit = unit.strip().strip("/")
     known = units(root, env)
+    if unit not in known and unit in _MOVED_UNITS and _MOVED_UNITS[unit] in known:
+        unit = _MOVED_UNITS[unit]
     if unit not in known:
         close = [u for u in known if unit and unit.split("/")[-1] in u]
         hint = f" Did you mean: {', '.join(close)}?" if close else f" Known: {', '.join(known)}"
@@ -152,7 +161,12 @@ class UnitState:
 
 
 def state_path(root: Path, env: str, unit: str) -> Path:
-    return root / LIVE / ".local_states" / env / unit / "terraform.tfstate"
+    primary = root / LIVE / ".local_states" / env / unit / "terraform.tfstate"
+    if not primary.is_file() and unit in _LEGACY_UNIT_PATHS:
+        legacy = root / LIVE / ".local_states" / env / _LEGACY_UNIT_PATHS[unit] / "terraform.tfstate"
+        if legacy.is_file():
+            return legacy
+    return primary
 
 
 def parse_state(unit: str, data: dict[str, Any]) -> UnitState:

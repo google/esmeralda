@@ -432,10 +432,13 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
 # -----------------------------------------------------------------------------
 
 resource "google_agent_registry_service" "core_gapi_services" {
-  provider     = google-beta
-  project      = var.project_id
-  location     = var.region
-  service_id   = "core-gapi-services-${var.agent_name}"
+  provider = google-beta
+  project  = var.project_id
+  location = var.region
+  # Keep service_id = "core-gapi-services": the provider plans a service_id change as in-place,
+  # but the Agent Registry API treats service_id as immutable ("inconsistent result after apply").
+  # Each agent runs in its own project so there is no collision today; per-agent naming is a follow-up.
+  service_id   = "core-gapi-services"
   display_name = "gapi.core.services"
   description  = "Core Google APIs and services required for Vertex AI Agent Engine and ADK runtime"
 

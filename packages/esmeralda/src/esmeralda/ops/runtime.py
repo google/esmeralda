@@ -284,12 +284,15 @@ async def verify(
         }
 
     gw = test_gateway(root, env, probe=probe, timeout=timeout)
+    gw_detail = f"{gw.get('ok', 0)} ok, {gw.get('failed', 0)} failed"
+    if not gw.get("passed") and not gw.get("hosts") and gw.get("error"):
+        gw_detail = f"{gw_detail} ({gw['error']})"
     steps: list[dict[str, Any]] = [
         {
             "step": "gateway",
             "passed": bool(gw.get("passed")),
             "seconds": gw.get("seconds", 0.0),
-            "detail": f"{gw.get('ok', 0)} ok, {gw.get('failed', 0)} failed",
+            "detail": gw_detail,
         }
     ]
     queries: dict[str, dict[str, Any]] = {}
