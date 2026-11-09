@@ -47,6 +47,45 @@ locals {
   effective_custom_audiences = length(var.custom_audiences) > 0 ? var.custom_audiences : local.default_custom_audiences
 }
 
+# Dedicated per-service workload Service Account (sa-<service>-<env>)
+resource "google_service_account" "service_sa" {
+  account_id   = "sa-${var.service_name}-${var.environment}"
+  display_name = "${local.effective_display_name} MCP Server Workload Service Account"
+  project      = var.project_id
+}
+
+# Baseline observability, OTel telemetry export, and DLP permissions for the per-service workload identity
+resource "google_project_iam_member" "service_sa_roles" {
+  for_each = toset([
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+    "roles/cloudtrace.agent",
+    "roles/telemetry.writer",
+    "roles/dlp.user",
+  ])
+  project = var.project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.service_sa.email}"
+}
+
+# Shared VPC backend subnetwork permission for Direct VPC Egress (role parity with legacy mcps_subnet_user)
+resource "google_compute_subnetwork_iam_member" "service_subnet_user" {
+  project    = can(regex("^projects/[^/]+/regions/[^/]+/subnetworks/[^/]+$", var.subnet_id)) ? split("/", var.subnet_id)[1] : var.project_id
+  region     = var.region
+  subnetwork = var.subnet_id
+  role       = "roles/compute.networkUser"
+  member     = "serviceAccount:${google_service_account.service_sa.email}"
+}
+
+# Optional Secret Manager access grants for mounted/injected secrets
+resource "google_secret_manager_secret_iam_member" "service_secret_access" {
+  for_each  = var.secret_env_vars
+  project   = var.project_id
+  secret_id = each.value.secret
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.service_sa.email}"
+}
+
 # Deploy MCP service on Cloud Run v2 with internal-and-load-balancing ingress
 resource "google_cloud_run_v2_service" "service" {
   name                = "${var.service_name}-${var.environment}"
@@ -58,7 +97,7 @@ resource "google_cloud_run_v2_service" "service" {
   custom_audiences = local.effective_custom_audiences
 
   template {
-    service_account = var.service_account_email
+    service_account = google_service_account.service_sa.email
 
     scaling {
       min_instance_count = var.min_instances

@@ -18,16 +18,6 @@ module "mcp_service" {
   memory_limit             = var.memory_limit
   tools_spec_path          = var.tools_spec_path
   internal_hostname        = var.internal_hostname
-  service_account_email    = var.service_account_email
-  custom_audiences = [
-    "http://dms.internal.gateway",
-    "https://dms.internal.gateway",
-    "https://dms.internal.gateway/mcp",
-    "http://legacy-dms.esmeralda.internal",
-    "http://legacy-dms.esmeralda.internal/mcp",
-    "https://legacy-dms.esmeralda.internal",
-    "https://legacy-dms.esmeralda.internal/mcp",
-  ]
 }
 
 moved {

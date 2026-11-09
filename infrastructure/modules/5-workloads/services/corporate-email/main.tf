@@ -18,16 +18,6 @@ module "mcp_service" {
   memory_limit             = var.memory_limit
   tools_spec_path          = var.tools_spec_path
   internal_hostname        = var.internal_hostname
-  service_account_email    = var.service_account_email
-  custom_audiences = [
-    "http://email.internal.gateway",
-    "https://email.internal.gateway",
-    "https://email.internal.gateway/mcp",
-    "http://corporate-email.esmeralda.internal",
-    "http://corporate-email.esmeralda.internal/mcp",
-    "https://corporate-email.esmeralda.internal",
-    "https://corporate-email.esmeralda.internal/mcp",
-  ]
 }
 
 moved {

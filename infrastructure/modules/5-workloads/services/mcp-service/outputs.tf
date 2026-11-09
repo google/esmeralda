@@ -14,6 +14,6 @@ output "registry_service_id" {
 }
 
 output "service_account_email" {
-  description = "The workload service account email of the deployed Cloud Run service"
-  value       = google_cloud_run_v2_service.service.template[0].service_account
+  description = "The dedicated per-service workload service account email"
+  value       = google_service_account.service_sa.email
 }
