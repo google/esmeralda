@@ -18,7 +18,23 @@ SHELL := /bin/bash
 
 ENV ?= dev
 LIVE_DIR = infrastructure/live/$(ENV)
-CICD_DIR = infrastructure/live/shared/layer-0-cicd
+
+# Layer 0 (shared CI/CD) unit. With the local backend its state lives in the checkout that applied it, so a
+# git worktree has none: when this checkout has no layer-0 local state and the main checkout (resolved via
+# `git rev-parse --git-common-dir`) has it, read the outputs from the main checkout. Override with
+# CICD_DIR=<checkout>/infrastructure/live/shared/layer-0-cicd.
+CICD_UNIT = infrastructure/live/shared/layer-0-cicd
+CICD_STATE = infrastructure/live/.local_states/shared/layer-0-cicd/terraform.tfstate
+MAIN_CHECKOUT := $(patsubst %/,%,$(dir $(abspath $(shell git rev-parse --git-common-dir 2>/dev/null))))
+ifeq ($(origin CICD_DIR),undefined)
+ifeq ($(wildcard $(CICD_STATE)),)
+ifneq ($(and $(MAIN_CHECKOUT),$(wildcard $(MAIN_CHECKOUT)/$(CICD_STATE))),)
+CICD_DIR := $(MAIN_CHECKOUT)/$(CICD_UNIT)
+CICD_FROM_MAIN := 1
+endif
+endif
+endif
+CICD_DIR ?= $(CICD_UNIT)
 
 # Image builds (env-neutral, shared dev repository)
 BUILD_TAG ?= dev-latest
@@ -197,6 +213,10 @@ test-e2e: ## End-to-end check of a deployed env: specialist, then orchestrator -
 
 deploy-cicd: ## Deploy Layer 0: shared CI/CD project, dev + release Artifact Registry repos, builder/promoter SAs
 	@echo "🏗️  Deploying Layer 0: shared CI/CD..."
+	@if [ -n "$(CICD_FROM_MAIN)" ]; then \
+		echo "❌ Layer-0 state is in the main checkout ($(MAIN_CHECKOUT)), not in this worktree: run make deploy-cicd there, or set CICD_DIR explicitly." >&2; \
+		exit 1; \
+	fi
 	@cd $(CICD_DIR) && terragrunt --non-interactive apply -auto-approve
 
 # ==============================================================================
@@ -240,8 +260,13 @@ define build_image
 	@echo "🏗️  Building $(2) (:$(BUILD_TAG), :dev-$(GIT_SHA)) in the shared CI/CD project..."
 	$(if $(3),@uv export --frozen --package $(3) --no-dev --no-emit-workspace --quiet -o $(1)/requirements.lock)
 	$(if $(4),@rm -rf $(1)/dist && uv build --package $(4) --wheel --out-dir $(1)/dist --quiet)
+	$(if $(CICD_FROM_MAIN),@echo "ℹ️  No layer-0 state in this worktree: reading CI/CD outputs from $(CICD_DIR)")
 	@CICD_JSON=$$(cd $(CICD_DIR) && terragrunt output -json) && \
-	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r .cicd_project_id.value) && \
+	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r '.cicd_project_id.value // empty') && \
+	if [ -z "$$CICD_PROJ" ]; then \
+		echo "❌ No layer-0 CI/CD outputs in $(CICD_DIR) (no state there?). Deploy layer 0 (make deploy-cicd), or set CICD_DIR=<checkout with layer-0 state>/$(CICD_UNIT)." >&2; \
+		exit 1; \
+	fi && \
 	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
 	BUILDER_SA=$$(echo "$$CICD_JSON" | jq -r .builder_sa_email.value) && \
 	SOURCE_BUCKET=$$(echo "$$CICD_JSON" | jq -r .build_source_bucket.value) && \
