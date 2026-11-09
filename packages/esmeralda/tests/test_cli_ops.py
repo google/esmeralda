@@ -462,6 +462,13 @@ def test_cli_verify_probe_and_skip_query(ops_checkout, monkeypatch, capsys):
     assert cli.main(["verify", "--env", "dev", "--skip-query"]) == 1
     assert "Verification failed" in capsys.readouterr().out
 
+    # When test_gateway fails before probing any host (0 ok, 0 failed), verify surfaces the fatal error:
+    fatal_out = "❌ No test VM outputs in infrastructure/live/dev/layer-5-workloads/test-vm.\n"
+    monkeypatch.setattr(repo, "run", lambda cmd, **_: subprocess.CompletedProcess(cmd, 1, "", fatal_out))
+    assert cli.main(["verify", "--env", "dev", "--skip-query", "--json"]) == 1
+    fatal_data = json.loads(capsys.readouterr().out)
+    assert "No test VM outputs in infrastructure/live/dev/layer-5-workloads/test-vm" in fatal_data["steps"][0]["detail"]
+
 
 def test_cli_verify_partner(ops_checkout, monkeypatch, capsys):
     (ops_checkout / "scripts").mkdir(exist_ok=True)

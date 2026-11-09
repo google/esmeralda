@@ -212,7 +212,7 @@ UNITS = [
     "layer-5-workloads/entrypoint",
     "layer-5-workloads/gateways/direct",
     "layer-5-workloads/services/legacy-dms",
-    "layer-5-workloads/services/test-vm",
+    "layer-5-workloads/test-vm",
 ]
 
 
@@ -360,7 +360,7 @@ def test_parse_state_drops_sensitive_and_counts_managed():
 def test_status_summary(checkout):
     result = infra.status(checkout, "dev")
     assert result["deployed"] == 6 and result["units"] == 7
-    assert result["not_deployed"] == ["layer-5-workloads/services/test-vm"]
+    assert result["not_deployed"] == ["layer-5-workloads/test-vm"]
     assert result["projects"] == {"cx_agents": "demo-cx"}
     assert result["entry_point"] == {"ip": "10.0.1.3", "domain": "example.internal", "routing": {"default": "direct"}}
     assert result["gateways"]["direct"]["routes"] == ["legacy-dms.example.internal (mcp)"]
@@ -368,6 +368,43 @@ def test_status_summary(checkout):
     assert result["mcp_services"] == {"legacy-dms": "https://legacy-dms.run.app"}
     assert "test_vm" not in result
     assert "s3cret" not in json.dumps(result)
+
+
+def test_moved_unit_path_and_legacy_state_fallback(checkout):
+    # Legacy unit paths resolve to the flattened Layer 5 unit directory:
+    assert infra.resolve_unit(checkout, "dev", "layer-5-workloads/services/test-vm") == "layer-5-workloads/test-vm"
+    assert repo.unit_dir(checkout, "dev", "layer-5-workloads/services/test-vm") == (
+        checkout / "infrastructure/live/dev/layer-5-workloads/test-vm"
+    )
+
+    # When only the legacy local state file exists, state_path and status fall back to it:
+    legacy_state = (
+        checkout
+        / "infrastructure/live/.local_states/dev/layer-5-workloads/services/test-vm/terraform.tfstate"
+    )
+    legacy_state.parent.mkdir(parents=True, exist_ok=True)
+    legacy_state.write_text(
+        json.dumps(_state({"instance_name": "test-vm-dev", "instance_zone": "us-central1-a", "project_id": "p"}, 1))
+    )
+    result = infra.status(checkout, "dev")
+    assert result["test_vm"] == {"instance_name": "test-vm-dev", "instance_zone": "us-central1-a"}
+    unit_res = infra.status(checkout, "dev", "layer-5-workloads/services/test-vm")
+    assert unit_res["unit"] == "layer-5-workloads/test-vm" and unit_res["deployed"] is True
+
+    # summarize_status also supports a UnitState keyed by the legacy unit path directly:
+    legacy_only = [
+        repo.UnitState(
+            "layer-5-workloads/services/test-vm",
+            True,
+            1,
+            {"instance_name": "legacy-vm", "instance_zone": "us-central1-b"},
+            [],
+        )
+    ]
+    assert infra.summarize_status("dev", "local", legacy_only)["test_vm"] == {
+        "instance_name": "legacy-vm",
+        "instance_zone": "us-central1-b",
+    }
 
 
 def test_status_of_one_unit_summarises_blobs(checkout):
@@ -389,7 +426,7 @@ def test_list_units(checkout):
         "excluded": False,
         "dependencies": [],
     }
-    assert by_unit["layer-5-workloads/services/test-vm"]["deployed"] is False
+    assert by_unit["layer-5-workloads/test-vm"]["deployed"] is False
 
 
 def test_parse_output_json():

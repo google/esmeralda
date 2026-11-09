@@ -114,10 +114,30 @@ if [ -z "${APIGEE_ENV}" ]; then
   exit 0
 fi
 
-VM_DIR="${L5_DIR}/services/test-vm"
+# Prefer the flattened layer-5-workloads/test-vm unit; fall back for one release to the legacy
+# layer-5-workloads/services/test-vm directory or local state file.
+state_output() { jq -r --arg k "$2" '.outputs[$k].value // empty' "$1" 2>/dev/null || true; }
+VM_DIR="${L5_DIR}/test-vm"
+if [ ! -d "${VM_DIR}" ] && [ -d "${L5_DIR}/services/test-vm" ]; then
+  VM_DIR="${L5_DIR}/services/test-vm"
+fi
 VM_NAME="$(tg_output "${VM_DIR}" instance_name)"
 VM_ZONE="$(tg_output "${VM_DIR}" instance_zone)"
 VM_PROJECT="$(tg_output "${VM_DIR}" project_id)"
+if [ -z "${VM_NAME}" ] && [ -d "${L5_DIR}/services/test-vm" ] && [ "${VM_DIR}" != "${L5_DIR}/services/test-vm" ]; then
+  VM_NAME="$(tg_output "${L5_DIR}/services/test-vm" instance_name)"
+  VM_ZONE="$(tg_output "${L5_DIR}/services/test-vm" instance_zone)"
+  VM_PROJECT="$(tg_output "${L5_DIR}/services/test-vm" project_id)"
+fi
+for candidate_state in \
+  "infrastructure/live/.local_states/${ENV_NAME}/layer-5-workloads/test-vm/terraform.tfstate" \
+  "infrastructure/live/.local_states/${ENV_NAME}/layer-5-workloads/services/test-vm/terraform.tfstate"; do
+  if [ -z "${VM_NAME}" ] && [ -f "${candidate_state}" ]; then
+    VM_NAME="$(state_output "${candidate_state}" instance_name)"
+    VM_ZONE="$(state_output "${candidate_state}" instance_zone)"
+    VM_PROJECT="$(state_output "${candidate_state}" project_id)"
+  fi
+done
 [ -n "${VM_NAME}" ] && [ -n "${VM_ZONE}" ] && [ -n "${VM_PROJECT}" ] || \
   die "No test VM outputs in ${VM_DIR}. Deploy workloads first."
 

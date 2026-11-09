@@ -1,4 +1,4 @@
-# infrastructure/live/prd/layer-5-workloads/services/iap-egress/terragrunt.hcl
+# infrastructure/live/prd/layer-5-workloads/iap-egress/terragrunt.hcl
 # Layer 5 (final step): grant least-privilege per-target roles/iap.egressor on each Agent Registry
 # entry once the MCP services and Reasoning Engine agents have registered themselves.
 include "root" {
@@ -6,23 +6,23 @@ include "root" {
 }
 
 terraform {
-  source = "../../../../../modules//5-workloads/services/iap-egress"
+  source = "../../../../modules//5-workloads/iap-egress"
 }
 
 dependency "projects" {
-  config_path = "../../../layer-1-projects"
+  config_path = "../../layer-1-projects"
 }
 
 dependency "security" {
-  config_path = "../../../layer-3-security"
+  config_path = "../../layer-3-security"
 }
 
 dependency "governance" {
-  config_path = "../../../layer-4-governance"
+  config_path = "../../layer-4-governance"
 }
 
 dependency "cx_mortgage_orchestrator" {
-  config_path = "../../agents/cx-mortgage-orchestrator"
+  config_path = "../agents/cx-mortgage-orchestrator"
   mock_outputs = {
     agent_identity_principal = "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000/locations/us-central1/reasoningEngines/mock-cx-mortgage-orchestrator"
   }
@@ -30,7 +30,7 @@ dependency "cx_mortgage_orchestrator" {
 }
 
 dependency "ai_coe_mortgage_specialist" {
-  config_path = "../../agents/ai-coe-mortgage-specialist"
+  config_path = "../agents/ai-coe-mortgage-specialist"
   mock_outputs = {
     registry_service_id      = "mock-registry-service"
     agent_identity_principal = "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000/locations/us-central1/reasoningEngines/mock-ai-coe-mortgage-specialist"
@@ -39,7 +39,7 @@ dependency "ai_coe_mortgage_specialist" {
 }
 
 dependency "corporate_email" {
-  config_path = "../corporate-email"
+  config_path = "../services/corporate-email"
   mock_outputs = {
     registry_service_id = "mock-registry-service"
   }
@@ -47,7 +47,7 @@ dependency "corporate_email" {
 }
 
 dependency "income_verification" {
-  config_path = "../income-verification"
+  config_path = "../services/income-verification"
   mock_outputs = {
     registry_service_id = "mock-registry-service"
   }
@@ -55,7 +55,7 @@ dependency "income_verification" {
 }
 
 dependency "legacy_dms" {
-  config_path = "../legacy-dms"
+  config_path = "../services/legacy-dms"
   mock_outputs = {
     registry_service_id = "mock-registry-service"
   }

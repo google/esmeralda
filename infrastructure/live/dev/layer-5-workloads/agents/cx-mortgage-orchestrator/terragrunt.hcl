@@ -30,7 +30,8 @@ dependency "governance" {
 }
 
 locals {
-  env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  env_cfg  = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  env_vars = merge(local.env_cfg.locals, { locals = local.env_cfg.locals })
   catalog  = local.env_vars.locals.catalog
   gateways = local.env_vars.locals.gateways
   # This agent's catalog entry (env.yaml catalog), keyed by the unit's directory name.
@@ -51,8 +52,10 @@ locals {
 }
 
 inputs = {
-  project_id            = dependency.projects.outputs.cx_agents_project_id
-  environment           = local.env_vars.locals.environment
+  project_id                = dependency.projects.outputs.cx_agents_project_id
+  governance_project_id     = dependency.projects.outputs.governance_project_id
+  central_events_dataset_id = "esmeralda_telemetry_logs_${local.env_vars.environment}"
+  environment               = local.env_vars.locals.environment
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.cx_mortgage_orchestrator_sa_email
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email

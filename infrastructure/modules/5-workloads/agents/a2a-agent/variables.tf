@@ -66,11 +66,23 @@ variable "mcp_invoker_sa_email" {
   default     = ""
 }
 
-# Cloud SQL Sizing Variables
-variable "sql_tier" {
-  description = "The machine instance type allocated for the Cloud SQL PostgreSQL task store"
+# Cloud SQL Task Store Variables
+variable "use_cloud_sql" {
+  description = "Whether the agent uses the stateful Cloud SQL task store"
+  type        = bool
+  default     = false
+}
+
+variable "db_secret_id" {
+  description = "Secret Manager secret ID storing the Cloud SQL connection details"
   type        = string
-  default     = "db-custom-1-3840" # Lightweight instance type for standard workloads
+  default     = ""
+}
+
+variable "cloud_sql_instance_connection_name" {
+  description = "Cloud SQL instance connection name (project:region:instance)"
+  type        = string
+  default     = ""
 }
 
 variable "database_name" {
@@ -137,6 +149,13 @@ variable "agent_gateway_root_certificates" {
 variable "governance_project_id" {
   description = "Central governance project hosting the Agent Registry where the A2A agent card is published"
   type        = string
+  default     = ""
+}
+
+variable "central_events_dataset_id" {
+  description = "Central BigQuery dataset ID in the governance project for agent event logs"
+  type        = string
+  default     = ""
 }
 
 variable "access_token_hosts" {

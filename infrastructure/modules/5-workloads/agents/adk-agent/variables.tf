@@ -134,3 +134,15 @@ variable "access_token_hosts" {
   type        = list(string)
   default     = []
 }
+
+variable "governance_project_id" {
+  description = "Central governance project ID hosting the shared BigQuery telemetry dataset"
+  type        = string
+  default     = ""
+}
+
+variable "central_events_dataset_id" {
+  description = "Central BigQuery dataset ID in the governance project for agent event logs"
+  type        = string
+  default     = ""
+}

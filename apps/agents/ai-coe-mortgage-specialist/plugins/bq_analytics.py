@@ -32,11 +32,13 @@ except Exception as e:
 
 def create_bq_plugin():
     """Create BigQuery analytics plugin if configured, otherwise return None."""
+    # EVENTS_PROJECT_ID points at the central (governance) project when events are centralised;
+    # otherwise fall back to the agent's own project.
     try:
         credentials, project_id_detected = google.auth.default()
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", project_id_detected)
+        project_id = os.getenv("EVENTS_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT", project_id_detected)
     except Exception:
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        project_id = os.getenv("EVENTS_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
 
     dataset_id = os.getenv("EVENTS_DATASET_ID")
     table_id = os.getenv("EVENTS_TABLE_ID")

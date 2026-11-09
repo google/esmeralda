@@ -9,13 +9,8 @@ output "endpoint_url" {
 }
 
 output "db_connection_name" {
-  description = "The connection string identifier for the atomic Cloud SQL postgres database"
-  value       = google_sql_database_instance.task_store.connection_name
-}
-
-output "db_private_ip" {
-  description = "The private internal IP address allocated for the database"
-  value       = google_sql_database_instance.task_store.private_ip_address
+  description = "The connection string identifier for the Cloud SQL postgres database"
+  value       = var.cloud_sql_instance_connection_name
 }
 
 output "staging_bucket_name" {

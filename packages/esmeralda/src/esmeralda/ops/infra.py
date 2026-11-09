@@ -59,6 +59,8 @@ def resolve_unit(root: Path, env: str, unit: str) -> str:
     known = repo.units(root, env)
     if cleaned in known:
         return cleaned
+    if cleaned in repo._MOVED_UNITS and repo._MOVED_UNITS[cleaned] in known:
+        return repo._MOVED_UNITS[cleaned]
     exact_tail = [u for u in known if u.rsplit("/", 1)[-1] == cleaned or u.endswith(f"/{cleaned}")]
     if len(exact_tail) == 1:
         return exact_tail[0]
@@ -196,7 +198,8 @@ def summarize_status(env: str, backend: str, states: list[UnitState]) -> dict[st
         for name, s in _by_prefix(states, "layer-5-workloads/services/").items()
         if s.outputs.get("service_uri")
     }
-    vm = by_unit.get("layer-5-workloads/services/test-vm")
+    # Prefer the flattened layer-5-workloads/test-vm unit; fall back to services/test-vm for one release.
+    vm = by_unit.get("layer-5-workloads/test-vm") or by_unit.get("layer-5-workloads/services/test-vm")
     result: dict[str, Any] = {
         "env": env,
         "backend": backend,
@@ -230,8 +233,8 @@ def compact_outputs(state: UnitState) -> dict[str, Any]:
 
 def status(root: Path, env: str, unit: str | None = None) -> dict[str, Any]:
     if unit:
-        repo.unit_dir(root, env, unit)  # validate
-        state = repo.unit_state(root, env, unit.strip().strip("/"))
+        resolved = resolve_unit(root, env, unit)
+        state = repo.unit_state(root, env, resolved)
         return {
             "env": env,
             "unit": state.unit,
