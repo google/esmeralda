@@ -28,10 +28,16 @@ from pathlib import Path
 import pytest
 
 from esmeralda import cli
-from esmeralda.ops import guard, logs, repo
+from esmeralda.ops import envfile, guard, logs, repo
 
 ENGINE = "projects/demo-cx/locations/us-central1/reasoningEngines/123"
 DIGEST = "us-central1-docker.pkg.dev/demo/repo/legacy-dms@sha256:" + "ab" * 32
+
+
+@pytest.fixture(autouse=True)
+def _no_user_env_file(tmp_path, monkeypatch):
+    """Never read the developer's real ~/.config/esmeralda/env in tests."""
+    monkeypatch.setenv(envfile.ENV_FILE_VAR, str(tmp_path / "no-such-env-file"))
 
 ENV_YAML = """
 locals {
@@ -376,6 +382,46 @@ def test_cli_doctor_warns_on_missing_billing_and_passes_when_required_ok(ops_che
 
     assert cli.main(["doctor", "--env", "dev"]) == 0
     assert "All required checks passed" in capsys.readouterr().out
+
+
+def test_cli_doctor_reports_env_file_source_without_values(ops_checkout, tmp_path, monkeypatch, capsys):
+    secret = "synthetic-billing-value"
+    path = tmp_path / "esmeralda-env"
+    path.write_text(f"ESMERALDA_BILLING_ACCOUNT={secret}\nESMERALDA_ORG_ID=999\n")
+    path.chmod(0o600)
+    monkeypatch.setenv(envfile.ENV_FILE_VAR, str(path))
+    monkeypatch.delenv("ESMERALDA_BILLING_ACCOUNT", raising=False)
+    monkeypatch.setenv("ESMERALDA_ORG_ID", "from-shell")
+    monkeypatch.setattr(repo, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(repo, "_tool_version", lambda binary, args, cwd: "1.9.0")
+    monkeypatch.setattr(repo, "_check_adc", lambda root: (True, "ADC token available"))
+    monkeypatch.setattr(repo, "_check_uv_lock", lambda root: (True, "uv.lock is in sync"))
+
+    assert cli.main(["doctor", "--env", "dev", "--json"]) == 0
+    raw = capsys.readouterr().out
+    assert secret not in raw and "999" not in raw and "from-shell" not in raw
+    data = json.loads(raw)
+    by_name = {c["name"]: c for c in data["checks"]}
+    assert data["warnings"] == 0
+    assert by_name["env_file"]["status"] == "ok"
+    assert by_name["env:ESMERALDA_BILLING_ACCOUNT"]["source"] == "env-file"
+    assert by_name["env:ESMERALDA_ORG_ID"]["source"] == "env"
+
+    path.write_text(f"ESMERALDA_BILLING_ACCOUNT='{secret}'\nOTHER_KEY=x\n")
+    assert cli.main(["doctor", "--env", "dev", "--json"]) == 0
+    raw = capsys.readouterr().out
+    assert secret not in raw
+    check = {c["name"]: c for c in json.loads(raw)["checks"]}["env_file"]
+    assert check["status"] == "warn"
+    assert "quoted values for ESMERALDA_BILLING_ACCOUNT" in check["detail"] and "OTHER_KEY" in check["detail"]
+
+    path.write_text(f"ESMERALDA_BILLING_ACCOUNT={secret}\n")
+    path.chmod(0o640)
+    assert cli.main(["doctor", "--env", "dev", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    by_name = {c["name"]: c for c in data["checks"]}
+    assert by_name["env_file"]["status"] == "warn"
+    assert "chmod 600" in by_name["env_file"]["detail"]
 
 
 def test_cli_doctor_exits_nonzero_when_required_check_fails(ops_checkout, monkeypatch, capsys):

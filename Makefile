@@ -37,6 +37,28 @@ export UV_FROZEN := 1
 # Terraform / Terragrunt from the standard per-user install locations, if present
 export PATH := $(HOME)/.terraform/bin:$(HOME)/.terragrunt/bin:$(PATH)
 
+# Terragrunt variables (ESMERALDA_BILLING_ACCOUNT, optional ESMERALDA_ORG_ID) from the user-local env file,
+# outside the repo (never commit it). Recipes run in a login shell that doesn't read ~/.bashrc, so the file
+# is read here, the same file the `esmeralda` CLI reads. Plain KEY=VALUE lines only: no quotes (make would
+# keep them) and only ESMERALDA_* keys. Variables already set in the environment or on the command line win.
+ESMERALDA_ENV_FILE ?= $(HOME)/.config/esmeralda/env
+_esm_env_billing := $(ESMERALDA_BILLING_ACCOUNT)
+_esm_env_org := $(ESMERALDA_ORG_ID)
+-include $(ESMERALDA_ENV_FILE)
+ifneq ($(strip $(_esm_env_billing)),)
+ESMERALDA_BILLING_ACCOUNT := $(_esm_env_billing)
+endif
+ifneq ($(strip $(_esm_env_org)),)
+ESMERALDA_ORG_ID := $(_esm_env_org)
+endif
+# Export only what is set (exporting an undefined variable would pass an empty string to Terragrunt).
+ifneq ($(strip $(ESMERALDA_BILLING_ACCOUNT)),)
+export ESMERALDA_BILLING_ACCOUNT
+endif
+ifneq ($(strip $(ESMERALDA_ORG_ID)),)
+export ESMERALDA_ORG_ID
+endif
+
 # Terraform CLI for validation and the gateway harness: terraform if installed, else OpenTofu.
 TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null || echo terraform)
 
@@ -50,7 +72,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	status doctor units plan apply logs guard hooks build-package
 
 help: ## Show this help message
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
 	@chmod +x ./scripts/preflight.sh

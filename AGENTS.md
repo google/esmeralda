@@ -51,7 +51,7 @@ Terragrunt `dependency` blocks; never reverse that direction.
 - **Gateway routes use agent engine IDs**: after an agent engine is recreated, re-run `make deploy-gateway ENV=<env>` and `make deploy-entrypoint ENV=<env>`.
 - **Images are deployed by digest, never by tag.** `make test-terraform` fails on `image = var.…`; `make verify-images` checks running digests. Images contain no certificates (injected at deploy time), so one digest is promoted from dev to prd (`make promote TAG=vX.Y.Z`).
 - **Python is one uv workspace** (root `pyproject.toml`, single `uv.lock`). The Makefile exports `UV_FROZEN=1`: never run `uv lock` or `uv add` locally. Edit `pyproject.toml`, then `make lock` (runs `uv lock` in Cloud Build against public PyPI and writes `uv.lock` back) and commit `uv.lock`. `make lock-check` (also the pre-push hook and a PR workflow) fails on a stale lock.
-- **Terragrunt env vars** read by every `env.yaml`: `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional). Export them in your shell; never write them into a file in the repo.
+- **Terragrunt env vars** read by every `env.yaml`: `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional). Put them in the user-local env file `~/.config/esmeralda/env` (or the path in `$ESMERALDA_ENV_FILE`), **outside the repo**, `chmod 600`, never committed: plain `KEY=VALUE` lines, no quotes, only `ESMERALDA_*` keys. The `esmeralda` CLI (`plan`, `apply`, `status`, `units`, `verify`, `doctor`, `mcp`) and the Makefile both read it, so no `bash -ic` wrapper or `~/.bashrc` export is needed; variables already exported in the environment win. `esmeralda doctor` reports where each one comes from (env / env-file / missing) without printing values. Never write these values into a file in the repo.
 - **No hardcoded project IDs** in code or docs: read them from layer outputs; write placeholders such as `esm-<env>-gateway-<sfx>`.
 - **Team ownership:** CX orchestrators are `apps/agents/cx-*` (CX project); reusable A2A agents are `apps/agents/ai-coe-*` (AI CoE project).
 
@@ -62,7 +62,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for day-to-day status, pl
 | Command | Make equivalent | What it proves |
 |---|---|---|
 | `uv run esmeralda status --env <env>` | `make status ENV=<env>` | Git branch/SHA, active worktrees, local state units, image tags/digests, and deployed environment outputs |
-| `uv run esmeralda doctor --env <env>` | `make doctor ENV=<env>` | Workstation preflight check: required tools, `ESMERALDA_BILLING_ACCOUNT`, ADC token, `uv.lock`, and local state readability |
+| `uv run esmeralda doctor --env <env>` | `make doctor ENV=<env>` | Workstation preflight check: required tools, user-local env file and the source of `ESMERALDA_BILLING_ACCOUNT` / `ESMERALDA_ORG_ID`, ADC token, `uv.lock`, and local state readability |
 | `uv run esmeralda units [--layer 0..5] --env <env>` | `make units ENV=<env>` | Lists Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence |
 | `uv run esmeralda plan <unit\|--all> --env <env>` | `make plan [UNIT=<unit>] ENV=<env>` | Read-only `terragrunt plan -lock=false` summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `uv run esmeralda apply <unit> --env <env>` | `make apply UNIT=<unit> ENV=<env>` | Plans to a saved planfile, **enforces the destroy guard** (refuses `destroy > 0` without `--allow-destroy`), and applies |

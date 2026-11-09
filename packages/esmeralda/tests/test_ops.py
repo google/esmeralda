@@ -19,6 +19,8 @@ Everything runs against a synthetic checkout in tmp_path: no Terraform, gcloud o
 
 import asyncio
 import json
+import os
+import shutil
 import subprocess
 import textwrap
 from datetime import UTC, datetime
@@ -26,10 +28,126 @@ from pathlib import Path
 
 import pytest
 
-from esmeralda.ops import contracts, infra, logs, repo, runtime
+from esmeralda.ops import contracts, envfile, infra, logs, repo, runtime
 from esmeralda.ops.repo import OpsError
 
 ENGINE = "projects/demo-cx/locations/us-central1/reasoningEngines/123"
+
+
+@pytest.fixture(autouse=True)
+def _no_user_env_file(tmp_path, monkeypatch):
+    """Never read the developer's real ~/.config/esmeralda/env in tests."""
+    monkeypatch.setenv(envfile.ENV_FILE_VAR, str(tmp_path / "no-such-env-file"))
+
+
+# ------------------------------------------------------------------------------------------
+# user-local env file
+# ------------------------------------------------------------------------------------------
+
+
+def test_envfile_parse_formats_and_ignores_other_keys():
+    text = textwrap.dedent(
+        """
+        # comment
+        ESMERALDA_BILLING_ACCOUNT=synthetic-billing
+        export ESMERALDA_ORG_ID="org-synthetic"
+        ESMERALDA_SINGLE='quoted value'
+        ESMERALDA_INLINE=plain   # trailing comment
+        ESMERALDA_HASH="keep # this"
+        PATH=/evil
+        GOOGLE_APPLICATION_CREDENTIALS=/tmp/x.json
+        ESMERALDA_ENV_FILE=/elsewhere
+        not a line
+        =novalue
+        ESMERALDA_EMPTY=
+        """
+    )
+    assert envfile.parse(text) == {
+        "ESMERALDA_BILLING_ACCOUNT": "synthetic-billing",
+        "ESMERALDA_ORG_ID": "org-synthetic",
+        "ESMERALDA_SINGLE": "quoted value",
+        "ESMERALDA_INLINE": "plain",
+        "ESMERALDA_HASH": "keep # this",
+        "ESMERALDA_EMPTY": "",
+    }
+
+
+def test_envfile_path_default_and_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert envfile.env_file_path({}) == tmp_path / ".config" / "esmeralda" / "env"
+    assert envfile.env_file_path({envfile.ENV_FILE_VAR: str(tmp_path / "x")}) == tmp_path / "x"
+
+
+def test_envfile_environment_wins_and_fills_missing(tmp_path, monkeypatch):
+    path = tmp_path / "env"
+    path.write_text("ESMERALDA_BILLING_ACCOUNT=from-file\nESMERALDA_ORG_ID=org-from-file\nOTHER=x\n")
+    path.chmod(0o600)
+    environ = {envfile.ENV_FILE_VAR: str(path), "ESMERALDA_BILLING_ACCOUNT": "from-env"}
+    assert envfile.apply(environ) == ["ESMERALDA_ORG_ID"]
+    assert environ["ESMERALDA_BILLING_ACCOUNT"] == "from-env"
+    assert environ["ESMERALDA_ORG_ID"] == "org-from-file"
+    assert "OTHER" not in environ
+    assert envfile.source("ESMERALDA_BILLING_ACCOUNT", {envfile.ENV_FILE_VAR: str(path)}) == "env-file"
+    assert envfile.source("ESMERALDA_BILLING_ACCOUNT", {"ESMERALDA_BILLING_ACCOUNT": "x"}) == "env"
+    assert envfile.source("ESMERALDA_NOPE", {envfile.ENV_FILE_VAR: str(path)}) == "missing"
+
+    # tool_env (every terragrunt/script subprocess) gets the file's values without touching os.environ
+    monkeypatch.setenv(envfile.ENV_FILE_VAR, str(path))
+    monkeypatch.delenv("ESMERALDA_BILLING_ACCOUNT", raising=False)
+    monkeypatch.setenv("ESMERALDA_ORG_ID", "org-from-env")
+    sub_env = repo.tool_env()
+    assert sub_env["ESMERALDA_BILLING_ACCOUNT"] == "from-file"
+    assert sub_env["ESMERALDA_ORG_ID"] == "org-from-env"
+    assert "OTHER" not in sub_env
+    assert "ESMERALDA_BILLING_ACCOUNT" not in os.environ
+
+
+def test_envfile_scan_reports_quotes_and_foreign_keys():
+    values, quoted, ignored = envfile.scan("ESMERALDA_A=1\nexport ESMERALDA_B=\"2\"\nENV=prd\n")
+    assert values == {"ESMERALDA_A": "1", "ESMERALDA_B": "2"}
+    assert quoted == ["ESMERALDA_B"]
+    assert ignored == ["ENV"]
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.mark.skipif(not shutil.which("make"), reason="make not installed")
+def test_makefile_reads_env_file_and_environment_wins(tmp_path):
+    """The Makefile -includes the same file and exports only the ESMERALDA_* variables."""
+    path = tmp_path / "env"
+    path.write_text("ESMERALDA_BILLING_ACCOUNT=from-file\nESMERALDA_ORG_ID=org-from-file\n")
+    probe = "_esm_probe: ; @echo billing=$${ESMERALDA_BILLING_ACCOUNT-unset} org=$${ESMERALDA_ORG_ID-unset}"
+
+    def run_make(extra_env: dict[str, str]) -> str:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ESMERALDA_") and not k.startswith("MAKE")}
+        env.update({"HOME": str(tmp_path), envfile.ENV_FILE_VAR: str(path), **extra_env})
+        result = subprocess.run(
+            ["make", "-s", "-C", str(REPO_ROOT), f"--eval={probe}", "_esm_probe"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        return result.stdout.strip().splitlines()[-1]
+
+    assert run_make({}) == "billing=from-file org=org-from-file"
+    assert run_make({"ESMERALDA_BILLING_ACCOUNT": "from-env"}) == "billing=from-env org=org-from-file"
+    path.unlink()
+    assert run_make({}) == "billing=unset org=unset"
+
+
+def test_envfile_missing_file_and_permissions(tmp_path):
+    missing = envfile.read({envfile.ENV_FILE_VAR: str(tmp_path / "absent")})
+    assert not missing.exists and missing.values == {} and missing.error is None
+
+    path = tmp_path / "env"
+    path.write_text("ESMERALDA_BILLING_ACCOUNT=x\n")
+    path.chmod(0o600)
+    assert envfile.read({envfile.ENV_FILE_VAR: str(path)}).too_open is False
+    path.chmod(0o644)
+    assert envfile.read({envfile.ENV_FILE_VAR: str(path)}).too_open is True
 
 ENV_YAML = """
 locals {

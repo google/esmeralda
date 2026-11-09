@@ -354,7 +354,29 @@ Design rules:
 - **Read-only.** There is no apply or destroy tool. Changes go through `make` targets and review.
 - **Per-tool timeouts** (plan 15 min, query and gateway test 5 min, logs 2 min, status 3 min).
 - **Actionable errors.** Failures come back as tool errors with a hint, for example `gcloud auth expired: run gcloud auth login and gcloud auth application-default login`, an unknown unit with the closest match, or a missing `ESMERALDA_BILLING_ACCOUNT`.
-- **The server's environment is the client's.** Terragrunt reads `ESMERALDA_BILLING_ACCOUNT` (and `ESMERALDA_ORG_ID`) from `env.yaml`; pass them in the client's `env` block if the client doesn't inherit your shell. Prefer `TG_PROVIDER_CACHE=1` over `TF_PLUGIN_CACHE_DIR`: the Terraform plugin cache isn't safe for the parallel `terraform init` runs Terragrunt does to read dependency outputs, and fails with `does not match any of the checksums`.
+- **The server's environment is the client's.** Terragrunt reads `ESMERALDA_BILLING_ACCOUNT` (and `ESMERALDA_ORG_ID`) from `env.yaml`; the server fills them from the [user-local env file](#terragrunt-variables-user-local-env-file) when the client's environment lacks them, or pass them in the client's `env` block. Prefer `TG_PROVIDER_CACHE=1` over `TF_PLUGIN_CACHE_DIR`: the Terraform plugin cache isn't safe for the parallel `terraform init` runs Terragrunt does to read dependency outputs, and fails with `does not match any of the checksums`.
+
+### Terragrunt variables: user-local env file
+
+Every `env.yaml` reads `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional) from the environment. Instead of exporting them from an interactive shell profile, put them in a file **outside the repository**:
+
+```bash
+mkdir -p ~/.config/esmeralda
+cat > ~/.config/esmeralda/env <<'EOF'
+ESMERALDA_BILLING_ACCOUNT=<billing-account-id>
+ESMERALDA_ORG_ID=<org-id>
+EOF
+chmod 600 ~/.config/esmeralda/env
+```
+
+- **Path:** `$ESMERALDA_ENV_FILE` if set, else `~/.config/esmeralda/env`.
+- **Who reads it:** every `esmeralda` command that runs Terragrunt or the repo scripts (`status`, `units`, `plan`, `apply`, `verify`, `doctor`, `mcp`), and the Makefile (`-include`), so `make` targets get the same values.
+- **Format:** plain `KEY=VALUE` lines and `#` comments, so the CLI and make read it the same way. Only `ESMERALDA_*` keys. The CLI also tolerates `export ` and quotes, but make would keep the quotes, so `esmeralda doctor` warns about them and about other keys.
+- **Precedence:** a variable already set in the environment (or on the `make` command line) wins over the file.
+- **Privacy:** values are never printed. `esmeralda doctor` reports where each variable comes from (`env`, `env-file` or `missing`) and warns if the file is accessible by group or others.
+
+> [!WARNING]
+> Never commit this file or copy it into the repository: billing account and organization ids are environment specifics.
 
 > [!NOTE]
 > The `make` targets for plan, status and environment checks cover similar ground for humans. `esmeralda mcp` is self-contained in the package and doesn't call them, so both can evolve independently; if they converge, the tools can call the shared code.
