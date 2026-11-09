@@ -25,11 +25,6 @@ output "dns_zone_dns_name" {
   value       = google_dns_managed_zone.private_dns.dns_name
 }
 
-output "psc_network_attachment_id" {
-  description = "The URI of the Private Service Connect Network Attachment"
-  value       = try(google_compute_network_attachment.psc_interface[0].id, "")
-}
-
 output "psc_subnet_id" {
   description = "The resolved PSC interface subnet resource ID"
   value       = try(google_compute_subnetwork.psc_interface[0].id, "")

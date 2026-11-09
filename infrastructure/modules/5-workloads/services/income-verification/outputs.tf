@@ -1,14 +1,19 @@
 output "service_uri" {
   description = "The baseline Cloud Run system-generated URL of the Income Verification MCP server"
-  value       = google_cloud_run_v2_service.income_verification.uri
+  value       = module.mcp_service.service_uri
 }
 
 output "service_name" {
   description = "The local display name of the deployed Cloud Run service"
-  value       = google_cloud_run_v2_service.income_verification.name
+  value       = module.mcp_service.service_name
 }
 
 output "registry_service_id" {
   description = "Agent Registry service (governance project) publishing this MCP server"
-  value       = google_agent_registry_service.governance_mcp.id
+  value       = module.mcp_service.registry_service_id
+}
+
+output "service_account_email" {
+  description = "The dedicated per-service workload service account email"
+  value       = module.mcp_service.service_account_email
 }

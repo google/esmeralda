@@ -173,10 +173,9 @@ resource "google_service_account" "ai_coe_mortgage_specialist_sa" {
 }
 
 # Full-parity roles derived from the monolithic test-sa setup
+# (roles/cloudsql.client and roles/cloudsql.instanceUser are managed by Layer 5 a2a-agent)
 resource "google_project_iam_member" "ai_coe_mortgage_specialist_roles" {
   for_each = toset([
-    "roles/cloudsql.client",
-    "roles/cloudsql.instanceUser",
     "roles/aiplatform.user",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
@@ -191,6 +190,33 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_roles" {
   project = var.ai_coe_agents_project_id
   role    = each.key
   member  = "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}"
+}
+
+# Forget Layer 5-owned Cloud SQL IAM bindings from Layer 3 state without deleting the live GCP bindings:
+# - ai_coe_mortgage_specialist_roles["roles/cloudsql.client"]       -> owned by L5 a2a-agent (google_project_iam_member.cloudsql_client_role)
+# - ai_coe_mortgage_specialist_roles["roles/cloudsql.instanceUser"] -> owned by L5 a2a-agent (google_project_iam_member.cloudsql_user_role)
+moved {
+  from = google_project_iam_member.ai_coe_mortgage_specialist_roles["roles/cloudsql.client"]
+  to   = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_client
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_client
+  lifecycle {
+    destroy = false
+  }
+}
+
+moved {
+  from = google_project_iam_member.ai_coe_mortgage_specialist_roles["roles/cloudsql.instanceUser"]
+  to   = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_user
+}
+
+removed {
+  from = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_user
+  lifecycle {
+    destroy = false
+  }
 }
 
 # Grant A2A Service account reading rights on the Database Master secret (resolves to existing or new)

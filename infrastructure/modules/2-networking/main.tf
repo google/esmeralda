@@ -68,10 +68,6 @@ resource "google_compute_shared_vpc_service_project" "governance" {
 # 2. GREENFIELD SHARED VPC NETWORKING CREATION
 # ====================================================================
 
-# ====================================================================
-# 2. GREENFIELD SHARED VPC NETWORKING CREATION
-# ====================================================================
-
 # Provision Shared VPC (Only if greenfield)
 resource "google_compute_network" "shared_vpc" {
   count                   = var.byo_networking ? 0 : 1
@@ -162,18 +158,8 @@ resource "google_compute_router_nat" "nat" {
 }
 
 # ====================================================================
-# 3. PRIVATE SERVICE CONNECT (PSC) NETWORK ATTACHMENT
+# 3. PSC INTERFACE & IAP FIREWALL RULES
 # ====================================================================
-
-# Compute Network Attachment allowing Serverless Reasoning engines auto acceptance
-resource "google_compute_network_attachment" "psc_interface" {
-  count                 = var.enable_psc_interface ? 1 : 0
-  project               = var.net_host_project_id
-  name                  = "gateway-psc-interface-attachment-${var.environment}"
-  region                = var.region
-  connection_preference = "ACCEPT_AUTOMATIC"
-  subnetworks           = [var.byo_networking ? var.existing_subnet_id : try(google_compute_subnetwork.psc_interface[0].self_link, "")]
-}
 
 # Ingress Firewall to accept traffic from the PSC Interface Subnet
 resource "google_compute_firewall" "psc_interface_allow" {
@@ -343,7 +329,7 @@ resource "google_project_iam_member" "host_dns_peers" {
 # 6. PRIVATE DNS SERVICE DISCOVERY ZONES
 # ====================================================================
 
-# A. Central Private Zone for inter-agent communication
+# Central Private Zone for inter-agent and MCP communication
 resource "google_dns_managed_zone" "private_dns" {
   name        = "esmeralda-private-dns-${var.environment}"
   project     = var.net_host_project_id
@@ -356,26 +342,6 @@ resource "google_dns_managed_zone" "private_dns" {
     networks {
       network_url = local.target_vpc_id
     }
-  }
-}
-
-# B. Dedicated Private Zone for Gateway & SWP Resolution Peering
-module "psc_interface_dns_zone" {
-  count      = var.enable_psc_interface && !var.byo_networking ? 1 : 0
-  source     = "github.com/GoogleCloudPlatform/cloud-foundation-fabric//modules/dns?ref=v53.0.0"
-  project_id = var.net_host_project_id
-  name       = "internal-gateway-${var.environment}"
-  zone_config = {
-    domain = "internal.gateway."
-    private = {
-      client_networks = [local.target_vpc_id]
-    }
-  }
-  recordsets = {
-    # Resolve wildcard gateway endpoints to the future internal gateway IP placeholder
-    "A *" = { records = ["10.0.1.200"] } # Placeholder for regional load balancer VIP
-    # Resolve swp to the Secure Web Proxy IP
-    "A swp" = { records = ["10.0.1.100"] }
   }
 }
 

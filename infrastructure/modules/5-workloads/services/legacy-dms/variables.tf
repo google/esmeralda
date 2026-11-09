@@ -74,3 +74,9 @@ variable "internal_hostname" {
   type        = string
   default     = "legacy-dms.esmeralda.internal"
 }
+
+variable "service_account_email" {
+  description = "Optional workload service account email for the Cloud Run service (uses project default when null)"
+  type        = string
+  default     = null
+}
