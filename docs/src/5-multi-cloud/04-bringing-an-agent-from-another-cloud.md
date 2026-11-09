@@ -180,7 +180,7 @@ curl -sS https://partner.esmeralda.internal/partner/v1/agents/ai-coe-mortgage-sp
   -H "x-cross-cloud-token: ${WORKLOAD_OIDC_TOKEN}" \
   -H "traceparent: 00-7d3f0a9c41e24b6f8a1c5e2d9b0f4a37-a1b2c3d4e5f60718-01" \
   -H "content-type: application/json" \
-  -d '{"message": {"role": "user", "parts": [{"text": "Assess the income documents for applicant Julian Sterling."}]}}'
+  -d '{"message": {"messageId": "msg-example-001", "role": "user", "parts": [{"text": "Assess the income documents for applicant Julian Sterling."}]}}'
 ```
 
 ### Step 8: Verify

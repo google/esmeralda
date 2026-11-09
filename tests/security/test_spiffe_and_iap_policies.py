@@ -67,7 +67,8 @@ def test_agent_modules_export_spiffe_and_principal_outputs(agent_dir: pathlib.Pa
     assert "resources/aiplatform/projects/${data.google_project.current.number}/locations/${var.region}/reasoningEngines/" in main_tf
 
     # Direct principal:// resource bindings when enable_agent_identity = true
-    assert 'resource "google_bigquery_dataset_iam_member" "agent_identity_bq_writer"' in main_tf
+    # (BigQuery writer is a project-level grant since the central agent analytics change.)
+    assert 'resource "google_project_iam_member" "agent_identity_bq_writer"' in main_tf
     assert 'resource "google_storage_bucket_iam_member" "agent_identity_storage_user"' in main_tf
     assert "member     = local.agent_identity_principal" in main_tf or "member = local.agent_identity_principal" in main_tf
 
