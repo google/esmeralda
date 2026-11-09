@@ -44,6 +44,14 @@ env:
   INCOME_VERIFICATION_URL: "https://income-verification.esmeralda.internal/mcp"
   EMAIL_MCP_URL: "https://corporate-email.esmeralda.internal/mcp"
   MODEL_NAME: "gemini-3.7-flash"
+  # Thinking level for Gemini 3 models (minimal/low/medium/high), or an integer token budget for
+  # Gemini 2.5. "low" keeps latency down: the tool plan is spelled out in the instruction. Set ""
+  # to use the model default.
+  MODEL_THINKING: "low"
+  # Safety stop for each model response (thinking tokens included, so keep headroom: a response
+  # cut by the cap loses the answer). The instruction asks for a ~200-word answer (~400 tokens);
+  # "" or 0 keeps the model default.
+  MODEL_MAX_OUTPUT_TOKENS: "2048"
   MODEL_LOCATION: "global"
   GOOGLE_CLOUD_LOCATION: "us-central1"
 

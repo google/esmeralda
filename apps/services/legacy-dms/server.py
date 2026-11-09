@@ -117,9 +117,57 @@ _DOCUMENTS = {
 # ---------------------------------------------------------------------------
 
 
-def _search_documents(applicant_last_name: str, document_type: str, years: int = 2) -> dict:
+# Synthetic borrower registry: maps a loan-file borrower ID to the applicant household, so a
+# caller holding only the ID can resolve the applicants in one call instead of guessing names.
+_BORROWERS = {
+    "1001": {
+        "borrower_id": "1001",
+        "last_name": "Sterling",
+        "applicants": [
+            {"first_name": "Julian", "last_name": "Sterling", "role": "primary"},
+            {"first_name": "Elena", "last_name": "Sterling", "role": "co-borrower"},
+        ],
+    },
+}
+
+# document_type values that match every stored type (the mock store only holds tax returns).
+_WILDCARD_DOCUMENT_TYPES = {"", "all", "any", "*"}
+
+
+def _find_borrower(applicant_last_name: str, borrower_id: str) -> dict | None:
+    """Resolve a borrower by ID (preferred) or by last name."""
+    if borrower_id:
+        return _BORROWERS.get(borrower_id.strip().lstrip("#"))
+    for borrower in _BORROWERS.values():
+        if applicant_last_name.strip().lower() == borrower["last_name"].lower():
+            return borrower
+    return None
+
+
+def _matches_type(document_type: str) -> bool:
+    """Only tax returns exist in this mock store."""
+    normalized = document_type.strip().lower()
+    return normalized in _WILDCARD_DOCUMENT_TYPES or "tax" in normalized or "1040" in normalized
+
+
+def _search_documents(
+    applicant_last_name: str = "", document_type: str = "all", years: int = 2, borrower_id: str = ""
+) -> dict:
     """Search for applicant documents and return matching metadata."""
-    if applicant_last_name.lower() == "sterling" and "tax" in document_type.lower():
+    query = {
+        "applicant_last_name": applicant_last_name,
+        "borrower_id": borrower_id,
+        "document_type": document_type,
+        "years": years,
+    }
+    if not applicant_last_name.strip() and not borrower_id.strip():
+        return {
+            "status": "error",
+            "error": "Provide applicant_last_name or borrower_id.",
+            "query": query,
+        }
+    borrower = _find_borrower(applicant_last_name, borrower_id)
+    if borrower and _matches_type(document_type):
         results = [
             {
                 "document_id": "DOC-2024-SM-1040",
@@ -140,22 +188,16 @@ def _search_documents(applicant_last_name: str, document_type: str, years: int =
         ]
         return {
             "status": "success",
-            "query": {
-                "applicant_last_name": applicant_last_name,
-                "document_type": document_type,
-                "years": years,
-            },
+            "query": query,
+            "borrower": borrower,
             "results": results[:years],
             "total_results": min(years, len(results)),
         }
 
     return {
         "status": "success",
-        "query": {
-            "applicant_last_name": applicant_last_name,
-            "document_type": document_type,
-            "years": years,
-        },
+        "query": query,
+        "borrower": borrower,
         "results": [],
         "total_results": 0,
     }
@@ -174,19 +216,26 @@ def _get_document(document_id: str) -> dict:
 
 
 @mcp.tool()
-def search_documents(applicant_last_name: str, document_type: str, years: int = 2) -> dict:
+def search_documents(
+    applicant_last_name: str = "", document_type: str = "all", years: int = 2, borrower_id: str = ""
+) -> dict:
     """Search the document management system for applicant documents.
 
+    Pass either the applicant's last name or the loan-file borrower ID. The response includes the
+    resolved borrower (ID and applicant first/last names), so no separate name lookup is needed.
+
     Args:
-        applicant_last_name: Last name of the applicant to search for.
-        document_type: Type of document (e.g. 'tax_return', 'pay_stub', 'bank_statement').
+        applicant_last_name: Last name of the applicant. Optional when borrower_id is given.
+        document_type: Type of document (e.g. 'tax_return', 'pay_stub', 'bank_statement'), or
+            'all' (default) for every type.
         years: Number of years of documents to retrieve (default 2).
+        borrower_id: Loan-file borrower ID (e.g. '1001'). Preferred when known.
 
     Returns:
-        Dictionary with matching document metadata.
+        Dictionary with the resolved borrower and matching document metadata.
     """
     with trace_tool(tracer, "search_documents"):
-        return _search_documents(applicant_last_name, document_type, years)
+        return _search_documents(applicant_last_name, document_type, years, borrower_id)
 
 
 @mcp.tool()

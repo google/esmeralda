@@ -6,25 +6,31 @@
   "tools": [
     {
       "name": "search_documents",
-      "description": "Search the document management system for applicant documents.",
+      "description": "Search the document management system for applicant documents. Pass either the applicant's last name or the loan-file borrower ID; the response includes the resolved borrower (ID and applicant first/last names).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "applicant_last_name": {
             "type": "string",
-            "description": "Last name of the applicant to search for."
+            "description": "Last name of the applicant. Optional when borrower_id is given.",
+            "default": ""
           },
           "document_type": {
             "type": "string",
-            "description": "Type of document (e.g. 'tax_return', 'pay_stub', 'bank_statement')."
+            "description": "Type of document (e.g. 'tax_return', 'pay_stub', 'bank_statement'), or 'all' (default) for every type.",
+            "default": "all"
           },
           "years": {
             "type": "integer",
             "description": "Number of years of documents to retrieve (default 2).",
             "default": 2
+          },
+          "borrower_id": {
+            "type": "string",
+            "description": "Loan-file borrower ID (e.g. '1001'). Preferred when known.",
+            "default": ""
           }
-        },
-        "required": ["applicant_last_name", "document_type"]
+        }
       },
       "annotations": {
         "title": "Search Documents",
