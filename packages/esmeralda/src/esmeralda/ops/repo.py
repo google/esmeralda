@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from esmeralda.ops import envfile
+
 REPO_ENV_VAR = "ESMERALDA_REPO"
 LIVE = Path("infrastructure/live")
 UNIT_FILE = "terragrunt.hcl"
@@ -210,8 +212,13 @@ def output(root: Path, env: str, unit: str, name: str) -> Any:
 
 
 def tool_env() -> dict[str, str]:
-    """os.environ plus the per-user Terraform / Terragrunt bin directories (as the Makefile does)."""
+    """os.environ plus the per-user Terraform / Terragrunt bin directories (as the Makefile does).
+
+    ``ESMERALDA_*`` variables missing from the environment are filled from the user-local env file
+    (``$ESMERALDA_ENV_FILE`` or ``~/.config/esmeralda/env``, outside the repo); the environment wins.
+    """
     environ = dict(os.environ)
+    envfile.apply(environ)
     home = Path.home()
     extra = [str(home / ".terraform" / "bin"), str(home / ".terragrunt" / "bin")]
     environ["PATH"] = os.pathsep.join([*extra, environ.get("PATH", "")])
@@ -503,6 +510,76 @@ def _check_local_state_dir(root: Path, env: str) -> tuple[bool, str]:
     return True, f"readable ({count} state file(s) in {LIVE}/.local_states/{env})"
 
 
+def _env_checks() -> list[dict[str, Any]]:
+    """The user-local env file and where each Terragrunt variable comes from (values never shown)."""
+    found = envfile.read()
+    checks: list[dict[str, Any]] = []
+    if found.error:
+        checks.append({"name": "env_file", "status": "warn", "required": False, "detail": found.error})
+    elif not found.exists:
+        checks.append(
+            {
+                "name": "env_file",
+                "status": "ok",
+                "required": False,
+                "detail": f"{found.path} not present (optional; ${envfile.ENV_FILE_VAR} overrides the path)",
+            }
+        )
+    elif found.too_open:
+        checks.append(
+            {
+                "name": "env_file",
+                "status": "warn",
+                "required": False,
+                "detail": f"{found.path} is accessible by group/others: run `chmod 600 {found.path}`",
+            }
+        )
+    elif found.quoted or found.ignored:
+        problems = []
+        if found.quoted:
+            problems.append(f"quoted values for {', '.join(found.quoted)} (make keeps the quotes: remove them)")
+        if found.ignored:
+            problems.append(f"non-ESMERALDA_* keys {', '.join(found.ignored)} (make would read them: remove them)")
+        checks.append(
+            {
+                "name": "env_file",
+                "status": "warn",
+                "required": False,
+                "detail": f"{found.path}: use plain KEY=VALUE lines; " + "; ".join(problems),
+            }
+        )
+    else:
+        keys = ", ".join(found.keys()) or "no ESMERALDA_* keys"
+        checks.append({"name": "env_file", "status": "ok", "required": False, "detail": f"{found.path} ({keys})"})
+
+    where = {"env": "set (from the environment)", "env-file": f"set (from {found.path})"}
+    origin = envfile.source("ESMERALDA_BILLING_ACCOUNT", env_file=found)
+    checks.append(
+        {
+            "name": "env:ESMERALDA_BILLING_ACCOUNT",
+            "status": "ok" if origin != "missing" else "warn",
+            "required": False,
+            "source": origin,
+            "detail": where.get(
+                origin,
+                f"missing: add ESMERALDA_BILLING_ACCOUNT=... to {found.path} (outside the repo, never commit it) "
+                "or export it before terragrunt plan/apply",
+            ),
+        }
+    )
+    origin = envfile.source("ESMERALDA_ORG_ID", env_file=found)
+    checks.append(
+        {
+            "name": "env:ESMERALDA_ORG_ID",
+            "status": "ok",
+            "required": False,
+            "source": origin,
+            "detail": where.get(origin, "unset (optional)"),
+        }
+    )
+    return checks
+
+
 def doctor(root: Path, env: str = "dev") -> dict[str, Any]:
     """Workstation preflight checks for ``root`` and ``env``."""
     checks: list[dict[str, Any]] = []
@@ -529,25 +606,7 @@ def doctor(root: Path, env: str = "dev") -> dict[str, Any]:
                 }
             )
 
-    billing = os.environ.get("ESMERALDA_BILLING_ACCOUNT", "").strip()
-    if billing:
-        checks.append(
-            {
-                "name": "env:ESMERALDA_BILLING_ACCOUNT",
-                "status": "ok",
-                "required": False,
-                "detail": "set",
-            }
-        )
-    else:
-        checks.append(
-            {
-                "name": "env:ESMERALDA_BILLING_ACCOUNT",
-                "status": "warn",
-                "required": False,
-                "detail": "unset (export ESMERALDA_BILLING_ACCOUNT=... before terragrunt plan/apply)",
-            }
-        )
+    checks.extend(_env_checks())
 
     adc_ok, adc_detail = _check_adc(root)
     checks.append(
@@ -600,8 +659,9 @@ _HINTS = [
     ),
     (
         r"ESMERALDA_BILLING_ACCOUNT",
-        "ESMERALDA_BILLING_ACCOUNT is not set in the MCP server's environment: "
-        "export it (or set it in the client's env)",
+        "ESMERALDA_BILLING_ACCOUNT is not set: add it to the user-local env file "
+        "~/.config/esmeralda/env (or the file named by $ESMERALDA_ENV_FILE; outside the repo, chmod 600, "
+        "never commit it), export it, or set it in the MCP client's env",
     ),
     (
         r"permission[_ ]denied|\b403\b|does not have .*permission",
