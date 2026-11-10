@@ -365,7 +365,7 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 |---|---|
 | `serve(config, *, host="0.0.0.0", port=None, local=False, web=False, otel_to_cloud=False)` | Serves the agent, as the CLI does |
 | `adk_command(config, *, host, port, web=False, otel_to_cloud=False)` | The `adk` command line for an ADK agent |
-| `a2a_server(config, *, otel_to_cloud=False)` | The FastAPI app for an A2A agent: the package's `app` behind the A2A REST transport, mounted at `/`, `/a2a` and `/api/a2a`. Uses the package's `a2a_task_store_builder` if it has one |
+| `a2a_server(config, *, otel_to_cloud=False)` | The FastAPI app for an A2A agent: the package's `app` behind the A2A REST transport, mounted at `/`, `/a2a` and `/api/a2a`. Uses the package's `a2a_task_store_builder` if it has one, else `InMemoryTaskStore` (warns if `resources.max_instances > 1` without a custom builder) |
 | `agent_card(config)` | The A2A `AgentCard` from `agent.yaml` `agent_card`. `A2A_AGENT_URL` overrides `url`; missing fields get defaults |
 | `session_service()` | `VertexAiSessionService` when `GOOGLE_CLOUD_AGENT_ENGINE_ID` is set and `USE_IN_MEMORY_SESSIONS` isn't `1`; else `InMemorySessionService` |
 

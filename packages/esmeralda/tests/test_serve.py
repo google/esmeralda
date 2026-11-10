@@ -184,3 +184,13 @@ def test_a2a_server_installs_request_metrics_middleware(a2a_dir, monkeypatch):
     app = serve.a2a_server(config, otel_to_cloud=True)
     assert ("enable_otel", True) in calls
     assert ("middleware", app.title, True) in calls
+
+
+def test_a2a_server_warns_when_max_instances_exceeds_one_with_in_memory_task_store(a2a_dir, caplog):
+    import logging
+
+    (a2a_dir / "agent.yaml").write_text(textwrap.dedent(A2A_YAML) + "\nresources:\n  max_instances: 2\n")
+    config = AgentConfig.load(a2a_dir)
+    with caplog.at_level(logging.WARNING, logger="esmeralda.serve"):
+        serve.a2a_server(config)
+    assert any("InMemoryTaskStore" in rec.message and "max_instances=2" in rec.message for rec in caplog.records)

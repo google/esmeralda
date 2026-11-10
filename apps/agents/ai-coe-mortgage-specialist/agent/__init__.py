@@ -18,11 +18,10 @@
 its clients, so the Agent Gateway egress patches apply to them.
 
 ``app`` is the ADK App (agent + plugins). ``esmeralda serve`` serves it over A2A (agent card from
-agent.yaml), and ``esmeralda query`` runs it in-process. ``a2a_task_store_builder`` persists A2A
-tasks in Cloud SQL when USE_CLOUD_SQL=1 (in memory otherwise).
+agent.yaml), and ``esmeralda query`` runs it in-process. Follow-up conversation context is persisted
+in Vertex AI managed sessions keyed by the A2A ``context_id``; A2A task state uses the default
+in-memory task store (single worker, ``max_instances: 1``).
 """
-
-import os
 
 import esmeralda
 
@@ -35,8 +34,4 @@ from .agent import mortgage_assistant_agent  # noqa: E402
 _bq_plugin = create_bq_plugin()
 app = esmeralda.create_app(mortgage_assistant_agent, plugins=[_bq_plugin] if _bq_plugin else [])
 
-a2a_task_store_builder = None
-if os.environ.get("USE_CLOUD_SQL", "0") == "1" and os.environ.get("CLOUD_SQL_INSTANCE"):
-    from plugins.task_store import build_cloud_sql_taskstore as a2a_task_store_builder  # noqa: E402
-
-__all__ = ["a2a_task_store_builder", "app", "mortgage_assistant_agent"]
+__all__ = ["app", "mortgage_assistant_agent"]

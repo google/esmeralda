@@ -4,7 +4,7 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "The region where Cloud SQL and the Reasoning Engine are deployed"
+  description = "The region where the Reasoning Engine is deployed"
   type        = string
   default     = "us-central1"
 }
@@ -64,31 +64,6 @@ variable "mcp_invoker_sa_email" {
   description = "The email address of the shared MCP invoker service account for IAM impersonation"
   type        = string
   default     = ""
-}
-
-# Cloud SQL Task Store Variables
-variable "use_cloud_sql" {
-  description = "Whether the agent uses the stateful Cloud SQL task store"
-  type        = bool
-  default     = false
-}
-
-variable "db_secret_id" {
-  description = "Secret Manager secret ID storing the Cloud SQL connection details"
-  type        = string
-  default     = ""
-}
-
-variable "cloud_sql_instance_connection_name" {
-  description = "Cloud SQL instance connection name (project:region:instance)"
-  type        = string
-  default     = ""
-}
-
-variable "database_name" {
-  description = "The name of the task store relational database"
-  type        = string
-  default     = "a2a_tasks"
 }
 
 # BYOC Container Image URI

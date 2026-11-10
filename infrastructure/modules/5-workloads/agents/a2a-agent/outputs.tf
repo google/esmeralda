@@ -8,11 +8,6 @@ output "endpoint_url" {
   value       = "https://${var.region}-aiplatform.googleapis.com/v1beta1/${google_vertex_ai_reasoning_engine.agent.id}"
 }
 
-output "db_connection_name" {
-  description = "The connection string identifier for the Cloud SQL postgres database"
-  value       = var.cloud_sql_instance_connection_name
-}
-
 output "staging_bucket_name" {
   description = "The name of the atomic GCS bucket used for staging code dependencies"
   value       = google_storage_bucket.staging.name

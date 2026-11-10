@@ -89,8 +89,6 @@ resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
 # (roles/aiplatform.user and roles/bigquery.dataEditor are bound in Layer 5 a2a-agent to avoid duplicate bindings)
 resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles" {
   for_each = toset([
-    "roles/cloudsql.client",
-    "roles/cloudsql.instanceUser",
     "roles/dlp.user",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",

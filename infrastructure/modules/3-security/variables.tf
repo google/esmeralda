@@ -67,20 +67,8 @@ variable "byo_security" {
   default     = false
 }
 
-variable "existing_database_key_id" {
-  description = "The full resource URI of the existing database KMS key. Required if byo_security is true."
-  type        = string
-  default     = ""
-}
-
 variable "existing_secrets_key_id" {
   description = "The full resource URI of the existing secrets KMS key. Required if byo_security is true."
-  type        = string
-  default     = ""
-}
-
-variable "existing_db_password_secret_id" {
-  description = "The full resource name of the existing DB password secret. Required if byo_security is true."
   type        = string
   default     = ""
 }
@@ -105,11 +93,6 @@ variable "gateway_subnet_id" {
   description = "The resource ID/name of the gateway subnet on the Shared VPC for Gateway Egress"
   type        = string
   default     = ""
-}
-
-variable "ai_coe_agents_sql_service_agent" {
-  description = "The Cloud SQL Service Agent email in the AI CoE agents project"
-  type        = string
 }
 
 variable "governance_secrets_service_agent" {

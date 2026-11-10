@@ -56,7 +56,6 @@ inputs = {
   # Entry point certificate (<domain> + *.<domain>), derived from the layer-2 private zone
   internal_domain = trimsuffix(dependency.networking.outputs.dns_zone_dns_name, ".")
 
-  ai_coe_agents_sql_service_agent  = dependency.projects.outputs.ai_coe_agents_sql_service_agent
   governance_secrets_service_agent = dependency.projects.outputs.governance_secrets_service_agent
 }
 

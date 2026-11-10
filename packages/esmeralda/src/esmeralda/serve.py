@@ -19,8 +19,11 @@
 * ``a2a`` agents: an A2A REST server for the package's ``app``, built from the ``agent_card`` in
   ``agent.yaml``, mounted at ``/``, ``/a2a`` and ``/api/a2a`` (gateway path compatibility).
 
-Agent-specific A2A options come from the agent package: an optional ``a2a_task_store_builder``
-(callable returning an A2A ``TaskStore``, for example Cloud SQL). Without it, tasks live in memory.
+Follow-up conversation context across A2A requests sharing a ``context_id`` is persisted in the ADK
+session service (``VertexAiSessionService`` on Agent Runtime). Agent-specific A2A task storage comes
+from an optional ``a2a_task_store_builder`` callable exported by the agent package. Without it, A2A
+task state uses ``InMemoryTaskStore``, which requires a single worker process and
+``resources.max_instances: 1`` in ``agent.yaml``.
 """
 
 from __future__ import annotations
@@ -155,10 +158,19 @@ def a2a_server(config: AgentConfig, *, otel_to_cloud: bool = False) -> Any:
     package = load_package(config)
     card = agent_card(config)
     url = card.url
+    task_store_builder = getattr(package, "a2a_task_store_builder", None)
+    max_instances = config.resources.get("max_instances")
+    if task_store_builder is None and isinstance(max_instances, int) and max_instances > 1:
+        logger.warning(
+            "A2A agent '%s' uses the default InMemoryTaskStore with resources.max_instances=%d; "
+            "in-memory task state requires a single worker with max_instances: 1 (or a custom a2a_task_store_builder).",
+            config.name,
+            max_instances,
+        )
     template = A2aAgent(
         agent_card=card,
         agent_executor_builder=_ExecutorBuilder(app),
-        task_store_builder=getattr(package, "a2a_task_store_builder", None),
+        task_store_builder=task_store_builder,
     )
     template.set_up()
     template.agent_card.url = url  # set_up points the card at the engine; keep the gateway address

@@ -2,19 +2,9 @@
 # 6. OUTPUTS SPECIFICATION
 # ====================================================================
 
-output "database_key_id" {
-  description = "The fully qualified crypto key ID for private database CMEK"
-  value       = local.resolved_database_key_id
-}
-
 output "secrets_key_id" {
   description = "The fully qualified crypto key ID for secret payloads CMEK"
   value       = local.resolved_secrets_key_id
-}
-
-output "db_password_secret_name" {
-  description = "The Secret Manager resource path representing the DB admin credentials"
-  value       = local.resolved_db_password_secret_id
 }
 
 output "ai_coe_mortgage_specialist_sa_email" {

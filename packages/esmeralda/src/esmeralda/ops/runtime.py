@@ -26,6 +26,7 @@ from __future__ import annotations
 import io
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -240,7 +241,55 @@ def test_partner(
 
 
 DEFAULT_VERIFY_MESSAGE = "Can you verify Julian Sterling's income?"
+DEFAULT_A2A_FOLLOWUP_MESSAGE = (
+    "Without me repeating the name, which applicant did I just ask about in this conversation? "
+    "Reply with their full name."
+)
 DEFAULT_VERIFY_AGENTS = ("ai-coe-mortgage-specialist", "cx-mortgage-orchestrator")
+
+
+async def verify_a2a_context(
+    root: Path,
+    env: str,
+    agent: str = "ai-coe-mortgage-specialist",
+    *,
+    first_message: str = DEFAULT_VERIFY_MESSAGE,
+    followup_message: str = DEFAULT_A2A_FOLLOWUP_MESSAGE,
+    expected_terms: tuple[str, ...] = ("julian", "sterling"),
+    context_id: str | None = None,
+    first_turn: dict[str, Any] | None = None,
+    timeout: float = 300.0,
+) -> dict[str, Any]:
+    """Sends two A2A messages with the same ``context_id`` (and no ``task_id``) and checks turn 2 recalls turn 1."""
+    cid = context_id or f"verify-{uuid.uuid4()}"
+    if first_turn is None:
+        try:
+            first_turn = await query_agent(root, env, agent, first_message, timeout=timeout, session=cid)
+        except OpsError as exc:
+            first_turn = {"env": env, "agent": agent, "passed": False, "errors": [str(exc)], "seconds": 0.0}
+    if not first_turn.get("passed"):
+        return {
+            "env": env,
+            "agent": agent,
+            "context_id": cid,
+            "passed": False,
+            "errors": first_turn.get("errors") or ["first turn failed"],
+            "seconds": 0.0,
+        }
+    try:
+        followup = await query_agent(root, env, agent, followup_message, timeout=timeout, session=cid)
+    except OpsError as exc:
+        followup = {"env": env, "agent": agent, "passed": False, "errors": [str(exc)], "seconds": 0.0}
+
+    answer = str(followup.get("answer") or "")
+    check_terms = [t.lower() for t in expected_terms if t.lower() in first_message.lower()]
+    recalled = (not check_terms) or any(t in answer.lower() for t in check_terms)
+    passed = bool(followup.get("passed")) and bool(answer.strip()) and recalled
+    result = {**followup, "context_id": cid, "passed": passed}
+    if not passed and followup.get("passed"):
+        msg = f"Follow-up A2A message on context_id={cid} did not recall turn-1 context ({', '.join(check_terms)})"
+        result["errors"] = [*(result.get("errors") or []), msg]
+    return result
 
 
 async def verify(
@@ -298,8 +347,9 @@ async def verify(
     queries: dict[str, dict[str, Any]] = {}
     if not skip_query:
         for agent_name in DEFAULT_VERIFY_AGENTS:
+            cid = f"verify-{uuid.uuid4()}" if agent_name == "ai-coe-mortgage-specialist" else None
             try:
-                qres = await query_agent(root, env, agent_name, message, timeout=timeout)
+                qres = await query_agent(root, env, agent_name, message, timeout=timeout, session=cid)
             except OpsError as exc:
                 qres = {"env": env, "agent": agent_name, "passed": False, "errors": [str(exc)], "seconds": 0.0}
             queries[agent_name] = qres
@@ -311,6 +361,28 @@ async def verify(
                     "detail": repo.short(qres.get("answer") or (qres.get("errors") or ["failed"])[0], 120),
                 }
             )
+            if agent_name == "ai-coe-mortgage-specialist":
+                ctx_step = f"{agent_name}:context"
+                ctx_res = await verify_a2a_context(
+                    root,
+                    env,
+                    agent_name,
+                    first_message=message,
+                    context_id=cid,
+                    first_turn=qres,
+                    timeout=timeout,
+                )
+                queries[ctx_step] = ctx_res
+                steps.append(
+                    {
+                        "step": ctx_step,
+                        "passed": bool(ctx_res.get("passed")),
+                        "seconds": ctx_res.get("seconds", 0.0),
+                        "detail": repo.short(
+                            ctx_res.get("answer") or (ctx_res.get("errors") or ["failed"])[0], 120
+                        ),
+                    }
+                )
     passed = all(s["passed"] for s in steps)
     return {
         "env": env,

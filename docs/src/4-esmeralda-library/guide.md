@@ -149,7 +149,7 @@ An A2A agent is written like any other agent: the package exports `app` (`esmera
 | Concern | Default | Override |
 |---|---|---|
 | Sessions | Vertex AI managed sessions on Agent Runtime (`GOOGLE_CLOUD_AGENT_ENGINE_ID`); in memory locally | `USE_IN_MEMORY_SESSIONS=1` |
-| A2A task store | In memory | Export `a2a_task_store_builder` from the package (a callable that returns an A2A `TaskStore`). The [specialist](../../../apps/agents/ai-coe-mortgage-specialist/agent/__init__.py) uses Cloud SQL when `USE_CLOUD_SQL=1` |
+| A2A task store | In memory (`InMemoryTaskStore`; requires a single worker with `max_instances: 1`) | Export `a2a_task_store_builder` from the package (a callable that returns an A2A `TaskStore`) when scaling beyond `max_instances: 1` with `tasks/get` polling or stream resubscribe. Multi-turn context is already durable in `VertexAiSessionService` keyed by `context_id` |
 | Plugins | `EsmeraldaTelemetryPlugin` | The app's other plugins (for example BigQuery analytics) |
 
 `finalize()` runs once the tracer provider is set up.
