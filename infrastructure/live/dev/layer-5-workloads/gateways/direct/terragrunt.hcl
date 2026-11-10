@@ -23,6 +23,14 @@ dependency "projects" {
   config_path = "../../../layer-1-projects"
 }
 
+dependency "networking" {
+  config_path = "../../../layer-2-networking"
+  mock_outputs = {
+    network_id = "projects/mock/global/networks/mock"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 dependency "ai_coe_mortgage_specialist" {
   config_path = "../../agents/ai-coe-mortgage-specialist"
   mock_outputs = {
@@ -67,6 +75,12 @@ inputs = {
   project_id  = dependency.projects.outputs.gateway_project_id
   environment = local.env_vars.locals.environment
   region      = local.env_vars.locals.region
+
+  # Agent Runtime backend (env.yaml gateways): psc (fixed 30 s time to first byte) or hybrid.
+  hybrid_agent_backend = try(local.env_vars.locals.gateways.hybrid_agent_backend, false)
+  agent_backend        = try(local.env_vars.locals.gateways.agent_backend, "psc")
+  network_id           = dependency.networking.outputs.network_id
+  googleapis_psc_ip    = try(dependency.networking.outputs.googleapis_psc_ip, "")
 
   # Catalog `unit` => that unit's outputs. MCP services live in the MCP project.
   mcp_services = {

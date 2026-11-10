@@ -272,6 +272,8 @@ def test_env_manifests_have_key_parity_and_valid_capabilities():
         "enabled",
         "default",
         "host_rules",
+        "hybrid_agent_backend",
+        "agent_backend",
     }
 
     assert "governance" in dev and "governance" in prd

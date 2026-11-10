@@ -15,7 +15,7 @@ output "hosts" {
     },
     {
       for name, agent in var.agents : name => {
-        backend_service_id = google_compute_region_backend_service.aiplatform[0].id
+        backend_service_id = local.agent_backend_service_id
         host_rewrite       = local.aiplatform_host
         timeout_sec        = agent.timeout_sec
         path_rewrites = agent.kind == "a2a" ? [
@@ -29,12 +29,25 @@ output "hosts" {
       }
     }
   )
+
+  precondition {
+    condition     = var.agent_backend == "psc" || var.hybrid_agent_backend
+    error_message = "agent_backend = hybrid needs hybrid_agent_backend = true (env.yaml gateways.hybrid_agent_backend)."
+  }
+}
+
+output "agent_backends" {
+  description = "Agent Runtime backend services by type (psc, hybrid; null when not created), e.g. to probe the hybrid backend before routing agents to it"
+  value = {
+    psc    = try(google_compute_region_backend_service.aiplatform[0].id, null)
+    hybrid = try(google_compute_region_backend_service.aiplatform_hybrid[0].id, null)
+  }
 }
 
 output "default_backend_service_id" {
-  description = "Backend for hosts outside the catalog when direct is the default (they get a 404): the aiplatform backend, else the first MCP backend"
+  description = "Backend for hosts outside the catalog when direct is the default (they get a 404): the agent backend, else the first MCP backend"
   value = (
-    length(var.agents) > 0 ? google_compute_region_backend_service.aiplatform[0].id :
+    length(var.agents) > 0 ? local.agent_backend_service_id :
     length(var.mcp_services) > 0 ? google_compute_region_backend_service.mcp[sort(keys(var.mcp_services))[0]].id : null
   )
 }

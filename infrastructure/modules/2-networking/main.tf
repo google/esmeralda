@@ -157,6 +157,32 @@ resource "google_compute_router_nat" "nat" {
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
+# Private Service Connect endpoint for Google APIs (all-apis bundle): a private IP in the Shared
+# VPC that fronts *.googleapis.com. The entry point's "hybrid" Agent Runtime backend
+# (gateways/direct) points a hybrid NEG at it, so the backend service can have a real timeout
+# (a PSC NEG to a Google API is fixed at 30 s to first byte). It changes no DNS for googleapis.com:
+# nothing else uses this IP unless told to.
+resource "google_compute_global_address" "googleapis_psc" {
+  count        = var.enable_googleapis_psc_endpoint && !var.byo_networking ? 1 : 0
+  name         = "psc-googleapis-${var.environment}"
+  project      = var.net_host_project_id
+  address_type = "INTERNAL"
+  purpose      = "PRIVATE_SERVICE_CONNECT"
+  network      = google_compute_network.shared_vpc[0].id
+  address      = var.googleapis_psc_ip
+}
+
+# PSC endpoints for Google APIs need a name of 1-20 lowercase letters and digits.
+resource "google_compute_global_forwarding_rule" "googleapis_psc" {
+  count                 = var.enable_googleapis_psc_endpoint && !var.byo_networking ? 1 : 0
+  name                  = "pscgapis${var.environment}"
+  project               = var.net_host_project_id
+  network               = google_compute_network.shared_vpc[0].id
+  ip_address            = google_compute_global_address.googleapis_psc[0].id
+  target                = "all-apis"
+  load_balancing_scheme = ""
+}
+
 # ====================================================================
 # 3. PSC INTERFACE & IAP FIREWALL RULES
 # ====================================================================

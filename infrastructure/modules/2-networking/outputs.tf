@@ -49,3 +49,8 @@ output "entrypoint_domain" {
   description = "The private domain served by the entry point, without trailing dot (e.g. esmeralda.internal)"
   value       = local.entrypoint_domain
 }
+
+output "googleapis_psc_ip" {
+  description = "Internal IP of the PSC endpoint for Google APIs (empty when not created); target of the entry point's hybrid Agent Runtime backend"
+  value       = try(google_compute_global_address.googleapis_psc[0].address, "")
+}
