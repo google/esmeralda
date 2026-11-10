@@ -28,16 +28,6 @@ dependency "governance" {
   config_path = "../../../layer-4-governance"
 }
 
-dependency "cloud_sql" {
-  config_path = "../../data/cloud-sql"
-  mock_outputs = {
-    enabled                  = true
-    instance_connection_name = "mock-project:us-central1:ai-coe-mortgage-specialist-db-prd"
-    db_secret_id             = "projects/mock-project/secrets/mock-db-secret"
-  }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
-}
-
 locals {
   env_cfg  = read_terragrunt_config(find_in_parent_folders("env.yaml"))
   env_vars = merge(local.env_cfg.locals, { locals = local.env_cfg.locals })
@@ -94,13 +84,6 @@ inputs = {
 
   psc_subnet_id      = dependency.networking.outputs.psc_subnet_id
   enable_psc_network = true
-
-  # Keep use_cloud_sql = false until the specialist image ships greenlet + async PG driver
-  # dependencies required by a2a-sdk's DatabaseTaskStore (follow-up PR).
-  database_name                      = "a2a_tasks"
-  use_cloud_sql                      = false
-  db_secret_id                       = try(dependency.cloud_sql.outputs.db_secret_id, "")
-  cloud_sql_instance_connection_name = try(dependency.cloud_sql.outputs.instance_connection_name, "")
 
   agent_config_path = "${get_repo_root()}/apps/agents/ai-coe-mortgage-specialist/agent.yaml"
   agent_card_json   = jsonencode(yamldecode(file("${get_repo_root()}/apps/agents/ai-coe-mortgage-specialist/agent.yaml")).agent_card)

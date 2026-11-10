@@ -38,7 +38,10 @@ SECTION_LIMIT = 2500
 _DEFAULT_AGENT_CARD_CONTRACT = (
     "A2A agents declare `framework: a2a` and an `agent_card` mapping in `apps/agents/<name>/agent.yaml` "
     "(`name`, `description`, `version`, `url`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`). "
-    "`esmeralda serve` serves the card at `/v1/card` and `/.well-known/agent-card.json`."
+    "`esmeralda serve` serves the card at `/v1/card` and `/.well-known/agent-card.json`. "
+    "Multi-turn conversation context is persisted in VertexAiSessionService keyed by `context_id`; "
+    "A2A agents using the default in-memory task store (no `a2a_task_store_builder`) must run a single worker "
+    "with `resources.max_instances: 1`."
 )
 
 
@@ -77,6 +80,27 @@ def _agent_cards(root: Path) -> dict[str, Any]:
     return cards
 
 
+def _a2a_task_store_warnings(root: Path) -> list[str]:
+    agents_dir = root / "apps" / "agents"
+    warnings: list[str] = []
+    if not agents_dir.is_dir():
+        return warnings
+    for agent_yaml in sorted(agents_dir.glob("*/agent.yaml")):
+        text = agent_yaml.read_text(errors="replace")
+        if "framework: a2a" not in text and "agent_card:" not in text:
+            continue
+        max_match = re.search(r"^\s*max_instances\s*:\s*(\d+)", text, re.MULTILINE)
+        max_inst = int(max_match.group(1)) if max_match else 1
+        init_py = agent_yaml.parent / "agent" / "__init__.py"
+        init_text = init_py.read_text(errors="replace") if init_py.is_file() else ""
+        if max_inst > 1 and "a2a_task_store_builder" not in init_text:
+            warnings.append(
+                f"{agent_yaml.parent.name}: framework: a2a with max_instances={max_inst} and no "
+                "a2a_task_store_builder (in-memory task store requires a single worker with max_instances: 1)"
+            )
+    return warnings
+
+
 def describe_contracts(root: Path, *, section_name: str = "all") -> dict[str, Any]:
     if section_name not in VALID_SECTIONS:
         raise repo.OpsError(f"Unknown contract section '{section_name}'. Choose from: {', '.join(VALID_SECTIONS)}")
@@ -90,10 +114,12 @@ def describe_contracts(root: Path, *, section_name: str = "all") -> dict[str, An
         env: [u.rsplit("/", 1)[-1] for u in repo.units(root, env) if u.startswith("layer-5-workloads/gateways/")]
         for env in repo.environments(root)
     }
-    agent_card_info = {
+    agent_card_info: dict[str, Any] = {
         "contract": _DEFAULT_AGENT_CARD_CONTRACT,
         "a2a_agents": _agent_cards(root),
     }
+    if a2a_warnings := _a2a_task_store_warnings(root):
+        agent_card_info["warnings"] = a2a_warnings
 
     if section_name == "entrypoint":
         return {

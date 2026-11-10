@@ -4,7 +4,7 @@ When our loan officer asks, ***"Can you verify Julian Sterling's income?"***, th
 
 In a laptop prototype, a single agent usually handles everything: chatting with the user, knowing every underwriting rule, and calling every backend database. In an enterprise, however, **the team that owns the customer channel is rarely the team that owns core mortgage underwriting**.
 
-This section explains how Esmeralda splits reasoning across two specialized agents owned by two independent teams—the **CX Mortgage Orchestrator** (`cx-mortgage-orchestrator`) and the **AI CoE Mortgage Specialist** (`ai-coe-mortgage-specialist`)—how both run as Bring-Your-Own-Container (BYOC) workloads on **Vertex AI Agent Runtime**, and how stateful agent infrastructure (like a private Cloud SQL database) is packaged and bootstrapped without a single manual ticket.
+This section explains how Esmeralda splits reasoning across two specialized agents owned by two independent teams—the **CX Mortgage Orchestrator** (`cx-mortgage-orchestrator`) and the **AI CoE Mortgage Specialist** (`ai-coe-mortgage-specialist`)—how both run as Bring-Your-Own-Container (BYOC) workloads on **Vertex AI Agent Runtime**, and how multi-turn conversation context is persisted in managed Vertex AI Sessions without provisioning an external database.
 
 ---
 
@@ -59,22 +59,21 @@ How each hop is authorized and how private TLS certificates work on this path is
 
 ## 2. Why We Designed It This Way: Key Decisions & Trade-offs
 
-In many organizations, deploying a stateful AI agent requires filing tickets across three different silos: DBAs to create a database and run `GRANT` scripts, NetOps to wire VPC peering, and SecOps to issue credentials. Esmeralda eliminates those handoffs through four deliberate design choices:
+In many organizations, deploying a multi-agent workflow requires coordinating across separate platform, networking, and security silos. Esmeralda eliminates those handoffs through deliberate design choices:
 
 | Decision | Why We Made It | What We Avoided |
 | :--- | :--- | :--- |
-| **Separate GCP Projects per Agent Team (`cx-agents` vs. `ai-coe-agents`)** | Isolates IAM permissions, SPIFFE principal sets, model quotas, and FinOps token chargeback per department. The CX team consumes the specialist solely via its `*.esmeralda.internal` URL. | Cross-team IAM tangles where a bug in a customer chatbot can read the specialist's database or exhaust its quota. |
+| **Separate GCP Projects per Agent Team (`cx-agents` vs. `ai-coe-agents`)** | Isolates IAM permissions, SPIFFE principal sets, model quotas, and FinOps token chargeback per department. The CX team consumes the specialist solely via its `*.esmeralda.internal` URL. | Cross-team IAM tangles where a bug in a customer chatbot can access another team's storage or exhaust its quota. |
 | **BYOC Containers Pinned by SHA-256 Digest** | Guarantees that the exact container bytes tested in `dev` are promoted to `prd` (`release/prd.yaml`), with zero environment secrets or certificates baked into the image. | "Works in dev, breaks in prod" drift caused by rebuilding Python dependencies or pickle payloads per environment. |
-| **ADR-04.3: Atomic Agent + Private Cloud SQL Packaging** | Packages the specialist's `ReasoningEngine`, its private Cloud SQL PostgreSQL 15 instance (`ipv4_enabled = false`), buckets, and BigQuery analytics dataset inside one reusable Terraform module. | Shared multi-tenant agent databases where schema migrations in one agent break another team's workload. |
-| **ADR-04.4: Zero-Bastion Serverless DB Bootstrapping (Cloud Run Job)** | Runs an ephemeral VPC-internal Cloud Run Job (`<agent>-db-bootstrap-<env>`) during `terraform apply` to configure PostgreSQL IAM grants over the private network and immediately exit. | Opening public database IPs, maintaining persistent bastion VMs, or asking developers to run `psql` manually over tunnels. |
+| **Managed ADK Sessions Keyed by A2A `context_id`** | Persists multi-turn conversation history in Vertex AI Agent Engine managed sessions (`VertexAiSessionService`) keyed by the A2A `context_id`, while keeping transient A2A task state (`InMemoryTaskStore`) in process with `max_instances: 1`. | Paying 24/7 for an idle relational database instance and managing VPC database bootstrap jobs just to preserve multi-turn chat context. |
 
 ### Clear Team Boundaries
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| **AI Reasoning Engineer** (CX or AI CoE Team) | Prompt engineering, multi-agent delegation, tool orchestration, and response quality evaluation. | `apps/agents/<agent>/` (Python/ADK code, `Dockerfile`, `agent.yaml`). Shared SDK: `packages/esmeralda/`. | VPC subnetting, Cloud SQL replication, or IAM project bindings. |
-| **Platform / Database Lead** | Ensuring zero public IPs, IAM-authenticated SQL connections, and automated database bootstrap. | `infrastructure/modules/5-workloads/agents/`, Cloud SQL specs, and bootstrap Cloud Run jobs. | Agent prompt engineering or LLM temperature settings. |
-| **SecOps / Identity Auditor** | Enforcing zero-trust database authentication and cryptographic SPIFFE Agent Identity. | Service accounts (`sa-cx-mortgage-orch-<env>`, `sa-ai-coe-mortgage-spec-<env>`, `sa-mcp-invoker-<env>`), Agent Identity grants, and Cloud SQL IAM users. | Python business logic. |
+| **AI Reasoning Engineer** (CX or AI CoE Team) | Prompt engineering, multi-agent delegation, tool orchestration, and response quality evaluation. | `apps/agents/<agent>/` (Python/ADK code, `Dockerfile`, `agent.yaml`). Shared SDK: `packages/esmeralda/`. | VPC subnetting, KMS keys, or IAM project bindings. |
+| **Platform Lead** | Ensuring zero public IPs, digest-pinned BYOC deployments, and private gateway routing. | `infrastructure/modules/5-workloads/agents/`, gateway backends, and entry point routing. | Agent prompt engineering or LLM temperature settings. |
+| **SecOps / Identity Auditor** | Enforcing cryptographic SPIFFE Agent Identity and per-target Agent Gateway egress policies. | Service accounts (`sa-cx-mortgage-orch-<env>`, `sa-ai-coe-mortgage-spec-<env>`, `sa-mcp-invoker-<env>`) and Agent Identity grants. | Python business logic. |
 
 ---
 
@@ -97,12 +96,10 @@ In many organizations, deploying a stateful AI agent requires filing tickets acr
 * **A2A Protocol Server:** Exposes the standard Agent-to-Agent JSON-RPC methods (`on_message_send`, `handle_authenticated_agent_card`, `on_get_task`, `on_cancel_task`) alongside the Agent Card declared in `agent.yaml` (advertising *Document Search*, *Income Verification*, and *Corporate Email* skills).
 * **Agent Card in Agent Registry:** `google_agent_registry_service.agent_card` registers the specialist (`A2A_AGENT_CARD`, URL `https://ai-coe-mortgage-specialist.esmeralda.internal`) in the central **governance** project's Agent Registry—the exact allowlist entry that authorizes the CX orchestrator to call it through the Central Agent Gateway.
 * **MCP Tool Bindings:** Injects `DMS_MCP_URL`, `INCOME_VERIFICATION_URL`, and `EMAIL_MCP_URL` pointing at `https://<svc>.esmeralda.internal/mcp` (detailed in [1.2 MCP Tool Servers](./02-mcp-tool-servers.md)).
-* **Private Cloud SQL PostgreSQL Instance:** Provisions `google_sql_database_instance.task_store` (`POSTGRES_15`, `ZONAL`) with `ipv4_enabled = false` and `private_network = var.vpc_id`, reachable solely through the Shared VPC private services access range (Layer 2).
-* **IAM Database Authentication:** Enables `cloudsql.iam_authentication = on` and registers a `CLOUD_IAM_SERVICE_ACCOUNT` database user for `sa-ai-coe-mortgage-spec-<env>` with `roles/cloudsql.client` and `roles/cloudsql.instanceUser`.
-* **Zero-Bastion VPC Bootstrapper:** Runs `google_cloud_run_v2_job.schema_bootstrap` inside the Shared VPC core subnet to grant the IAM service account privileges on the `a2a_tasks` database and `public` schema, allowing the A2A SDK's `DatabaseTaskStore` to manage task tables automatically.
+* **Managed Sessions vs. In-Memory Task Store:** Multi-turn conversation history across follow-up A2A calls sharing a `context_id` is stored in Vertex AI managed sessions (`VertexAiSessionService`, enabled by `USE_IN_MEMORY_SESSIONS: "0"` in `agent.yaml`), while A2A `Task` objects (`task_id` status and artifacts) use `InMemoryTaskStore` by default.
 
-> [!WARNING]
-> **In-Memory vs. Cloud SQL Task Store:** The private Cloud SQL instance is provisioned and bootstrapped automatically, but the module currently pins `USE_CLOUD_SQL = "0"` so the specialist stores A2A tasks in memory by default. Setting `USE_CLOUD_SQL = "1"` activates the persistent PostgreSQL task store (`plugins/task_store.py`).
+> [!IMPORTANT]
+> **Single-Worker & `max_instances: 1` Invariant for In-Memory A2A Task Stores:** Because `InMemoryTaskStore` is per-process, A2A agents that do not export a custom `a2a_task_store_builder` must run a single uvicorn worker process with `resources.max_instances: 1` in `agent.yaml` (`esmeralda serve` and `esmeralda contracts` warn if `max_instances > 1` without a custom builder). Follow-up messages in the same `context_id` always resolve their conversation history from `VertexAiSessionService`; a shared `TaskStore` (`a2a_task_store_builder`) is only needed if you scale `max_instances > 1` while relying on cross-instance `tasks/get` polling, stream resubscribe, or resuming `input-required` tasks.
 
 ---
 

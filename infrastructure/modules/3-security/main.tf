@@ -33,18 +33,6 @@ resource "google_kms_key_ring" "keyring" {
   location = var.region
 }
 
-# KMS Key for Private Cloud SQL database encryption
-resource "google_kms_crypto_key" "database_key" {
-  count           = var.byo_security ? 0 : 1
-  name            = "key-esmeralda-sql-${var.environment}"
-  key_ring        = google_kms_key_ring.keyring[0].id
-  rotation_period = "7776000s" # 90 days rotation
-
-  lifecycle {
-    prevent_destroy = false
-  }
-}
-
 # KMS Key for Secret Manager payload encryption
 resource "google_kms_crypto_key" "secrets_key" {
   count           = var.byo_security ? 0 : 1
@@ -59,21 +47,12 @@ resource "google_kms_crypto_key" "secrets_key" {
 
 # Dynamic key IDs resolution based on BYO toggle
 locals {
-  resolved_database_key_id = var.byo_security ? var.existing_database_key_id : try(google_kms_crypto_key.database_key[0].id, "")
-  resolved_secrets_key_id  = var.byo_security ? var.existing_secrets_key_id : try(google_kms_crypto_key.secrets_key[0].id, "")
+  resolved_secrets_key_id = var.byo_security ? var.existing_secrets_key_id : try(google_kms_crypto_key.secrets_key[0].id, "")
 }
 
 # --------------------------------------------------------------------
 # KMS IAM Grants: Authorizing Service Project Robots
 # --------------------------------------------------------------------
-
-# Grant Cloud SQL service identity (residing in workloads project) access to decrypt/encrypt Postgres disk CMEK
-resource "google_kms_crypto_key_iam_member" "sql_kms" {
-  count         = var.byo_security ? 0 : 1
-  crypto_key_id = google_kms_crypto_key.database_key[0].id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${var.ai_coe_agents_sql_service_agent}"
-}
 
 # Grant Secret Manager service identity (residing in governance project) access to decrypt/encrypt credentials CMEK
 resource "google_kms_crypto_key_iam_member" "secrets_kms" {
@@ -84,51 +63,7 @@ resource "google_kms_crypto_key_iam_member" "secrets_kms" {
 }
 
 # ====================================================================
-# 2. SECRET MANAGER BOUNDARIES & AUTO GENERATED CREDENTIALS
-# ====================================================================
-
-# Generate secure, unique PostgreSQL administrator password
-resource "random_password" "db_password" {
-  count            = var.byo_security ? 0 : 1
-  length           = 32
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-# Secret container for database master credentials, now centralized in Governance project
-resource "google_secret_manager_secret" "db_password" {
-  count     = var.byo_security ? 0 : 1
-  secret_id = "secret-pg-admin-password-${var.environment}"
-  project   = var.governance_project_id
-
-  replication {
-    user_managed {
-      replicas {
-        location = var.region
-        customer_managed_encryption {
-          kms_key_name = local.resolved_secrets_key_id
-        }
-      }
-    }
-  }
-
-  depends_on = [google_kms_crypto_key_iam_member.secrets_kms]
-}
-
-# Put the generated password into the secret container
-resource "google_secret_manager_secret_version" "db_password" {
-  count       = var.byo_security ? 0 : 1
-  secret      = google_secret_manager_secret.db_password[0].id
-  secret_data = random_password.db_password[0].result
-}
-
-# Local resolution for Secret resource name
-locals {
-  resolved_db_password_secret_id = var.byo_security ? var.existing_db_password_secret_id : try(google_secret_manager_secret.db_password[0].id, "")
-}
-
-# ====================================================================
-# 3. LEAST-PRIVILEGE WORKLOAD SERVICE ACCOUNTS & IAM ROLE BINDINGS
+# 2. LEAST-PRIVILEGE WORKLOAD SERVICE ACCOUNTS & IAM ROLE BINDINGS
 # ====================================================================
 
 # --------------------------------------------------------------------
@@ -168,20 +103,17 @@ resource "google_project_service_identity" "agentplatform_sa" {
 }
 
 # --------------------------------------------------------------------
-# B. Core AI Platform Agent Identity (A2A Bootstrapping SA & Legacy Runtime Fallback)
+# B. Core AI Platform Agent Identity (A2A Legacy Runtime Fallback SA)
 # --------------------------------------------------------------------
-# Always provisioned so Cloud SQL IAM user / schema_bootstrap job (a2a-agent) and
-# Layer 4/5 IAM consumers always receive a valid service account email, with zero
-# destruction of SAs in use. Runtime IAM roles are gated by enable_agent_identity = false.
+# Always provisioned so Layer 4/5 IAM consumers receive a valid service account email,
+# with zero destruction of SAs in use. Runtime IAM roles are gated by enable_agent_identity = false.
 resource "google_service_account" "ai_coe_mortgage_specialist_sa" {
   account_id   = "sa-ai-coe-mortgage-spec-${var.environment}"
   display_name = "AI CoE Mortgage Specialist Agent Workload Service Account"
   project      = var.ai_coe_agents_project_id
 }
 
-# Full-parity roles derived from the monolithic test-sa setup (gated by enable_agent_identity = false;
-# roles/logging.logWriter is kept unconditionally for the a2a-agent Cloud SQL schema_bootstrap job, and
-# roles/cloudsql.{client,instanceUser} are owned by Layer 5 a2a-agent).
+# Legacy SA runtime roles (gated by enable_agent_identity = false).
 resource "google_project_iam_member" "ai_coe_mortgage_specialist_roles" {
   for_each = var.enable_agent_identity ? toset([
     "roles/logging.logWriter",
@@ -200,40 +132,6 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_roles" {
   project = var.ai_coe_agents_project_id
   role    = each.key
   member  = "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}"
-}
-
-# Forget duplicate Cloud SQL bindings now owned by Layer 5 a2a-agent (cloudsql_client_role, cloudsql_user_role)
-# without deleting the underlying GCP IAM bindings needed by schema_bootstrap.
-moved {
-  from = google_project_iam_member.ai_coe_mortgage_specialist_roles["roles/cloudsql.client"]
-  to   = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_client
-}
-
-removed {
-  from = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_client
-  lifecycle {
-    destroy = false
-  }
-}
-
-moved {
-  from = google_project_iam_member.ai_coe_mortgage_specialist_roles["roles/cloudsql.instanceUser"]
-  to   = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_user
-}
-
-removed {
-  from = google_project_iam_member.l5_owned_ai_coe_specialist_cloudsql_user
-  lifecycle {
-    destroy = false
-  }
-}
-
-# Grant A2A Service account reading rights on the Database Master secret (resolves to existing or new)
-resource "google_secret_manager_secret_iam_member" "ai_coe_mortgage_specialist_secret_accessor" {
-  count     = var.enable_agent_identity ? 0 : 1
-  secret_id = local.resolved_db_password_secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.ai_coe_mortgage_specialist_sa.email}"
 }
 
 # Allow Vertex AI Reasoning Engine robots to act as A2A Service Account and create tokens
@@ -338,8 +236,6 @@ resource "google_project_iam_member" "ai_coe_agents_vertex_re_roles" {
   for_each = toset([
     "roles/storage.objectViewer",
     "roles/aiplatform.user",
-    "roles/cloudsql.client",
-    "roles/cloudsql.instanceUser"
   ])
   project = var.ai_coe_agents_project_id
   role    = each.key

@@ -13,84 +13,6 @@ terraform {
 }
 
 # -----------------------------------------------------------------------------
-# 0. STATE MIGRATION SAFETY: FORGET EXTRACTED CLOUD SQL RESOURCES WITHOUT DESTROY
-# -----------------------------------------------------------------------------
-# Cloud SQL resources now live in infrastructure/modules/5-workloads/data/cloud-sql.
-# Use scripts/migrate_cloud_sql_state.sh to move state across units; these removed
-# blocks guarantee Terraform >= 1.7 will never destroy live DB resources if a plan/apply
-# runs against an unmigrated agent state.
-
-removed {
-  from = google_sql_database_instance.task_store
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_sql_database.tasks_db
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = random_password.postgres_pwd
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_sql_user.postgres_user
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_sql_user.agent_iam_user
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_project_iam_member.cloudsql_client_role
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_project_iam_member.cloudsql_user_role
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_cloud_run_v2_job.schema_bootstrap
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = null_resource.db_ready
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = null_resource.trigger_bootstrap
-  lifecycle {
-    destroy = false
-  }
-}
-
-# -----------------------------------------------------------------------------
 # 1. ATOMIC STORAGE & WORKLOAD STAGING (ONE SET OF BUCKETS PER AGENT)
 # -----------------------------------------------------------------------------
 
@@ -267,11 +189,6 @@ locals {
 
   runtime_overrides = {
     GCS_BUCKET                      = try(google_storage_bucket.logs.name, null)
-    CLOUD_SQL_INSTANCE              = var.cloud_sql_instance_connection_name != "" ? var.cloud_sql_instance_connection_name : null
-    DB_IAM_USER                     = trimsuffix(var.agent_service_account, ".gserviceaccount.com")
-    DB_NAME                         = try(var.database_name, null)
-    USE_CLOUD_SQL                   = var.use_cloud_sql ? "1" : "0"
-    DB_SECRET_ID                    = var.db_secret_id
     EVENTS_PROJECT_ID               = var.governance_project_id != "" ? var.governance_project_id : var.project_id
     EVENTS_DATASET_ID               = var.central_events_dataset_id != "" ? var.central_events_dataset_id : google_bigquery_dataset.analytics.dataset_id
     EVENTS_TABLE_ID                 = "${replace(local.yaml_name, "-", "_")}_events"

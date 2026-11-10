@@ -45,6 +45,7 @@ class AgentConfig:
     env: dict[str, str] = field(default_factory=dict)
     local_env: dict[str, str] = field(default_factory=dict)
     agent_card: dict[str, Any] = field(default_factory=dict)
+    resources: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_a2a(self) -> bool:
@@ -69,6 +70,7 @@ class AgentConfig:
             env=_strings(data.get("env")),
             local_env=_strings(data.get("local_env")),
             agent_card=dict(data.get("agent_card") or {}),
+            resources=dict(data.get("resources") or {}),
         )
 
     def apply_local_env(self, environ: MutableMapping[str, str] = os.environ) -> None:

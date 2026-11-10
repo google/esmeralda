@@ -691,6 +691,48 @@ def test_query_agent_failure_is_reported(checkout, monkeypatch):
         asyncio.run(runtime.query_agent(checkout, "dev", "nope", "hi"))
 
 
+def test_verify_a2a_context_two_turns_share_context_id_without_task_id(checkout, monkeypatch):
+    from esmeralda import query as q
+
+    specialist = checkout / "apps" / "agents" / "ai-coe-mortgage-specialist"
+    specialist.mkdir(parents=True)
+    (specialist / "agent.yaml").write_text("name: ai-coe-mortgage-specialist\nframework: a2a\n")
+    specialist_unit = checkout / "infrastructure" / "live" / "dev" / "layer-5-workloads" / "agents" / "ai-coe-mortgage-specialist"
+    specialist_unit.mkdir(parents=True)
+    (specialist_unit / "terragrunt.hcl").write_text("")
+    specialist_state = (
+        checkout
+        / "infrastructure"
+        / "live"
+        / ".local_states"
+        / "dev"
+        / "layer-5-workloads"
+        / "agents"
+        / "ai-coe-mortgage-specialist"
+        / "terraform.tfstate"
+    )
+    specialist_state.parent.mkdir(parents=True)
+    specialist_state.write_text(json.dumps(_state({"engine_id": ENGINE}, 2)))
+
+    requests = []
+    answers = ["Noted for Julian Sterling.", "The applicant is Julian Sterling ($900,000 purchase)."]
+
+    async def fake_run(config, request, report, *, url=None, engine=None):
+        requests.append(request)
+        report.adk_event({"author": "agent", "content": {"parts": [{"text": answers.pop(0)}]}})
+
+    monkeypatch.setattr(q, "run", fake_run)
+    result = asyncio.run(runtime.verify_a2a_context(checkout, "dev", "ai-coe-mortgage-specialist"))
+    assert result["passed"] is True
+    assert len(requests) == 2
+    assert requests[0].session_id == requests[1].session_id == result["context_id"]
+
+    # If turn 2 fails to recall the applicant name from turn 1, verify_a2a_context fails.
+    answers[:] = ["Noted.", "I do not know which applicant you mean."]
+    bad = asyncio.run(runtime.verify_a2a_context(checkout, "dev", "ai-coe-mortgage-specialist"))
+    assert bad["passed"] is False and any("did not recall" in err for err in bad["errors"])
+
+
 # ---- contracts ------------------------------------------------------------------------------
 
 
@@ -700,6 +742,19 @@ def test_describe_contracts(checkout):
     assert result["gateways_block"] == "`enabled`, `default`, `host_rules`."
     assert result["envs"]["dev"]["host_rules"] == {"legacy-dms": "envoy"}
     assert result["gateway_units"] == {"dev": ["direct"]}
+    assert "max_instances: 1" in result["agent_card"]["contract"]
+    assert "warnings" not in result["agent_card"]
+
+    # An A2A agent with max_instances > 1 and no custom a2a_task_store_builder triggers a contract warning.
+    a2a_agent = checkout / "apps" / "agents" / "scaled-a2a"
+    (a2a_agent / "agent").mkdir(parents=True)
+    (a2a_agent / "agent.yaml").write_text(
+        "name: scaled-a2a\nframework: a2a\nresources:\n  max_instances: 3\n"
+    )
+    (a2a_agent / "agent" / "__init__.py").write_text("root_agent = object()\n")
+    warned = contracts.describe_contracts(checkout)
+    assert len(warned["agent_card"]["warnings"]) == 1
+    assert "scaled-a2a" in warned["agent_card"]["warnings"][0]
 
 
 # ---- MCP server -----------------------------------------------------------------------------
