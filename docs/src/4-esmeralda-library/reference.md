@@ -180,6 +180,27 @@ A frozen dataclass.
 | `remote_agent(name, *, url, description="", api_key=None, timeout=60.0, token=None)` | An ADK `RemoteA2aAgent` for the agent at `url`. Card from `<url>/v1/card`, with every RPC address pinned to `url` before ADK's checks. Every request gets a bearer token for `url` (kind from `token`, else `auth.token_kind(url)`; not for local URLs) and `X-API-Key` |
 | `request_metadata(invocation_context, a2a_message=None)` | The A2A request metadata: `caller_context`, plus `user_auth_token` when the invocation has one. Usable as `a2a_request_meta_provider` |
 
+## `esmeralda.a2a_retry`
+
+Timeout and retries of `a2a.remote_agent`. Its `timeout` argument now defaults to `None`, meaning `$A2A_TIMEOUT_SECONDS`, else 300 s.
+
+An A2A `message:send` is not idempotent (a re-send runs the remote agent again), so `remote_agent` only re-sends failures that happen before the callee starts work. At most 3 attempts, with jittered exponential backoff (about 0.5 s, then 1 s; a `Retry-After` up to 10 s is honored).
+
+| Failure | Retried |
+|---|---|
+| Connect error (refused, DNS, TLS handshake), connect or pool timeout | Yes |
+| `429` | Yes |
+| `502` / `503` without an A2A task in the body | Yes |
+| `502` / `503` whose body carries a task | No |
+| `504`, read timeout | **No**: the callee keeps running, so the error is surfaced |
+| Any other status or error | No |
+
+| Name | Description |
+|---|---|
+| `client_timeout(timeout=None) -> float` | `timeout` if given, else `$A2A_TIMEOUT_SECONDS`, else 300 |
+| `should_retry(attempt, *, status=None, error=None, task_created=False) -> bool` | The decision table above, for 1-based `attempt` |
+| `RetryTransport(inner=None, *, sleep=asyncio.sleep)` | `httpx.AsyncBaseTransport` applying it |
+
 ## `esmeralda.telemetry`
 
 ### `class TelemetryEmitter(stream=None)`

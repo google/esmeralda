@@ -40,3 +40,47 @@ def test_get_document_by_id():
 def test_get_document_not_found():
     result = _get_document(document_id="DOC-NONEXISTENT")
     assert result["status"] == "error"
+
+
+def test_search_by_borrower_id_resolves_applicants():
+    result = _search_documents(borrower_id="1001")
+    assert result["status"] == "success"
+    assert result["total_results"] == 2
+    assert result["borrower"]["last_name"] == "Sterling"
+    names = {(a["first_name"], a["last_name"]) for a in result["borrower"]["applicants"]}
+    assert names == {("Julian", "Sterling"), ("Elena", "Sterling")}
+
+
+def test_search_by_name_returns_borrower_id():
+    result = _search_documents(applicant_last_name="sterling", document_type="all")
+    assert result["borrower"]["borrower_id"] == "1001"
+    assert result["total_results"] == 2
+
+
+def test_search_unknown_borrower_id():
+    result = _search_documents(borrower_id="9999")
+    assert result["status"] == "success"
+    assert result["borrower"] is None
+    assert result["total_results"] == 0
+
+
+def test_search_requires_name_or_borrower_id():
+    result = _search_documents()
+    assert result["status"] == "error"
+
+
+def test_search_non_tax_type_returns_no_documents():
+    result = _search_documents(applicant_last_name="Sterling", document_type="pay_stub")
+    assert result["total_results"] == 0
+    assert result["borrower"]["borrower_id"] == "1001"
+
+
+def test_tools_json_matches_search_signature():
+    import inspect
+    import json
+    from pathlib import Path
+
+    spec = json.loads((Path(__file__).parent / "tools.json").read_text())
+    tool = next(t for t in spec["tools"] if t["name"] == "search_documents")
+    assert set(tool["inputSchema"]["properties"]) == set(inspect.signature(_search_documents).parameters)
+    assert "required" not in tool["inputSchema"]

@@ -32,3 +32,10 @@ def test_specialist_is_an_a2a_sub_agent_through_the_gateway():
     assert isinstance(mortgage_tools_agent, RemoteA2aAgent)
     assert mortgage_tools_agent.name == "mortgage_tools_agent"
     assert mortgage_tools_agent._agent_card_source == f"{A2A_AGENT_URL}/v1/card"
+
+
+def test_instruction_does_not_redelegate_after_a_specialist_error():
+    from agent.agent import root_agent
+
+    assert "do not delegate the same request to it again" in root_agent.instruction
+    assert "report the error to the user" in root_agent.instruction

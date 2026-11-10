@@ -22,6 +22,7 @@ import httpx
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
+from google.genai import types
 
 from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
 from agent.tools import dms_toolset, email_toolset, income_toolset
@@ -64,6 +65,56 @@ def _handle_tool_error(
     return None
 
 
+_THINKING_LEVELS = {"minimal", "low", "medium", "high"}
+
+
+def _thinking_config_kwargs(value: str) -> dict[str, Any]:
+    """Parse MODEL_THINKING into ThinkingConfig kwargs.
+
+    A level (minimal/low/medium/high) is for Gemini 3 models; an integer is a token budget for
+    Gemini 2.5 models. Empty keeps the model default.
+    """
+    value = value.strip().lower()
+    if not value:
+        return {}
+    if value.lstrip("-").isdigit():
+        return {"thinking_budget": int(value)}
+    if value not in _THINKING_LEVELS:
+        levels = sorted(_THINKING_LEVELS)
+        raise ValueError(f"MODEL_THINKING must be one of {levels} or an integer budget, got {value!r}")
+    return {"thinking_level": value.upper()}
+
+
+def _max_output_tokens(value: str) -> int | None:
+    """Parse MODEL_MAX_OUTPUT_TOKENS (empty or 0 keeps the model default)."""
+    value = value.strip()
+    if not value or int(value) <= 0:
+        return None
+    return int(value)
+
+
+def _generate_content_config() -> types.GenerateContentConfig | None:
+    """Model settings tuned for latency.
+
+    Almost all of the specialist's latency is its final generation, so the instruction asks for a
+    short, fixed-format answer, and:
+    - MODEL_THINKING (default "low"): the tool plan is spelled out in the instruction, so the
+      model needs little reasoning to follow it.
+    - MODEL_MAX_OUTPUT_TOKENS (default 2048): a safety stop well above the ~400-token answer the
+      instruction asks for, so a runaway answer is cut instead of running on. Thinking tokens
+      count toward it, so it keeps headroom (a cut response loses the answer).
+    Temperature stays at the model default (Gemini 3 is tuned for 1.0; lowering it can cause
+    looping or worse reasoning).
+    """
+    kwargs: dict[str, Any] = {}
+    thinking = _thinking_config_kwargs(os.environ.get("MODEL_THINKING", "low"))
+    if thinking:
+        kwargs["thinking_config"] = types.ThinkingConfig(**thinking)
+    max_tokens = _max_output_tokens(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "2048"))
+    if max_tokens:
+        kwargs["max_output_tokens"] = max_tokens
+    return types.GenerateContentConfig(**kwargs) if kwargs else None
+
 mortgage_assistant_agent = Agent(
     model=os.environ.get("MODEL_NAME", "gemini-3.7-flash"),
     name=os.environ.get("AGENT_NAME", "ai_coe_mortgage_specialist").replace("-", "_"),
@@ -73,5 +124,6 @@ mortgage_assistant_agent = Agent(
     ),
     instruction=MORTGAGE_ASSISTANT_INSTRUCTION,
     tools=[dms_toolset, income_toolset, email_toolset],
+    generate_content_config=_generate_content_config(),
     on_tool_error_callback=_handle_tool_error,
 )

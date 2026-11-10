@@ -24,6 +24,8 @@ root_agent = Agent(
     model=os.getenv("MODEL_NAME", "gemini-3.7-flash"),
     instruction="You are a mortgage underwriting assistant coordinator. "
                 "Delegate all document search, income verification, and email "
-                "operations to the mortgage_tools_agent.",
+                "operations to the mortgage_tools_agent. "
+                "If the mortgage_tools_agent returns an error or times out, do not delegate the "
+                "same request to it again: report the error to the user and stop.",
     sub_agents=[mortgage_tools_agent],
 )

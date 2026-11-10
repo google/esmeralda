@@ -43,6 +43,9 @@ env:
   MODEL_LOCATION: "global"
   GOOGLE_CLOUD_LOCATION: "us-central1"
   A2A_AGENT_URL: "https://ai-coe-mortgage-specialist.esmeralda.internal"
+  # A2A client timeout for the specialist call (esmeralda.a2a). Above the specialist's worst case
+  # so a slow answer is never cut client-side; the gateway path may still impose its own limit.
+  A2A_TIMEOUT_SECONDS: "300"
 
   # --- Central Agent Gateway & SPIFFE Identity ---
   GOOGLE_API_PREVENT_AGENT_TOKEN_SHARING_FOR_GCP_SERVICES: "False"

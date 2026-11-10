@@ -68,17 +68,20 @@ def remote_agent(
     url: str,
     description: str = "",
     api_key: str | None = None,
-    timeout: float = 60.0,
+    timeout: float | None = None,
     token: str | None = None,
 ) -> Any:
     """An ADK sub-agent that calls the A2A agent served at ``url`` (e.g. its gateway address).
 
     ``token`` (``"id"`` or ``"access"``) overrides the bearer token kind; by default it is
     ``esmeralda.auth.token_kind(url)``. The agent card's RPC addresses are pinned to ``url`` (the
-    card of an agent on Agent Runtime advertises the engine's own aiplatform URL).
+    card of an agent on Agent Runtime advertises the engine's own aiplatform URL). ``timeout``
+    defaults to ``$A2A_TIMEOUT_SECONDS`` (300 s); retries follow ``esmeralda.a2a_retry``.
     """
     import httpx
     from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+
+    from esmeralda import a2a_retry  # timeout ($A2A_TIMEOUT_SECONDS, 300 s) and pre-execution retries
 
     base_url = url.rstrip("/")
     if token is not None and token not in auth.TOKEN_KINDS:
@@ -99,7 +102,8 @@ def remote_agent(
 
     client = httpx.AsyncClient(
         event_hooks={"request": [_auth_hook(base_url, api_key, token)]},
-        timeout=httpx.Timeout(timeout),
+        timeout=httpx.Timeout(a2a_retry.client_timeout(timeout)),
+        transport=a2a_retry.RetryTransport(),
     )
     return _GatewayRemoteA2aAgent(
         name=name,
