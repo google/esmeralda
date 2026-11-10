@@ -59,8 +59,8 @@ resource "google_compute_region_url_map" "entrypoint" {
       name            = "direct-${path_matcher.key}"
       default_service = path_matcher.value.backend_service_id
 
-      # Agent hosts: rewrite host + path prefix to the engine. The route timeout replaces the backend
-      # timeout, which is fixed at 30 s for the aiplatform backend and would cut long streams.
+      # Agent hosts: rewrite host + path prefix to the engine. The route timeout bounds the whole
+      # response; the psc aiplatform backend also caps the time to first byte at 30 s (see gateways/direct).
       dynamic "route_rules" {
         for_each = path_matcher.value.path_rewrites
         content {

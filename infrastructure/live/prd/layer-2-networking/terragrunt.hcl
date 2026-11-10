@@ -41,4 +41,7 @@ inputs = {
   cx_agents_vertex_service_agent     = dependency.projects.outputs.cx_agents_vertex_service_agent
 
   enable_secure_web_proxy = false
+
+  # PSC endpoint for Google APIs, target of the entry point's hybrid Agent Runtime backend.
+  enable_googleapis_psc_endpoint = try(local.env_vars.locals.gateways.hybrid_agent_backend, false)
 }

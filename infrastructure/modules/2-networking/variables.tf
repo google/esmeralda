@@ -88,6 +88,18 @@ variable "enable_secure_web_proxy" {
   default     = true
 }
 
+variable "enable_googleapis_psc_endpoint" {
+  description = "Create a Private Service Connect endpoint for Google APIs (all-apis) at googleapis_psc_ip. Needed by the entry point's hybrid Agent Runtime backend (env.yaml gateways.hybrid_agent_backend). With byo_networking, provide an equivalent endpoint instead"
+  type        = bool
+  default     = false
+}
+
+variable "googleapis_psc_ip" {
+  description = "Internal IP of the PSC endpoint for Google APIs; must be outside every subnet and peering range of the Shared VPC"
+  type        = string
+  default     = "10.12.0.2"
+}
+
 variable "entrypoint_ip_address" {
   description = "Optional fixed internal IP for the entry point VIP (must be free in the core subnet); null lets GCP pick one"
   type        = string

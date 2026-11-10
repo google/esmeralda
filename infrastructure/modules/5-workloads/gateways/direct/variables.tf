@@ -45,8 +45,43 @@ variable "agents" {
   }
 
   validation {
-    # The backend service timeout is fixed at 30 s for this backend: agent streams need a route timeout.
+    # The route timeout bounds the whole response; the psc backend also has a fixed 30 s time to first byte.
     condition     = alltrue([for agent in values(var.agents) : agent.timeout_sec >= 30 && agent.timeout_sec <= 3600])
     error_message = "agents[*].timeout_sec must be between 30 and 3600 seconds (300 or more for agent streams)."
   }
+}
+
+variable "hybrid_agent_backend" {
+  description = "Also create the hybrid Agent Runtime backend: a hybrid NEG pointing at the Shared VPC's Private Service Connect endpoint for Google APIs (googleapis_psc_ip:443, layer 2) and a backend service whose timeout is the agents' longest route timeout. Unlike the psc backend, it has no fixed 30 s time to first byte. Creating it does not route traffic to it (see agent_backend)"
+  type        = bool
+  default     = false
+}
+
+variable "agent_backend" {
+  description = "Backend of every agent route: psc (PSC NEG to the aiplatform API; fixed 30 s time to first byte, so a unary call such as A2A message:send that answers later gets a 504) or hybrid (needs hybrid_agent_backend)"
+  type        = string
+  default     = "psc"
+
+  validation {
+    condition     = contains(["psc", "hybrid"], var.agent_backend)
+    error_message = "agent_backend must be psc or hybrid."
+  }
+}
+
+variable "network_id" {
+  description = "Shared VPC network of the entry point (layer 2). Required by the hybrid backend's NEG"
+  type        = string
+  default     = null
+}
+
+variable "googleapis_psc_ip" {
+  description = "Internal IP of the Shared VPC's Private Service Connect endpoint for Google APIs (layer 2 output googleapis_psc_ip). Required by the hybrid backend"
+  type        = string
+  default     = ""
+}
+
+variable "hybrid_neg_zone" {
+  description = "Zone of the hybrid NEG (hybrid NEGs are zonal). Empty: <region>-a"
+  type        = string
+  default     = ""
 }
