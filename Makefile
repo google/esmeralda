@@ -84,7 +84,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	verify test-release promote test-governance-chaos load-test docs-serve docs-build clean preflight \
+	verify test-release promote test-governance-chaos load-test load-test-partner docs-serve docs-build clean preflight \
 	status doctor units plan apply logs guard hooks build-package
 
 help: ## Show this help message
@@ -135,7 +135,7 @@ test-guards: ## Run repository hygiene, manifest parity, governance capability c
 
 test-apigee: ## Offline unit and policy conformance tests for Apigee capability bundles and modules
 	@echo "🧪 Running offline Apigee policy and JS conformance tests..."
-	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/apigee -q
+	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/apigee tests/partner -q
 
 test-all: lock-check test test-guards test-terraform test-gateway-unit test-apigee ## Run the uv.lock check, Python unit tests, repo guards, Terraform validation, Envoy gateway harness, and Apigee policy tests
 
@@ -441,6 +441,16 @@ load-test: ## Locust load test of a deployed ADK agent: [LOAD_AGENT=cx-mortgage-
 	echo "⚡ Load testing $$ENGINE ($(USERS) users, $(DURATION))..."; \
 	REMOTE_AGENT_ENGINE_ID="$$ENGINE" uv run locust -f tests/load_test/load_test.py --headless -u $(USERS) -r 1 --run-time $(DURATION) \
 		--csv=tests/load_test/.results/results --html=tests/load_test/.results/report.html
+
+# The partner load test runs on the single-instance specialist: keep its defaults small.
+PARTNER_USERS ?= 2
+PARTNER_DURATION ?= 5m
+
+load-test-partner: ## Locust load test THROUGH the Apigee partner front door, run from the test VM: [USERS=2] [DURATION=5m] [INCLUDE_QUOTA=1] ENV=dev (results in tests/load_test/.results/partner)
+	@bash scripts/partner_load_test.sh $(ENV) \
+		--users $(if $(filter command line environment,$(origin USERS)),$(USERS),$(PARTNER_USERS)) \
+		--duration $(if $(filter command line environment,$(origin DURATION)),$(DURATION),$(PARTNER_DURATION)) \
+		$(if $(filter 1 true,$(INCLUDE_QUOTA)),--include-quota,)
 
 # ==============================================================================
 # Documentation site (MkDocs Material, published to GitHub Pages by .github/workflows/docs.yml)

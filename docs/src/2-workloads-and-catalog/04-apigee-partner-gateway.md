@@ -253,6 +253,47 @@ ESMERALDA_TEST_QUOTA_EXHAUSTION=1 uv run esmeralda verify --env dev --partner
 4. **Probe 4 (`HTTP 200`):** Partner request to `/partner/v1/agents/cx-mortgage-orchestrator:streamQuery` streams Julian Sterling's underwriting response end-to-end (Apigee X → `cx-mortgage-orchestrator` → GEAP Agent Identity → Central Agent Gateway → `ai-coe-mortgage-specialist` → MCP servers) and records token metrics.
 5. **Probe 5 (`HTTP 429`):** Repeated partner calls exhaust the `llm_token_quota` budget on the product and are rejected with `HTTP 429 Too Many Requests` before reaching Vertex AI.
 
+The probes are defined once, in the partner scenario catalog [`tests/partner/scenarios.py`](../../../tests/partner/scenarios.py) (every scenario with a `probe` number), and sent from the VM by [`tests/partner/probe.py`](../../../tests/partner/probe.py) (stdlib Python, no packages to install). Probe 5 only runs with `ESMERALDA_TEST_QUOTA_EXHAUSTION=1`.
+
+---
+
+## 7. Load Testing Through the Partner Front Door
+
+`make load-test-partner` drives a steady, small partner workload through Apigee, for example to fill the Apigee Analytics dashboards and the token-quota and usage-metering views before a demo:
+
+```bash
+make load-test-partner ENV=dev                   # 2 users, 5 minutes
+make load-test-partner ENV=dev USERS=1 DURATION=3m
+make load-test-partner ENV=dev INCLUDE_QUOTA=1   # adds quota exhaustion (burns the product quota)
+```
+
+[`scripts/partner_load_test.sh`](../../../scripts/partner_load_test.sh) resolves the test VM, the entry point, the internal CA and the partner key the same way as `esmeralda verify --partner`, and runs [Locust](https://locust.io) **on the test VM** over IAP SSH, because `partner.esmeralda.internal` only resolves inside the VPC. On first use it installs Locust on the VM in a cached virtual environment with `uv`, which needs outbound HTTPS from the VM (for example through Cloud NAT). The CSV and HTML reports are copied back to `tests/load_test/.results/partner/` (gitignored).
+
+The traffic mix is the same scenario catalog as the conformance probes: one weighted Locust task per scenario with `weight > 0`. A request counts as a success when its status is in the scenario's expected set, so the deliberate `401` and `403` rejections show up as successes under their own names, next to the real orchestrator answers:
+
+| Scenario | Proxy | Expected | What the console shows |
+| :--- | :--- | :--- | :--- |
+| `agents-no-key`, `agents-invalid-key`, `mcp-no-key` | `partner-agents`, `partner-mcp` | `401` | `VerifyAPIKey` faults in error code analysis |
+| `agents-specialist-card-blocked`, `agents-specialist-stream-blocked` | `partner-agents` | `403`/`404` | `RF-Agent-Not-Allowed`: internal specialists are never exposed |
+| `mcp-restricted-tool-call` | `partner-mcp` | `403` | `RF-Tool-Forbidden`: tool scope enforced at the gateway |
+| `mcp-tools-list` (weight 0, not in the default mix) | `partner-mcp` | `200` | MCP discovery allowed with a partner key |
+| `orchestrator-income`, `orchestrator-employment`, `orchestrator-household` | `partner-agents` | `200` + "Sterling" | SSE answers, time to first event and stream total, token counts |
+| `orchestrator-quota-exhaustion` (opt-in) | `partner-agents` | `429` | `LLMTokenQuota` rejections once the product budget is spent |
+
+Each simulated user sends a synthetic end-user id (`x-esmeralda-partner-user` header and `user_id` in the query body), a W3C `traceparent` (logged by `ML-interaction`), and an `x-esmeralda-load-run` header with the run id. Keep the load small: the specialist runs a single instance and an answer takes about 25 seconds.
+
+**What to show in the Google Cloud console during a run** (Apigee, environment `esmeralda-<env>`):
+
+1. **Proxy development → API proxies → `partner-agents` → Debug:** start a debug session, then open a `200` transaction to walk through `VAK-Verify-Partner-Key`, `LTQ-enforce`, the `sse` target and the EventFlow token extraction, and a `403` transaction that stops at `RF-Agent-Not-Allowed`. Do the same on `partner-mcp` for `RF-Tool-Forbidden`.
+2. **Analytics → API metrics → API proxy performance:** traffic and latency per proxy (`partner-agents`, `partner-mcp`). **Error code analysis** splits the expected `401`/`403` from real errors. Apigee Analytics data can take several minutes to appear, and on pay-as-you-go organizations the environment needs the Analytics add-on enabled; without it these dashboards stay empty while Debug still works.
+3. **Analytics → Developer metrics → Developer apps:** traffic attributed to the `partner-smoke-test` app.
+4. **Distribution → API products → `esmeralda-partner-standard`:** the `allowed_mcp_tools` and LLM token quota attributes the gateway enforces.
+5. **Logging → Logs Explorer:** log `esmeralda-apigee-interactions` in the gateway project, one entry per partner call with the consumer app, status and token counts.
+
+> `make load-test` (Locust against the Vertex AI API) bypasses Apigee: its traffic never appears in Apigee Analytics and does not consume partner token quota. Use `make load-test-partner` for anything Apigee should see.
+
+**Adding a probe or a load scenario:** append one `Scenario` to [`tests/partner/scenarios.py`](../../../tests/partner/scenarios.py) with its path, headers, body, expected statuses and weight (give it a `probe` number to also run it in `esmeralda verify --partner`, or `destructive=True` to keep it opt-in). Neither the probe runner, the Locust file nor the scripts change; `make test-apigee` checks the catalog offline.
+
 ---
 
 **Next Section:** Now that we have seen how requests enter the platform—both internally via `direct` / `envoy` and externally via **Apigee X**—continue to **[2.0 Governance, Identity & AgentOps — Overview & Release Lifecycle](../3-agentops-and-lifecycle/index.md)** to see how the **Central Agent Gateway**, **SPIFFE Agent Identity**, and **Semantic Governance** govern every internal hop.
