@@ -1,4 +1,4 @@
-# infrastructure/modules/5-workloads/services/iap-egress/variables.tf
+# infrastructure/modules/5-workloads/iap-egress/variables.tf
 
 variable "governance_project_id" {
   description = "Central governance project hosting the Agent Registry"
@@ -11,7 +11,7 @@ variable "region" {
 }
 
 variable "iap_egress_members" {
-  description = "IAM members granted roles/iap.egressor on the central Agent Registry root (for system endpoints)"
+  description = "IAM members of the registry-root roles/iap.egressor binding, conditioned to system endpoint entries only (same list as layer 4)"
   type        = list(string)
 }
 

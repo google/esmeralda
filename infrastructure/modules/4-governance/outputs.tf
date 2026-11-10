@@ -91,7 +91,7 @@ output "agw_root_ca_bundle" {
 
 output "iap_egress_members" {
   value       = module.agent_gateway.iap_egress_members
-  description = "IAM members granted roles/iap.egressor on the central Agent Registry (reused by layer 5 iap-egress)."
+  description = "IAM members of the registry-root roles/iap.egressor binding, conditioned to system endpoint entries only (reused by layer 5 iap-egress)."
 }
 
 output "semantic_governance_manifest" {

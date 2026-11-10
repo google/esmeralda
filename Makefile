@@ -128,9 +128,9 @@ test-gateway-unit: ## Envoy gateway harness (offline): renders the config module
 	@echo "🧪 Running the Envoy gateway harness..."
 	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/gateway -q
 
-test-guards: ## Run repository hygiene, manifest parity, and governance capability contract guards
-	@echo "🛡️  Running repository and governance contract guards..."
-	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/guards tests/governance -q
+test-guards: ## Run repository hygiene, manifest parity, governance capability contract and security policy guards
+	@echo "🛡️  Running repository, governance and security contract guards..."
+	@TF_BIN=$(TF) uv run --package esmeralda --extra dev pytest tests/guards tests/governance tests/security -q
 	@echo "✅ Repository guards passed!"
 
 test-apigee: ## Offline unit and policy conformance tests for Apigee capability bundles and modules

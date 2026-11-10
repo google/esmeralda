@@ -1,7 +1,7 @@
-# infrastructure/modules/5-workloads/services/iap-egress/outputs.tf
+# infrastructure/modules/5-workloads/iap-egress/outputs.tf
 
 output "registry_iap_egress_members" {
-  description = "Normalized IAM members granted roles/iap.egressor on the central Agent Registry root (system endpoints)"
+  description = "Normalized IAM members of the registry-root roles/iap.egressor binding (conditioned to system endpoint entries only)"
   value       = local.normalized_registry_members
 }
 

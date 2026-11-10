@@ -1,16 +1,22 @@
-# infrastructure/modules/5-workloads/services/iap-egress/main.tf
+# infrastructure/modules/5-workloads/iap-egress/main.tf
 # ====================================================================
 # Final layer-5 step: grant per-target roles/iap.egressor on Agent Registry entries.
 # --------------------------------------------------------------------
-# Layer 4 governance grants roles/iap.egressor on the registry root for system Google API
-# endpoints. Once MCP servers and A2A agents register themselves in layer 5, this stack
-# applies least-privilege per-target IAP/UAP policies so:
-#   - cx-mortgage-orchestrator can egress only to ai-coe-mortgage-specialist (not MCP tools)
-#   - ai-coe-mortgage-specialist can egress only to the registered MCP servers
+# Layer 4 governance grants roles/iap.egressor on the registry root, conditioned to system Google
+# API endpoint entries only. This unit re-runs the same script with the same root inputs (so both
+# writers produce the identical conditional root policy) and, once MCP servers and A2A agents have
+# registered themselves, applies least-privilege per-target policies on their entries:
+#   - cx-mortgage-orchestrator is listed only on ai-coe-mortgage-specialist (not on MCP tools)
+#   - ai-coe-mortgage-specialist is listed only on the registered MCP servers
 # ====================================================================
 
 terraform {
   required_version = ">= 1.5.0"
+}
+
+# IAP evaluates Agent Registry resource names by project number; the root condition uses it.
+data "google_project" "governance" {
+  project_id = var.governance_project_id
 }
 
 locals {
@@ -47,18 +53,21 @@ locals {
 
 resource "null_resource" "grant_iap_egress" {
   triggers = {
-    registry_entries = md5(jsonencode(sort(var.registry_service_ids)))
-    members          = md5(jsonencode(sort(local.normalized_registry_members)))
-    target_policies  = md5(jsonencode(local.normalized_target_iap_members))
+    registry_entries          = md5(jsonencode(sort(var.registry_service_ids)))
+    members                   = md5(jsonencode(sort(local.normalized_registry_members)))
+    target_policies           = md5(jsonencode(local.normalized_target_iap_members))
+    governance_project_number = data.google_project.governance.number
+    version                   = "2"
   }
 
   provisioner "local-exec" {
-    command = "bash ${path.module}/../../../_shared/scripts/grant_iap_egress.sh"
+    command = "bash ${path.module}/../../_shared/scripts/grant_iap_egress.sh"
     environment = {
-      GOVERNANCE_PROJECT_ID    = var.governance_project_id
-      REGION                   = var.region
-      IAP_MEMBERS_JSON         = jsonencode(local.normalized_registry_members)
-      IAP_TARGET_POLICIES_JSON = local.has_target_policies ? jsonencode(local.normalized_target_iap_members) : ""
+      GOVERNANCE_PROJECT_ID     = var.governance_project_id
+      GOVERNANCE_PROJECT_NUMBER = data.google_project.governance.number
+      REGION                    = var.region
+      IAP_MEMBERS_JSON          = jsonencode(local.normalized_registry_members)
+      IAP_TARGET_POLICIES_JSON  = local.has_target_policies ? jsonencode(local.normalized_target_iap_members) : ""
     }
   }
 }

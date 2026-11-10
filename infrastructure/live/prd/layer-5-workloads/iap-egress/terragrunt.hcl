@@ -69,7 +69,9 @@ locals {
 inputs = {
   governance_project_id = dependency.projects.outputs.governance_project_id
   region                = local.env_vars.locals.region
-  iap_egress_members    = dependency.governance.outputs.iap_egress_members
+  # Same registry-root members as layer 4, so both writers produce the identical root policy
+  # (conditioned to system endpoint entries by grant_iap_egress.sh).
+  iap_egress_members = dependency.governance.outputs.iap_egress_members
   registry_service_ids = [
     dependency.ai_coe_mortgage_specialist.outputs.registry_service_id,
     dependency.corporate_email.outputs.registry_service_id,
