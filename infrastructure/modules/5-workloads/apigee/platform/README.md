@@ -10,7 +10,7 @@ This module provisions the foundational Apigee X control plane and Private Servi
 
 1. **Non-Peering PSC Organization (`byo_apigee_org = false` default)**:
    - Provisions `google_apigee_organization` with `disable_vpc_peering = true` (no `/22` VPC peering reservation required), `runtime_type = "CLOUD"`, configurable `billing_type` (`PAYG`, `EVALUATION`, or `SUBSCRIPTION`), and `retention = "MINIMUM"` on paid organizations.
-   - Supports optional Cloud KMS customer-managed encryption keys (`enable_cmek = true`) and Analytics add-on configuration (`enable_analytics`).
+   - Supports optional Cloud KMS customer-managed encryption keys (`enable_cmek = true`) and Analytics add-on configuration (`enable_analytics`: the environment's PAYG Analytics add-on that feeds the console dashboards and the stats API; `enable_advanced_api_ops`: the separate org-level Advanced API Ops add-on, off by default).
    - Supports Bring-Your-Own Apigee organization mode (`byo_apigee_org = true`) via `existing_org_id` and `existing_instance_service_attachment`.
 2. **Instance, Environment & Environment Group**:
    - Provisions `google_apigee_instance` with PSC `consumer_accept_list`, `google_apigee_environment` (`BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`), `google_apigee_envgroup`, and their attachments.

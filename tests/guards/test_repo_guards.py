@@ -284,8 +284,9 @@ def test_env_manifests_have_key_parity_and_valid_capabilities():
     assert (
         set(dev["governance"]["apigee"].keys())
         == set(prd["governance"]["apigee"].keys())
-        == {"enabled", "byo", "environment_type"}
+        == {"enabled", "byo", "environment_type", "enable_analytics"}
     )
+    assert prd["governance"]["apigee"]["enable_analytics"] is False, "Analytics add-on (per-call cost) stays off in prd"
     assert (
         set(dev["governance"]["capabilities"].keys())
         == set(prd["governance"]["capabilities"].keys())

@@ -99,6 +99,8 @@ flowchart LR
    * Creates a regional **Private Service Connect (PSC) NEG** (`neg-apigee-psc-<env>`) pointing to `google_apigee_instance.apigee_instance.service_attachment`, wrapped in a regional `INTERNAL_MANAGED` HTTPS backend service (`backend-apigee-gateway-<env>`).
 2. **Entry Point Partner VIP (`10.0.1.3`):**
    * When `partner_access = "apigee"` in `env.yaml`, the Layer 5 `entrypoint` unit attaches `backend-apigee-gateway-<env>` to the URL map for `partner.esmeralda.internal`, injects `Host: partner.esmeralda.internal` via `custom_request_headers`, and exposes the dedicated partner forwarding rule on `10.0.1.3:443` (`partner_ip_address`).
+3. **Southbound to the entry point (`apigee/capabilities/partner-mcp`):**
+   * A PSC service attachment (`sa-esmeralda-entrypoint-apigee-<env>`, NAT subnet `sb-esmeralda-psc-nat-apigee-<env>` from `psc_nat_cidr`) publishes the entry point forwarding rule; the Apigee endpoint attachment `ea-esmeralda-mcp-<env>` connects to it, and the target server `ts-esmeralda-mcp` reaches it as `apigee-southbound.<domain>` (private zone `apigee-southbound-<env>` in the Shared VPC + Apigee DNS peering zone `dz-esmeralda-mcp-<env>`; the Apigee service agent gets `roles/dns.peer` on the host project). The unit runs after `entrypoint` (Terragrunt `dependencies`), so there is no cycle with the northbound path. `partner-agents` keeps calling Vertex AI directly (`ts-esmeralda-entrypoint`).
 
 ---
 
@@ -170,13 +172,12 @@ flowchart TD
 
 ### 5.2 Proxy 2: `partner-mcp` (`apps/apigee/proxies/partner-mcp/`)
 
-Exposes curated internal MCP tool servers at `/partner/v1/mcp/{service}` for external partner agents:
+Exposes the MCP servers listed as partner-exposed in the module catalog (by default `income-verification` and `corporate-email`) at `/partner/v1/mcp/{service}/mcp` for external partner agents:
 
-1. **API Key Verification (`VAK-Partner-Key`):** Verifies the partner's API key against `mcp-partner-tools-<env>`.
-2. **JSON-RPC Tool-Level Allowlisting (`KVM-Get-Allowed-Tools` + `JS-Validate-MCP-Tool`):**
-   Reads the comma-separated tool allowlist for `{service}` from `kvm-partner-mcp` (for example, allowing `verify_applicant` on `income-verification` while blocking administrative or bulk-export tools). `validate-mcp-tool.js` parses the JSON-RPC 2.0 request body; if `method === "tools/call"` and `params.name` is not in the allowlist, `RF-Tool-Forbidden` rejects the call with `HTTP 403`.
-3. **Southbound OIDC ID Token Minting (`<GoogleIDToken>`):**
-   In `targets/default.xml`, Apigee uses `<Authentication><GoogleIDToken><Audience ref="target.mcp.audience"/></GoogleIDToken></Authentication>` to mint a Google-signed OIDC ID token with custom audience `https://<service>.esmeralda.internal`, routing over the southbound PSC endpoint attachment to our internal HTTPS entry point (`10.0.1.2`).
+1. **API Key Verification (`VAK-Verify-Partner-Key`):** verifies the partner's API key and loads the API product's `allowed_mcp_tools` attribute.
+2. **Service allowlist (`KVM-Get-MCP-Config` + `JS-Enforce-Tool-Scope`):** reads `allowed_mcp_services` and `apex_domain` from `kvm-partner-mcp`. A path whose service is not in the allowlist (an internal agent host, `legacy-dms`, or anything else behind the entry point) stops at `RF-Not-Found` (`HTTP 404`) and is never routed.
+3. **JSON-RPC tool scope (`JS-Enforce-Tool-Scope` + `RF-Tool-Forbidden`):** parses the JSON-RPC 2.0 body; for `tools/call`, `params.name` must be in the product's `allowed_mcp_tools` (`<tool>`, `<service>:<tool>` or `*`), otherwise `HTTP 403`. Discovery (`initialize`, `tools/list`) is always allowed. The products list the real tools of the exposed servers: `verify_applicant` (`income-verification`), `read_email` and, on the premium product, `send_email` (`corporate-email`).
+4. **Southbound path to the entry point (`targets/default.xml` + `AM-set-target-host`):** the MCP servers only accept traffic from internal load balancers, so the proxy reaches them through the internal entry point like any agent. The `partner-mcp` unit publishes the entry point forwarding rule to Apigee with a **PSC service attachment** (`sa-esmeralda-entrypoint-apigee-<env>`, own PSC NAT subnet) and an **Apigee endpoint attachment**; the target server `ts-esmeralda-mcp` points at `apigee-southbound.<domain>` (a name covered by the entry point certificate that a private zone of the Shared VPC, DNS-peered to the Apigee organization, resolves to the endpoint attachment IP) and trusts the internal Root CA (keystore `ks-esmeralda-internal-ca`), with strict TLS (`enforce`, hostname verification). `AM-set-target-host` sets `target.header.host` to `<service>.<domain>` (with a target server, Apigee ignores a plain `Host` header) and the request goes to `/mcp` with a Google ID token of the proxy service account (`<GoogleIDToken>` with audience `https://<service>.<domain>`, the Cloud Run custom audience). The proxy service account is the catalog caller `apigee-partner-mcp`, so it gets `roles/run.invoker` on the exposed servers only where `partner_access = "apigee"`.
 
 ---
 
@@ -226,7 +227,7 @@ governance = {
 }
 ```
 
-### Deploying & Running the 5 Live Partner Conformance Probes
+### Deploying & Running the Live Partner Conformance Probes
 
 ```bash
 # 1. Inspect enabled Apigee units in your environment
@@ -245,13 +246,15 @@ uv run esmeralda apply layer-5-workloads/entrypoint --env dev
 ESMERALDA_TEST_QUOTA_EXHAUSTION=1 uv run esmeralda verify --env dev --partner
 ```
 
-`uv run esmeralda verify --env dev --partner` (backed by [`scripts/test_partner.sh`](../../../scripts/test_partner.sh)) executes five live probes from the private test VM against `https://partner.esmeralda.internal` (`10.0.1.3`):
+`uv run esmeralda verify --env dev --partner` (backed by [`scripts/test_partner.sh`](../../../scripts/test_partner.sh)) executes the live probes from the private test VM against `https://partner.esmeralda.internal` (`10.0.1.3`):
 
 1. **Probe 1 (`HTTP 401`):** Unauthenticated partner request (no `x-api-key`) is rejected by `VAK-Partner-Key`.
 2. **Probe 2 (`HTTP 403`):** Partner request with a valid API key attempting to call internal specialist `/partner/v1/agents/ai-coe-mortgage-specialist:streamQuery` is blocked by `JS-Validate-Agent`.
 3. **Probe 3 (`HTTP 403`):** Partner request attempting to invoke an unallowlisted MCP tool via `/partner/v1/mcp/income-verification` is blocked by `JS-Validate-MCP-Tool`.
 4. **Probe 4 (`HTTP 200`):** Partner request to `/partner/v1/agents/cx-mortgage-orchestrator:streamQuery` streams Julian Sterling's underwriting response end-to-end (Apigee X → `cx-mortgage-orchestrator` → GEAP Agent Identity → Central Agent Gateway → `ai-coe-mortgage-specialist` → MCP servers) and records token metrics.
 5. **Probe 5 (`HTTP 429`):** Repeated partner calls exhaust the `llm_token_quota` budget on the product and are rejected with `HTTP 429 Too Many Requests` before reaching Vertex AI.
+6. **Probe 6 (`HTTP 200`):** MCP `tools/list` on `/partner/v1/mcp/income-verification/mcp` returns the server's tools (`verify_applicant`) through the southbound path.
+7. **Probe 7 (`HTTP 200`):** an allowed MCP `tools/call` (`verify_applicant` for Julian Sterling) is answered by `income-verification`.
 
 The probes are defined once, in the partner scenario catalog [`tests/partner/scenarios.py`](../../../tests/partner/scenarios.py) (every scenario with a `probe` number), and sent from the VM by [`tests/partner/probe.py`](../../../tests/partner/probe.py) (stdlib Python, no packages to install). Probe 5 only runs with `ESMERALDA_TEST_QUOTA_EXHAUSTION=1`.
 
@@ -276,7 +279,8 @@ The traffic mix is the same scenario catalog as the conformance probes: one weig
 | `agents-no-key`, `agents-invalid-key`, `mcp-no-key` | `partner-agents`, `partner-mcp` | `401` | `VerifyAPIKey` faults in error code analysis |
 | `agents-specialist-card-blocked`, `agents-specialist-stream-blocked` | `partner-agents` | `403`/`404` | `RF-Agent-Not-Allowed`: internal specialists are never exposed |
 | `mcp-restricted-tool-call` | `partner-mcp` | `403` | `RF-Tool-Forbidden`: tool scope enforced at the gateway |
-| `mcp-tools-list` (weight 0, not in the default mix) | `partner-mcp` | `200` | MCP discovery allowed with a partner key |
+| `mcp-tools-list` | `partner-mcp` | `200` + `verify_applicant` | MCP discovery through the southbound path to the entry point |
+| `mcp-tools-call-allowed` | `partner-mcp` | `200` + "Sterling" | An allowed tool (`verify_applicant`) answered by `income-verification` |
 | `orchestrator-income`, `orchestrator-employment`, `orchestrator-household` | `partner-agents` | `200` + "Sterling" | SSE answers, time to first event and stream total, token counts |
 | `orchestrator-quota-exhaustion` (opt-in) | `partner-agents` | `429` | `LLMTokenQuota` rejections once the product budget is spent |
 
@@ -284,11 +288,12 @@ Each simulated user sends a synthetic end-user id (`x-esmeralda-partner-user` he
 
 **What to show in the Google Cloud console during a run** (Apigee, environment `esmeralda-<env>`):
 
-1. **Proxy development → API proxies → `partner-agents` → Debug:** start a debug session, then open a `200` transaction to walk through `VAK-Verify-Partner-Key`, `LTQ-enforce`, the `sse` target and the EventFlow token extraction, and a `403` transaction that stops at `RF-Agent-Not-Allowed`. Do the same on `partner-mcp` for `RF-Tool-Forbidden`.
-2. **Analytics → API metrics → API proxy performance:** traffic and latency per proxy (`partner-agents`, `partner-mcp`). **Error code analysis** splits the expected `401`/`403` from real errors. Apigee Analytics data can take several minutes to appear, and on pay-as-you-go organizations the environment needs the Analytics add-on enabled; without it these dashboards stay empty while Debug still works.
+1. **Proxy development → API proxies → `partner-agents` → Debug:** start a debug session, then open a `200` transaction to walk through `VAK-Verify-Partner-Key`, `LTQ-enforce`, the `sse` target and the EventFlow token extraction, and a `403` transaction that stops at `RF-Agent-Not-Allowed`. On `partner-mcp`, a `403` transaction stops at `RF-Tool-Forbidden`, and a `200` one (`tools/list` or `verify_applicant`) shows `KVM-Get-MCP-Config`, `JS-Enforce-Tool-Scope`, then `AM-set-target-host` and the call to the `ts-esmeralda-mcp` target server.
+2. **Analytics → API metrics → API proxy performance:** traffic and latency per proxy (`partner-agents`, `partner-mcp`). **Error code analysis** splits the expected `401`/`403` from real errors. On pay-as-you-go organizations these dashboards need the environment's Analytics add-on: set `governance.apigee.enable_analytics = true` in `env.yaml` (on in dev, off in prd; it adds a per-call cost) and apply `apigee/platform`. Data appears after several minutes; Debug works without the add-on.
 3. **Analytics → Developer metrics → Developer apps:** traffic attributed to the `partner-smoke-test` app.
-4. **Distribution → API products → `esmeralda-partner-standard`:** the `allowed_mcp_tools` and LLM token quota attributes the gateway enforces.
-5. **Logging → Logs Explorer:** log `esmeralda-apigee-interactions` in the gateway project, one entry per partner call with the consumer app, status and token counts.
+4. **Distribution → API products → `esmeralda-partner-standard`:** the `allowed_mcp_tools` (`verify_applicant`, `read_email`) and LLM token quota attributes the gateway enforces.
+5. **Management → Environments → `esmeralda-<env>` → Target servers:** `ts-esmeralda-mcp` (host `apigee-southbound.<domain>`, TLS with the internal CA truststore); **Management → Endpoint attachments** shows `ea-esmeralda-mcp-<env>` connected to the entry point service attachment, and **Management → DNS peering** the zone `dz-esmeralda-mcp-<env>`.
+6. **Logging → Logs Explorer:** log `esmeralda-apigee-interactions` in the gateway project (`logName="projects/<gateway-project>/logs/esmeralda-apigee-interactions"`), one entry per partner call of both proxies with the consumer app, status, MCP service/method/tool and token counts. `ML-interaction` writes with the proxy runtime service account (`roles/logging.logWriter`); its message template uses single-quoted literals (`{firstnonnull(llm.model,'mcp')}`), because a double-quoted literal makes the JSON payload invalid and Cloud Logging drops the entry.
 
 > `make load-test` (Locust against the Vertex AI API) bypasses Apigee: its traffic never appears in Apigee Analytics and does not consume partner token quota. Use `make load-test-partner` for anything Apigee should see.
 

@@ -41,6 +41,17 @@ LEGACY_MAP = {
                                  "probe": "query", "timeout": 600},
 }
 
+# dev also lets the Apigee partner-mcp proxy call the MCP servers it exposes (catalog/environments/dev.yaml).
+DEV_MAP = {
+    name: (
+        {**entry, "callers": [*entry["callers"], "apigee-partner-mcp"]}
+        if name in ("income-verification", "corporate-email")
+        else entry
+    )
+    for name, entry in LEGACY_MAP.items()
+}
+ENV_MAPS = {"dev": DEV_MAP, "prd": LEGACY_MAP}
+
 HEADER = "schema: esmeralda.catalog\nschema_version: 1\n"
 
 
@@ -74,7 +85,7 @@ def _problems(root: Path, env: str = "dev") -> str:
 def test_repo_catalog_compiles_to_the_legacy_env_yaml_map(env):
     resolved = catalog.resolve(REPO, env)
     compiled = catalog.compile_terraform(resolved)
-    assert compiled == LEGACY_MAP
+    assert compiled == ENV_MAPS[env]
     # Caller order is preserved (list attributes in the units).
     assert compiled["legacy-dms"]["callers"] == LEGACY_MAP["legacy-dms"]["callers"]
 
@@ -224,7 +235,7 @@ def test_environment_overrides_merge_maps_and_null_deletes(repo):
     assert compiled["legacy-dms"]["callers"] == ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator"]
     assert compiled["cx-mortgage-orchestrator"]["timeout"] == 900
     assert compiled["cx-mortgage-orchestrator"]["token"] == "access"  # merged, not replaced
-    assert catalog.compile_terraform(catalog.resolve(repo, "dev")) == LEGACY_MAP
+    assert catalog.compile_terraform(catalog.resolve(repo, "dev")) == DEV_MAP
 
 
 def test_override_is_validated(repo):

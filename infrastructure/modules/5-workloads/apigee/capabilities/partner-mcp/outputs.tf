@@ -37,3 +37,16 @@ output "routes" {
     }
   }
 }
+
+output "mcp_target_server" {
+  description = "Apigee target server of the partner-mcp TargetEndpoint and the host it reaches."
+  value = {
+    name = google_apigee_target_server.mcp.name
+    host = google_apigee_target_server.mcp.host
+  }
+}
+
+output "entrypoint_service_attachment_id" {
+  description = "PSC service attachment publishing the entry point to Apigee (null when southbound_enabled is false)."
+  value       = try(google_compute_service_attachment.entrypoint[0].id, null)
+}

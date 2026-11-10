@@ -55,6 +55,8 @@ inputs = {
   enable_analytics = try(local.env.governance.apigee.enable_analytics, false)
   enable_cmek      = try(local.env.governance.apigee.enable_cmek, false)
 
+  enable_advanced_api_ops = try(local.env.governance.apigee.enable_advanced_api_ops, false)
+
   byo_apigee_org                       = try(local.env.governance.apigee.byo, try(local.env.byo_apigee, false))
   existing_org_id                      = try(local.env.governance.apigee.existing_org_id, null)
   existing_instance_service_attachment = try(local.env.governance.apigee.existing_instance_service_attachment, null)

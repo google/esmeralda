@@ -15,7 +15,7 @@
   <Allow count="50000" countRef="verifyapikey.VAK-Verify-Partner-Key.apiproduct.llm_quota_limit"/>
   <Interval ref="verifyapikey.VAK-Verify-Partner-Key.apiproduct.llm_quota_interval">1</Interval>
   <TimeUnit ref="verifyapikey.VAK-Verify-Partner-Key.apiproduct.llm_quota_timeunit">hour</TimeUnit>
-  <LLMModelSource>{firstnonnull(llm.model,"gemini-2.5-flash")}</LLMModelSource>
+  <LLMModelSource>{firstnonnull(llm.model,'gemini-2.5-flash')}</LLMModelSource>
   <Distributed>true</Distributed>
   <Synchronous>true</Synchronous>
   <LLMTokenUsageSource>{llm.totalTokenCount}</LLMTokenUsageSource>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+
+  Southbound request to the internal entry point: the entry point routes by Host
+  (<service>.<apex_domain>, resolved by JS-Enforce-Tool-Scope) and every MCP server listens on /mcp,
+  so the partner path suffix (/<service>/mcp) is not appended to the target path.
+  With a LoadBalancer/TargetServer, Apigee sets the Host header from the target server host when it
+  sends the request (a Host header set here is ignored); target.header.host is the override it honours.
+-->
+<AssignMessage name="AM-set-target-host" continueOnError="false" enabled="true">
+  <DisplayName>AM-set-target-host</DisplayName>
+  <AssignVariable>
+    <Name>target.header.host</Name>
+    <Ref>mcp.target.host</Ref>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>target.copy.pathsuffix</Name>
+    <Value>false</Value>
+  </AssignVariable>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+  <AssignTo createNew="false" transport="http" type="request"/>
+</AssignMessage>

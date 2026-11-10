@@ -24,12 +24,27 @@ dependency "security" {
   config_path = "../../../layer-3-security"
 }
 
+# Apigee partner front door (partner_access = "apigee"): its proxy runtime service account is the
+# identity of the catalog caller apigee-partner-mcp.
+dependency "apigee" {
+  config_path = "../../apigee/platform"
+  enabled     = local.apigee_partner
+  mock_outputs = {
+    proxy_runtime_sa_email = "sa-apigee-proxy-mock@mock.iam.gserviceaccount.com"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
   gateways = local.env_vars.locals.gateways
   # This service's catalog entry (env.yaml catalog), keyed by the unit's directory name.
   name    = basename(get_terragrunt_dir())
   callers = try(local.env_vars.locals.catalog[local.name].callers, [])
+  apigee_partner = (
+    try(local.env_vars.locals.governance.apigee.enabled, false) &&
+    try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee"
+  )
 
   # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
   # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
@@ -49,13 +64,18 @@ inputs = {
   tools_spec_path       = "${get_repo_root()}/apps/services/income-verification/tools.json"
   internal_hostname     = "${local.name}.${dependency.networking.outputs.entrypoint_domain}"
 
-  # roles/run.invoker: the service accounts of the catalog callers; when an agent calls, also the
+  # roles/run.invoker: the service accounts of the catalog callers (apigee-partner-mcp: the Apigee
+  # proxy runtime service account, only with partner_access = "apigee"); when an agent calls, also the
   # identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared MCP invoker service account); and
   # the identity of each enabled adapter, which calls with its own token. direct adds none: callers
   # reach the service with their own ID token.
   invoker_service_accounts = distinct(compact(concat(
-    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
-    length([for caller in local.callers : caller if caller != "test-vm"]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    [for caller in local.callers : (
+      caller == "apigee-partner-mcp"
+      ? (local.apigee_partner ? dependency.apigee.outputs.proxy_runtime_sa_email : "")
+      : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]
+    )],
+    length([for caller in local.callers : caller if !contains(["test-vm", "apigee-partner-mcp"], caller)]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
     contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
   )))
 }

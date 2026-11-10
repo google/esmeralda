@@ -35,6 +35,8 @@
 #                 streaming (first SSE chunk arrives before stream completion) + real answer
 #        Probe 5: Quota exhaustion probe -> HTTP 429 when `LLMTokenQuota` limit is exceeded
 #                 (only with ESMERALDA_TEST_QUOTA_EXHAUSTION=1)
+#        Probe 6: Partner key -> MCP `tools/list` on income-verification -> HTTP 200 (southbound path)
+#        Probe 7: Partner key -> allowed MCP `tools/call` (`verify_applicant`) -> HTTP 200
 #      New probes are added to the catalog only; this script does not change.
 set -euo pipefail
 

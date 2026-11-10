@@ -10,8 +10,10 @@
   <BasePaths>/partner/v1/mcp</BasePaths>
   <Policies>
     <Policy>AM-clean-headers</Policy>
+    <Policy>AM-set-target-host</Policy>
     <Policy>AM-set-user-var</Policy>
     <Policy>JS-Enforce-Tool-Scope</Policy>
+    <Policy>KVM-Get-MCP-Config</Policy>
     <Policy>ML-interaction</Policy>
     <Policy>RF-Not-Found</Policy>
     <Policy>RF-Tool-Forbidden</Policy>

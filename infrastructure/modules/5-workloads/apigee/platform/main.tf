@@ -99,13 +99,15 @@ resource "google_apigee_organization" "org" {
   ]
 }
 
+# Org-level Advanced API Ops add-on (a separate, paid add-on). Not needed for the Analytics
+# dashboards: on PAYG orgs Analytics is enabled per environment (environment add-ons below).
 resource "google_apigee_addons_config" "org_addons" {
-  count = !var.byo_apigee_org && var.enable_analytics ? 1 : 0
+  count = !var.byo_apigee_org && var.enable_advanced_api_ops ? 1 : 0
   org   = google_apigee_organization.org[0].name
 
   addons_config {
     advanced_api_ops_config {
-      enabled = var.enable_analytics
+      enabled = var.enable_advanced_api_ops
     }
   }
 
@@ -147,6 +149,8 @@ resource "google_apigee_environment" "env" {
   forward_proxy_uri = null
 }
 
+# Analytics add-on of the environment (PAYG): feeds the console Analytics dashboards and the
+# stats API. Pay-as-you-go cost per API call; off by default (env.yaml governance.apigee.enable_analytics).
 resource "google_apigee_environment_addons_config" "analytics" {
   count = var.enable_analytics && var.billing_type != "EVALUATION" ? 1 : 0
 

@@ -225,9 +225,23 @@ SCENARIOS: Tuple[Scenario, ...] = (
         headers=MCP,
         body=_mcp_rpc("tools/list"),
         contains="verify_applicant",
-        # Out of the default mix for now: requests the partner-mcp proxy lets through currently
-        # get HTTP 404 from its target, so this would only add failures to a demo run.
-        weight=0,
+        weight=2,
+        probe=6,
+        label="MCP tools/list answered by income-verification",
+    ),
+    Scenario(
+        name="mcp-tools-call-allowed",
+        description="Partner key -> MCP tools/call verify_applicant (in allowed_mcp_tools) for Julian Sterling -> 200",
+        proxy="partner-mcp",
+        method="POST",
+        path=f"{MCP_BASE}/income-verification/mcp",
+        expect=frozenset({200}),
+        headers=MCP,
+        body=_mcp_rpc("tools/call", {"name": "verify_applicant", "arguments": {"first_name": "Julian", "last_name": "Sterling"}}),
+        contains="Sterling",
+        weight=2,
+        probe=7,
+        label="Allowed MCP tool call answered (verify_applicant)",
     ),
     # --- partner-agents: real orchestrator answers (SSE) ---------------------------------------
     _orchestrator(

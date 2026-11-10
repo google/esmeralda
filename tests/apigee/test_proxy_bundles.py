@@ -220,3 +220,43 @@ def test_capability_terraform_modules_validate_offline(capability_module: str) -
         text=True,
     )
     assert "Success!" in validate_res.stdout
+
+
+def test_message_template_literals_are_single_quoted() -> None:
+    """firstnonnull() literals must be single-quoted: a double-quoted literal breaks the JSON
+    payload of ML-interaction and Cloud Logging silently drops the entry."""
+    import re
+
+    bad = re.compile(r"firstnonnull\([^)]*(\"|,\s*\d+\s*\))")
+    offenders = [
+        str(p.relative_to(REPO_ROOT))
+        for p in sorted(APIGEE_APPS_DIR.rglob("*.xml"))
+        if bad.search(p.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, f"Use firstnonnull(var,'literal') in: {offenders}"
+
+
+def test_partner_mcp_southbound_target() -> None:
+    """partner-mcp calls the entry point through ts-esmeralda-mcp on /mcp, with the Host override
+    Apigee honours for target servers (target.header.host) and the service ID token audience."""
+    apiproxy_dir = PROXIES_DIR / "partner-mcp" / "apiproxy"
+    target = ET.parse(apiproxy_dir / "targets" / "default.xml").getroot()
+    servers = [s.attrib["name"] for s in target.findall("./HTTPTargetConnection/LoadBalancer/Server")]
+    assert servers == ["ts-esmeralda-mcp"]
+    assert (target.findtext("./HTTPTargetConnection/Path") or "").strip() == "/mcp"
+    audience = target.find("./HTTPTargetConnection/Authentication/GoogleIDToken/Audience")
+    assert audience is not None and audience.attrib.get("ref") == "mcp.target.audience"
+    steps = [(s.text or "").strip() for s in target.findall("./PreFlow/Request/Step/Name")]
+    assert "AM-set-target-host" in steps
+
+    am = ET.parse(apiproxy_dir / "policies" / "AM-set-target-host.xml").getroot()
+    assigned = {(v.findtext("Name") or "").strip() for v in am.findall("./AssignVariable")}
+    assert {"target.header.host", "target.copy.pathsuffix"} <= assigned
+
+    proxy = ET.parse(apiproxy_dir / "proxies" / "default.xml").getroot()
+    conditions = {
+        (s.findtext("Name") or "").strip(): (s.findtext("Condition") or "").strip()
+        for s in proxy.findall("./PreFlow/Request/Step")
+    }
+    assert "KVM-Get-MCP-Config" in conditions
+    assert conditions.get("RF-Not-Found") == "mcp.service.allowed != true", "unexposed services must not be routed"

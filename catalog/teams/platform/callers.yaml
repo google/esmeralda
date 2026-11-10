@@ -9,6 +9,13 @@ callers:
     description: Private test VM that probes every catalog host through the entry point.
     identity: { type: service_account, ref: "layer-3-security:test_vm_sa_email" }
 
+  # The Apigee proxy runtime identity: partner-mcp calls the MCP servers it exposes to partners
+  # with a Google ID token of this service account (only where partner_access = "apigee").
+  apigee-partner-mcp:
+    team: platform
+    description: Apigee partner-mcp proxy (runtime service account) forwarding partner MCP calls.
+    identity: { type: service_account, ref: "layer-5-workloads/apigee/platform:proxy_runtime_sa_email" }
+
   # Humans / ops: group membership maps to the platform team.
   platform-ops:
     team: platform
