@@ -1,0 +1,16 @@
+# catalog/teams/platform/callers.yaml: non-workload identities owned by the platform team.
+schema: esmeralda.catalog
+schema_version: 1
+
+callers:
+  # The private test VM used by `esmeralda verify` / `make test-gateway` to probe every host.
+  test-vm:
+    team: platform
+    description: Private test VM that probes every catalog host through the entry point.
+    identity: { type: service_account, ref: "layer-3-security:test_vm_sa_email" }
+
+  # Humans / ops: group membership maps to the platform team.
+  platform-ops:
+    team: platform
+    description: Platform operators (break-glass and manual queries).
+    identity: { type: group, id: platform-ops@example.com }

@@ -1,0 +1,13 @@
+# catalog/environments/prd.yaml: prd overrides only, applied after every source.
+# Deep merge: maps merge, lists replace, null deletes. Today prd serves the same catalog as dev.
+schema: esmeralda.catalog
+schema_version: 1
+
+environment: prd
+
+overrides: {}
+# Example: no test VM access in prd.
+# overrides:
+#   targets:
+#     legacy-dms:
+#       callers: { test-vm: null }

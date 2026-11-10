@@ -1,0 +1,15 @@
+# catalog/environments/dev.yaml: dev overrides only, applied after every source.
+# Deep merge: maps merge, lists replace, null deletes. Today dev serves the same catalog as prd.
+schema: esmeralda.catalog
+schema_version: 1
+
+environment: dev
+
+overrides: {}
+# Examples:
+# overrides:
+#   policy:
+#     attribution: { unmapped_caller: flag }        # allow + alert while onboarding callers
+#   targets:
+#     cx-mortgage-orchestrator:
+#       serving: { timeout: 900 }

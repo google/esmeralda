@@ -1,0 +1,19 @@
+# catalog/teams/ai-coe/mcp/income-verification.yaml
+schema: esmeralda.catalog
+schema_version: 1
+
+name: income-verification
+kind: mcp
+description: MCP server on Cloud Run that verifies applicant income (synthetic data).
+owner_team: ai-coe
+deploy: { unit: services/income-verification }
+serving: { token: id, probe: mcp }
+
+callers:
+  ai-coe-mortgage-specialist: {}
+  cx-mortgage-orchestrator: {}
+  test-vm: {}
+
+observability:
+  usage_sources: [workload]
+  framework: custom

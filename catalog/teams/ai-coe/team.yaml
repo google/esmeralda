@@ -1,0 +1,14 @@
+# catalog/teams/ai-coe/team.yaml: team-owned metadata. The team itself is registered in ../../teams.yaml.
+schema: esmeralda.catalog
+schema_version: 1
+
+profile:
+  team: ai-coe
+  description: Builds the mortgage specialist agent and the MCP servers it uses.
+  oncall: ai-coe-oncall
+  contacts: [ai-coe@example.com]
+  repository_paths:
+    - apps/agents/ai-coe-mortgage-specialist
+    - apps/services/legacy-dms
+    - apps/services/income-verification
+    - apps/services/corporate-email

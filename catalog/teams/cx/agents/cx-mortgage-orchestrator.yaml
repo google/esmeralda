@@ -1,0 +1,22 @@
+# catalog/teams/cx/agents/cx-mortgage-orchestrator.yaml
+schema: esmeralda.catalog
+schema_version: 1
+
+name: cx-mortgage-orchestrator
+kind: adk
+description: Customer-facing ADK mortgage orchestrator on Agent Runtime; delegates to the AI CoE specialist.
+owner_team: cx
+deploy: { unit: agents/cx-mortgage-orchestrator }
+identity: { type: service_account, ref: "layer-3-security:cx_mortgage_orchestrator_sa_email" }
+serving: { token: access, probe: query, timeout: 600 }
+models: [gemini-flash]
+
+# No callers yet: it is the entry agent (reached by its own team's front ends and `esmeralda query`).
+
+observability:
+  usage_sources: [gateway, workload]
+  framework: adk
+  content_capture: none
+  dimensions: [loan_product]
+  slo: { latency_p95_ms: 15000, availability: 0.995 }
+  alerts: { route_to: cx-oncall }

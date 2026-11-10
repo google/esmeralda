@@ -1,0 +1,19 @@
+# catalog/teams/ai-coe/mcp/corporate-email.yaml
+schema: esmeralda.catalog
+schema_version: 1
+
+name: corporate-email
+kind: mcp
+description: MCP server on Cloud Run that drafts and sends applicant emails (synthetic data).
+owner_team: ai-coe
+deploy: { unit: services/corporate-email }
+serving: { token: id, probe: mcp }
+
+callers:
+  ai-coe-mortgage-specialist: {}
+  cx-mortgage-orchestrator: {}
+  test-vm: {}
+
+observability:
+  usage_sources: [workload]
+  framework: custom

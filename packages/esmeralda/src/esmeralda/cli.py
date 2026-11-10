@@ -35,6 +35,8 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
 * ``esmeralda guard [--staged | --diff <range> | --all] [--json]``
+* ``esmeralda catalog resolve [--env <env>|all] [--format json|hcl|terraform] [--write | --check]``
+* ``esmeralda catalog show [--env <env>] [--target <name>] [--caller <name>] [--json]``
 """
 
 from __future__ import annotations
@@ -51,7 +53,7 @@ from typing import Any
 from esmeralda import certs
 
 USAGE = (
-    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,verify,logs,contracts,guard} ...  "
+    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,verify,logs,contracts,guard,catalog} ...  "
     "(esmeralda run -- <command> [args...])"
 )
 
@@ -329,6 +331,87 @@ def _format_guard(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_catalog_show(data: dict[str, Any]) -> str:
+    policy = data.get("policy") or {}
+    lines = [
+        f"📇 Catalog '{data.get('env')}' (unmapped_caller={policy.get('unmapped_caller', '-')}, "
+        f"declared_mismatch={policy.get('declared_mismatch', '-')}):"
+    ]
+    for t in data.get("targets") or []:
+        flags = " [example]" if t.get("example") else ""
+        flags += "" if t.get("compiled") else " [not compiled]"
+        ingress = f" ingress={t['ingress_backend']}" if t.get("ingress_backend") else ""
+        lines.append(
+            f"🎯 {t['target']} ({t['kind']}, owner {t['owner_team']}) {t.get('deploy')} "
+            f"gateway={t.get('gateway') or '-'}{ingress}{flags}"
+        )
+        if not t.get("callers"):
+            lines.append("   (no callers)")
+        for c in t.get("callers") or []:
+            pays = c.get("pays") or {}
+            extra = "".join(f" {k}={c[k]}" for k in ("product", "tools", "quota") if c.get(k))
+            enforced = "" if c.get("enforced") or not t.get("compiled") else " [not enforced yet]"
+            lines.append(
+                f"   • {c['caller']:<28} {c['identity']:<16} via {c.get('gateway') or '-':<13} "
+                f"pays: {pays.get('team')} {', '.join(pays.get('cost_centers') or [])}{extra}{enforced}"
+            )
+    return "\n".join(lines)
+
+
+def _catalog(args: argparse.Namespace) -> int:
+    from esmeralda import catalog
+    from esmeralda.ops import repo
+    from esmeralda.ops.repo import OpsError
+
+    try:
+        root = _resolve_root(getattr(args, "repo", None))
+        envs = catalog.resolver.environments(root) if args.env == "all" else [args.env]
+        if args.catalog_cmd == "resolve":
+            if args.check or args.write:
+                code = 0
+                for env in envs:
+                    if args.write:
+                        path = catalog.write_resolved(root, env)
+                        print(f"✅ Wrote {path.relative_to(root).as_posix()}")
+                    else:
+                        ok, message = catalog.check_resolved(root, env)
+                        print(("✅ " if ok else "❌ ") + message, file=sys.stdout if ok else sys.stderr)
+                        code = code or (0 if ok else 1)
+                return code
+            if len(envs) != 1:
+                raise catalog.CatalogError("--env all needs --write or --check")
+            resolved = catalog.resolve(root, envs[0])
+            if args.format == "hcl":
+                print(catalog.render_hcl(resolved), end="")
+            elif args.format == "terraform":
+                print(catalog.render_resolved_file(resolved), end="")
+            else:
+                print(json.dumps(resolved.document, indent=2))
+            return 0
+
+        if args.catalog_cmd == "show":
+            if len(envs) != 1:
+                raise catalog.CatalogError("catalog show needs a single --env")
+            resolved = catalog.resolve(root, envs[0])
+            try:
+                ingress = repo.gateways_block(root, envs[0])
+            except (OpsError, OSError):
+                ingress = {}
+            data = catalog.show(resolved, target=args.target, caller=args.caller, ingress=ingress)
+            print(json.dumps(data, indent=2) if args.json else _format_catalog_show(data))
+            return 0
+    except (catalog.CatalogError, OpsError, NotImplementedError) as exc:
+        problems = getattr(exc, "problems", None) or [str(exc)]
+        if getattr(args, "json", False):
+            print(json.dumps({"ok": False, "errors": problems}, indent=2))
+        else:
+            print(f"❌ Catalog error ({len(problems)}):", file=sys.stderr)
+            for p in problems:
+                print(f"  • {p}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def _ops_dispatch(args: argparse.Namespace) -> int:
     from esmeralda.ops import contracts, guard, infra, logs, repo, runtime
     from esmeralda.ops.repo import OpsError
@@ -551,6 +634,32 @@ def _parser() -> argparse.ArgumentParser:
     guard_mode.add_argument("--message-file", help="scan a commit message file")
     _add_common_ops_flags(guard_p, with_env=False)
 
+    catalog_p = sub.add_parser(
+        "catalog",
+        help="resolve, compile and inspect the catalog (catalog/: teams, callers, targets, policy)",
+    )
+    catalog_sub = catalog_p.add_subparsers(dest="catalog_cmd", required=True)
+    resolve_p = catalog_sub.add_parser(
+        "resolve",
+        help="merge catalog sources + environment overrides, validate, and print or write the result",
+    )
+    resolve_p.add_argument("--env", default="dev", help="catalog environment, or 'all' with --write/--check")
+    resolve_p.add_argument(
+        "--format",
+        choices=["json", "hcl", "terraform"],
+        default="json",
+        help="json: full resolved catalog; hcl: the Terraform catalog map as HCL; terraform: the "
+        "catalog/.resolved/<env>.json content (default: json)",
+    )
+    resolve_mode = resolve_p.add_mutually_exclusive_group()
+    resolve_mode.add_argument("--write", action="store_true", help="write catalog/.resolved/<env>.json")
+    resolve_mode.add_argument("--check", action="store_true", help="exit 1 if catalog/.resolved/<env>.json is stale")
+    resolve_p.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
+    show_p = catalog_sub.add_parser("show", help="who can call each target, through which gateway, and who pays")
+    show_p.add_argument("--target", help="only this target")
+    show_p.add_argument("--caller", help="only what this caller can call")
+    _add_common_ops_flags(show_p, with_env=True)
+
     return parser
 
 
@@ -570,6 +679,8 @@ def main(argv: list[str] | None = None) -> int:
         from esmeralda.ops import server
 
         return server.main(args.repo)
+    if args.cmd == "catalog":
+        return _catalog(args)
     return _ops_dispatch(args)
 
 

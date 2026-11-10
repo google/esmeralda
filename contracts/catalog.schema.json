@@ -1,0 +1,348 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/google/esmeralda/contracts/catalog.schema.json",
+  "title": "Esmeralda catalog",
+  "description": "Shape of the Esmeralda catalog: every source document (catalog/ files or any other source adapter) and the resolved catalog that `esmeralda catalog resolve` produces. Each document carries `schema: esmeralda.catalog` and an integer `schema_version`. Changes are additive only; only a breaking change bumps `schema_version`.",
+  "oneOf": [
+    {"$ref": "#/$defs/target_document"},
+    {"$ref": "#/$defs/collection_document"},
+    {"$ref": "#/$defs/team_profile_document"},
+    {"$ref": "#/$defs/sources_document"},
+    {"$ref": "#/$defs/environment_document"},
+    {"$ref": "#/$defs/resolved"}
+  ],
+  "$defs": {
+    "header": {
+      "type": "object",
+      "required": ["schema", "schema_version"],
+      "properties": {
+        "schema": {"const": "esmeralda.catalog"},
+        "schema_version": {"const": 1}
+      }
+    },
+    "name": {
+      "description": "Lower-case DNS-label-like name (targets become <name>.<domain> hosts).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "names": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true},
+    "dimension_name": {
+      "description": "Usage-event dimension key (snake_case, like the usage-event fields).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "strings": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "gateway": {
+      "description": "Gateway role or product for a hop: direct is the always-available floor.",
+      "type": "string",
+      "enum": ["direct", "envoy", "agent_gateway", "apigee"]
+    },
+
+    "team": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cost_centers"],
+      "properties": {
+        "description": {"type": "string"},
+        "cost_centers": {"$ref": "#/$defs/strings", "minItems": 1},
+        "country": {"type": "string", "pattern": "^[A-Z]{2}$"},
+        "external": {"type": "boolean", "default": false},
+        "example": {"$ref": "#/$defs/example"}
+      }
+    },
+    "team_profile": {
+      "description": "Team-owned metadata (teams/<team>/team.yaml); the team itself is registered in teams.yaml.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["team"],
+      "properties": {
+        "team": {"$ref": "#/$defs/name"},
+        "description": {"type": "string"},
+        "oncall": {"type": "string"},
+        "contacts": {"$ref": "#/$defs/strings"},
+        "repository_paths": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "example": {
+      "description": "Illustrative entry: resolved and shown, but never compiled into enforcement unless a non-example target references it.",
+      "type": "boolean",
+      "default": false
+    },
+
+    "identity": {
+      "description": "Verified identity of a caller. Values come from unit outputs (`ref: <unit>:<output>`) whenever the platform creates the identity; literal ids only for identities owned elsewhere.",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["service_account", "group", "apigee_app", "federated", "spiffe"]},
+        "ref": {"type": "string", "pattern": "^[a-z0-9_./-]+:[a-z0-9_]+$"},
+        "id": {"type": "string", "minLength": 1},
+        "issuer": {"type": "string", "format": "uri"},
+        "subject": {"type": "string", "minLength": 1},
+        "product": {"type": "string"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "federated"}}}, "then": {"required": ["issuer", "subject"]}},
+        {"if": {"properties": {"type": {"enum": ["service_account", "spiffe"]}}}, "then": {"anyOf": [{"required": ["ref"]}, {"required": ["id"]}]}},
+        {"if": {"properties": {"type": {"enum": ["group", "apigee_app"]}}}, "then": {"required": ["id"]}}
+      ]
+    },
+    "caller": {
+      "description": "A non-workload identity (VM, human group, partner app, other-cloud workload) mapped to the team that pays for its calls. Workload callers (agents) are targets and need no entry here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["team", "identity"],
+      "properties": {
+        "team": {"$ref": "#/$defs/name"},
+        "description": {"type": "string"},
+        "identity": {"$ref": "#/$defs/identity"},
+        "example": {"$ref": "#/$defs/example"}
+      }
+    },
+
+    "target_caller": {
+      "description": "What one caller may do on a target, and how its calls are billed.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "tools": {"$ref": "#/$defs/strings"},
+        "quota": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tokens_per_minute": {"type": "integer", "minimum": 1},
+            "requests_per_minute": {"type": "integer", "minimum": 1}
+          }
+        },
+        "product": {"type": "string", "description": "Apigee API product granting this caller access"},
+        "cost_centers": {"$ref": "#/$defs/strings", "description": "Declared cost centres this caller may bill to (subset of its team's)"},
+        "gateway": {"$ref": "#/$defs/gateway"}
+      }
+    },
+    "deploy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit"],
+          "properties": {
+            "unit": {"type": "string", "pattern": "^(services|agents)/[a-z][a-z0-9-]*$", "description": "layer-5-workloads unit that deploys the target"},
+            "managed": {"const": true}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["managed", "endpoint"],
+          "properties": {
+            "managed": {"const": false},
+            "endpoint": {"type": "string", "format": "uri", "pattern": "^https://"}
+          }
+        }
+      ]
+    },
+    "serving": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "token": {"enum": ["id", "access"], "description": "id: Google ID token (Cloud Run IAM); access: OAuth2 access token (Agent Runtime)"},
+        "probe": {"enum": ["mcp", "a2a", "query", "none"]},
+        "timeout": {"type": "integer", "minimum": 1, "maximum": 3600, "description": "route timeout in seconds"}
+      }
+    },
+    "user_credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accept": {"type": "boolean", "default": false},
+        "header": {"type": "string", "pattern": "^[A-Za-z0-9-]+$"},
+        "max_ttl_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "usage_sources": {"type": "array", "items": {"enum": ["gateway", "workload"]}, "uniqueItems": true},
+        "framework": {"type": "string", "description": "adk | langgraph | custom | ..."},
+        "content_capture": {"enum": ["none", "metadata", "redacted", "full"]},
+        "sampling": {"type": "number", "minimum": 0, "maximum": 1},
+        "dimensions": {"type": "array", "items": {"$ref": "#/$defs/dimension_name"}, "uniqueItems": true},
+        "slo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latency_p95_ms": {"type": "integer", "minimum": 1},
+            "availability": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+          }
+        },
+        "alerts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "route_to": {"type": "string"},
+            "token_budget_per_invocation": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "target": {
+      "description": "An agent, MCP server, model or legacy API that callers reach through a gateway. Closed through target_strict / target_document (unevaluatedProperties).",
+      "type": "object",
+      "required": ["kind", "owner_team", "deploy"],
+      "properties": {
+        "kind": {"enum": ["mcp", "a2a", "adk", "model", "http"]},
+        "description": {"type": "string"},
+        "owner_team": {"$ref": "#/$defs/name"},
+        "deploy": {"$ref": "#/$defs/deploy"},
+        "identity": {"$ref": "#/$defs/identity", "description": "Identity this target calls out as, when it is itself a caller"},
+        "serving": {"$ref": "#/$defs/serving"},
+        "gateway": {"$ref": "#/$defs/gateway"},
+        "callers": {
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/name"},
+          "additionalProperties": {"$ref": "#/$defs/target_caller"}
+        },
+        "user_credential": {"$ref": "#/$defs/user_credential"},
+        "models": {"$ref": "#/$defs/strings"},
+        "observability": {"$ref": "#/$defs/observability"},
+        "example": {"$ref": "#/$defs/example"}
+      }
+    },
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": {"type": "string"},
+        "values": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attribution": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "unmapped_caller": {"enum": ["deny", "flag"]},
+            "declared_mismatch": {"enum": ["reject", "bill_own_team"]}
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gateway": {"$ref": "#/$defs/gateway"},
+            "user_credential": {"$ref": "#/$defs/user_credential"},
+            "observability": {"$ref": "#/$defs/observability"}
+          }
+        },
+        "dimensions": {
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/dimension_name"},
+          "additionalProperties": {"$ref": "#/$defs/dimension"}
+        }
+      }
+    },
+    "teams_map": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/team"}},
+    "callers_map": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/caller"}},
+    "target_strict": {"$ref": "#/$defs/target", "unevaluatedProperties": false},
+    "targets_map": {"type": "object", "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/target_strict"}},
+
+    "target_document": {
+      "description": "One target per file (teams/<team>/agents|mcp|models/<name>.yaml, external/legacy/<name>.yaml).",
+      "allOf": [
+        {"$ref": "#/$defs/header"},
+        {"$ref": "#/$defs/target"}
+      ],
+      "required": ["name"],
+      "properties": {"name": {"$ref": "#/$defs/name"}},
+      "unevaluatedProperties": false
+    },
+    "collection_document": {
+      "description": "A file holding maps of teams, callers, targets and/or the policy (teams.yaml, policy.yaml, callers.yaml, external/*).",
+      "allOf": [{"$ref": "#/$defs/header"}],
+      "anyOf": [{"required": ["teams"]}, {"required": ["callers"]}, {"required": ["targets"]}, {"required": ["policy"]}],
+      "properties": {
+        "schema": true,
+        "schema_version": true,
+        "teams": {"$ref": "#/$defs/teams_map"},
+        "callers": {"$ref": "#/$defs/callers_map"},
+        "targets": {"$ref": "#/$defs/targets_map"},
+        "policy": {"$ref": "#/$defs/policy"}
+      },
+      "additionalProperties": false
+    },
+    "team_profile_document": {
+      "allOf": [{"$ref": "#/$defs/header"}],
+      "required": ["profile"],
+      "properties": {"schema": true, "schema_version": true, "profile": {"$ref": "#/$defs/team_profile"}},
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"type": "string", "description": "files | agent_registry | project_labels | <registered adapter>"},
+        "enabled": {"type": "boolean", "default": true},
+        "paths": {"$ref": "#/$defs/strings", "description": "files: paths relative to the catalog directory"},
+        "options": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "sources_document": {
+      "description": "catalog/sources.yaml: which sources the resolver merges, in order.",
+      "allOf": [{"$ref": "#/$defs/header"}],
+      "required": ["sources"],
+      "properties": {
+        "schema": true,
+        "schema_version": true,
+        "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}, "minItems": 1},
+        "environments_dir": {"type": "string", "default": "environments"},
+        "resolved_dir": {"type": "string", "default": ".resolved"}
+      },
+      "additionalProperties": false
+    },
+    "environment_document": {
+      "description": "catalog/environments/<env>.yaml: overrides only, deep-merged last (maps merge, lists replace, null deletes).",
+      "allOf": [{"$ref": "#/$defs/header"}],
+      "required": ["environment"],
+      "properties": {
+        "schema": true,
+        "schema_version": true,
+        "environment": {"$ref": "#/$defs/name"},
+        "overrides": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "teams": {"type": ["object", "null"]},
+            "callers": {"type": ["object", "null"]},
+            "targets": {"type": ["object", "null"]},
+            "policy": {"type": ["object", "null"]}
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolved": {
+      "description": "Output of `esmeralda catalog resolve --env <env> --format json`.",
+      "allOf": [{"$ref": "#/$defs/header"}],
+      "required": ["environment", "teams", "callers", "targets", "policy"],
+      "properties": {
+        "schema": true,
+        "schema_version": true,
+        "environment": {"$ref": "#/$defs/name"},
+        "sources": {"type": "array", "items": {"type": "string"}},
+        "teams": {"$ref": "#/$defs/teams_map"},
+        "profiles": {"type": "object", "additionalProperties": {"$ref": "#/$defs/team_profile"}},
+        "callers": {"$ref": "#/$defs/callers_map"},
+        "targets": {"$ref": "#/$defs/targets_map"},
+        "policy": {"$ref": "#/$defs/policy"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

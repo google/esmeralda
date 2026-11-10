@@ -1,0 +1,28 @@
+# catalog/policy.yaml: attribution rules, defaults and registered usage dimensions.
+# Owned by platform + security.
+schema: esmeralda.catalog
+schema_version: 1
+
+policy:
+  attribution:
+    # An authenticated caller that is not in the catalog: deny (fail closed) | flag (allow + alert).
+    unmapped_caller: deny
+    # Declared cost centre / country the catalog does not allow for the caller: reject | bill_own_team.
+    declared_mismatch: reject
+
+  # Applied to every target that leaves the field unset (resolved view only; the Terraform
+  # catalog map only carries what targets set explicitly).
+  defaults:
+    gateway: direct
+    user_credential:
+      accept: false
+    observability:
+      usage_sources: [workload]
+      content_capture: none
+      sampling: 1.0
+
+  # Usage-event `dimensions` keys: a key is accepted only if it is registered here.
+  dimensions:
+    loan_product:
+      description: Mortgage product the request is about.
+      values: [fixed-30, fixed-15, arm-5-1]

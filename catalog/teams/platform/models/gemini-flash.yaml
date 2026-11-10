@@ -1,0 +1,20 @@
+# catalog/teams/platform/models/gemini-flash.yaml: the shared model the agents call.
+# managed: false: not deployed by a layer-5 unit, so it is not part of the entry-point catalog map.
+schema: esmeralda.catalog
+schema_version: 1
+
+name: gemini-flash
+kind: model
+description: Gemini Flash on Vertex AI (agent -> model egress).
+owner_team: platform
+deploy: { managed: false, endpoint: "https://aiplatform.googleapis.com" }
+models: [gemini-3.7-flash]
+gateway: direct
+
+callers:
+  ai-coe-mortgage-specialist: { cost_centers: [cc-ai-coe] }
+  cx-mortgage-orchestrator: { cost_centers: [cc-cx-br, cc-cx-mx] }
+
+observability:
+  usage_sources: [workload]
+  content_capture: none

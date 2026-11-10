@@ -1,0 +1,57 @@
+{
+  "catalog": {
+    "ai-coe-mortgage-specialist": {
+      "callers": [
+        "cx-mortgage-orchestrator",
+        "test-vm"
+      ],
+      "kind": "a2a",
+      "probe": "a2a",
+      "token": "access",
+      "unit": "agents/ai-coe-mortgage-specialist"
+    },
+    "corporate-email": {
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator",
+        "test-vm"
+      ],
+      "kind": "mcp",
+      "probe": "mcp",
+      "token": "id",
+      "unit": "services/corporate-email"
+    },
+    "cx-mortgage-orchestrator": {
+      "kind": "adk",
+      "probe": "query",
+      "timeout": 600,
+      "token": "access",
+      "unit": "agents/cx-mortgage-orchestrator"
+    },
+    "income-verification": {
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator",
+        "test-vm"
+      ],
+      "kind": "mcp",
+      "probe": "mcp",
+      "token": "id",
+      "unit": "services/income-verification"
+    },
+    "legacy-dms": {
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator",
+        "test-vm"
+      ],
+      "kind": "mcp",
+      "probe": "mcp",
+      "token": "id",
+      "unit": "services/legacy-dms"
+    }
+  },
+  "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
+  "environment": "dev",
+  "generated_by": "esmeralda catalog resolve --env dev --write"
+}
