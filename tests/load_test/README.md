@@ -59,3 +59,19 @@ make load-test ENV=dev LOAD_AGENT=<another ADK agent>
 ```
 
 The script speaks the ADK query API (`:query`, `:streamQuery`), so it targets ADK agents. A2A agents are exercised through the orchestrator.
+
+> `load_test.py` calls the Vertex AI API directly, so its traffic never goes through Apigee and does not show up in Apigee Analytics or the partner token quota.
+
+## Through the Apigee partner front door: `make load-test-partner`
+
+[`partner_load_test.py`](./partner_load_test.py) sends partner traffic to `https://partner.<domain>` with the partner API key, so every request goes through the `partner-agents` and `partner-mcp` proxies. Its traffic mix is the scenario catalog [`tests/partner/scenarios.py`](../partner/scenarios.py), the same catalog behind `esmeralda verify --partner`: real orchestrator questions about Julian Sterling over SSE, plus deliberate rejections (no key, unknown key, internal specialist, restricted MCP tool). Expected rejections count as successes under their scenario name; SSE scenarios also report time to first event and total stream time.
+
+The partner host only resolves inside the VPC, so [`scripts/partner_load_test.sh`](../../scripts/partner_load_test.sh) runs Locust on the test VM over IAP SSH (installing it there on first use with `uv`, which needs outbound HTTPS from the VM) and copies the CSV and HTML reports back to `tests/load_test/.results/partner/`:
+
+```bash
+make load-test-partner ENV=dev                       # 2 users, 5 minutes
+make load-test-partner ENV=dev USERS=1 DURATION=3m
+make load-test-partner ENV=dev INCLUDE_QUOTA=1       # adds quota exhaustion: burns the product's token quota
+```
+
+Keep the load small: the specialist runs one instance and answers in about 25 s. See the [Apigee partner gateway page](../../docs/src/2-workloads-and-catalog/04-apigee-partner-gateway.md#7-load-testing-through-the-partner-front-door) for what to show in the Apigee console during a run.
