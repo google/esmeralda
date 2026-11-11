@@ -98,12 +98,16 @@ _SECRET_VALUE = re.compile(
 
 
 def _user_credential_keys() -> set[str]:
+    """The delegated user credential's key names: ``user_credential``'s sensitive keys (incl. the
+    ``temp:<USER_AUTH_ID>`` state key and every configured credential header)."""
+    from esmeralda import user_credential
     from esmeralda.context import USER_TOKEN_KEY
 
-    keys = {USER_TOKEN_KEY, f"temp:{USER_TOKEN_KEY}"}
+    keys = {USER_TOKEN_KEY, f"temp:{USER_TOKEN_KEY}", *user_credential.SENSITIVE_KEYS}
     configured = os.environ.get("USER_AUTH_ID")
     if configured:
         keys |= {configured, f"temp:{configured}"}
+    keys |= set(user_credential.targets().headers.values())
     return {key.lower() for key in keys}
 
 
@@ -112,17 +116,25 @@ def is_secret_key(key: str) -> bool:
     return bool(_SECRET_KEY.search(key)) or key.lower() in _user_credential_keys()
 
 
-def redact(value: Any) -> Any:
+def redact(value: Any, secrets: Iterable[str | None] = ()) -> Any:
     """Returns a copy of ``value`` without credentials.
 
-    Mapping entries whose key looks like a credential are dropped; strings have embedded bearer
-    tokens, OAuth access tokens, JWTs and API keys masked. Applied to every record before it is
-    emitted, so it also protects ``dimensions``, ``caller.declared`` and legacy events.
+    First ``user_credential.redact`` masks every occurrence of ``secrets`` (pass the invocation's
+    delegated user credential) and the values of the credential keys. Then mapping entries whose
+    key looks like a credential are dropped, and strings have embedded bearer tokens, OAuth access
+    tokens, JWTs and API keys masked. Applied to every record before it is emitted, so it also
+    protects ``dimensions``, ``caller.declared`` and legacy events.
     """
+    from esmeralda import user_credential
+
+    return _drop_secrets(user_credential.redact(value, secrets))
+
+
+def _drop_secrets(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {k: redact(v) for k, v in value.items() if not (isinstance(k, str) and is_secret_key(k))}
+        return {k: _drop_secrets(v) for k, v in value.items() if not (isinstance(k, str) and is_secret_key(k))}
     if isinstance(value, (list, tuple)):
-        return [redact(v) for v in value]
+        return [_drop_secrets(v) for v in value]
     if isinstance(value, str):
         return _SECRET_VALUE.sub(REDACTED, value)
     return value
@@ -526,9 +538,13 @@ class UsageRecorder:
         }
         return _prune(record)
 
-    def emit(self, record: Mapping[str, Any]) -> dict[str, Any]:
-        """Redacts and sends a record; returns what was sent. Never raises."""
-        clean = redact(record)
+    def emit(self, record: Mapping[str, Any], *, secrets: Iterable[str | None] = ()) -> dict[str, Any]:
+        """Redacts and sends a record; returns what was sent. Never raises.
+
+        ``secrets`` are values that must not appear anywhere in the record (pass the invocation's
+        delegated user credential); each occurrence is replaced by ``[REDACTED]``.
+        """
+        clean = redact(record, secrets)
         if self._validate:
             try:
                 violations = validate(clean)
@@ -567,6 +583,7 @@ class UsageRecorder:
         dimensions: Mapping[str, Any] | None = None,
         span: Any = None,
         timestamp: datetime | None = None,
+        secrets: Iterable[str | None] = (),
     ) -> dict[str, Any]:
         """Records one model call. ``input_tokens`` includes cached tokens and ``output_tokens``
         includes reasoning tokens (OpenTelemetry GenAI semantics)."""
@@ -593,7 +610,8 @@ class UsageRecorder:
                 latency_ms=latency_ms,
                 span=span,
                 timestamp=timestamp,
-            )
+            ),
+            secrets=secrets,
         )
 
     def record_tool_call(
@@ -611,6 +629,7 @@ class UsageRecorder:
         dimensions: Mapping[str, Any] | None = None,
         span: Any = None,
         timestamp: datetime | None = None,
+        secrets: Iterable[str | None] = (),
     ) -> dict[str, Any]:
         """Records one tool call (MCP, function or built-in). Pass the error *type*, never its message."""
         normalized = _status(status)
@@ -639,7 +658,8 @@ class UsageRecorder:
                 latency_ms=duration_ms,
                 span=span,
                 timestamp=timestamp,
-            )
+            ),
+            secrets=secrets,
         )
 
     def record_agent_invocation(
@@ -658,6 +678,7 @@ class UsageRecorder:
         dimensions: Mapping[str, Any] | None = None,
         span: Any = None,
         timestamp: datetime | None = None,
+        secrets: Iterable[str | None] = (),
     ) -> dict[str, Any]:
         """Records one agent invocation. Token counts are a roll-up of its model calls: use them
         for per-invocation budgets, never add them to ``llm.call`` sums."""
@@ -678,7 +699,8 @@ class UsageRecorder:
                 latency_ms=latency_ms,
                 span=span,
                 timestamp=timestamp,
-            )
+            ),
+            secrets=secrets,
         )
 
 

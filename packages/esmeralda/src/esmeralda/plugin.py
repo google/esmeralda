@@ -47,7 +47,7 @@ from urllib.parse import urlsplit
 
 from google.adk.plugins.base_plugin import BasePlugin
 
-from esmeralda import context, lifecycle, usage
+from esmeralda import context, lifecycle, usage, user_credential
 from esmeralda.telemetry import TelemetryEmitter
 
 logger = logging.getLogger(__name__)
@@ -140,6 +140,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                     reasoning_tokens=run.reasoning_tokens,
                     conversation_id=run.conversation_id,
                     caller=run.caller,
+                    secrets=_secrets(invocation_context),
                 )
         except Exception:
             logger.exception("Failed to emit invocation telemetry")
@@ -170,6 +171,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
             duration_ms = (time.monotonic() - started) * 1000.0 if started is not None else 0.0
             tool_name = str(getattr(tool, "name", "unknown_tool"))
             run = self._run_for(tool_context)
+            secrets = _secrets(tool_context)
             self._recorder.record_tool_call(
                 name=tool_name,
                 status=status,
@@ -180,6 +182,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                 agent_name=_agent_name(tool_context, run, self.agent_name),
                 conversation_id=_session_id(tool_context, default=None),
                 caller=run.caller if run else None,
+                secrets=secrets,
             )
             if self._legacy_events:
                 self._emitter.tool_execution(
@@ -189,7 +192,8 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                     user_id=_user_id(tool_context),
                     status=status,
                     duration_ms=duration_ms,
-                    error_reason=f"{type(error).__name__}: {error}" if error is not None else None,
+                    error_reason=user_credential.describe_error(error, secrets) if error is not None else None,
+                    secrets=secrets,
                 )
         except Exception:
             logger.exception("Failed to emit tool telemetry")
@@ -229,6 +233,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
             # output includes reasoning tokens.
             input_tokens, output_tokens = prompt + tool_prompt, completion + thoughts
             run = self._run_for(callback_context)
+            secrets = _secrets(callback_context)
             if run is not None:
                 run.input_tokens += input_tokens
                 run.output_tokens += output_tokens
@@ -247,6 +252,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                 conversation_id=_session_id(callback_context, default=None),
                 latency_ms=(time.monotonic() - started) * 1000.0 if started is not None else None,
                 caller=run.caller if run else None,
+                secrets=secrets,
             )
             if self._legacy_events:
                 self._emitter.token_consumption(
@@ -260,6 +266,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                     thoughts_tokens=thoughts,
                     cached_tokens=cached,
                     finish_reason=finish or "STOP",
+                    secrets=secrets,
                 )
         except Exception:
             logger.exception("Failed to emit model telemetry")
@@ -280,6 +287,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                 error_type=type(error).__name__,
                 latency_ms=(time.monotonic() - started) * 1000.0 if started is not None else None,
                 caller=run.caller if run else None,
+                secrets=_secrets(callback_context),
             )
         except Exception:
             logger.exception("Failed to emit model error telemetry")
@@ -294,6 +302,15 @@ def _remember(store: OrderedDict, key: str, value: Any) -> None:
     store[key] = value
     while len(store) > _MAX_TRACKED:
         store.popitem(last=False)
+
+
+def _secrets(ctx: Any) -> tuple[str, ...]:
+    """The invocation's delegated user credential, to be masked wherever it might appear."""
+    try:
+        value = context.user_token(ctx)
+    except Exception:
+        return ()
+    return (value,) if value else ()
 
 
 def _call_key(tool_context: Any) -> str:

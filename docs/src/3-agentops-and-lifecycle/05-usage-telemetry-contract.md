@@ -72,6 +72,12 @@ delegated user credential `user_auth_token` or whatever `USER_AUTH_ID` names, â€
 that look like bearer tokens, OAuth access tokens, JWTs or API keys, including inside error
 messages. Tool and model errors are recorded by **type** (`TimeoutError`), never by message.
 
+The delegated user credential is also masked **by value**: the ADK plugin passes the invocation's
+own credential to `esmeralda.user_credential.redact`, so it is removed even when it has no
+recognizable shape, and the credential headers listed in `ESMERALDA_USER_CREDENTIAL_TARGETS` are
+never emitted as keys. Manual producers can do the same with `secrets=[...]` on any `record_*`
+call.
+
 ## Producing records
 
 All Python producers go through `esmeralda.usage`. Records are written as one JSON line on stdout

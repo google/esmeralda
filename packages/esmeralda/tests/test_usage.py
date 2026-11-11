@@ -304,6 +304,16 @@ def test_records_never_carry_the_user_credential(recorder, capture):
     assert capture.records[0]["caller"]["declared"] == {"project_id": "p"}
 
 
+def test_redact_masks_given_secrets_wherever_they_appear(recorder, capture):
+    opaque = "opaque-canary-91ab"
+    assert usage.redact({"note": f"x {opaque} y", "items": [opaque]}, [opaque, None]) == {
+        "note": "x [REDACTED] y",
+        "items": ["[REDACTED]"],
+    }
+    recorder.record_tool_call(name="t", dimensions={"loan_product": opaque}, secrets=[opaque])
+    assert opaque not in json.dumps(capture.records)
+
+
 def test_legacy_events_are_redacted_too():
     stream = io.StringIO()
     TelemetryEmitter(stream).emit({"event": "x", "access_token": "t", "error_reason": "Bearer abc.def"})

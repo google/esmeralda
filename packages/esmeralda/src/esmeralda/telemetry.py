@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, TextIO
 
 from opentelemetry import baggage, trace
@@ -64,9 +65,9 @@ class TelemetryEmitter:
         self.transport = transport
         self.usage = recorder or usage.UsageRecorder(transport=transport)
 
-    def emit(self, payload: dict[str, Any]) -> None:
-        """Writes one event (redacted) through the transport."""
-        self.transport.emit(usage.redact(payload))
+    def emit(self, payload: dict[str, Any], *, secrets: Iterable[str | None] = ()) -> None:
+        """Writes one event through the transport, redacted (``secrets`` masked wherever they occur)."""
+        self.transport.emit(usage.redact(payload, secrets))
 
     def token_consumption(
         self,
@@ -83,6 +84,7 @@ class TelemetryEmitter:
         finish_reason: str = "STOP",
         execution_path: str | None = None,
         turn_index: int = 1,
+        secrets: Iterable[str | None] = (),
     ) -> None:
         """Legacy ``genai_token_consumption`` event (deprecated; use ``usage.record_llm_call``)."""
         cache_hit_ratio = cached_tokens / prompt_tokens if prompt_tokens > 0 else 0.0
@@ -105,7 +107,8 @@ class TelemetryEmitter:
                 },
                 "implicit_caching": {"cache_hit": cached_tokens > 0, "cache_hit_ratio": round(cache_hit_ratio, 4)},
                 "finish_reason": finish_reason,
-            }
+            },
+            secrets=secrets,
         )
 
     def tool_execution(
@@ -118,6 +121,7 @@ class TelemetryEmitter:
         status: str,
         duration_ms: float,
         error_reason: str | None = None,
+        secrets: Iterable[str | None] = (),
     ) -> None:
         """Legacy ``mcp_tool_execution`` event (deprecated; use ``usage.record_tool_call``)."""
         payload: dict[str, Any] = {
@@ -132,7 +136,7 @@ class TelemetryEmitter:
         }
         if error_reason:
             payload["error_reason"] = error_reason
-        self.emit(payload)
+        self.emit(payload, secrets=secrets)
 
 
 class BaggageSpanProcessor(SpanProcessor):

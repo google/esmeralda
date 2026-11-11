@@ -389,13 +389,30 @@ def test_errors_are_recorded_by_type_only(events, records, assert_valid_usage):
     assert agent["status"] == "error" and agent["error_type"] == "RuntimeError"
     # The legacy event keeps the message, redacted.
     (legacy_tool,) = [e for e in read() if e["event"] == "mcp_tool_execution"]
-    assert legacy_tool["error_reason"] == "PermissionError: [REDACTED] rejected"
+    assert legacy_tool["error_reason"] == "PermissionError: Bearer [REDACTED] rejected"
 
 
 def test_user_credential_never_leaves_the_process(events, stream):
     plugin, _ = events
     run_invocation(plugin, adk_invocation(), tool_error=ValueError(f"token={SECRET}"))
     assert "delegated-user-credential" not in stream.getvalue()
+
+
+def test_opaque_user_credential_is_masked_by_value(stream, records, monkeypatch):
+    """A credential with no recognizable shape is still masked: the plugin passes the invocation's
+    own token to user_credential.redact."""
+    opaque = "opaque-canary-7f31c0"
+    monkeypatch.setenv("ESMERALDA_USER_CREDENTIAL_TARGETS", '{"legacy-dms.esmeralda.internal": "X-Crm-Token"}')
+    plugin = EsmeraldaTelemetryPlugin(agent_name="a", finalize_steps=(), emitter=TelemetryEmitter(stream))
+    ic = adk_invocation()
+    ic.session.state["temp:user_auth_token"] = opaque
+    ic.run_config.custom_metadata["a2a_metadata"]["user_auth_token"] = opaque
+    run_invocation(plugin, ic, tool_error=PermissionError(f"rejected {opaque}"), model_error=RuntimeError(opaque))
+    out = stream.getvalue()
+    assert opaque not in out
+    assert "rejected [REDACTED]" in out  # legacy error_reason, via user_credential.describe_error
+    assert len(records()) == 4
+    assert usage.is_secret_key("X-Crm-Token")  # configured credential headers are never emitted
 
 
 def test_runs_without_caller_context_have_no_caller(events, records, assert_valid_usage):
