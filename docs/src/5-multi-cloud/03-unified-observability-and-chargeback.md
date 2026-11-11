@@ -179,6 +179,12 @@ This section follows one internal call from catalog entry to chargeback row: an 
 
 Self-asserted values (`X-Agent-Spiffe-Id`, `X-API-Key`, the A2A caller context) never count as verified.
 
+> [!NOTE]
+> **Why Agent Runtime records are attributed at the gateway, not in the process.** Agent Runtime authenticates the caller at its front end, then calls the agent's container with the platform's own credential. The caller's token never reaches the container, so no code in the agent can verify who called. The usage records an agent on Agent Runtime writes therefore always carry `caller.verified = false`, and the Agent Gateway's authorization record (verified principal and target) is what attributes the hop. For the same reason, the "unattributed" checks are split in two, each with an expected count of 0:
+>
+> * workload records from guarded workloads (`workload.runtime` other than `agent_engine`) without `caller.verified = true`;
+> * Agent Gateway decisions that let a principal through (`granted = true`) when that principal has no `principal_teams` row.
+
 ### 5.2 Catalog policy
 
 ```yaml
@@ -219,7 +225,7 @@ The MCP servers wrap their app with the guard: `app = CallerGuard(app)`. Each on
 
 On top of the route probes, `scripts/test_gateway.sh` (run by `esmeralda verify`) runs two attribution probes from the test VM:
 
-* **Unregistered caller:** the probe identity `sa-probe-unregistered-<env>` is in no catalog entry and holds no role. The test VM can only mint its tokens. It calls every MCP and A2A host and must get `403`.
+* **Unregistered caller:** the probe identity `sa-probe-unregistered-<env>` is in no catalog entry and holds no role. The test VM can only mint its tokens. It calls every MCP and A2A host and must get `403`, in both `deny` and `flag`, because IAM and the Agent Gateway reject it before any caller guard. The probe reads the effective policy from the resolved catalog. If a host ever let the identity through to its guard, `deny` still requires `403`. Under `flag`, the call may succeed but must stay unattributed, and the probe warns that the IAM grant shouldn't exist.
 * **Declared mismatch:** the test VM declares another team's cost centre on every guarded MCP host. It must get `403` under `reject`, or `2xx` billed to its own team under `bill_own_team`.
 
 Both are controlled by `env.yaml` `attribution` (`unregistered_probe`, `caller_guard`): on in `dev`, off in `prd` until the rollout below is done there.

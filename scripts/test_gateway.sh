@@ -23,7 +23,11 @@
 #      A gateway "no route" answer fails every kind. Non-query probes time out after 20 s.
 #   3. Verified attribution (catalog `attribution`):
 #        unregistered caller -> the layer-3 probe identity (in no catalog entry) calls every mcp/a2a
-#                               host with its own token                     expects 403
+#                               host with its own token                     expects 403 (IAM rejects
+#                                                                           it first; should it reach
+#                                                                           a caller guard: 403 under
+#                                                                           deny, 2xx unattributed
+#                                                                           under flag, with a warning)
 #        declared mismatch   -> the test VM declares another team's cost centre on every MCP host
 #                               whose caller guard is on                    expects 403 (reject) or
 #                                                                           2xx billed to its team
@@ -101,6 +105,7 @@ RESOLVED="catalog/.resolved/${ENV_NAME}.json"
 PROBE_SA="$(tg_output "${LIVE_DIR}/layer-3-security" probe_unregistered_sa_email)"
 [ "${PROBE_SA}" = "null" ] && PROBE_SA=""
 MISMATCH_MODE="$(jq -r '.attribution.policy.declared_mismatch // "reject"' "${RESOLVED}" 2>/dev/null || echo reject)"
+UNMAPPED_MODE="$(jq -r '.attribution.policy.unmapped_caller // "deny"' "${RESOLVED}" 2>/dev/null || echo deny)"
 VM_TEAM="$(jq -r '[.attribution.principal_teams[]? | select(.caller == "test-vm") | .team][0] // empty' "${RESOLVED}" 2>/dev/null || true)"
 FOREIGN_CC="$(jq -r '([.attribution.principal_teams[]? | select(.caller != "test-vm") | .cost_centers[]]
   - [.attribution.principal_teams[]? | select(.caller == "test-vm") | .cost_centers[]])[0] // empty' "${RESOLVED}" 2>/dev/null || true)"
@@ -123,6 +128,7 @@ trap 'rm -f "${REMOTE}"' EXIT
   printf 'QUERY_BODY=%q\n' "${QUERY_BODY}"
   printf 'PROBE_SA=%q\n' "${PROBE_SA}"
   printf 'MISMATCH_MODE=%q\n' "${MISMATCH_MODE}"
+  printf 'UNMAPPED_MODE=%q\n' "${UNMAPPED_MODE}"
   printf 'VM_TEAM=%q\n' "${VM_TEAM}"
   printf 'FOREIGN_CC=%q\n' "${FOREIGN_CC}"
   printf 'GUARDED_HOSTS=%q\n' "${GUARDED_HOSTS}"
@@ -251,15 +257,24 @@ if [ -n "${PROBE_SA}" ]; then
     args=(-sS -o "${WORK}/body" -w '%{http_code}' --connect-timeout 5 -m 20 --cacert "${WORK}/ca.pem"
       --resolve "${host}:443:${ENTRY_IP}" -H "Authorization: Bearer ${ptoken}")
     if [ "${probe}" = "mcp" ]; then
-      code="$(curl "${args[@]}" -X POST -H 'Content-Type: application/json' \
+      code="$(curl "${args[@]}" -D "${WORK}/headers" -X POST -H 'Content-Type: application/json' \
         -H 'Accept: application/json, text/event-stream' -d "${MCP_INIT}" "https://${host}/mcp" 2>/dev/null)"
     else
-      code="$(curl "${args[@]}" "https://${host}/v1/card" 2>/dev/null)"
+      code="$(curl "${args[@]}" -D "${WORK}/headers" "https://${host}/v1/card" 2>/dev/null)"
     fi
+    billed="$(grep -i '^x-esmeralda-billed-team:' "${WORK}/headers" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' \r')"
+    guarded=0
+    case " ${GUARDED_HOSTS} " in *" ${host} "*) guarded=1 ;; esac
+    # IAM / the Agent Gateway reject the probe before any guard (it holds no grant): 403 in both modes.
+    # Only if a host let it through to its caller guard does the effective policy decide: 403 under
+    # deny; under flag the call is allowed but must stay unattributed (no billed team).
     if [ "${code:-000}" = "403" ]; then
       printf '  ✅ %-45s %-5s unregistered caller denied: HTTP 403\n' "${host}" "${probe}"
+    elif [ "${guarded}" = 1 ] && [ "${UNMAPPED_MODE}" = "flag" ] && [[ "${code:-000}" == 2?? ]] && [ -z "${billed}" ]; then
+      printf '  ⚠️  %-45s %-5s unregistered caller reached the guard: allowed, unattributed (unmapped_caller: flag). Its IAM grant should not exist\n' "${host}" "${probe}"
     else
-      printf '  ❌ %-45s %-5s unregistered caller expected HTTP 403, got %s\n' "${host}" "${probe}" "${code:-000}"
+      printf '  ❌ %-45s %-5s unregistered caller expected HTTP 403%s, got %s%s\n' "${host}" "${probe}" \
+        "$([ "${guarded}" = 1 ] && [ "${UNMAPPED_MODE}" = "flag" ] && echo ' (or 2xx unattributed under flag)')" "${code:-000}" "${billed:+ billed to ${billed}}"
       failures=$((failures + 1))
     fi
   done <<< "${ROUTES}"
