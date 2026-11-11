@@ -111,7 +111,10 @@ class _ExecutorBuilder:
 
     def __call__(self) -> Any:
         from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
+        from google.adk.a2a.executor.config import A2aAgentExecutorConfig
         from google.adk.runners import Runner
+
+        from esmeralda import a2a
 
         runner = Runner(
             agent=self.app.root_agent,
@@ -119,7 +122,9 @@ class _ExecutorBuilder:
             session_service=session_service(),
             plugins=list(self.app.plugins),
         )
-        return A2aAgentExecutor(runner=runner, use_legacy=False)
+        # The request converter keeps the user's token out of the persisted event metadata.
+        config = A2aAgentExecutorConfig(request_converter=a2a.request_converter)
+        return A2aAgentExecutor(runner=runner, use_legacy=False, config=config)
 
 
 def _enable_otel_to_cloud() -> None:

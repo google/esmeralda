@@ -193,6 +193,7 @@ A frozen dataclass.
 | `remote_agent(name, *, url, description="", api_key=None, timeout=60.0, token=None)` | An ADK `RemoteA2aAgent` for the agent at `url`. Card from `<url>/v1/card`, with every RPC address pinned to `url` before ADK's checks. Every request gets a bearer token for `url` (kind from `token`, else `auth.token_kind(url)`; not for local URLs) and `X-API-Key` |
 | `request_metadata(invocation_context, a2a_message=None, *, url=None)` | The A2A request metadata: `caller_context`, plus `user_auth_token` when the invocation has one and `url`'s host is listed in `ESMERALDA_USER_CREDENTIAL_TARGETS` (never without `url`) |
 | `request_metadata_for(url)` | `request_metadata` bound to `url`; usable as `a2a_request_meta_provider` (`remote_agent` uses it) |
+| `request_converter(request, part_converter=None)` | ADK's A2A request converter, with `user_auth_token` moved from the request metadata (which ADK copies into every stored event) into `temp:<USER_AUTH_ID>` state. `esmeralda serve` uses it (`A2aAgentExecutorConfig(request_converter=...)`) |
 
 ## `esmeralda.a2a_retry`
 

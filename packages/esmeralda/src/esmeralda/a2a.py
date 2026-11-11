@@ -62,6 +62,37 @@ def request_metadata_for(url: str) -> Any:
     return functools.partial(request_metadata, url=url)
 
 
+def request_converter(request: Any, part_converter: Any = None) -> Any:
+    """ADK's A2A request converter, with the user's token moved out of the persisted metadata.
+
+    ADK puts the A2A request metadata in ``run_config.custom_metadata["a2a_metadata"]``, and the
+    runner copies that into every event's ``custom_metadata``, which session services persist. So
+    the ``user_auth_token`` entry is taken out of it here, before the runner starts, and handed to
+    the invocation as ``temp:<USER_AUTH_ID>`` state instead (never persisted; ``context.user_token``
+    reads it first). Everything else (``caller_context``, ...) is left as it is.
+
+    Use it as ``A2aAgentExecutorConfig(request_converter=esmeralda.a2a.request_converter)``;
+    ``esmeralda serve`` does.
+    """
+    from google.adk.a2a.converters.part_converter import convert_a2a_part_to_genai_part
+    from google.adk.a2a.converters.request_converter import (
+        A2A_METADATA_KEY,
+        convert_a2a_request_to_agent_run_request,
+    )
+
+    run_request = convert_a2a_request_to_agent_run_request(request, part_converter or convert_a2a_part_to_genai_part)
+    run_config = getattr(run_request, "run_config", None)
+    custom_metadata = getattr(run_config, "custom_metadata", None)
+    a2a_metadata = custom_metadata.get(A2A_METADATA_KEY) if isinstance(custom_metadata, dict) else None
+    if isinstance(a2a_metadata, dict) and context.USER_TOKEN_KEY in a2a_metadata:
+        token = a2a_metadata.pop(context.USER_TOKEN_KEY)
+        if not a2a_metadata:
+            custom_metadata.pop(A2A_METADATA_KEY)
+        if isinstance(token, str) and token:
+            run_request.state_delta = {**(run_request.state_delta or {}), context.user_token_state_key(): token}
+    return run_request
+
+
 def _auth_hook(url: str, api_key: str | None, token: str | None = None):
     authenticated = not auth.is_local(url)
     if authenticated:
