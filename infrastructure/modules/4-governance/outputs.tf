@@ -124,3 +124,13 @@ output "semantic_governance_manifest" {
   description = "Compiled GEAP Semantic Governance (Natural Language Constraints) and Unified Access Policy (UAP) manifest for the Central Agent Gateway."
 }
 
+
+output "alert_notification_channels" {
+  value       = module.alert_policies.notification_channels
+  description = "Notification channel names of the governance alerts (layer 5 iap-egress reuses them for the gateway attribution alert)."
+}
+
+output "alert_on_unattributed_usage" {
+  value       = var.alert_on_unattributed_usage
+  description = "Whether the unattributed-usage alerts are on (layer 5 iap-egress follows it for the gateway attribution alert)."
+}

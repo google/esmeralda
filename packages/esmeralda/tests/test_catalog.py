@@ -471,20 +471,24 @@ def test_cli_reports_catalog_errors(capsys):
 def test_principal_teams_maps_every_verified_identity_to_its_team():
     rows = {r["principal"]: r for r in catalog.compile_principal_teams(catalog.resolve(REPO, "dev"))}
     assert rows["agents/cx-mortgage-orchestrator:agent_identity_principal"] == {
-        "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal", "principal_type": "agent_runtime",
         "caller": "cx-mortgage-orchestrator", "team": "cx", "cost_centers": ["cc-cx-br", "cc-cx-mx"],
-        "verified_by": "spiffe",
     }
     assert rows["layer-3-security:ai_coe_mortgage_specialist_sa_email"]["team"] == "ai-coe"
-    assert rows["layer-3-security:test_vm_sa_email"]["verified_by"] == "service_account"
+    assert rows["layer-3-security:test_vm_sa_email"]["principal_type"] == "service_account"
     assert rows["group:platform-ops@example.com"] == {
-        "principal": "group:platform-ops@example.com", "caller": "platform-ops", "team": "platform",
-        "cost_centers": ["cc-platform"], "verified_by": "group",
+        "principal": "group:platform-ops@example.com", "principal_type": "group", "caller": "platform-ops",
+        "team": "platform", "cost_centers": ["cc-platform"],
     }
     # The shared invoker identity names no single team (several agents present it).
     assert "layer-3-security:mcp_invoker_sa_email" not in rows
     # Examples never become attribution rows.
     assert not any(r["caller"] == "aws-underwriter" for r in rows.values())
+    # A unit-output identity no target of the environment lists is left out (it may not exist there).
+    assert "layer-5-workloads/apigee/platform:proxy_runtime_sa_email" in rows
+    prd = {r["principal"] for r in catalog.compile_principal_teams(catalog.resolve(REPO, "prd"))}
+    assert "layer-5-workloads/apigee/platform:proxy_runtime_sa_email" not in prd
+    assert "group:platform-ops@example.com" in prd
 
 
 def test_attribution_block_is_in_the_committed_resolved_files():
@@ -540,6 +544,10 @@ def test_principal_mapped_to_two_teams_fails(repo):
     _write(repo, "teams/cx/callers.yaml",
            "callers:\n  cx-batch:\n    team: cx\n"
            "    identity: { type: service_account, ref: \"layer-3-security:test_vm_sa_email\" }\n")
+    # Unreferenced unit-output identities get no row; once a target lists it, the conflict shows.
+    catalog.compile_principal_teams(catalog.resolve(repo, "dev"))
+    path = repo / "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
+    path.write_text(path.read_text().replace("  test-vm: {}\n", "  test-vm: {}\n  cx-batch: {}\n"))
     with pytest.raises(CatalogError) as exc:
         catalog.compile_principal_teams(catalog.resolve(repo, "dev"))
     message = str(exc.value)

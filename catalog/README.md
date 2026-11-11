@@ -104,7 +104,9 @@ out of `iap_egress`.
 - `policy`: `unmapped_caller` (`deny`, or `flag` only in `policy.attribution.flag_environments`,
   default `[dev]`) and `declared_mismatch` (`reject` or `bill_own_team`);
 - `principal_teams`: one row per verified principal (agent principals and service accounts, caller
-  identities, `group:<email>`), with its caller, team, cost centres and `verified_by`. These are
+  identities, `group:<email>`), with its `principal_type` (`agent_runtime`, `service_account`,
+  `group`, ...), caller, team and cost centres. Callers with a unit-output identity are included
+  only when a target of the environment lists them. These are
   the rows of the attribution table the usage views join;
 - `shared_principals`: the shared workload identity, which several agents present, so it has no row;
 - `allowlists`: per MCP / A2A target, the principals the in-process caller guard accepts and the

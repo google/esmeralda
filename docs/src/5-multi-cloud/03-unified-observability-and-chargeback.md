@@ -202,7 +202,7 @@ policy:
 
 `esmeralda catalog resolve --env <env> --write` adds an `attribution` block to `catalog/.resolved/<env>.json`:
 
-* **`principal_teams`**: one row per verified principal (`principal`, `caller`, `team`, `cost_centers`, `verified_by`). Each agent contributes its Agent Identity principal and the service account it calls out as. Callers contribute their identity (`group:<email>` for groups). It fills the `principal_teams` attribution table that the usage views join.
+* **`principal_teams`**: one row per verified principal (`principal`, `principal_type`, `caller`, `team`, `cost_centers`). Each agent contributes its Agent Identity principal (`agent_runtime`) and the service account it calls out as. Callers contribute their identity (`group:<email>` for groups); a caller identified by a unit output is included only when a target of the environment lists it. The Layer 5 `iap-egress` unit resolves the references and replaces the `source = catalog` rows of the Layer 4 `principal_teams` table in one transaction, only when the rows change. The usage views read that table through `vw_principal_teams`.
 * **`allowlists`**: for each guarded target (MCP servers and A2A agents), the principals the caller guard accepts, with the team and the cost centres each one may declare on that target.
 * **`shared_principals`**: identities several agents present (the shared invoker service account while agents don't have their own outbound identity, [#134](https://github.com/google/esmeralda/issues/134)). They are not in `principal_teams`. On a target they resolve to a team only when every agent caller of that target belongs to the same team. Otherwise the call is accepted but carries no team, and the gateway record decides who pays.
 
@@ -234,8 +234,8 @@ Both are controlled by `env.yaml` `attribution` (`unregistered_probe`, `caller_g
 
 1. In `dev`, set `catalog/environments/dev.yaml` `policy.attribution.unmapped_caller: flag`. Redeploy the MCP services, run `esmeralda verify --env dev`, and check that the guard logged no `"reason": "unmapped"` or `"unverified"` decision (`esmeralda logs <service> --env dev`).
 2. Remove the override (deny), redeploy, and run `esmeralda verify --env dev` again, including the `403` probes.
-3. Turn on the "unattributed usage" alert. Its expected count is 0.
-4. Repeat in `prd` by enabling `attribution.caller_guard` and `attribution.unregistered_probe` in its `env.yaml` (`flag` is refused there).
+3. Apply the `iap-egress` unit (`env.yaml` `attribution.principal_teams`). It loads the `principal_teams` rows and creates the gateway attribution count and alert. Both unattributed alerts are on by default (Layer 4 `alert_on_unattributed_usage`), each expecting 0.
+4. Repeat in `prd` by enabling `attribution.caller_guard`, `attribution.unregistered_probe` and `attribution.principal_teams` in its `env.yaml` (`flag` is refused there).
 
 > [!NOTE]
 > The partner hop (Apigee apps and cross-cloud `iss#sub` callers) attributes from the gateway's `ML-interaction` record: the callee only sees the proxy's identity. Mapping those principals through the same `principal_teams` table, with the same `unmapped_caller` policy, is the next step.

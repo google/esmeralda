@@ -34,3 +34,51 @@ variable "identity_refs" {
   type        = map(string)
   default     = {}
 }
+
+# Verified attribution (attribution.tf)
+
+variable "environment" {
+  description = "Environment name (alert display names)"
+  type        = string
+  default     = ""
+}
+
+variable "attribution_enabled" {
+  description = "Write the catalog principal_teams rows into principal_teams_table and count gateway decisions for principals without a row"
+  type        = bool
+  default     = false
+}
+
+variable "principal_teams_rows" {
+  description = "Catalog-compiled principal -> team rows (catalog/.resolved/<env>.json attribution.principal_teams); principals may be `<unit>:<output>` references resolved through identity_refs. Extra attributes (caller, cost_centers) are ignored"
+  type = list(object({
+    principal      = string
+    principal_type = string
+    team           = string
+  }))
+  default = []
+}
+
+variable "principal_teams_table" {
+  description = "Fully qualified layer-4 principal_teams table (<project>.<dataset>.principal_teams)"
+  type        = string
+  default     = ""
+}
+
+variable "bigquery_location" {
+  description = "Location of the governance BigQuery dataset (where the load job runs)"
+  type        = string
+  default     = "US"
+}
+
+variable "notification_channels" {
+  description = "Notification channel names for the gateway attribution alert (layer 4 alert_notification_channels)"
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_on_unattributed" {
+  description = "Create the gateway attribution alert (follows layer 4 alert_on_unattributed_usage)"
+  type        = bool
+  default     = false
+}

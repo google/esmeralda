@@ -146,8 +146,8 @@
           "cc-ai-coe"
         ],
         "principal": "agents/ai-coe-mortgage-specialist:agent_identity_principal",
-        "team": "ai-coe",
-        "verified_by": "spiffe"
+        "principal_type": "agent_runtime",
+        "team": "ai-coe"
       },
       {
         "caller": "cx-mortgage-orchestrator",
@@ -156,8 +156,8 @@
           "cc-cx-mx"
         ],
         "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal",
-        "team": "cx",
-        "verified_by": "spiffe"
+        "principal_type": "agent_runtime",
+        "team": "cx"
       },
       {
         "caller": "platform-ops",
@@ -165,8 +165,8 @@
           "cc-platform"
         ],
         "principal": "group:platform-ops@example.com",
-        "team": "platform",
-        "verified_by": "group"
+        "principal_type": "group",
+        "team": "platform"
       },
       {
         "caller": "ai-coe-mortgage-specialist",
@@ -174,8 +174,8 @@
           "cc-ai-coe"
         ],
         "principal": "layer-3-security:ai_coe_mortgage_specialist_sa_email",
-        "team": "ai-coe",
-        "verified_by": "service_account"
+        "principal_type": "service_account",
+        "team": "ai-coe"
       },
       {
         "caller": "cx-mortgage-orchestrator",
@@ -184,8 +184,8 @@
           "cc-cx-mx"
         ],
         "principal": "layer-3-security:cx_mortgage_orchestrator_sa_email",
-        "team": "cx",
-        "verified_by": "service_account"
+        "principal_type": "service_account",
+        "team": "cx"
       },
       {
         "caller": "test-vm",
@@ -193,17 +193,8 @@
           "cc-platform"
         ],
         "principal": "layer-3-security:test_vm_sa_email",
-        "team": "platform",
-        "verified_by": "service_account"
-      },
-      {
-        "caller": "apigee-partner-mcp",
-        "cost_centers": [
-          "cc-platform"
-        ],
-        "principal": "layer-5-workloads/apigee/platform:proxy_runtime_sa_email",
-        "team": "platform",
-        "verified_by": "service_account"
+        "principal_type": "service_account",
+        "team": "platform"
       }
     ],
     "shared_principals": [

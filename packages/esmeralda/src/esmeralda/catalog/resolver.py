@@ -64,14 +64,16 @@ IAP_REF_SOURCES = frozenset({"layer-3-security"})
 DEFAULT_FLAG_ENVIRONMENTS = ("dev",)
 # Targets that serve requests in a process the caller guard can run in (Cloud Run MCP, A2A servers).
 GUARDED_KINDS = frozenset({"mcp", "a2a"})
-# principal_teams.verified_by per catalog identity type (Phase 4 table contract).
-VERIFIED_BY = {
+# principal_teams.principal_type per catalog identity type (the governance table's principal_type values).
+PRINCIPAL_TYPE = {
     "service_account": "service_account",
     "spiffe": "spiffe",
     "group": "group",
     "apigee_app": "apigee_app",
     "federated": "oidc",
 }
+# principal_type of an agent's Agent Identity principal (principal://.../reasoningEngines/<id>).
+AGENT_PRINCIPAL_TYPE = "agent_runtime"
 
 
 @dataclass
@@ -487,7 +489,7 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
 
 
 def _principal(identity: dict[str, Any] | None) -> tuple[str, str] | None:
-    """``(principal, verified_by)`` of a catalog identity, in the form ``caller.principal`` takes.
+    """``(principal, principal_type)`` of a catalog identity, in the form ``caller.principal`` takes.
 
     Service accounts and SPIFFE identities stay unresolved references (``<unit>:<output>``) when
     they have one; the unit that writes the table maps them to values. Groups read
@@ -506,12 +508,12 @@ def _principal(identity: dict[str, Any] | None) -> tuple[str, str] | None:
         value = f"{identity['issuer']}#{identity['subject']}"
     else:
         return None
-    return (value, VERIFIED_BY[kind]) if value else None
+    return (value, PRINCIPAL_TYPE[kind]) if value else None
 
 
 def _workload_principals(target: dict[str, Any]) -> list[tuple[str, str]]:
     """An agent's verified identities: its Agent Identity principal, then the identity it calls out as."""
-    out = [(f"{target['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}", "spiffe")]
+    out = [(f"{target['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}", AGENT_PRINCIPAL_TYPE)]
     own = _principal(target.get("identity"))
     if own:
         out.append(own)
@@ -522,30 +524,44 @@ def _shared_identity(resolved: Resolved) -> dict[str, Any]:
     return (resolved.policy.get("agent_gateway") or {}).get("shared_workload_identity") or {}
 
 
+def _referenced_callers(resolved: Resolved) -> set[str]:
+    """Callers some target of this environment lists (examples aside)."""
+    return {
+        caller
+        for target in resolved.targets.values()
+        if not target.get("example")
+        for caller in (target.get("callers") or {})
+    }
+
+
 def compile_principal_teams(resolved: Resolved) -> list[dict[str, Any]]:
-    """Rows of the ``principal_teams`` attribution table: every verified principal the catalog knows.
+    """Rows of the ``principal_teams`` attribution table: every verified principal of the environment.
 
     One row per principal: ``principal`` (a ``<unit>:<output>`` reference, a literal id,
-    ``group:<email>`` or ``<issuer>#<subject>``), ``caller`` (catalog caller or agent target),
-    ``team``, the team's ``cost_centers`` and ``verified_by``. Agents contribute their Agent
-    Identity principal and the service account they call out as; callers their identity. Example
-    entries are left out, and so is the policy's shared workload identity: several agents present
-    it, so it can't name one team (the fix is per-agent outbound identity, google/esmeralda#134).
-    A principal mapped to two different teams is an error.
+    ``group:<email>`` or ``<issuer>#<subject>``), ``principal_type`` (``agent_runtime``,
+    ``service_account``, ``spiffe``, ``group``, ``apigee_app``, ``oidc``), ``caller`` (catalog caller
+    or agent target), ``team`` and the team's ``cost_centers``. Deployed agents contribute their
+    Agent Identity principal and the service account they call out as. Callers contribute their
+    identity when a target of the environment lists them, or when the identity is not a unit output
+    (groups, literal ids): a unit-output identity no target uses may not exist in the environment.
+    Example entries are left out, and so is the policy's shared workload identity: several agents
+    present it, so it can't name one team (the fix is per-agent outbound identity, #134). A
+    principal mapped to two different teams is an error.
     """
     shared = _shared_identity(resolved).get("ref")
+    referenced = _referenced_callers(resolved)
     rows: dict[str, dict[str, Any]] = {}
     problems: list[str] = []
 
-    def add(principal: str, verified_by: str, caller: str, team: str) -> None:
+    def add(principal: str, principal_type: str, caller: str, team: str) -> None:
         if principal == shared:
             return
         row = {
             "principal": principal,
+            "principal_type": principal_type,
             "caller": caller,
             "team": team,
             "cost_centers": list((resolved.teams.get(team) or {}).get("cost_centers") or []),
-            "verified_by": verified_by,
         }
         existing = rows.get(principal)
         if existing and existing["team"] != team:
@@ -556,11 +572,13 @@ def compile_principal_teams(resolved: Resolved) -> list[dict[str, Any]]:
     for name in sorted(resolved.targets):
         target = resolved.targets[name]
         if target["kind"] in WORKLOAD_KINDS and _is_compiled(target):
-            for principal, verified_by in _workload_principals(target):
-                add(principal, verified_by, name, target["owner_team"])
+            for principal, principal_type in _workload_principals(target):
+                add(principal, principal_type, name, target["owner_team"])
     for name in sorted(resolved.callers):
         entry = resolved.callers[name]
         if entry.get("example"):
+            continue
+        if entry["identity"].get("ref") and name not in referenced:
             continue
         found = _principal(entry["identity"])
         if found:

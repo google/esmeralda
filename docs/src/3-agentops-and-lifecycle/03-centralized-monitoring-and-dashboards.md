@@ -160,7 +160,7 @@ flowchart TD
 | **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (the MCP servers, and the Envoy adapter when enabled). |
 
 > [!NOTE]
-> The `principal_teams` table is created empty. Rows declared in Terraform (Layer 4 variable `principal_teams`, `source = terraform`) are served with it through the view `vw_principal_teams`, which is what the attribution reads. Each environment's `layer-4-governance` unit maps its workload projects to their owning teams (`principal_type = gcp_project`, from the Layer 1 project outputs); the catalog compiler (observability design, phases 5 and 6) will add the verified principals.
+> The `principal_teams` table is created empty. Rows declared in Terraform (Layer 4 variable `principal_teams`, `source = terraform`) are served with it through the view `vw_principal_teams`, which is what the attribution reads. Each environment's `layer-4-governance` unit maps its workload projects to their owning teams (`principal_type = gcp_project`, from the Layer 1 project outputs). The Layer 5 `iap-egress` unit writes the catalog's verified principals (`catalog/.resolved/<env>.json` `attribution.principal_teams`, with references resolved to unit outputs) as `source = catalog` rows. It replaces only those rows, in one transaction, and only when they change.
 
 ### Analytical Views
 
@@ -232,7 +232,8 @@ Filters audit logs for security-critical methods:
 | :--- | :--- | :--- |
 | `usage/input_tokens`, `usage/output_tokens`, `usage/cached_tokens`, `usage/reasoning_tokens` | Usage records with that token count > 0 (distribution of the per-record count) | `caller_team`, `verified`, `workload`, `workload_team`, `model`, `source`, `event` |
 | `usage/tool_calls` | Usage records with `event = "tool.call"` | `tool`, `server`, `status`, `workload`, `caller_team` |
-| `usage/unattributed_records` | Usage records without `caller.verified = true` | `workload`, `source`, `event`, `caller_team` |
+| `usage/unattributed_records` | Usage records from guarded workloads (`workload.runtime` other than `agent_engine`) without `caller.verified = true` | `workload`, `source`, `event`, `caller_team` |
+| `attribution/gateway_unattributed_decisions` (governance project, created by the Layer 5 `iap-egress` unit) | Agent Gateway (IAP egress) decisions on agents and MCP servers that granted a principal missing from the catalog's `principal_teams` rows | `target` |
 | `security/iam_privilege_changes`, `security/secret_access_operations`, `security/reasoning_engine_deployments` | Cloud Audit Logs (`SetIamPolicy`, `AccessSecretVersion`, `ReasoningEngine`) | |
 
 In PromQL a log-based metric is `logging_googleapis_com:user_<name>` with `/` replaced by `_`, and a distribution's total is its `_sum` series, e.g. `sum by (caller_team) (increase(logging_googleapis_com:user_usage_input_tokens_sum[1h]))`.
@@ -272,11 +273,12 @@ All tiles are PromQL over the usage metrics:
 | **Reasoning Engine High Query Rate / 429 Quota** | Reasoning Engine `request_count` rate > 80 for 3 min | Email + Pub/Sub |
 | **High P95 Latency (>10s)** | Cloud Run `request_latencies` P95 > 10,000 ms for 5 min | Email |
 | **Token Rate-of-Change Anomaly (>300% Spike)** | PromQL: input + output tokens over 5 min (all producers) > 500,000 | Email + Pub/Sub |
-| **Unattributed Usage - Records Without a Verified Caller** | Any `usage/unattributed_records` in 5 min (expected: 0). **Off by default** (`alert_on_unattributed_usage = false`) | Email + Pub/Sub |
+| **Unattributed Usage - Records Without a Verified Caller** | Any `usage/unattributed_records` in 5 min (expected: 0). Counts guarded workloads only (not Agent Runtime). On by default (`alert_on_unattributed_usage`) | Email + Pub/Sub |
+| **Gateway Attribution - Principal Without a Team** | Any `attribution/gateway_unattributed_decisions` in 5 min (expected: 0): an Agent Gateway decision let through a principal that has no `principal_teams` row. Created by the Layer 5 `iap-egress` unit, follows `alert_on_unattributed_usage` | Email + Pub/Sub |
 | **SecOps - Privilege Escalation & IAM Modification Alert** | Any `security/iam_privilege_changes` event | Email + Pub/Sub |
 
 > [!IMPORTANT]
-> The unattributed-usage alert stays off until verified attribution lands (observability design, phase 6): until then the agents write `caller.verified = false` and every record would count. Turn it on then by setting `alert_on_unattributed_usage = true` (the default will flip). The **Unattributed Usage Records** dashboard tile and the `attribution` column of the views already show the gap.
+> Unattributed usage is checked where the caller can be verified. A guarded workload (an MCP server on Cloud Run with the catalog caller guard, or a workload on GKE or another cloud) records `caller.verified = true` for every allowed caller, so any record without it counts. Agents on Agent Runtime never receive the caller's credential: their records always say `caller.verified = false`, so they are excluded from that count. Their hops are checked at the Agent Gateway instead, through the gateway decision count. See [5.3 §5](../5-multi-cloud/03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end).
 
 > [!NOTE]
 > Secret access and Reasoning Engine deployments are tracked as metrics and in `vw_security_audit_trail`, but have no alert policy. The Pub/Sub topic has no subscriber in the IaC yet.
