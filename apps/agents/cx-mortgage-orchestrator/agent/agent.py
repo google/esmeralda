@@ -17,11 +17,15 @@ import os
 from google.adk.agents import Agent
 
 from agent.remote_agent import mortgage_tools_agent
+from esmeralda import models_limits
+
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-3.7-flash")
+models_limits.check_model_settings(MODEL_NAME, location=os.getenv("MODEL_LOCATION", "global"))
 
 # Tool and token telemetry come from EsmeraldaTelemetryPlugin (esmeralda.create_app in agent/__init__.py).
 root_agent = Agent(
     name=os.getenv("AGENT_NAME", "cx_mortgage_orchestrator"),
-    model=os.getenv("MODEL_NAME", "gemini-3.7-flash"),
+    model=MODEL_NAME,
     instruction="You are a mortgage underwriting assistant coordinator. "
                 "Delegate all document search, income verification, and email "
                 "operations to the mortgage_tools_agent. "
