@@ -16,6 +16,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+
 from fastmcp import FastMCP
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -24,8 +27,36 @@ from starlette.routing import Mount, Route
 from otel_setup import init_telemetry, trace_tool
 
 tracer = init_telemetry()
+logger = logging.getLogger("legacy-dms")
+if not logger.handlers:
+    logger.addHandler(logging.StreamHandler())
+    logger.setLevel(logging.INFO)
 
 mcp = FastMCP(name="legacy-dms")
+
+# Delegated user credential: the header this server reads it from. It must match the header the
+# catalog's `user_credential` block configures for this target (agents send it only when listed).
+USER_CREDENTIAL_HEADER = os.environ.get("USER_CREDENTIAL_HEADER", "").strip() or "X-User-Token"
+
+
+class UserContextMiddleware:
+    """Notes whether a request carries the delegated user credential, without ever logging its value.
+
+    Example only: a real server would verify the credential (e.g. ``esmeralda.mcp_authz``) and use
+    it to call the system of record on the user's behalf.
+    """
+
+    def __init__(self, app, header: str = USER_CREDENTIAL_HEADER):
+        self.app = app
+        self.header = header.lower().encode("latin-1")
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            present = any(name == self.header and value for name, value in scope.get("headers", ()))
+            scope.setdefault("state", {})["user_context"] = present
+            if present:
+                logger.info("User context received (%s header present)", USER_CREDENTIAL_HEADER)
+        await self.app(scope, receive, send)
 
 # ---------------------------------------------------------------------------
 # Mock document store
@@ -263,10 +294,12 @@ async def health(request):
 
 _mcp_app = mcp.http_app(path="/mcp", stateless_http=True, json_response=True, host_origin_protection=False)
 
-app = Starlette(
+_starlette = Starlette(
     routes=[
         Route("/health", health),
         Mount("/", app=_mcp_app),
     ],
     lifespan=_mcp_app.lifespan,
 )
+
+app = UserContextMiddleware(_starlette)

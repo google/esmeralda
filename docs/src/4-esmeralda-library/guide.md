@@ -172,7 +172,7 @@ root_agent = Agent(..., tools=[dms_toolset])
 
 Each request carries:
 - `Authorization: Bearer <token>`: by default an ID token for the server's origin (see [Token kinds](#token-kinds)). Not sent to `localhost`, so local MCP servers work as-is.
-- `User-Auth-Token`, when the invocation has a user token (see below).
+- the delegated user credential, only if the server's host is listed in `ESMERALDA_USER_CREDENTIAL_TARGETS`, in the header configured there (default `X-User-Token`). See [Delegated user credential](#delegated-user-credential).
 - `X-API-Key: <AGENT_NAME>`.
 
 ### Other agents (A2A)
@@ -189,7 +189,7 @@ specialist = a2a.remote_agent(
 root_agent = Agent(..., sub_agents=[specialist])
 ```
 
-The remote agent fetches the card from `<url>/v1/card`, and pins every RPC address on it to `url`, so calls always go through the configured gateway address (the card of an agent on Agent Runtime advertises the engine's own `aiplatform.googleapis.com` URL). ADK's own checks still apply: https, or http on a loopback host. Each request carries a bearer token for `url` (an access token for an agent host served by the entry point's `direct` backend, see [Token kinds](#token-kinds)) and the API key. Each message carries this agent's caller context and the user token in A2A metadata.
+The remote agent fetches the card from `<url>/v1/card`, and pins every RPC address on it to `url`, so calls always go through the configured gateway address (the card of an agent on Agent Runtime advertises the engine's own `aiplatform.googleapis.com` URL). ADK's own checks still apply: https, or http on a loopback host. Each request carries a bearer token for `url` (an access token for an agent host served by the entry point's `direct` backend, see [Token kinds](#token-kinds)) and the API key. Each message carries this agent's caller context in A2A metadata, plus the user token (`user_auth_token`) when the callee's host is listed in `ESMERALDA_USER_CREDENTIAL_TARGETS`.
 
 ### Token kinds
 
@@ -205,13 +205,41 @@ ID tokens and access tokens come from `esmeralda.auth`. With `SERVICE_ACCOUNT_EM
 
 When Gemini Enterprise calls an agent with a user authorization, the runtime stores the user's OAuth token as `temp:<authorization id>` session state. It is ephemeral and never written to the session. Set `USER_AUTH_ID` to the authorization id configured in Gemini Enterprise (default `user_auth_token`).
 
-`esmeralda.context.user_token(ctx)` finds the token for the current invocation, either in that state or in the A2A metadata of a calling agent. Toolsets and remote agents forward it on their own. Agent code can call it from a tool or a callback.
+`esmeralda.context.user_token(ctx)` finds the token for the current invocation, either in that state or in the A2A metadata of a calling agent. Toolsets and remote agents forward it on their own, but only to the targets that accept it (see below). Agent code can call it from a tool or a callback.
+
+### Delegated user credential
+
+The user's credential is a secret. It is forwarded only where a target asked for it, and never ends up in telemetry.
+
+**Which targets receive it.** Only the hosts listed in `ESMERALDA_USER_CREDENTIAL_TARGETS`, a JSON object that maps a host (optionally `host:port`) to the header the target reads:
+
+```bash
+export ESMERALDA_USER_CREDENTIAL_TARGETS='{"legacy-dms.esmeralda.internal": "X-User-Token", "income-verification.esmeralda.internal": null}'
+```
+
+- `null`, `true` or `""` mean the default header, `X-User-Token`; `false` leaves the host out.
+- A host that isn't listed never receives the credential: no header for MCP servers, no `user_auth_token` in the A2A metadata of remote agents. The variable unset, malformed or not an object means no target at all (fail closed).
+- Wildcards aren't supported, and the header can't be one that carries other credentials, routing or tracing (`Authorization`, `Cookie`, `Host`, `X-API-Key`, `X-Agent-Spiffe-Id`, `traceparent`, `baggage`, ...).
+- For A2A targets, the credential travels as `user_auth_token` A2A metadata (what the callee's runtime reads), not as a header.
+
+The variable will be generated from the catalog: every target whose entry has `user_credential: {accept: true, header: <name>}` becomes `"<endpoint host>": "<name>"` (no `header` means `X-User-Token`), and every other target is left out.
+
+**Which credential.** For MCP servers, `esmeralda.auth_manager.resolve_user_token` picks it:
+
+1. When Auth Manager / 3LO delegation is configured (`auth_provider` on the toolset, or `AGENT_AUTH_PROVIDER`), the delegated token it brokers is preferred over the raw token. If Auth Manager fails, the call goes out without a credential rather than falling back to the raw token.
+2. Otherwise, the invocation's own token (`context.user_token`).
+
+Auth Manager isn't called for a host that isn't listed. Remote agents only ever receive the invocation's own token: a brokered token is scoped to this agent's tools, so the callee brokers its own.
+
+**Never in telemetry.** The credential never goes into OpenTelemetry baggage, span attributes, log records, usage records, exception messages or persisted session state; it lives only in `temp:` state for one invocation. On an A2A agent, ADK would copy the request metadata (token included) into every stored event; `esmeralda serve` therefore uses `esmeralda.a2a.request_converter`, which moves `user_auth_token` from the metadata into `temp:` state before the run starts (a hand-built `A2aAgentExecutor` should pass `A2aAgentExecutorConfig(request_converter=esmeralda.a2a.request_converter)`). Code that has to log a value that might contain it masks it with `esmeralda.user_credential.redact(value, [token])` (or `describe_error(exc, [token])` for exceptions); `esmeralda query` does this for `--verbose` output and errors. Two tests enforce the rules: `packages/esmeralda/tests/test_user_credential_leak.py` runs an agent with a canary token and checks that it reaches only the listed targets and nowhere in spans, baggage, logs, usage records, stdout or the stored session; `test_user_credential_a2a_leak.py` does the same over A2A (callee and `RemoteA2aAgent` caller, stored sessions on both sides); `tests/guards/test_user_credential_guards.py` fails on code that puts the credential into baggage or span attributes.
+
+**On the MCP server.** Read the credential from the configured header (`USER_CREDENTIAL_HEADER`, default `X-User-Token`; `esmeralda.mcp_authz` also accepts the legacy `User-Auth-Token`), and never log its value. `apps/services/legacy-dms` shows the pattern: it logs that a user context was received, never the value.
 
 ### Agent Identity Auth Manager (3LO Delegation) & End-User Token Verification
 
 In Gemini Enterprise Agent Platform (GEAP), **Agent Identity Auth Manager** (`agentidentitycredentials.googleapis.com`) implements the [Three-Identity Delegation Framework](https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern/agent-identity-overview#agent-auth-manager) (`User identity + Agent SPIFFE identity = Delegated identity`):
 
-1. **Brokering 3LO/2LO credentials (`esmeralda.auth_manager`)**: When an MCP toolset is configured with `auth_provider` (or `$AGENT_AUTH_PROVIDER`), `esmeralda.auth_manager.resolve_user_token(ctx, auth_provider=...)` first checks whether the invocation already carries an end-user token (`context.user_token(ctx)`); if not, it calls `{auth_provider}:acquireToken` on Agent Identity Auth Manager using the agent's runtime identity and `X-Agent-Spiffe-Id` (`$AGENT_SPIFFE_ID` or workload X.509 certificate).
+1. **Brokering 3LO/2LO credentials (`esmeralda.auth_manager`)**: When an MCP toolset is configured with `auth_provider` (or `$AGENT_AUTH_PROVIDER`), `esmeralda.auth_manager.resolve_user_token(ctx, auth_provider=...)` calls `{auth_provider}:acquireToken` on Agent Identity Auth Manager using the agent's runtime identity and `X-Agent-Spiffe-Id` (`$AGENT_SPIFFE_ID` or workload X.509 certificate). The brokered token is preferred over the invocation's own token, and is sent only to hosts listed in `ESMERALDA_USER_CREDENTIAL_TARGETS`.
 
    ```python
    from esmeralda import mcp
@@ -223,9 +251,9 @@ In Gemini Enterprise Agent Platform (GEAP), **Agent Identity Auth Manager** (`ag
    )
    ```
 
-2. **Zero-latency end-user & delegation verification on MCP servers (`esmeralda.mcp_authz`)**: Downstream MCP servers can inspect `User-Auth-Token` and `X-Agent-Spiffe-Id` locally without making synchronous calls to `oauth2.googleapis.com/tokeninfo` (which fail inside VPC Service Controls perimeters) and without hardcoding fictional user allowlists:
-   - Always rejects service account tokens (`*.gserviceaccount.com`) presented as `User-Auth-Token`, preventing workload service accounts from masquerading as human end users.
-   - Fails closed when `MCP_ENFORCE_USER_AUTH=true` and `User-Auth-Token` is missing, expired, or lacks user identity claims.
+2. **Zero-latency end-user & delegation verification on MCP servers (`esmeralda.mcp_authz`)**: Downstream MCP servers can inspect the user credential header (`X-User-Token`, or `$USER_CREDENTIAL_HEADER`; the legacy `User-Auth-Token` is still read) and `X-Agent-Spiffe-Id` locally without making synchronous calls to `oauth2.googleapis.com/tokeninfo` (which fail inside VPC Service Controls perimeters) and without hardcoding fictional user allowlists:
+   - Always rejects service account tokens (`*.gserviceaccount.com`) presented as the user credential, preventing workload service accounts from masquerading as human end users.
+   - Fails closed when `MCP_ENFORCE_USER_AUTH=true` and the user credential is missing, expired, or lacks user identity claims.
 
    ```python
    from esmeralda import mcp_authz
@@ -239,7 +267,7 @@ The caller context says which project and agent made a call. The plugin puts it 
 
 ### Agent-to-agent calls (A2A)
 
-`esmeralda.a2a.remote_agent` sends it automatically: the calling agent identifies itself from `GOOGLE_CLOUD_PROJECT` and `AGENT_NAME`. A hand-built `RemoteA2aAgent` can pass `a2a_request_meta_provider=esmeralda.a2a.request_metadata`.
+`esmeralda.a2a.remote_agent` sends it automatically: the calling agent identifies itself from `GOOGLE_CLOUD_PROJECT` and `AGENT_NAME`. A hand-built `RemoteA2aAgent` can pass `a2a_request_meta_provider=esmeralda.a2a.request_metadata_for(url)` (the user token is added only when `url`'s host accepts it).
 
 On the receiving side, ADK exposes the metadata as `run_config.custom_metadata["a2a_metadata"]`, where the plugin reads it.
 

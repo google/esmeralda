@@ -14,9 +14,45 @@
 
 from unittest.mock import MagicMock, patch
 
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient
+
 # Patch telemetry before importing server to avoid GCP API calls during testing.
 with patch("otel_setup.init_telemetry", return_value=MagicMock()):
-    from server import _get_document, _search_documents
+    from server import USER_CREDENTIAL_HEADER, UserContextMiddleware, _get_document, _search_documents
+
+SYNTHETIC_TOKEN = "synthetic-user-token-3f9a"  # not a real credential
+
+
+def _client() -> tuple[TestClient, list]:
+    seen: list = []
+
+    async def probe(request):
+        seen.append(request.scope["state"].get("user_context"))
+        return JSONResponse({"status": "ok"})
+
+    return TestClient(UserContextMiddleware(Starlette(routes=[Route("/probe", probe)]))), seen
+
+
+def test_user_context_logged_without_its_value(caplog, capsys):
+    client, seen = _client()
+    with caplog.at_level("DEBUG"):
+        assert client.get("/probe", headers={USER_CREDENTIAL_HEADER: SYNTHETIC_TOKEN}).status_code == 200
+    assert seen == [True]
+    assert "User context received" in caplog.text
+    out = capsys.readouterr()
+    assert SYNTHETIC_TOKEN not in caplog.text + out.out + out.err
+    assert all(SYNTHETIC_TOKEN not in str(r.args) for r in caplog.records)
+
+
+def test_no_user_context_without_the_header(caplog):
+    client, seen = _client()
+    with caplog.at_level("DEBUG"):
+        assert client.get("/probe", headers={"User-Auth-Token-Other": "x"}).status_code == 200
+    assert seen == [False]
+    assert "User context received" not in caplog.text
 
 
 def test_search_by_name_and_doc_type():

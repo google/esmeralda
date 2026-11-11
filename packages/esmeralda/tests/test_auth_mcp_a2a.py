@@ -238,14 +238,18 @@ def test_user_token_from_a2a_metadata_and_absent():
 # ---- mcp ------------------------------------------------------------------------------------
 
 
-def test_mcp_headers(minted):
+def test_mcp_headers(minted, monkeypatch):
+    monkeypatch.setenv("ESMERALDA_USER_CREDENTIAL_TARGETS", '{"legacy-dms.esmeralda.internal": null}')
     ctx = SimpleNamespace(state={"temp:user_auth_token": "u-token"})
     remote = mcp.headers_for("https://legacy-dms.esmeralda.internal/mcp", ctx)
     assert remote["Authorization"] == "Bearer https://legacy-dms.esmeralda.internal|runtime-token-1"
-    assert remote["User-Auth-Token"] == "u-token" and remote["X-API-Key"] == "test_agent"
+    assert remote["X-User-Token"] == "u-token" and remote["X-API-Key"] == "test_agent"
+
+    unlisted = mcp.headers_for("https://corporate-email.esmeralda.internal/mcp", ctx)
+    assert "u-token" not in unlisted.values()
 
     local = mcp.headers_for("http://localhost:8003/mcp", None, api_key="custom")
-    assert "Authorization" not in local and "User-Auth-Token" not in local and local["X-API-Key"] == "custom"
+    assert "Authorization" not in local and "X-User-Token" not in local and local["X-API-Key"] == "custom"
 
 
 def test_mcp_headers_without_token_still_call(monkeypatch):
@@ -277,14 +281,18 @@ def test_mcp_toolset(minted):
 # ---- a2a ------------------------------------------------------------------------------------
 
 
-def test_a2a_request_metadata():
+def test_a2a_request_metadata(monkeypatch):
+    monkeypatch.setenv("ESMERALDA_USER_CREDENTIAL_TARGETS", '{"specialist.esmeralda.internal": null}')
     ic = SimpleNamespace(session=SimpleNamespace(state={"temp:user_auth_token": "u"}), run_config=None)
-    assert a2a.request_metadata(ic) == {
+    assert a2a.request_metadata_for("https://specialist.esmeralda.internal")(ic, None) == {
         "caller_context": {"project_id": "test-project", "agent_name": "test_agent"},
         "user_auth_token": "u",
     }
+    # Not listed, or no target at all: the token never goes.
+    assert "user_auth_token" not in a2a.request_metadata_for("https://other.esmeralda.internal")(ic, None)
+    assert "user_auth_token" not in a2a.request_metadata(ic)
     bare = SimpleNamespace(session=SimpleNamespace(state={}), run_config=None)
-    assert "user_auth_token" not in a2a.request_metadata(bare)
+    assert "user_auth_token" not in a2a.request_metadata_for("https://specialist.esmeralda.internal")(bare, None)
 
 
 def test_a2a_auth_hook(minted):

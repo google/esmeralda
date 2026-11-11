@@ -225,24 +225,25 @@ def resolve_user_token(
 ) -> str | None:
     """Resolves the end-user or delegated credential for the current invocation.
 
-    1. First checks if the invocation already carries a token via ``context.user_token(ctx)``
-       (from Gemini Enterprise ``temp:<USER_AUTH_ID>`` session state or A2A ``user_auth_token``).
-    2. If ``auth_provider`` (or ``$AGENT_AUTH_PROVIDER``) is configured, brokers a 3LO delegated
-       token (or 2LO/API-key credential) from the Agent Identity Credentials API, authenticating
-       with the agent's runtime identity and passing the initiating user's subject/session context.
+    1. If ``auth_provider`` (or ``$AGENT_AUTH_PROVIDER``) is configured, Auth Manager / 3LO
+       delegation is preferred: a delegated token (or 2LO/API-key credential) is brokered from the
+       Agent Identity Credentials API, authenticating with the agent's runtime identity and passing
+       the initiating user's subject/session context. A failure is raised, never silently replaced
+       by the raw token (fail closed).
+    2. Otherwise the invocation's own token, ``context.user_token(ctx)`` (Gemini Enterprise
+       ``temp:<USER_AUTH_ID>`` session state or A2A ``user_auth_token``).
+
+    The result is a secret: forward it only through ``esmeralda.user_credential`` and never log it.
     """
-    if ctx is not None:
-        existing = context.user_token(ctx)
-        if existing:
-            return existing
-
     provider = (auth_provider or os.environ.get(AUTH_PROVIDER_ENV) or "").strip()
-    if not provider:
-        return None
+    if provider:
+        return acquire_token(
+            provider,
+            user_id=_extract_user_id(ctx),
+            session_id=_extract_session_id(ctx),
+            scopes=scopes,
+        )
 
-    return acquire_token(
-        provider,
-        user_id=_extract_user_id(ctx),
-        session_id=_extract_session_id(ctx),
-        scopes=scopes,
-    )
+    if ctx is not None:
+        return context.user_token(ctx)
+    return None

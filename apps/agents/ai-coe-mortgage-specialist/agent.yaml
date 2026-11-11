@@ -43,6 +43,10 @@ env:
   DMS_MCP_URL: "https://legacy-dms.esmeralda.internal/mcp"
   INCOME_VERIFICATION_URL: "https://income-verification.esmeralda.internal/mcp"
   EMAIL_MCP_URL: "https://corporate-email.esmeralda.internal/mcp"
+  # Delegated user credential: the only MCP hosts that receive the end user's token, and the header
+  # each reads (null = X-User-Token). Every other host never gets it. See the library guide,
+  # "Delegated user credential"; this will be generated from the catalog's user_credential blocks.
+  ESMERALDA_USER_CREDENTIAL_TARGETS: '{"legacy-dms.esmeralda.internal": null}'
   MODEL_NAME: "gemini-3.7-flash"
   # Thinking level for Gemini 3 models (minimal/low/medium/high), or an integer token budget for
   # Gemini 2.5. "low" keeps latency down: the tool plan is spelled out in the instruction. Set ""

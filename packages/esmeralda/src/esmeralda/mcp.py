@@ -18,8 +18,10 @@
 
 * ``Authorization: Bearer <token>``: an ID token for the server's origin, or an access token for
   hosts that take one (cached, see ``esmeralda.auth.token_kind``); skipped for local servers;
-* ``User-Auth-Token``: the end user's token for this invocation, when there is one
-  (``esmeralda.context.user_token`` or brokered via ``esmeralda.auth_manager``);
+* the delegated user credential, only when the server's host is listed in
+  ``$ESMERALDA_USER_CREDENTIAL_TARGETS``, in the header configured there (default ``X-User-Token``).
+  It is brokered by ``esmeralda.auth_manager`` when Auth Manager is configured, else it is the
+  invocation's own token (``esmeralda.context.user_token``). See ``esmeralda.user_credential``;
 * ``X-Agent-Spiffe-Id``: the calling agent's attested SPIFFE / ``principal://`` identity, when present;
 * ``X-API-Key``: the calling agent's name (the gateway rate-limits per key).
 """
@@ -30,11 +32,12 @@ import logging
 import os
 from typing import Any
 
-from esmeralda import auth, auth_manager
+from esmeralda import auth, auth_manager, user_credential
 
 logger = logging.getLogger(__name__)
 
-USER_TOKEN_HEADER = "User-Auth-Token"
+USER_TOKEN_HEADER = user_credential.DEFAULT_HEADER
+"""Default header of the delegated user credential (per host: ``$ESMERALDA_USER_CREDENTIAL_TARGETS``)."""
 SPIFFE_ID_HEADER = auth_manager.SPIFFE_ID_HEADER
 API_KEY_HEADER = "X-API-Key"
 
@@ -58,14 +61,8 @@ def headers_for(
         except Exception:
             logger.exception("No bearer token for %s; calling it without one", url)
 
-    user_token: str | None = None
     if ctx is not None or auth_provider or os.environ.get(auth_manager.AUTH_PROVIDER_ENV):
-        try:
-            user_token = auth_manager.resolve_user_token(ctx, auth_provider=auth_provider)
-        except Exception:
-            logger.exception("Failed to resolve user token for %s; calling without one", url)
-    if user_token:
-        headers[USER_TOKEN_HEADER] = user_token
+        headers.update(user_credential.outgoing_headers(url, ctx, auth_provider=auth_provider))
 
     agent_spiffe = auth_manager.spiffe_id()
     if agent_spiffe:

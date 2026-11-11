@@ -115,7 +115,7 @@ A frozen dataclass.
 |---|---|
 | `current_identity() -> CallerContext` | This agent's identity, from `GOOGLE_CLOUD_PROJECT` and `AGENT_NAME` |
 | `outgoing_metadata() -> dict` | `{"caller_context": current_identity().to_dict()}`, for A2A request metadata |
-| `user_token(ctx)` | The end user's token for the invocation, or `None`. `ctx` is an invocation context or a callback, tool or readonly context. Reads `temp:<USER_AUTH_ID>` session state first, then `run_config.custom_metadata["a2a_metadata"]["user_auth_token"]` |
+| `user_token(ctx)` | The end user's token for the invocation, or `None`. `ctx` is an invocation context or a callback, tool or readonly context. Reads `temp:<USER_AUTH_ID>` session state first, then `run_config.custom_metadata["a2a_metadata"]["user_auth_token"]`. A secret: forward it only through `esmeralda.user_credential`, never log it |
 | `user_token_state_key()` | `temp:<USER_AUTH_ID>` (default `temp:user_auth_token`) |
 | `from_invocation(invocation_context)` | Returns a `CallerContext`, or `None`. Reads the session state key `temp:caller_context` first, then `run_config.custom_metadata["a2a_metadata"]["caller_context"]` |
 | `attach_baggage(caller) -> token` | Sets the baggage entries `caller.project_id` and `caller.agent_name` in the current context |
@@ -152,7 +152,7 @@ A frozen dataclass.
 | Name | Description |
 |---|---|
 | `toolset(url, *, prefix, api_key=None, auth_provider=None, timeout=30.0, sse_read_timeout=300.0, token=None, **kwargs)` | An ADK `McpToolset` (streamable HTTP) for the server at `url`. Tool names get `<prefix>_`. `token` (`"id"` or `"access"`) overrides `auth.token_kind(url)`. Extra `kwargs` go to `McpToolset` (for example `tool_filter`) |
-| `headers_for(url, ctx=None, *, api_key=None, token=None, auth_provider=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), `User-Auth-Token` (when `auth_manager.resolve_user_token(ctx, auth_provider=...)` resolves one), and `X-Agent-Spiffe-Id` (when `auth_manager.spiffe_id()` is present) |
+| `headers_for(url, ctx=None, *, api_key=None, token=None, auth_provider=None)` | The headers of one request: `Accept`, `Content-Type`, `X-API-Key` (`api_key`, else `AGENT_NAME`), `Authorization: Bearer <token>` (kind from `token`, else `auth.token_kind(url)`; not for local URLs; skipped with a logged error if no token can be minted), the user credential header (`user_credential.outgoing_headers`: only when `url`'s host is listed in `ESMERALDA_USER_CREDENTIAL_TARGETS`, in its configured header, default `X-User-Token`, with the value from `auth_manager.resolve_user_token(ctx, auth_provider=...)`), and `X-Agent-Spiffe-Id` (when `auth_manager.spiffe_id()` is present) |
 
 ## `esmeralda.auth_manager`
 
@@ -162,13 +162,26 @@ A frozen dataclass.
 | `spiffe_id() -> str \| None` | Returns the agent's runtime SPIFFE / `principal://` ID from `AGENT_SPIFFE_ID` or `AGENT_WORKLOAD_CERT_PATH` |
 | `delegated_context(ctx=None, *, auth_provider=None, scopes=()) -> DelegatedContext` | Builds a `DelegatedContext` for an invocation |
 | `acquire_token(auth_provider, *, user_id=None, session_id=None, scopes=(), base_url=None, timeout=10.0) -> str` | Acquires a 3LO/2LO token or API key from Agent Identity Auth Manager (`{auth_provider}:acquireToken`) |
-| `resolve_user_token(ctx=None, *, auth_provider=None, scopes=()) -> str \| None` | Returns `context.user_token(ctx)` if present, else acquires a delegated token via `acquire_token` when `auth_provider` or `AGENT_AUTH_PROVIDER` is configured |
+| `resolve_user_token(ctx=None, *, auth_provider=None, scopes=()) -> str \| None` | When `auth_provider` or `AGENT_AUTH_PROVIDER` is configured, a delegated token via `acquire_token` (preferred; a failure raises, no fallback to the raw token); otherwise `context.user_token(ctx)` |
+
+## `esmeralda.user_credential`
+
+| Name | Description |
+|---|---|
+| `Targets.parse(raw) -> Targets` | Parses the `ESMERALDA_USER_CREDENTIAL_TARGETS` JSON (`{"<host>[:<port>]": "<header>" \| null \| true \| false}`). Invalid input, wildcards and reserved header names are dropped (fail closed) |
+| `targets() -> Targets` | The targets from `ESMERALDA_USER_CREDENTIAL_TARGETS` (re-read when it changes) |
+| `header_for(url) -> str \| None` / `accepts(url) -> bool` | The header `url`'s host reads the credential from, or `None` when the host isn't listed |
+| `outgoing_headers(url, ctx=None, *, auth_provider=None) -> dict` | `{header: credential}` for a listed host, else `{}`. Failures are logged without the value |
+| `redact(value, secrets=()) -> value` | A copy with each secret string, and the values of sensitive keys (`user_auth_token`, `temp:<USER_AUTH_ID>`, credential headers, `Authorization`, ...), replaced by `[REDACTED]` |
+| `describe_error(exc, secrets=()) -> str` | `"<Type>: <message>"` with secrets masked |
+| `DEFAULT_HEADER` | `X-User-Token` |
 
 ## `esmeralda.mcp_authz`
 
 | Name | Description |
 |---|---|
-| `verify_request(headers=None, *, enforce=None, allowed_domains=None) -> VerifiedCaller` | Verifies `User-Auth-Token` and `X-Agent-Spiffe-Id` without network I/O; rejects `*.gserviceaccount.com` tokens and fails closed when `MCP_ENFORCE_USER_AUTH=true` |
+| `verify_request(headers=None, *, enforce=None, allowed_domains=None) -> VerifiedCaller` | Verifies the user credential header (`user_token_headers()`) and `X-Agent-Spiffe-Id` without network I/O; rejects `*.gserviceaccount.com` tokens and fails closed when `MCP_ENFORCE_USER_AUTH=true` |
+| `user_token_headers() -> list[str]` | The headers read, in order: `USER_CREDENTIAL_HEADER` (else `X-User-Token`), `X-User-Token`, the legacy `User-Auth-Token` |
 | `decode_jwt_claims(token) -> dict \| None` | Decodes the JSON payload of a 3-part JWT locally |
 | `is_service_account_email(value) -> bool` | `True` when `value` is a `*.gserviceaccount.com` service account identifier |
 | `AuthorizationError(reason, *, status_code=403)` | Raised when verification fails |
@@ -178,7 +191,9 @@ A frozen dataclass.
 | Name | Description |
 |---|---|
 | `remote_agent(name, *, url, description="", api_key=None, timeout=60.0, token=None)` | An ADK `RemoteA2aAgent` for the agent at `url`. Card from `<url>/v1/card`, with every RPC address pinned to `url` before ADK's checks. Every request gets a bearer token for `url` (kind from `token`, else `auth.token_kind(url)`; not for local URLs) and `X-API-Key` |
-| `request_metadata(invocation_context, a2a_message=None)` | The A2A request metadata: `caller_context`, plus `user_auth_token` when the invocation has one. Usable as `a2a_request_meta_provider` |
+| `request_metadata(invocation_context, a2a_message=None, *, url=None)` | The A2A request metadata: `caller_context`, plus `user_auth_token` when the invocation has one and `url`'s host is listed in `ESMERALDA_USER_CREDENTIAL_TARGETS` (never without `url`) |
+| `request_metadata_for(url)` | `request_metadata` bound to `url`; usable as `a2a_request_meta_provider` (`remote_agent` uses it) |
+| `request_converter(request, part_converter=None)` | ADK's A2A request converter, with `user_auth_token` moved from the request metadata (which ADK copies into every stored event) into `temp:<USER_AUTH_ID>` state. `esmeralda serve` uses it (`A2aAgentExecutorConfig(request_converter=...)`) |
 
 ## `esmeralda.a2a_retry`
 
@@ -413,3 +428,5 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | `ACCESS_TOKEN_HOSTS` | `auth.token_kind` | Comma-separated hostnames that take an access token instead of an ID token (agent hosts served by `direct`; set by Terraform from the service catalog) |
 | `ESMERALDA_REPO` | `esmeralda mcp`, `esmeralda.ops` | Repository root (default: the checkout containing the working directory) |
 | `USER_AUTH_ID` | `context.user_token` | Gemini Enterprise authorization id of the user token (default `user_auth_token`) |
+| `ESMERALDA_USER_CREDENTIAL_TARGETS` | `user_credential`, `mcp.headers_for`, `a2a.request_metadata` | JSON `{"<host>": "<header>"}`: the only hosts that receive the delegated user credential, and the header each reads (default `X-User-Token`). Unset or malformed: none |
+| `USER_CREDENTIAL_HEADER` | `mcp_authz.verify_request` (MCP servers) | Header the server reads the user credential from (default `X-User-Token`) |

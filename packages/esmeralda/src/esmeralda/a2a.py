@@ -20,7 +20,10 @@ request carries an access token or ID token for the host, see ``esmeralda.auth.t
 carries A2A metadata with:
 
 * ``caller_context``: this agent's identity, for the callee's telemetry;
-* ``user_auth_token``: the end user's token, when the invocation has one.
+* ``user_auth_token``: the end user's token, when the invocation has one **and** the target's host
+  is listed in ``$ESMERALDA_USER_CREDENTIAL_TARGETS`` (see ``esmeralda.user_credential``). It is
+  the invocation's own token: a token brokered by Auth Manager is scoped to this agent's tools,
+  so it is never passed on; the callee brokers its own.
 
 The agent card is fetched from ``<url>/v1/card``, and its RPC address is pinned to ``url``, so calls
 always go through the gateway address configured here, whatever address the card advertises. This
@@ -29,24 +32,65 @@ is on purpose: an agent on Agent Runtime advertises the engine's own aiplatform 
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 from typing import Any
 
-from esmeralda import auth, context
+from esmeralda import auth, context, user_credential
 
 logger = logging.getLogger(__name__)
 
 API_KEY_HEADER = "X-API-Key"
 
 
-def request_metadata(invocation_context: Any, a2a_message: Any = None) -> dict[str, Any]:
-    """A2A request metadata for a call made during ``invocation_context``."""
+def request_metadata(invocation_context: Any, a2a_message: Any = None, *, url: str | None = None) -> dict[str, Any]:
+    """A2A request metadata for a call to ``url`` made during ``invocation_context``.
+
+    The user's token is added only when ``url``'s host accepts it; without ``url`` it never is.
+    """
     metadata: dict[str, Any] = context.outgoing_metadata()
-    token = context.user_token(invocation_context)
-    if token:
-        metadata[context.USER_TOKEN_KEY] = token
+    if url is not None and user_credential.accepts(url):
+        token = context.user_token(invocation_context)
+        if token:
+            metadata[context.USER_TOKEN_KEY] = token
     return metadata
+
+
+def request_metadata_for(url: str) -> Any:
+    """An ``a2a_request_meta_provider`` for calls to ``url``."""
+    return functools.partial(request_metadata, url=url)
+
+
+def request_converter(request: Any, part_converter: Any = None) -> Any:
+    """ADK's A2A request converter, with the user's token moved out of the persisted metadata.
+
+    ADK puts the A2A request metadata in ``run_config.custom_metadata["a2a_metadata"]``, and the
+    runner copies that into every event's ``custom_metadata``, which session services persist. So
+    the ``user_auth_token`` entry is taken out of it here, before the runner starts, and handed to
+    the invocation as ``temp:<USER_AUTH_ID>`` state instead (never persisted; ``context.user_token``
+    reads it first). Everything else (``caller_context``, ...) is left as it is.
+
+    Use it as ``A2aAgentExecutorConfig(request_converter=esmeralda.a2a.request_converter)``;
+    ``esmeralda serve`` does.
+    """
+    from google.adk.a2a.converters.part_converter import convert_a2a_part_to_genai_part
+    from google.adk.a2a.converters.request_converter import (
+        A2A_METADATA_KEY,
+        convert_a2a_request_to_agent_run_request,
+    )
+
+    run_request = convert_a2a_request_to_agent_run_request(request, part_converter or convert_a2a_part_to_genai_part)
+    run_config = getattr(run_request, "run_config", None)
+    custom_metadata = getattr(run_config, "custom_metadata", None)
+    a2a_metadata = custom_metadata.get(A2A_METADATA_KEY) if isinstance(custom_metadata, dict) else None
+    if isinstance(a2a_metadata, dict) and context.USER_TOKEN_KEY in a2a_metadata:
+        token = a2a_metadata.pop(context.USER_TOKEN_KEY)
+        if not a2a_metadata:
+            custom_metadata.pop(A2A_METADATA_KEY)
+        if isinstance(token, str) and token:
+            run_request.state_delta = {**(run_request.state_delta or {}), context.user_token_state_key(): token}
+    return run_request
 
 
 def _auth_hook(url: str, api_key: str | None, token: str | None = None):
@@ -110,6 +154,6 @@ def remote_agent(
         description=description,
         agent_card=f"{base_url}/v1/card",
         httpx_client=client,
-        a2a_request_meta_provider=request_metadata,
+        a2a_request_meta_provider=request_metadata_for(base_url),
         use_legacy=False,
     )

@@ -151,7 +151,11 @@ def user_token(ctx: Any) -> str | None:
 
     ``ctx`` is an ADK invocation context or a callback/tool/readonly context. The token comes from
     the ``temp:`` session state (Gemini Enterprise authorizations), else from the A2A request
-    metadata of a calling agent.
+    metadata of a calling agent. Persisted (non-``temp:``) state is never read.
+
+    The token is a secret: never put it in baggage, span attributes, logs, usage records,
+    exception messages or persisted state. Forward it only through ``esmeralda.user_credential``
+    (``mcp.toolset`` and ``a2a.remote_agent`` do), and mask it with ``user_credential.redact``.
     """
     state = getattr(ctx, "state", None)
     if state is None:
