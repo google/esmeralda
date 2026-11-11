@@ -1,0 +1,36 @@
+{
+  "schema": "esmeralda.usage",
+  "schema_version": 1,
+  "event": "llm.call",
+  "timestamp": "2026-01-15T14:03:07.412Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "source": "workload",
+  "workload": {
+    "name": "ai-coe-mortgage-specialist",
+    "team": "ai-coe",
+    "runtime": "agent_engine",
+    "framework": "adk",
+    "cloud": "gcp"
+  },
+  "caller": {
+    "verified": false,
+    "declared": {"project_id": "example-cx-project", "agent_name": "cx_mortgage_orchestrator"}
+  },
+  "gen_ai": {
+    "system": "gcp.vertex_ai",
+    "operation.name": "generate_content",
+    "request.model": "gemini-flash",
+    "response.model": "gemini-flash-001",
+    "response.finish_reasons": ["stop"],
+    "usage.input_tokens": 1840,
+    "usage.output_tokens": 312,
+    "usage.cached_tokens": 1024,
+    "usage.reasoning_tokens": 96,
+    "agent.name": "mortgage_specialist",
+    "conversation.id": "session-julian-sterling-001"
+  },
+  "status": "ok",
+  "dimensions": {"loan_product": "fixed_30y"},
+  "latency_ms": 1432.5
+}

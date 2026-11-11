@@ -1,0 +1,35 @@
+{
+  "schema": "esmeralda.usage",
+  "schema_version": 1,
+  "event": "gateway.request",
+  "timestamp": "2026-01-15T14:03:10.031Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "e457b5a2e4d86bd1",
+  "source": "gateway",
+  "workload": {
+    "name": "ai-coe-mortgage-specialist",
+    "team": "ai-coe",
+    "runtime": "agent_engine"
+  },
+  "caller": {
+    "principal": "partner-app-sterling-lending",
+    "team": "partner-sterling-lending",
+    "verified": true,
+    "declared": {"cost_center": "cc-partner-001", "country": "us"}
+  },
+  "gateway": {
+    "product": "apigee",
+    "name": "partner-agents"
+  },
+  "http": {
+    "request.method": "POST",
+    "response.status_code": 200,
+    "route": "/v1/agents/ai-coe-mortgage-specialist:query"
+  },
+  "gen_ai": {
+    "usage.input_tokens": 3920,
+    "usage.output_tokens": 655
+  },
+  "status": "ok",
+  "latency_ms": 4180.2
+}

@@ -12,22 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Telemetry: structured JSON events for Cloud Logging, and caller attributes on spans.
+"""Telemetry: a facade over ``esmeralda.usage``, and caller attributes on spans.
 
-Events are single JSON lines on stdout. Agent Runtime ingests them as ``jsonPayload``; the
-Layer 4 log sinks, log-based metrics and dashboards key on ``jsonPayload.event``
-(``genai_token_consumption``, ``mcp_tool_execution``).
+``TelemetryEmitter`` is kept for backwards compatibility. It now sits on ``esmeralda.usage``:
+
+* ``emitter.usage`` is a ``UsageRecorder`` that produces ``esmeralda.usage`` records (the
+  contract in ``contracts/usage-event.schema.json``), sharing the emitter's transport;
+* ``emit``, ``token_consumption`` and ``tool_execution`` still write the legacy
+  ``genai_token_consumption`` / ``mcp_tool_execution`` events, which the current Layer 4 log sinks,
+  log-based metrics and dashboards key on (``jsonPayload.event``). They go through the same
+  transport and redaction, and are deprecated: new consumers select ``jsonPayload.schema =
+  "esmeralda.usage"`` instead.
 """
 
 from __future__ import annotations
 
-import json
-import sys
 from typing import Any, TextIO
 
 from opentelemetry import baggage, trace
 from opentelemetry.sdk.trace import SpanProcessor
 
+from esmeralda import usage
 from esmeralda.context import BAGGAGE_AGENT_NAME, BAGGAGE_PROJECT_ID
 
 
@@ -39,15 +44,29 @@ def _trace_ids() -> dict[str, str]:
 
 
 class TelemetryEmitter:
-    """Writes Esmeralda telemetry events as one JSON line each."""
+    """Writes Esmeralda telemetry: ``esmeralda.usage`` records (``.usage``) and legacy events.
 
-    def __init__(self, stream: TextIO | None = None):
-        self._stream = stream
+    Args:
+        stream: write JSON lines to this stream instead of the configured transport (tests).
+        transport: an ``esmeralda.usage`` transport (default: ``usage.transport_from_env()``).
+        recorder: the ``UsageRecorder`` behind ``.usage`` (default: one on the same transport).
+    """
+
+    def __init__(
+        self,
+        stream: TextIO | None = None,
+        *,
+        transport: usage.Transport | None = None,
+        recorder: usage.UsageRecorder | None = None,
+    ):
+        if transport is None:
+            transport = usage.StdoutTransport(stream) if stream is not None else usage.transport_from_env()
+        self.transport = transport
+        self.usage = recorder or usage.UsageRecorder(transport=transport)
 
     def emit(self, payload: dict[str, Any]) -> None:
-        stream = self._stream or sys.stdout
-        stream.write(json.dumps(payload, default=str) + "\n")
-        stream.flush()
+        """Writes one event (redacted) through the transport."""
+        self.transport.emit(usage.redact(payload))
 
     def token_consumption(
         self,
@@ -65,6 +84,7 @@ class TelemetryEmitter:
         execution_path: str | None = None,
         turn_index: int = 1,
     ) -> None:
+        """Legacy ``genai_token_consumption`` event (deprecated; use ``usage.record_llm_call``)."""
         cache_hit_ratio = cached_tokens / prompt_tokens if prompt_tokens > 0 else 0.0
         self.emit(
             {
@@ -99,6 +119,7 @@ class TelemetryEmitter:
         duration_ms: float,
         error_reason: str | None = None,
     ) -> None:
+        """Legacy ``mcp_tool_execution`` event (deprecated; use ``usage.record_tool_call``)."""
         payload: dict[str, Any] = {
             "event": "mcp_tool_execution",
             "session_id": session_id,

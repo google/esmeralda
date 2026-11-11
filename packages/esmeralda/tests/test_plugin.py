@@ -23,7 +23,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import esmeralda
-from esmeralda import context
+from esmeralda import context, usage
 from esmeralda.plugin import EsmeraldaTelemetryPlugin
 from esmeralda.telemetry import BaggageSpanProcessor, TelemetryEmitter
 
@@ -45,14 +45,36 @@ def tracing():
 
 
 @pytest.fixture
-def events():
-    stream = io.StringIO()
+def stream(monkeypatch):
+    for var in ("ESMERALDA_WORKLOAD_NAME", "ESMERALDA_TEAM", "ESMERALDA_RUNTIME", "K_SERVICE", "USER_AUTH_ID"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("ESMERALDA_LEGACY_TELEMETRY_EVENTS", raising=False)
+    return io.StringIO()
+
+
+def _lines(stream):
+    return [json.loads(line) for line in stream.getvalue().splitlines()]
+
+
+@pytest.fixture
+def events(stream):
+    """The plugin, and a reader of the legacy events it wrote."""
     plugin = EsmeraldaTelemetryPlugin(agent_name="test_agent", finalize_steps=(), emitter=TelemetryEmitter(stream))
 
     def read():
-        return [json.loads(line) for line in stream.getvalue().splitlines()]
+        return [e for e in _lines(stream) if "schema" not in e]
 
     return plugin, read
+
+
+@pytest.fixture
+def records(stream):
+    """A reader of the esmeralda.usage records the plugin wrote (same stream as ``events``)."""
+
+    def read():
+        return [e for e in _lines(stream) if e.get("schema") == "esmeralda.usage"]
+
+    return read
 
 
 # ---- caller context --------------------------------------------------------------------------
@@ -202,11 +224,11 @@ def test_model_token_event(events):
     assert event["implicit_caching"] == {"cache_hit": True, "cache_hit_ratio": 0.4}
 
 
-def test_partial_model_responses_are_skipped(events):
+def test_partial_model_responses_are_skipped(events, records):
     plugin, read = events
     response = SimpleNamespace(usage_metadata=SimpleNamespace(), partial=True)
     asyncio.run(plugin.after_model_callback(callback_context=SimpleNamespace(), llm_response=response))
-    assert read() == []
+    assert read() == [] and records() == []
 
 
 def test_telemetry_errors_do_not_break_the_run(events, caplog):
@@ -214,6 +236,207 @@ def test_telemetry_errors_do_not_break_the_run(events, caplog):
     response = SimpleNamespace(usage_metadata=object(), partial=False)  # no token fields
     asyncio.run(plugin.after_model_callback(callback_context=SimpleNamespace(), llm_response=response))
     assert "Failed to emit model telemetry" in caplog.text
+
+
+# ---- esmeralda.usage records -----------------------------------------------------------------
+
+
+SECRET = "ya29" + ".delegated-user-credential-value"  # split so secret scanners stay quiet
+
+
+def adk_invocation(invocation_id="inv-1", caller=True):
+    state = {"temp:user_auth_token": SECRET}
+    if caller:
+        state[context.STATE_KEY] = {"project_id": "example-cx-project", "agent_name": "cx_mortgage_orchestrator"}
+    session = SimpleNamespace(id="s-1", state=state)
+    run_config = SimpleNamespace(custom_metadata={"a2a_metadata": {"user_auth_token": SECRET}})
+    return SimpleNamespace(
+        invocation_id=invocation_id, session=session, run_config=run_config, agent=SimpleNamespace(name="root_agent")
+    )
+
+
+def callback_ctx(ic, agent_name="root_agent", call_id=None):
+    return SimpleNamespace(
+        invocation_id=ic.invocation_id,
+        agent_name=agent_name,
+        session=ic.session,
+        user_id="u-1",
+        state=ic.session.state,
+        function_call_id=call_id,
+    )
+
+
+def model_response(**overrides):
+    usage_metadata = SimpleNamespace(
+        prompt_token_count=100,
+        candidates_token_count=50,
+        total_token_count=170,
+        thoughts_token_count=20,
+        cached_content_token_count=40,
+        tool_use_prompt_token_count=5,
+    )
+    for key, value in overrides.items():
+        setattr(usage_metadata, key, value)
+    return SimpleNamespace(
+        usage_metadata=usage_metadata,
+        partial=False,
+        model_version="gemini-x-001",
+        finish_reason=SimpleNamespace(name="STOP"),
+    )
+
+
+def run_invocation(plugin, ic, *, tool_error=None, model_error=None):
+    async def run():
+        await plugin.before_run_callback(invocation_context=ic)
+        ctx = callback_ctx(ic)
+        request = SimpleNamespace(model="gemini-x")
+        await plugin.before_model_callback(callback_context=ctx, llm_request=request)
+        if model_error:
+            await plugin.on_model_error_callback(callback_context=ctx, llm_request=request, error=model_error)
+        else:
+            await plugin.after_model_callback(callback_context=ctx, llm_response=model_response())
+        tool = SimpleNamespace(name="verify_income")
+        tctx = callback_ctx(ic, call_id="call-1")
+        await plugin.before_tool_callback(tool=tool, tool_args={}, tool_context=tctx)
+        if tool_error:
+            await plugin.on_tool_error_callback(tool=tool, tool_args={}, tool_context=tctx, error=tool_error)
+        else:
+            await plugin.after_tool_callback(tool=tool, tool_args={}, tool_context=tctx, result={"ok": 1})
+        await plugin.before_model_callback(callback_context=ctx, llm_request=request)
+        await plugin.after_model_callback(callback_context=ctx, llm_response=model_response(thoughts_token_count=None))
+        await plugin.after_run_callback(invocation_context=ic)
+
+    asyncio.run(run())
+
+
+def test_invocation_produces_schema_valid_records(events, records, assert_valid_usage, monkeypatch):
+    monkeypatch.setenv("ESMERALDA_TEAM", "ai-coe")
+    monkeypatch.setenv("K_SERVICE", "loan-agent")
+    plugin, _ = events
+    run_invocation(plugin, adk_invocation())
+
+    produced = records()
+    assert [r["event"] for r in produced] == ["llm.call", "tool.call", "llm.call", "agent.invocation"]
+    for record in produced:
+        assert_valid_usage(record)
+        assert record["workload"] == {
+            "name": "test_agent",
+            "team": "ai-coe",
+            "runtime": "cloud_run",
+            "framework": "adk",
+            "cloud": "gcp",
+        }
+        assert record["caller"] == {
+            "verified": False,
+            "declared": {"project_id": "example-cx-project", "agent_name": "cx_mortgage_orchestrator"},
+        }
+        assert record["source"] == "workload" and record["status"] == "ok"
+
+    llm, tool, llm2, agent = produced
+    # OTel GenAI semantics: input = prompt + tool-use prompt; output = candidates + reasoning.
+    assert llm["gen_ai"] == {
+        "system": "gcp.vertex_ai",
+        "operation.name": "generate_content",
+        "request.model": "gemini-x",
+        "response.model": "gemini-x-001",
+        "response.finish_reasons": ["stop"],
+        "usage.input_tokens": 105,
+        "usage.output_tokens": 70,
+        "usage.cached_tokens": 40,
+        "usage.reasoning_tokens": 20,
+        "agent.name": "root_agent",
+        "conversation.id": "s-1",
+    }
+    assert llm["latency_ms"] >= 0
+    assert llm2["gen_ai"]["usage.output_tokens"] == 50 and llm2["gen_ai"]["usage.reasoning_tokens"] == 0
+    assert tool["tool"]["name"] == "verify_income" and tool["tool"]["status"] == "ok"
+    assert tool["tool"]["call_id"] == "call-1" and tool["tool"]["duration_ms"] >= 0
+    assert agent["gen_ai"] == {
+        "operation.name": "invoke_agent",
+        "agent.name": "root_agent",
+        "conversation.id": "s-1",
+        "usage.input_tokens": 210,
+        "usage.output_tokens": 120,
+        "usage.cached_tokens": 80,
+        "usage.reasoning_tokens": 20,
+    }
+    assert agent["latency_ms"] >= 0
+
+
+def test_errors_are_recorded_by_type_only(events, records, assert_valid_usage):
+    plugin, read = events
+    run_invocation(
+        plugin,
+        adk_invocation(),
+        tool_error=PermissionError(f"Bearer {SECRET} rejected"),
+        model_error=RuntimeError("quota"),
+    )
+    produced = records()
+    for record in produced:
+        assert_valid_usage(record)
+    llm_error = produced[0]
+    assert llm_error["status"] == "error" and llm_error["error_type"] == "RuntimeError"
+    assert llm_error["gen_ai"]["request.model"] == "gemini-x"
+    tool = next(r for r in produced if r["event"] == "tool.call")
+    assert tool["tool"] == {
+        "name": "verify_income",
+        "call_id": "call-1",
+        "status": "error",
+        "error_type": "PermissionError",
+        "duration_ms": tool["tool"]["duration_ms"],
+    }
+    agent = produced[-1]
+    assert agent["status"] == "error" and agent["error_type"] == "RuntimeError"
+    # The legacy event keeps the message, redacted.
+    (legacy_tool,) = [e for e in read() if e["event"] == "mcp_tool_execution"]
+    assert legacy_tool["error_reason"] == "PermissionError: [REDACTED] rejected"
+
+
+def test_user_credential_never_leaves_the_process(events, stream):
+    plugin, _ = events
+    run_invocation(plugin, adk_invocation(), tool_error=ValueError(f"token={SECRET}"))
+    assert "delegated-user-credential" not in stream.getvalue()
+
+
+def test_runs_without_caller_context_have_no_caller(events, records, assert_valid_usage):
+    plugin, _ = events
+    run_invocation(plugin, adk_invocation(caller=False))
+    for record in records():
+        assert "caller" not in record
+        assert_valid_usage(record)
+
+
+def test_legacy_events_can_be_turned_off(stream, records, monkeypatch):
+    monkeypatch.setenv("ESMERALDA_LEGACY_TELEMETRY_EVENTS", "false")
+    plugin = EsmeraldaTelemetryPlugin(agent_name="a", finalize_steps=(), emitter=TelemetryEmitter(stream))
+    run_invocation(plugin, adk_invocation())
+    assert all(e.get("schema") == "esmeralda.usage" for e in _lines(stream))
+    assert len(records()) == 4
+
+
+def test_custom_recorder(events):
+    capture = []
+
+    class Transport:
+        def emit(self, record):
+            capture.append(record)
+
+    recorder = usage.UsageRecorder(Transport(), workload=usage.Workload("custom"))
+    plugin = EsmeraldaTelemetryPlugin(finalize_steps=(), recorder=recorder, legacy_events=False)
+    run_invocation(plugin, adk_invocation())
+    assert {r["workload"]["name"] for r in capture} == {"custom"}
+
+
+def test_tool_server_from_mcp_connection():
+    from esmeralda.plugin import _tool_server
+
+    mcp_tool = SimpleNamespace(
+        _mcp_session_manager=SimpleNamespace(
+            _connection_params=SimpleNamespace(url="https://income-verification.esmeralda.internal/mcp")
+        )
+    )
+    assert _tool_server(mcp_tool) == "income-verification"
+    assert _tool_server(SimpleNamespace(name="fn")) is None
 
 
 # ---- app ------------------------------------------------------------------------------------
