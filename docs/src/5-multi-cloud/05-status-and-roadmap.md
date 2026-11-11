@@ -17,6 +17,9 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | Apigee `cross-cloud` capability unit: trusted-issuer KeyValueMap | ✅ | The KeyValueMap is managed; nothing on `main` reads it yet. |
 | Cross-cloud shared flow: fail-closed OIDC verification (`401` / `403`), `iss#sub` principal, spoof-proof `x-verified-*` headers, key-to-identity binding | 🚧 | Open pull request (Apigee cross-cloud shared flow and partner chargeback). |
 | `federated` and `spiffe` caller types in the catalog | ✅ | Declared and validated in the team-owned `catalog/`; only `service_account` callers and agents are compiled into IAM today. |
+| Catalog callers compiled into the Agent Gateway per-target egress lists | ✅ | One `callers` entry drives both the callee's IAM and the gateway list; callers that don't egress through the gateway (such as the Apigee proxy) use `agent_gateway: false`. See [2.6 Service Catalog](../3-agentops-and-lifecycle/06-service-catalog.md). |
+| Delegated end-user credential, forwarded only to opted-in targets | ✅ | Kept out of logs, traces, usage records and stored sessions. See [Delegated user credential](../4-esmeralda-library/guide.md#delegated-user-credential). |
+| End-user authorization enforced by the MCP tool servers (per-tool modes) | 🗺️ | The claims guard (`esmeralda.mcp_authz`) exists; the sample servers don't enforce it yet. |
 | Per-agent outbound identity (no shared invoker identity across agents) | 🗺️ | Prerequisite for verified per-agent attribution on every path. |
 | Compile catalog callers into Apigee products, apps and `owner_identity` | 🗺️ | Today configured directly in Terraform ([5.4 Steps 3–4](./04-bringing-an-agent-from-another-cloud.md#step-3-trust-the-issuer-platform-security)). |
 | Envoy cross-cloud path (JWT verification against an external issuer) | 🗺️ | The non-Apigee inbound alternative. |
@@ -28,7 +31,8 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | :--- | :---: | :--- |
 | A2A between agents and MCP to tool servers over `*.esmeralda.internal` | ✅ | Framework-neutral; any cloud can speak them. |
 | Central Agent Gateway + Agent Registry: deny-by-default egress to registered endpoints (`cross_cloud = "agent_gateway"`) | ✅ | External agents, MCP servers and HTTPS endpoints are registered as registry entries. |
-| Apigee partner front door (`partner-agents`, `partner-mcp`) with `LLMTokenQuota` | ✅ | Optional; enabled with `governance.apigee.enabled`. |
+| Apigee partner front door (`partner-agents`, `partner-mcp`) with `LLMTokenQuota` | ✅ | Optional; enabled with `governance.apigee.enabled`. `partner-mcp` reaches the MCP servers through a private path to the entry point, with per-product tool scopes. See [1.4](../2-workloads-and-catalog/04-apigee-partner-gateway.md). |
+| Long unary agent-to-agent calls (no fixed 30 s time-to-first-byte cap) | ✅ | Opt-in hybrid agent backend (`gateways.agent_backend = "hybrid"`). See [1.1](../2-workloads-and-catalog/01-ingress-gateways.md). |
 | Apigee LLM proxy for agent → model calls | 🚧 | Branch in progress. |
 | Reference hybrid networking (HA VPN / Cross-Cloud Interconnect to another cloud) | 🗺️ | Conceptual guidance in [5.2](./02-cross-cloud-connectivity.md#2-network-options); no Terraform module yet. |
 | Registering `managed: false` external targets from the catalog into the Agent Registry | 🗺️ | Catalog shape exists; compile planned. |
@@ -39,9 +43,9 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | :--- | :---: | :--- |
 | Hub-and-spoke log sinks, OpenTelemetry baggage, `vw_monthly_agent_chargeback` | ✅ | Attribution from declared baggage. See [2.3](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md). |
 | Apigee `ML-interaction` gateway records | ✅ | Partner app, product and token counts. |
-| `esmeralda.usage` contract (`contracts/usage-event.schema.json`), validated in CI | 🚧 | Open pull request. |
-| Python producers: ADK plugin, OTel GenAI span adapter, manual API, OTel logs transport | 🚧 | Same pull request as the contract. |
-| Layer 4 usage analytics: usage table, normalized and billable views, schema-keyed metrics | 🚧 | Open pull request; the "unattributed" alert ships disabled until verified attribution lands. |
+| `esmeralda.usage` contract (`contracts/usage-event.schema.json`), validated in CI | 🚧 | Branch in progress. |
+| Python producers: ADK plugin, OTel GenAI span adapter, manual API, OTel logs transport | 🚧 | Same branch as the contract. |
+| Layer 4 usage analytics: usage table, normalized and billable views, schema-keyed metrics | 🚧 | Branch in progress; the "unattributed" alert ships disabled until verified attribution lands. |
 | `caller_identity` / `caller_issuer` in Apigee records and the partner chargeback view | 🚧 | Part of the cross-cloud shared flow pull request. |
 | Verified attribution: principal → team table compiled from the catalog, `unmapped_caller: deny`, unattributed alarm on | 🗺️ | Turns chargeback from declared to verified. |
 | Reference OpenTelemetry Collector configuration and GenAI-span-to-record processor for non-Python workloads on other clouds | 🗺️ | [5.3 §2](./03-unified-observability-and-chargeback.md#2-producers-on-every-cloud) shows a starting point. |
@@ -64,7 +68,7 @@ The remaining work follows a deliberate order: first a normalized way to *descri
 ```mermaid
 flowchart LR
     A["Usage contract<br/>+ producers 🚧"] --> B["Layer 4 usage<br/>analytics 🚧"]
-    C["Team-owned<br/>catalog 🚧"] --> D["Verified attribution<br/>(fail closed) 🗺️"]
+    C["Team-owned<br/>catalog ✅"] --> D["Verified attribution<br/>(fail closed) 🗺️"]
     B --> D
     E["Cross-cloud<br/>shared flow 🚧"] --> D
     D --> F["Catalog → Apigee<br/>products & apps 🗺️"]
@@ -73,7 +77,7 @@ flowchart LR
 ```
 
 1. **Describe usage the same way everywhere.** The `esmeralda.usage` contract and its producers, then the Layer 4 views that read only that contract.
-2. **Know who may call.** The team-owned catalog, compiled into the same enforcement the platform already uses.
+2. **Know who may call.** The team-owned catalog, compiled into the same enforcement the platform already uses: callee IAM and the Agent Gateway per-target lists (done).
 3. **Verify, then bill.** A principal-to-team table compiled from the catalog, `unmapped_caller: deny` as a property of the compile, and the "unattributed" alarm switched on.
 4. **Widen the paths.** Catalog-driven Apigee products and apps, the Envoy cross-cloud alternative, and a reference collector for workloads in any language.
 
