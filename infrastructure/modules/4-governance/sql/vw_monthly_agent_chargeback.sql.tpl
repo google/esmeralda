@@ -2,10 +2,12 @@
 -- Built on vw_usage_billable (esmeralda.usage records joined with the legacy token events; gateway and
 -- workload records of one request joined on trace_id, gateway tokens and identity preferred).
 --
--- Billing groups by the verified team (billed_team): a caller's team counts only when it comes from
--- authentication (caller.verified, or the principal_teams table compiled from the catalog). Anything
--- else lands in billed_team = 'unattributed' with verified = FALSE and `attribution` saying why
--- (declared = an unverified team claim, unattributed = no caller, legacy = pre-contract record).
+-- Billing groups by billed_team: a caller's team when it comes from authentication (caller.verified,
+-- or vw_principal_teams on the verified caller.principal), else the team that owns the project the
+-- workload logged from (attribution = workload: the floor until callers are verified). Anything else
+-- lands in billed_team = 'unattributed' with `attribution` saying why (declared = only an unverified
+-- team claim, unattributed = no caller and an unmapped project, legacy = pre-contract record).
+-- `verified` is true only for a verified caller.
 --
 -- Columns up to net_total_chargeback_usd keep their historical names and meaning; total_requests now
 -- counts billable units (one request trace through one agent) instead of individual model turns

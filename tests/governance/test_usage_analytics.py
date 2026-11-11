@@ -149,10 +149,37 @@ def test_central_and_audit_sinks_still_route_audit_logs_and_keep_usage_records()
 
 
 def test_principal_teams_attribution_table_schema():
-    table = _blocks(_read(FINOPS_TF), "resource", "google_bigquery_table")["principal_teams"]
+    finops = _read(FINOPS_TF)
+    table = _blocks(finops, "resource", "google_bigquery_table")["principal_teams"]
     assert 'table_id            = "principal_teams"' in table
-    for col, mode in (("principal", "REQUIRED"), ("team", "REQUIRED"), ("cost_centers", "REPEATED"), ("verified_by", "NULLABLE")):
-        assert re.search(rf'name = "{col}", type = "STRING", mode = "{mode}"', table), col
+    assert "schema = jsonencode(local.principal_teams_columns)" in table
+    # Base columns, in order, then the extension point.
+    cols = re.findall(r'\{ name = "(\w+)", type = "STRING", mode = "(\w+)"', finops)
+    assert cols[:4] == [("principal", "REQUIRED"), ("principal_type", "REQUIRED"), ("team", "REQUIRED"), ("source", "NULLABLE")]
+    assert "], var.principal_teams_extra_columns)" in finops
+    variables = _read(FINOPS_TF.parent / "variables.tf")
+    for var in ("principal_teams", "principal_teams_extra_columns", "principal_type_values", "project_numbers"):
+        assert f'variable "{var}"' in variables, var
+    assert 'source         = optional(string, "terraform")' in variables
+    assert '"gcp_project"' in variables
+
+
+def test_principal_teams_view_unions_table_and_terraform_rows():
+    view = _blocks(_read(FINOPS_TF), "resource", "google_bigquery_table")["vw_principal_teams"]
+    assert "sql/vw_principal_teams.sql.tpl" in view
+    assert "rows       = var.principal_teams" in view
+    assert "contains(var.principal_type_values, r.principal_type)" in view
+    sql = _read(SQL_DIR / "vw_principal_teams.sql.tpl")
+    assert "FROM `${dataset_id}.principal_teams`" in sql
+    assert "%{ for r in rows ~}" in sql and "jsonencode(r.principal)" in sql
+
+
+def test_no_partner_view_without_its_sink():
+    # The partner Apigee chargeback view ships with the partner sink (separate change).
+    module = "\n".join(_read(p) for p in GOVERNANCE.rglob("*.tf"))
+    assert "vw_partner_apigee_chargeback" not in module
+    assert '"google_bigquery_table" "apigee_interactions"' not in module
+    assert not (SQL_DIR / "vw_partner_apigee_chargeback.sql.tpl").exists()
 
 
 def test_legacy_tables_are_kept_for_historical_data():
@@ -172,9 +199,9 @@ def test_legacy_tables_are_kept_for_historical_data():
                 "${dataset_id}.usage_events",
                 "${dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout",
                 "${dataset_id}.genai_telemetry_events",
-                "${dataset_id}.principal_teams",
+                "${dataset_id}.vw_principal_teams",
             ],
-            [],
+            ["${dataset_id}.principal_teams`"],
         ),
         ("vw_usage_billable", "vw_usage_billable.sql.tpl", ["${dataset_id}.vw_usage_normalized"], ["reasoning_engine_stdout", "genai_telemetry_events"]),
         ("vw_monthly_chargeback", "vw_monthly_agent_chargeback.sql.tpl", ["${dataset_id}.vw_usage_billable"], ["reasoning_engine_stdout", "genai_telemetry_events"]),
@@ -213,9 +240,47 @@ def test_billing_never_sums_agent_invocation_rollups():
 
 def test_attribution_trusts_only_verified_callers():
     sql = _sql_without_comments("vw_usage_normalized.sql.tpl")
-    assert "WHEN r.caller_verified AND r.caller_team IS NOT NULL THEN 'verified'" in sql
-    assert "ON r.caller_verified AND pt.principal = r.caller_principal" in sql
-    assert "COALESCE(verified_team, 'unattributed') AS billed_team" in sql
+    order = [
+        "THEN 'legacy'",
+        "WHEN r.caller_verified AND r.caller_team IS NOT NULL THEN 'verified'",
+        "WHEN r.caller_verified AND cpt.team IS NOT NULL THEN 'principal_table'",
+        "WHEN r.source = 'workload' AND wpt.team IS NOT NULL THEN 'workload'",
+        "THEN 'declared'",
+        "ELSE 'unattributed'",
+    ]
+    positions = [sql.index(o) for o in order]
+    assert positions == sorted(positions)
+    assert "ON r.caller_verified AND cpt.principal = r.caller_principal" in sql
+    # The workload floor keys on the log project (set by Cloud Logging), never on a payload field.
+    assert "ON wpt.project_id = r.workload_project" in sql
+    assert "WHEN r.source = 'workload' THEN wpt.team" in sql
+    assert "COALESCE(billing_team, 'unattributed') AS billed_team" in sql
+    # Declared projects only ever feed declared_team.
+    assert "COALESCE(r.caller_team, dpt.team) AS declared_team" in sql
+    billable = _sql_without_comments("vw_usage_billable.sql.tpl")
+    assert billable.index("WHEN 'principal_table' THEN 0") < billable.index("WHEN 'workload' THEN 1") < billable.index("WHEN 'declared' THEN 2")
+
+
+def test_project_numbers_are_mapped_to_ids():
+    sql = _sql_without_comments("vw_usage_normalized.sql.tpl")
+    assert "JSON_VALUE(TO_JSON(jsonPayload.caller.declared), '$.project_id') AS declared_project" in _read(SQL_DIR / "usage_events.sql.tpl")
+    assert "LEFT JOIN project_numbers AS cpn ON cpn.project_number = r.caller_project_number" in sql
+    assert "COALESCE(cpn.project_id, r.caller_project_number)" in sql
+    main = _read(GOVERNANCE / "main.tf")
+    assert 'data "google_project" "usage_sources"' in main
+    assert "project_numbers               = { for p in data.google_project.usage_sources : p.number => p.project_id }" in main
+
+
+def test_token_columns_are_int64():
+    sql = _sql_without_comments("vw_usage_normalized.sql.tpl")
+    # JSON payload numbers can be doubles ("336.0"): CAST(JSON_VALUE(...) AS INT64) would fail.
+    assert not re.search(r"CAST\(JSON_VALUE\([^)]*tokens[^)]*\) AS INT64\)", sql)
+    for col in ("input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "total_tokens"):
+        assert f"CAST({col} AS INT64) AS {col}" in sql or f"AS INT64) AS {col}" in sql, col
+        assert f"LAX_INT64(payload.tokens." in sql
+    events = _read(SQL_DIR / "usage_events.sql.tpl")
+    for key in ("input", "output", "cached", "reasoning"):
+        assert f"SAFE_CAST(jsonPayload.gen_ai.usage_{key}_tokens AS INT64) AS {key}_tokens" in events, key
 
 
 def test_chargeback_columns_are_backwards_compatible():
@@ -237,6 +302,14 @@ def test_request_level_columns_are_backwards_compatible():
     ]
     assert cols[: len(legacy)] == legacy
     assert {"billed_team", "verified", "token_source"} <= set(cols)
+
+
+def test_dev_attribution_rows_come_from_project_outputs():
+    hcl = _read(REPO_ROOT / "infrastructure/live/dev/layer-4-governance/terragrunt.hcl")
+    block = hcl[hcl.index("principal_teams = [") : hcl.index("]", hcl.index("principal_teams = ["))]
+    # No literal project ids: every principal is a layer-1 output.
+    principals = re.findall(r"principal = ([^,]+),", block)
+    assert principals and all(p.startswith("dependency.projects.outputs.") for p in principals)
 
 
 def _tf_binary() -> str | None:
@@ -264,6 +337,40 @@ def test_usage_events_template_renders_one_branch_per_landing_table(tmp_path):
     for t in ("table_a", "table_b", "table_c"):
         assert f"`esmeralda_usage_dev.{t}`" in rendered
     assert "%{" not in rendered and "${" not in rendered
+
+
+def _render(tmp_path, template: str, variables: str) -> str:
+    tf = _tf_binary()
+    if tf is None:
+        pytest.skip("terraform not available")
+    expr = f'templatefile("{SQL_DIR / template}", {variables})'
+    res = subprocess.run([tf, f"-chdir={tmp_path}", "console"], input=expr, capture_output=True, text=True, check=False)
+    assert res.returncode == 0, res.stderr
+    assert "%{" not in res.stdout and "${" not in res.stdout
+    return res.stdout
+
+
+def test_normalized_template_renders_project_numbers(tmp_path):
+    rendered = _render(
+        tmp_path,
+        "vw_usage_normalized.sql.tpl",
+        '{dataset_id = "ds", project_numbers = {"111" = "example-a", "222" = "example-b"}}',
+    )
+    assert 'STRUCT("111" AS project_number, "example-a" AS project_id),' in rendered
+    assert 'STRUCT("222" AS project_number, "example-b" AS project_id)\n' in rendered
+    empty = _render(tmp_path, "vw_usage_normalized.sql.tpl", '{dataset_id = "ds", project_numbers = {}}')
+    assert "LIMIT 0" in empty and "UNNEST" not in empty
+
+
+def test_principal_teams_template_renders_terraform_rows(tmp_path):
+    rendered = _render(
+        tmp_path,
+        "vw_principal_teams.sql.tpl",
+        '{dataset_id = "ds", rows = [{principal = "example-a", principal_type = "gcp_project", team = "cx", source = "terraform"}]}',
+    )
+    assert "FROM `ds.principal_teams`" in rendered
+    assert 'SELECT "example-a", "gcp_project", "cx", "terraform"' in rendered
+    assert rendered.count("UNION ALL") == 1
 
 
 # ------------------------------------------------------------------------------

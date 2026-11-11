@@ -9,7 +9,8 @@
 --               else legacy (pre-contract) token events. While producers emit both the contract and the
 --               legacy events (transition), the contract records win and nothing is counted twice;
 --   * identity: the first verified gateway caller, else the first verified workload caller, else the
---               best remaining attribution (declared, unattributed, legacy);
+--               team owning the workload's log project (workload), else the best remaining attribution
+--               (declared, unattributed, legacy);
 --   * model:    the gateway's model when known, else the workload's.
 -- agent.invocation records are never billed: they roll up the llm.calls of the invocation.
 -- Records without a trace_id cannot be joined: each llm.call / gateway record is its own unit.
@@ -26,9 +27,10 @@ usage AS (
     CASE attribution
       WHEN 'verified' THEN 0
       WHEN 'principal_table' THEN 0
-      WHEN 'declared' THEN 1
-      WHEN 'unattributed' THEN 2
-      ELSE 3
+      WHEN 'workload' THEN 1
+      WHEN 'declared' THEN 2
+      WHEN 'unattributed' THEN 3
+      ELSE 4
     END AS attribution_rank
   FROM `${dataset_id}.vw_usage_normalized`
   WHERE event IN ('llm.call', 'gateway.request')
@@ -45,9 +47,11 @@ traced AS (
     ARRAY_AGG(user_id IGNORE NULLS ORDER BY timestamp LIMIT 1)[SAFE_OFFSET(0)] AS user_id,
     ARRAY_AGG(execution_path IGNORE NULLS ORDER BY timestamp LIMIT 1)[SAFE_OFFSET(0)] AS execution_path,
     ARRAY_AGG(workload_team IGNORE NULLS ORDER BY IF(source = 'workload', 0, 1), timestamp LIMIT 1)[SAFE_OFFSET(0)] AS workload_team,
+    ARRAY_AGG(workload_project IGNORE NULLS ORDER BY IF(source = 'workload', 0, 1), timestamp LIMIT 1)[SAFE_OFFSET(0)] AS workload_project,
+    ARRAY_AGG(workload_project_team IGNORE NULLS ORDER BY IF(source = 'workload', 0, 1), timestamp LIMIT 1)[SAFE_OFFSET(0)] AS workload_project_team,
     ARRAY_AGG(model IGNORE NULLS ORDER BY IF(source = 'gateway', 0, 1), timestamp LIMIT 1)[SAFE_OFFSET(0)] AS model,
     ARRAY_AGG(
-      STRUCT(billed_team, verified, attribution, caller_principal, caller_team)
+      STRUCT(billed_team, verified, attribution, caller_principal, caller_team, caller_project_id, declared_team)
       ORDER BY attribution_rank, IF(source = 'gateway', 0, 1), timestamp
       LIMIT 1
     )[OFFSET(0)] AS who,
@@ -111,8 +115,10 @@ untraced_units AS (
     user_id,
     execution_path,
     workload_team,
+    workload_project,
+    workload_project_team,
     model,
-    STRUCT(billed_team, verified, attribution, caller_principal, caller_team) AS who,
+    STRUCT(billed_team, verified, attribution, caller_principal, caller_team, caller_project_id, declared_team) AS who,
     IF(source = 'gateway', latency_ms, NULL) AS gateway_latency_ms,
     IF(source = 'gateway', 1, 0) AS gateway_records,
     IF(source = 'workload', 1, 0) AS workload_records,
@@ -156,5 +162,9 @@ SELECT
   COALESCE(tokens.output_tokens, 0) AS output_tokens,
   COALESCE(tokens.cached_tokens, 0) AS cached_tokens,
   COALESCE(tokens.reasoning_tokens, 0) AS reasoning_tokens,
-  COALESCE(tokens.total_tokens, 0) AS total_tokens
+  COALESCE(tokens.total_tokens, 0) AS total_tokens,
+  workload_project,
+  workload_project_team,
+  who.caller_project_id AS caller_project_id,
+  who.declared_team AS declared_team
 FROM units

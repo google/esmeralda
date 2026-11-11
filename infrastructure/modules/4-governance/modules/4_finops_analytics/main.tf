@@ -138,36 +138,69 @@ EOF
 #   esmeralda_usage_<env>.<landing tables>   (modules/1_telemetry_sinks; one per producer log ID)
 #     -> usage_events                        flattened, typed esmeralda.usage records
 #   genai_telemetry_events + reasoning_engine_stdout (legacy token events, historical data)
+#   principal_teams (table) + var.principal_teams (Terraform rows)
+#     -> vw_principal_teams                  effective principal -> team mapping
 #     -> vw_usage_normalized                 native + legacy rows in one shape, plus attribution
-#                                            (principal_teams lookup, verified flag, billed_team)
+#                                            (vw_principal_teams lookup, verified flag, billed_team)
 #     -> vw_usage_billable                   one row per (trace_id, agent): gateway and workload records
 #                                            joined on trace_id, gateway tokens and identity preferred
 #     -> vw_monthly_agent_chargeback, vw_request_level_telemetry (backwards-compatible columns)
 
-# Principal -> team attribution lookup. Created empty here and filled by the catalog compiler
-# (`esmeralda catalog resolve/compile`, see the observability design, phases 5-6) from the verified
-# identities in the catalog. One row per authenticated principal:
-#   principal     SPIFFE id, service account email, group, Apigee app name, or federated
-#                 (issuer, subject) principal string, exactly as producers write caller.principal
-#   team          owning team (catalog teams.yaml key); the team that pays for this caller's usage
-#   cost_centers  cost centres this caller may declare (caller.declared.cost_center is accepted only
-#                 if listed)
-#   verified_by   how the identity is authenticated: spiffe | service_account | group | apigee_app |
-#                 workload_identity_federation | oidc
-# The compiler replaces the whole table on each compile, so rows are never edited by hand.
+# Principal -> team attribution lookup: one row per authenticated identity.
+#   principal       the identity, exactly as the attribution reads it: caller.principal (SPIFFE id,
+#                   service account email, Apigee app, federated principal...) or, for
+#                   principal_type = gcp_project, a project ID (the project a usage record was logged
+#                   in, or the project a caller declares)
+#   principal_type  what kind of identity `principal` is (var.principal_type_values)
+#   team            owning team (catalog teams.yaml key): the team that pays for this identity's usage
+#   source          who wrote the row: terraform (var.principal_teams), catalog (the catalog
+#                   compiler), or another tool
+# Columns beyond these come from var.principal_teams_extra_columns (NULLABLE or REPEATED only, so
+# existing rows stay valid and BigQuery adds them in place). Rows reach the attribution through
+# vw_principal_teams, which unions this table (written by tools such as the catalog compiler) with
+# the rows declared in Terraform (var.principal_teams).
+locals {
+  principal_teams_columns = concat([
+    { name = "principal", type = "STRING", mode = "REQUIRED", description = "Authenticated identity: caller.principal, or a project ID for principal_type = gcp_project" },
+    { name = "principal_type", type = "STRING", mode = "REQUIRED", description = join(" | ", var.principal_type_values) },
+    { name = "team", type = "STRING", mode = "REQUIRED", description = "Catalog team billed for this principal's usage" },
+    { name = "source", type = "STRING", mode = "NULLABLE", description = "Who wrote the row: terraform | catalog | <tool>" },
+  ], var.principal_teams_extra_columns)
+}
+
 resource "google_bigquery_table" "principal_teams" {
   dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
   table_id            = "principal_teams"
   project             = var.governance_project_id
   deletion_protection = false
-  description         = "Verified principal -> team attribution, compiled from the catalog. Read by vw_usage_normalized."
+  description         = "Principal -> team attribution written by tools (catalog compiler). Read through vw_principal_teams."
 
-  schema = jsonencode([
-    { name = "principal", type = "STRING", mode = "REQUIRED", description = "Authenticated identity, as written in caller.principal" },
-    { name = "team", type = "STRING", mode = "REQUIRED", description = "Catalog team billed for this principal's usage" },
-    { name = "cost_centers", type = "STRING", mode = "REPEATED", description = "Cost centres this principal may declare" },
-    { name = "verified_by", type = "STRING", mode = "NULLABLE", description = "spiffe | service_account | group | apigee_app | workload_identity_federation | oidc" },
-  ])
+  schema = jsonencode(local.principal_teams_columns)
+}
+
+# The effective principal -> team mapping: the principal_teams table plus the Terraform-declared rows.
+resource "google_bigquery_table" "vw_principal_teams" {
+  dataset_id  = "esmeralda_telemetry_logs_${var.environment}"
+  table_id    = "vw_principal_teams"
+  project     = var.governance_project_id
+  description = "Effective principal -> team mapping: principal_teams table + rows declared in Terraform (source = terraform)."
+
+  view {
+    query = templatefile("${path.module}/../../sql/vw_principal_teams.sql.tpl", {
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+      rows       = var.principal_teams
+    })
+    use_legacy_sql = false
+  }
+
+  depends_on = [google_bigquery_table.principal_teams]
+
+  lifecycle {
+    precondition {
+      condition     = alltrue([for r in var.principal_teams : contains(var.principal_type_values, r.principal_type)])
+      error_message = "principal_teams has a principal_type outside principal_type_values (${join(", ", var.principal_type_values)})."
+    }
+  }
 }
 
 # usage_events: every esmeralda.usage record, flattened to typed columns (one UNION ALL branch per
@@ -196,14 +229,15 @@ resource "google_bigquery_table" "vw_usage_normalized" {
 
   view {
     query = templatefile("${path.module}/../../sql/vw_usage_normalized.sql.tpl", {
-      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+      dataset_id      = "esmeralda_telemetry_logs_${var.environment}"
+      project_numbers = var.project_numbers
     })
     use_legacy_sql = false
   }
 
   depends_on = [
     google_bigquery_table.usage_events,
-    google_bigquery_table.principal_teams,
+    google_bigquery_table.vw_principal_teams,
     google_bigquery_table.unified_telemetry_events,
     google_bigquery_table.reasoning_engine_stdout,
   ]

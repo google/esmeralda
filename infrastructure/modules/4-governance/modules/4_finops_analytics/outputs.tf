@@ -20,5 +20,10 @@ output "usage_normalized_view_id" {
 
 output "principal_teams_table_id" {
   value       = google_bigquery_table.principal_teams.table_id
-  description = "BigQuery principal -> team attribution table, filled by the catalog compiler"
+  description = "BigQuery principal -> team attribution table, written by tools such as the catalog compiler"
+}
+
+output "principal_teams_view_id" {
+  value       = google_bigquery_table.vw_principal_teams.table_id
+  description = "BigQuery view of the effective principal -> team mapping (table + Terraform-declared rows)"
 }

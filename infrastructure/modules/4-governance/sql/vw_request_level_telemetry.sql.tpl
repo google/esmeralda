@@ -35,7 +35,11 @@ SELECT
   workload_records,
   llm_calls,
   gateway_latency_ms,
-  record_origins
+  record_origins,
+  workload_project,
+  workload_project_team,
+  caller_project_id,
+  declared_team
 FROM
   `${dataset_id}.vw_usage_billable`
 ORDER BY

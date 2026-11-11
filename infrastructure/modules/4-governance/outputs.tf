@@ -44,6 +44,11 @@ output "principal_teams_table_id" {
   description = "BigQuery principal -> team attribution table (in governance_dataset_id), filled by the catalog compiler"
 }
 
+output "principal_teams_view_id" {
+  value       = module.finops_analytics.principal_teams_view_id
+  description = "BigQuery view (in governance_dataset_id) of the effective principal -> team mapping (table + Terraform-declared rows)"
+}
+
 output "golden_signals_dashboard_id" {
   value       = module.alert_policies.golden_signals_dashboard_id
   description = "Cloud Monitoring Agent Golden Signals Dashboard ID"

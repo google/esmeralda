@@ -50,6 +50,30 @@ variable "usage_landing_tables" {
   }
 }
 
+variable "principal_teams" {
+  type = list(object({
+    principal      = string
+    principal_type = string
+    team           = string
+    source         = optional(string, "terraform")
+  }))
+  default     = []
+  nullable    = false
+  description = "Principal -> team rows declared in Terraform (served with the principal_teams table through vw_principal_teams). principal_type = gcp_project maps a project ID to the team that owns it: usage logged from that project is billed to it when no verified caller is present."
+}
+
+variable "principal_teams_extra_columns" {
+  type = list(object({
+    name        = string
+    type        = string
+    mode        = optional(string, "NULLABLE")
+    description = optional(string, "")
+  }))
+  default     = []
+  nullable    = false
+  description = "Extra principal_teams table columns after (principal, principal_type, team, source); NULLABLE or REPEATED only."
+}
+
 variable "slo_mcp_services" {
   type        = list(string)
   default     = ["corporate-email", "income-verification", "legacy-dms"]

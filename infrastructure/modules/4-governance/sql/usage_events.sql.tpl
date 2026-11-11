@@ -35,6 +35,10 @@ SELECT
   COALESCE(jsonPayload.caller.verified, FALSE) AS caller_verified,
   jsonPayload.caller.declared.cost_center AS declared_cost_center,
   jsonPayload.caller.declared.country AS declared_country,
+  -- Read through JSON: these keys become columns only once a record carrying them is exported.
+  -- On Agent Runtime, project_id is the calling project's number; vw_usage_normalized maps it to an ID.
+  JSON_VALUE(TO_JSON(jsonPayload.caller.declared), '$.project_id') AS declared_project,
+  JSON_VALUE(TO_JSON(jsonPayload.caller.declared), '$.agent_name') AS declared_agent_name,
   TO_JSON(jsonPayload.caller.declared) AS caller_declared,
   jsonPayload.gen_ai.system AS gen_ai_system,
   jsonPayload.gen_ai.operation_name AS gen_ai_operation_name,

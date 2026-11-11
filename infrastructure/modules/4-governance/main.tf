@@ -58,13 +58,22 @@ module "alert_policies" {
 }
 
 # 5. Submodule 4: FinOps Analytics (usage_events, attribution table, normalized + chargeback views)
+# Agent Runtime reports project numbers (caller.declared.project_id); the views map them back to IDs.
+data "google_project" "usage_sources" {
+  for_each   = toset(concat([var.governance_project_id], var.spoke_project_ids))
+  project_id = each.value
+}
+
 module "finops_analytics" {
-  source                = "./modules/4_finops_analytics"
-  environment           = var.environment
-  governance_project_id = var.governance_project_id
-  usage_dataset_id      = module.telemetry_sinks.usage_dataset_id
-  usage_landing_tables  = module.telemetry_sinks.usage_landing_table_ids
-  depends_on            = [module.telemetry_sinks]
+  source                        = "./modules/4_finops_analytics"
+  environment                   = var.environment
+  governance_project_id         = var.governance_project_id
+  usage_dataset_id              = module.telemetry_sinks.usage_dataset_id
+  usage_landing_tables          = module.telemetry_sinks.usage_landing_table_ids
+  project_numbers               = { for p in data.google_project.usage_sources : p.number => p.project_id }
+  principal_teams               = var.principal_teams
+  principal_teams_extra_columns = var.principal_teams_extra_columns
+  depends_on                    = [module.telemetry_sinks]
 }
 
 # 6. Submodule 5: Model Armor Guardrail Templates
