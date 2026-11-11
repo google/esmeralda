@@ -93,6 +93,23 @@ def _max_output_tokens(value: str) -> int | None:
     return int(value)
 
 
+def _validate_model_settings() -> None:
+    model = os.environ.get("MODEL_NAME", "gemini-3.7-flash")
+    thinking = _thinking_config_kwargs(os.environ.get("MODEL_THINKING", "low"))
+    tokens = _max_output_tokens(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "2048"))
+    location = os.environ.get("MODEL_LOCATION", "global")
+
+    if model == "gemini-3.7-flash":
+        if thinking.get("thinking_level") not in (None, "LOW", "MEDIUM", "HIGH"):
+            raise ValueError(f"{model} does not support MODEL_THINKING={thinking['thinking_level']}")
+        if "thinking_budget" in thinking:
+            raise ValueError(f"{model} does not support a thinking budget")
+        if tokens is not None and tokens > 65536:
+            raise ValueError(f"{model} supports at most 65536 output tokens")
+        if location not in ("global", "us", "eu"):
+            raise ValueError(f"{model} does not support MODEL_LOCATION={location!r}")
+
+
 def _generate_content_config() -> types.GenerateContentConfig | None:
     """Model settings tuned for latency.
 
@@ -115,6 +132,7 @@ def _generate_content_config() -> types.GenerateContentConfig | None:
         kwargs["max_output_tokens"] = max_tokens
     return types.GenerateContentConfig(**kwargs) if kwargs else None
 
+_validate_model_settings()
 mortgage_assistant_agent = Agent(
     model=os.environ.get("MODEL_NAME", "gemini-3.7-flash"),
     name=os.environ.get("AGENT_NAME", "ai_coe_mortgage_specialist").replace("-", "_"),
