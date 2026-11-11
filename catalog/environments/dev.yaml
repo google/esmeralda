@@ -1,11 +1,20 @@
 # catalog/environments/dev.yaml: dev overrides only, applied after every source.
-# Deep merge: maps merge, lists replace, null deletes. Today dev serves the same catalog as prd.
+# Deep merge: maps merge, lists replace, null deletes.
+
 schema: esmeralda.catalog
 schema_version: 1
 
 environment: dev
 
-overrides: {}
+# dev showcases the Apigee partner front door (env.yaml governance.capabilities.partner_access =
+# "apigee"): the partner-mcp proxy reaches the MCP servers it exposes as the caller
+# apigee-partner-mcp (roles/run.invoker on those services).
+overrides:
+  targets:
+    corporate-email:
+      callers: { apigee-partner-mcp: {} }
+    income-verification:
+      callers: { apigee-partner-mcp: {} }
 # Examples:
 # overrides:
 #   policy:

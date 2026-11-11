@@ -56,8 +56,10 @@ class FakeFrontDoor(BaseHTTPRequestHandler):
         if "ai-coe-mortgage-specialist" in self.path:
             return self._reply(403, b'{"error":"agent_not_allowed"}')
         if self.path.endswith("/mcp"):
-            if body["method"] == "tools/call":
+            if body["method"] == "tools/call" and body["params"]["name"] != "verify_applicant":
                 return self._reply(403, b'{"error":"tool_forbidden"}')
+            if body["method"] == "tools/call":
+                return self._reply(200, b'{"result":{"content":[{"type":"text","text":"Julian Sterling"}]}}')
             return self._reply(200, b'{"result":{"tools":[{"name":"verify_applicant"}]}}')
         if self.path.endswith(":streamQuery?alt=sse"):
             if self.headers.get("Accept") != "text/event-stream":  # the quota probe (JSON route)

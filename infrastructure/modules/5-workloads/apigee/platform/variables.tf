@@ -101,7 +101,13 @@ variable "environment_type" {
 }
 
 variable "enable_analytics" {
-  description = "Whether to enable the Apigee Analytics add-on."
+  description = "Whether to enable the Apigee Analytics add-on on the environment (PAYG, per-call cost). Feeds the console Analytics dashboards and the stats API."
+  type        = bool
+  default     = false
+}
+
+variable "enable_advanced_api_ops" {
+  description = "Whether to enable the org-level Advanced API Ops add-on (separate paid add-on, not needed for Analytics)."
   type        = bool
   default     = false
 }

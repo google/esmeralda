@@ -33,79 +33,117 @@ ENFORCE_TOOL_SCOPE_JS = (
     / "enforce-tool-scope.js"
 )
 
+# kvm-partner-mcp entries written by the partner-mcp capability module.
+ALLOWED_SERVICES = "corporate-email,income-verification"
+APEX_DOMAIN = "esmeralda.internal"
+
 
 def _eval_tool_scope(
-    rpc_body: dict[str, Any],
+    rpc_body: dict[str, Any] | None,
     allowed_mcp_tools: str | None,
     path_suffix: str = "/income-verification/mcp",
+    allowed_services: str | None = ALLOWED_SERVICES,
+    apex_domain: str | None = APEX_DOMAIN,
 ) -> dict[str, Any]:
-    initial_vars: dict[str, Any] = {
-        "proxy.pathsuffix": path_suffix,
-        "request.content": json.dumps(rpc_body),
-    }
+    initial_vars: dict[str, Any] = {"proxy.pathsuffix": path_suffix}
+    if rpc_body is not None:
+        initial_vars["request.content"] = json.dumps(rpc_body)
     if allowed_mcp_tools is not None:
         initial_vars["verifyapikey.VAK-Verify-Partner-Key.apiproduct.allowed_mcp_tools"] = allowed_mcp_tools
+    if allowed_services is not None:
+        initial_vars["mcp.allowed_services"] = allowed_services
+    if apex_domain is not None:
+        initial_vars["mcp.apex_domain"] = apex_domain
     return _run_apigee_js(ENFORCE_TOOL_SCOPE_JS, initial_vars)
 
 
+def _call(name: str, rpc_id: int = 1) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": rpc_id, "method": "tools/call", "params": {"name": name, "arguments": {}}}
+
+
 def test_allowed_tools_call_passes() -> None:
-    """Verifies a tools/call request for a tool in allowed_mcp_tools is permitted."""
+    """A tools/call for a tool in allowed_mcp_tools is permitted and routed to <service>.<domain>."""
     state = _eval_tool_scope(
         rpc_body={
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "verify_income", "arguments": {"applicant_name": "Julian Sterling"}},
+            "params": {"name": "verify_applicant", "arguments": {"first_name": "Julian", "last_name": "Sterling"}},
         },
-        allowed_mcp_tools="verify_income, get_employment_status",
+        allowed_mcp_tools="verify_applicant, read_email",
         path_suffix="/income-verification/mcp",
     )
+    assert state["mcp.service.allowed"] is True
     assert state["mcp.tool.forbidden"] is False
-    assert state["mcp.tool.name"] == "verify_income"
+    assert state["mcp.tool.name"] == "verify_applicant"
     assert state["mcp.service.host"] == "income-verification"
-    assert state["target.audience"] == "https://income-verification.esmeralda.internal"
+    assert state["mcp.target.host"] == "income-verification.esmeralda.internal"
+    assert state["mcp.target.audience"] == "https://income-verification.esmeralda.internal"
 
 
 def test_disallowed_tools_call_rejected() -> None:
-    """Verifies a tools/call request for an unallowlisted tool sets mcp.tool.forbidden = true."""
+    """A tools/call for an unallowlisted tool sets mcp.tool.forbidden = true."""
     state = _eval_tool_scope(
-        rpc_body={
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {"name": "purge_archive_records", "arguments": {}},
-        },
-        allowed_mcp_tools="verify_income, get_employment_status",
-        path_suffix="/legacy-dms/mcp",
+        rpc_body=_call("restricted_admin_drop_table", 2),
+        allowed_mcp_tools="verify_applicant, read_email",
+        path_suffix="/corporate-email/mcp",
     )
+    assert state["mcp.service.allowed"] is True
     assert state["mcp.tool.forbidden"] is True
-    assert state["mcp.tool.name"] == "purge_archive_records"
+    assert state["mcp.tool.name"] == "restricted_admin_drop_table"
+
+
+def test_service_qualified_tool_scope() -> None:
+    """`<service>:<tool>` entries only allow the tool on that service."""
+    allowed = "corporate-email:read_email"
+    ok = _eval_tool_scope(_call("read_email"), allowed, path_suffix="/corporate-email/mcp")
+    assert ok["mcp.tool.forbidden"] is False
+    other = _eval_tool_scope(_call("read_email"), allowed, path_suffix="/income-verification/mcp")
+    assert other["mcp.tool.forbidden"] is True
 
 
 def test_tools_list_and_initialize_allowed_even_with_restricted_scope() -> None:
-    """Verifies discovery methods (tools/list, initialize) pass without triggering a 403."""
+    """Discovery methods (tools/list, initialize) pass without triggering a 403."""
     for method in ("initialize", "tools/list"):
         state = _eval_tool_scope(
             rpc_body={"jsonrpc": "2.0", "id": 3, "method": method, "params": {}},
-            allowed_mcp_tools="verify_income",
+            allowed_mcp_tools="verify_applicant",
             path_suffix="/income-verification/mcp",
         )
+        assert state["mcp.service.allowed"] is True
         assert state["mcp.tool.forbidden"] is False
         assert state["mcp.rpc.method"] == method
 
 
 def test_wildcard_product_scope_allows_any_tool() -> None:
-    """Verifies an API product with allowed_mcp_tools = '*' permits any tools/call."""
+    """An API product with allowed_mcp_tools = '*' permits any tools/call."""
     state = _eval_tool_scope(
-        rpc_body={
-            "jsonrpc": "2.0",
-            "id": 4,
-            "method": "tools/call",
-            "params": {"name": "send_preapproval_email", "arguments": {}},
-        },
+        rpc_body=_call("send_email", 4),
         allowed_mcp_tools="*",
         path_suffix="/corporate-email/mcp",
     )
     assert state["mcp.tool.forbidden"] is False
-    assert state["mcp.tool.name"] == "send_preapproval_email"
-    assert state["target.audience"] == "https://corporate-email.esmeralda.internal"
+    assert state["mcp.tool.name"] == "send_email"
+    assert state["mcp.target.audience"] == "https://corporate-email.esmeralda.internal"
+
+
+def test_service_not_exposed_to_partners_is_not_routed() -> None:
+    """A service outside allowed_mcp_services (e.g. an internal agent host) is never routed."""
+    for suffix in ("/legacy-dms/mcp", "/cx-mortgage-orchestrator/mcp", "/partner/mcp", "/../mcp", "/mcp"):
+        state = _eval_tool_scope(_call("verify_applicant"), "*", path_suffix=suffix)
+        assert state["mcp.service.allowed"] is False, suffix
+        assert state.get("mcp.target.host") is None, suffix
+        assert state.get("mcp.target.audience") is None, suffix
+
+
+def test_no_kvm_allowlist_routes_nothing() -> None:
+    """Without the kvm-partner-mcp allowlist, no service is routed (fail closed)."""
+    state = _eval_tool_scope(_call("verify_applicant"), "*", allowed_services=None)
+    assert state["mcp.service.allowed"] is False
+
+
+def test_apex_domain_comes_from_kvm() -> None:
+    """The southbound host and audience follow the kvm-partner-mcp apex_domain entry."""
+    state = _eval_tool_scope({"jsonrpc": "2.0", "id": 5, "method": "tools/list"}, "*", apex_domain="corp.example")
+    assert state["mcp.target.host"] == "income-verification.corp.example"
+    assert state["mcp.target.audience"] == "https://income-verification.corp.example"

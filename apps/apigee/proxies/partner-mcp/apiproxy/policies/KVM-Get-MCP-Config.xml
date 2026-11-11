@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<KeyValueMapOperations name="KVM-Get-MCP-Config" mapIdentifier="kvm-partner-mcp" continueOnError="true" enabled="true">
+  <DisplayName>KVM-Get-MCP-Config</DisplayName>
+  <Scope>environment</Scope>
+  <Get assignTo="mcp.allowed_services">
+    <Key>
+      <Parameter>allowed_mcp_services</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="mcp.apex_domain">
+    <Key>
+      <Parameter>apex_domain</Parameter>
+    </Key>
+  </Get>
+</KeyValueMapOperations>

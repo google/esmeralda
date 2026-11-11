@@ -16,7 +16,14 @@
         <Name>AM-set-user-var</Name>
       </Step>
       <Step>
+        <Name>KVM-Get-MCP-Config</Name>
+      </Step>
+      <Step>
         <Name>JS-Enforce-Tool-Scope</Name>
+      </Step>
+      <Step>
+        <Name>RF-Not-Found</Name>
+        <Condition>mcp.service.allowed != true</Condition>
       </Step>
       <Step>
         <Name>RF-Tool-Forbidden</Name>
