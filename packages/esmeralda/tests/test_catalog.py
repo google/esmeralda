@@ -27,14 +27,16 @@ from esmeralda.catalog import CatalogError
 
 REPO = Path(__file__).resolve().parents[3]
 
-# The inline env.yaml `catalog` map before it moved to catalog/ (dev and prd were identical).
+# The inline env.yaml `catalog` map before it moved to catalog/ (dev and prd were identical), minus
+# cx-mortgage-orchestrator on the MCP servers: it only calls the specialist (A2A), so the catalog
+# no longer lists it there (it was never on their Agent Gateway lists either).
 LEGACY_MAP = {
     "legacy-dms": {"kind": "mcp", "unit": "services/legacy-dms", "token": "id", "probe": "mcp",
-                   "callers": ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator", "test-vm"]},
+                   "callers": ["ai-coe-mortgage-specialist", "test-vm"]},
     "income-verification": {"kind": "mcp", "unit": "services/income-verification", "token": "id", "probe": "mcp",
-                            "callers": ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator", "test-vm"]},
+                            "callers": ["ai-coe-mortgage-specialist", "test-vm"]},
     "corporate-email": {"kind": "mcp", "unit": "services/corporate-email", "token": "id", "probe": "mcp",
-                        "callers": ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator", "test-vm"]},
+                        "callers": ["ai-coe-mortgage-specialist", "test-vm"]},
     "ai-coe-mortgage-specialist": {"kind": "a2a", "unit": "agents/ai-coe-mortgage-specialist", "token": "access",
                                    "probe": "a2a", "callers": ["cx-mortgage-orchestrator", "test-vm"]},
     "cx-mortgage-orchestrator": {"kind": "adk", "unit": "agents/cx-mortgage-orchestrator", "token": "access",
@@ -51,6 +53,28 @@ DEV_MAP = {
     for name, entry in LEGACY_MAP.items()
 }
 ENV_MAPS = {"dev": DEV_MAP, "prd": LEGACY_MAP}
+
+# The per-target Agent Gateway lists the iap-egress units used to hand-write, as catalog refs.
+_SPECIALIST_ON_MCP = [
+    "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+    "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+    "layer-3-security:mcp_invoker_sa_email",
+    "layer-3-security:test_vm_sa_email",
+]
+LEGACY_IAP_EGRESS = {
+    "agents": {
+        "ai-coe-mortgage-specialist": [
+            "agents/cx-mortgage-orchestrator:agent_identity_principal",
+            "layer-3-security:cx_mortgage_orchestrator_sa_email",
+            "layer-3-security:test_vm_sa_email",
+        ],
+    },
+    "mcp_servers": {
+        "corporate-email": _SPECIALIST_ON_MCP,
+        "income-verification": _SPECIALIST_ON_MCP,
+        "legacy-dms": _SPECIALIST_ON_MCP,
+    },
+}
 
 HEADER = "schema: esmeralda.catalog\nschema_version: 1\n"
 
@@ -123,6 +147,118 @@ def test_render_hcl_matches_the_former_inline_form():
         'probe = "query", timeout = 600 }' in hcl
     )
     assert 'callers = ["cx-mortgage-orchestrator", "test-vm"]' in hcl
+
+
+# ------------------------------------------------------------------------------------------
+# Agent Gateway per-target lists (iap_egress)
+# ------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", ["dev", "prd"])
+def test_repo_catalog_compiles_the_former_hand_written_iap_lists(env):
+    """Same members, same order as the lists the iap-egress units used to hand-write."""
+    resolved = catalog.resolve(REPO, env)
+    assert catalog.compile_iap_egress(resolved) == LEGACY_IAP_EGRESS
+    data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
+    assert data["iap_egress"] == LEGACY_IAP_EGRESS
+
+
+def test_iap_lists_keep_least_privilege():
+    iap = catalog.compile_iap_egress(catalog.resolve(REPO, "dev"))
+    for members in iap["mcp_servers"].values():
+        assert not any("cx-mortgage-orchestrator" in m or "cx_mortgage_orchestrator" in m for m in members)
+    for name, members in iap["agents"].items():
+        assert not any(name in m or name.replace("-", "_") in m for m in members), name
+
+
+def test_adding_a_caller_updates_invokers_and_gateway_lists(repo):
+    path = repo / "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
+    path.write_text(path.read_text().replace("  test-vm: {}\n", "  test-vm: {}\n  cx-mortgage-orchestrator: {}\n"))
+    resolved = catalog.resolve(repo, "dev")
+    assert catalog.compile_terraform(resolved)["legacy-dms"]["callers"] == [
+        "ai-coe-mortgage-specialist", "test-vm", "cx-mortgage-orchestrator"
+    ]
+    # Agent callers first (principal, then service account), then the shared identity, then the rest.
+    assert catalog.compile_iap_egress(resolved)["mcp_servers"]["legacy-dms"] == [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+        "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "layer-3-security:cx_mortgage_orchestrator_sa_email",
+        "layer-3-security:mcp_invoker_sa_email",
+        "layer-3-security:test_vm_sa_email",
+    ]
+    # Other targets are untouched.
+    assert catalog.compile_iap_egress(resolved)["mcp_servers"]["corporate-email"] == _SPECIALIST_ON_MCP
+
+
+def test_shared_workload_identity_comes_from_the_policy(repo):
+    _write(repo, "environments/prd.yaml",
+           "environment: prd\noverrides:\n  policy:\n    agent_gateway: null\n")
+    iap = catalog.compile_iap_egress(catalog.resolve(repo, "prd"))
+    assert iap["mcp_servers"]["legacy-dms"] == [m for m in _SPECIALIST_ON_MCP if "mcp_invoker" not in m]
+    # Only added where an agent calls: a target with only non-agent callers never gets it.
+    _write(repo, "environments/dev.yaml",
+           "environment: dev\noverrides:\n  targets:\n    legacy-dms:\n"
+           "      callers: { ai-coe-mortgage-specialist: null }\n")
+    iap = catalog.compile_iap_egress(catalog.resolve(repo, "dev"))
+    assert iap["mcp_servers"]["legacy-dms"] == ["layer-3-security:test_vm_sa_email"]
+
+
+def test_shared_workload_identity_kinds_are_honoured(repo):
+    path = repo / "catalog/policy.yaml"
+    path.write_text(path.read_text().replace("kinds: [mcp]", "kinds: [mcp, a2a]"))
+    iap = catalog.compile_iap_egress(catalog.resolve(repo, "dev"))
+    assert iap["agents"]["ai-coe-mortgage-specialist"] == [
+        "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "layer-3-security:cx_mortgage_orchestrator_sa_email",
+        "layer-3-security:mcp_invoker_sa_email",
+        "layer-3-security:test_vm_sa_email",
+    ]
+
+
+def test_iap_lists_skip_unenforced_callers_and_keep_literal_ids(repo):
+    _write(repo, "teams/platform/more-callers.yaml",
+           "callers:\n  batch-job:\n    team: platform\n"
+           "    identity: { type: service_account, id: batch-job@example.iam.gserviceaccount.com }\n")
+    path = repo / "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
+    path.write_text(path.read_text().replace("  test-vm: {}\n", "  test-vm: {}\n  platform-ops: {}\n  batch-job: {}\n"))
+    resolved = catalog.resolve(repo, "dev")
+    assert catalog.compile_terraform(resolved)["legacy-dms"]["callers"] == [
+        "ai-coe-mortgage-specialist", "test-vm", "batch-job"
+    ]
+    assert catalog.compile_iap_egress(resolved)["mcp_servers"]["legacy-dms"] == [
+        *_SPECIALIST_ON_MCP, "batch-job@example.iam.gserviceaccount.com"
+    ]
+
+
+def test_direct_callers_keep_iam_but_are_never_on_gateway_lists():
+    """apigee-partner-mcp (agent_gateway: false) calls the MCP servers directly, not through the gateway."""
+    resolved = catalog.resolve(REPO, "dev")
+    assert resolved.callers["apigee-partner-mcp"]["agent_gateway"] is False
+    compiled = catalog.compile_terraform(resolved)
+    iap = catalog.compile_iap_egress(resolved)
+    for name in ("corporate-email", "income-verification"):
+        assert "apigee-partner-mcp" in compiled[name]["callers"]  # run.invoker
+        assert iap["mcp_servers"][name] == _SPECIALIST_ON_MCP  # but no roles/iap.egressor
+    assert not any("apigee" in m for lists in iap.values() for members in lists.values() for m in members)
+
+
+def test_gateway_caller_with_a_ref_the_iap_unit_cannot_map_fails(repo):
+    path = repo / "catalog/teams/platform/callers.yaml"
+    path.write_text(path.read_text().replace("    agent_gateway: false\n", ""))
+    problems = _problems(repo)
+    assert "caller 'apigee-partner-mcp' would go on the Agent Gateway list" in problems
+    assert "agent_gateway: false" in problems
+    # prd doesn't list that caller on any target, so it still resolves there.
+    catalog.resolve(repo, "prd")
+
+
+def test_iap_lists_cover_only_registry_targets():
+    iap = catalog.compile_iap_egress(catalog.resolve(REPO, "dev"))
+    assert set(iap) == {"agents", "mcp_servers"}
+    # adk agents (the orchestrator), examples and models have no Agent Registry entry of their own.
+    assert "cx-mortgage-orchestrator" not in iap["agents"]
+    assert "example-core-banking" not in iap["mcp_servers"] and "gemini-flash" not in iap["mcp_servers"]
 
 
 def test_show_answers_who_calls_via_which_gateway_and_who_pays():
@@ -232,7 +368,7 @@ def test_environment_overrides_merge_maps_and_null_deletes(repo):
            "environment: prd\noverrides:\n  targets:\n    legacy-dms:\n      callers: { test-vm: null }\n"
            "    cx-mortgage-orchestrator:\n      serving: { timeout: 900 }\n")
     compiled = catalog.compile_terraform(catalog.resolve(repo, "prd"))
-    assert compiled["legacy-dms"]["callers"] == ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator"]
+    assert compiled["legacy-dms"]["callers"] == ["ai-coe-mortgage-specialist"]
     assert compiled["cx-mortgage-orchestrator"]["timeout"] == 900
     assert compiled["cx-mortgage-orchestrator"]["token"] == "access"  # merged, not replaced
     assert catalog.compile_terraform(catalog.resolve(repo, "dev")) == DEV_MAP

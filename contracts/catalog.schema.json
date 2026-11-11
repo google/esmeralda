@@ -97,6 +97,11 @@
         "team": {"$ref": "#/$defs/name"},
         "description": {"type": "string"},
         "identity": {"$ref": "#/$defs/identity"},
+        "agent_gateway": {
+          "description": "false: this caller reaches its targets directly (for example an Apigee proxy runtime), never through the Agent Gateway. It still gets the target's IAM (run.invoker / aiplatform.user) but is left out of the per-target roles/iap.egressor lists (iap_egress).",
+          "type": "boolean",
+          "default": true
+        },
         "example": {"$ref": "#/$defs/example"}
       }
     },
@@ -243,6 +248,23 @@
           "type": "object",
           "propertyNames": {"$ref": "#/$defs/dimension_name"},
           "additionalProperties": {"$ref": "#/$defs/dimension"}
+        },
+        "agent_gateway": {
+          "description": "How the Agent Gateway per-target roles/iap.egressor lists are compiled from target callers.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shared_workload_identity": {
+              "description": "Identity every agent caller also uses (shared invoker service account while native Agent Identity auth is off), listed on targets of these kinds that have at least one agent caller.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ref", "kinds"],
+              "properties": {
+                "ref": {"type": "string", "pattern": "^[a-z0-9_./-]+:[a-z0-9_]+$"},
+                "kinds": {"type": "array", "items": {"enum": ["mcp", "a2a"]}, "uniqueItems": true}
+              }
+            }
+          }
         }
       }
     },

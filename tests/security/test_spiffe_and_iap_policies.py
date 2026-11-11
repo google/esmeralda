@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import stat
 import subprocess
 
@@ -92,34 +93,53 @@ def test_layer_3_security_restricts_orchestrator_from_mcp_project_egress():
     )
 
 
-def _hcl_list_block(content: str, key: str) -> str:
-    """Return the body of the HCL list assigned to `"<key>" = [ ... ]`."""
-    marker = f'"{key}" = ['
-    assert marker in content, f"missing {marker}"
-    return content.split(marker, 1)[1].split("]", 1)[0]
-
-
 @pytest.mark.parametrize("tg_path", [DEV_IAP_TG, PRD_IAP_TG], ids=["dev", "prd"])
-def test_iap_egress_terragrunt_enforces_least_privilege_per_target_callers(tg_path: pathlib.Path):
-    """iap-egress terragrunt units must separate specialist callers (orchestrator) from MCP callers (specialist)."""
+def test_iap_egress_terragrunt_reads_per_target_callers_from_the_catalog(tg_path: pathlib.Path):
+    """iap-egress units take the per-target lists from the compiled catalog, never hand-written."""
     content = tg_path.read_text()
+    code = "\n".join(line.split("#", 1)[0] for line in content.splitlines())
 
-    assert "target_iap_members" in content
     # Root members are the same list layer 4 writes, so both writers produce the same root policy.
-    assert "iap_egress_members = dependency.governance.outputs.iap_egress_members" in content
+    assert "iap_egress_members = dependency.governance.outputs.iap_egress_members" in code
+    assert re.search(r"^\s*target_iap_members\s*=\s*local\.env_vars\.locals\.catalog_iap_egress\s*$", code, re.M)
+    # No hand-written per-target member list left in the unit.
+    for target in ("ai-coe-mortgage-specialist", "corporate-email", "income-verification", "legacy-dms"):
+        assert f'"{target}" = [' not in code, f"{tg_path}: hand-written IAP list for {target}"
 
-    # Specialist callers: orchestrator (+ test VM), never the specialist itself
-    spec_block = _hcl_list_block(content, "ai-coe-mortgage-specialist")
-    assert "dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal" in spec_block
-    assert "cx_mortgage_orchestrator_sa_email" in spec_block
-    assert "ai_coe_mortgage_specialist" not in spec_block
+    # identity_refs maps the refs: layer-3 service accounts generically, each agent's principal by name.
+    refs = code.split("identity_refs = merge(", 1)[1]
+    assert '"layer-3-security:${k}" => v' in refs and "dependency.security.outputs" in refs
+    for agent in ("cx-mortgage-orchestrator", "ai-coe-mortgage-specialist"):
+        dep = agent.replace("-", "_")
+        assert (
+            f'"agents/{agent}:agent_identity_principal"' in refs
+            and f"dependency.{dep}.outputs.agent_identity_principal" in refs
+        ), agent
 
-    # MCP callers: specialist (+ invoker SA, test VM), never the orchestrator
-    for mcp_id in ("corporate-email", "income-verification", "legacy-dms"):
-        mcp_block = _hcl_list_block(content, mcp_id)
-        assert "dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal" in mcp_block
-        assert "ai_coe_mortgage_specialist_sa_email" in mcp_block
-        assert "cx_mortgage_orchestrator" not in mcp_block
+
+@pytest.mark.parametrize("env", ["dev", "prd"])
+def test_compiled_iap_lists_enforce_least_privilege_per_target_callers(env: str):
+    """Specialist entry: orchestrator (+ test VM), never itself. MCP entries: specialist, never the orchestrator."""
+    iap = json.loads((REPO_ROOT / "catalog/.resolved" / f"{env}.json").read_text())["iap_egress"]
+
+    spec = iap["agents"]["ai-coe-mortgage-specialist"]
+    assert "agents/cx-mortgage-orchestrator:agent_identity_principal" in spec
+    assert "layer-3-security:cx_mortgage_orchestrator_sa_email" in spec
+    assert not any("ai_coe_mortgage_specialist" in m or "ai-coe-mortgage-specialist" in m for m in spec)
+
+    assert set(iap["mcp_servers"]) == {"corporate-email", "income-verification", "legacy-dms"}
+    for mcp_id, members in iap["mcp_servers"].items():
+        assert "agents/ai-coe-mortgage-specialist:agent_identity_principal" in members, mcp_id
+        assert "layer-3-security:ai_coe_mortgage_specialist_sa_email" in members, mcp_id
+        assert not any("cx_mortgage_orchestrator" in m or "cx-mortgage-orchestrator" in m for m in members), mcp_id
+
+
+def test_iap_egress_module_resolves_refs_and_fails_closed_on_unmapped_ones():
+    main_tf = (IAP_EGRESS_MOD_DIR / "main.tf").read_text()
+    variables_tf = (IAP_EGRESS_MOD_DIR / "variables.tf").read_text()
+    assert 'variable "identity_refs"' in variables_tf
+    assert "lookup(var.identity_refs, m, m)" in main_tf
+    assert "condition     = length(local.unresolved_refs) == 0" in main_tf
 
 
 @pytest.mark.parametrize(

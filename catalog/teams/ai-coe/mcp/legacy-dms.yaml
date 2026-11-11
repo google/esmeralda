@@ -9,9 +9,11 @@ owner_team: ai-coe
 deploy: { unit: services/legacy-dms }
 serving: { token: id, probe: mcp }
 
+# Who may call it: this list drives both Cloud Run run.invoker and the Agent Gateway per-target
+# roles/iap.egressor list. cx-mortgage-orchestrator is deliberately absent: it delegates tool work
+# to the specialist over A2A and never calls MCP servers itself.
 callers:
   ai-coe-mortgage-specialist: {}
-  cx-mortgage-orchestrator: {}
   test-vm: {}
 
 observability:

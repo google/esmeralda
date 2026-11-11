@@ -105,6 +105,7 @@ flowchart LR
   D --> V["validate: schema + references"]
   V --> R[".resolved/&lt;env&gt;.json"]
   R --> T["env.yaml catalog: entry point, direct backends, invokers, verify"]
+  R --> G["env.yaml catalog_iap_egress: Agent Gateway per-target lists"]
 ```
 
 1. **Merge.** Sources are merged in the order `sources.yaml` lists them. In the `files` source, an
@@ -128,9 +129,49 @@ flowchart LR
     The generated files are committed with each catalog change, and `make test-guards` fails when
     they are stale.
 
+5. **Compile the Agent Gateway lists.** The same callers also become `iap_egress` in the same file:
+   the per-target `roles/iap.egressor` member lists the Layer 5 `iap-egress` unit writes on each
+   Agent Registry entry (`agents` for `a2a` targets, `mcp_servers` for `mcp` targets). Members are
+   references, never pasted values: an agent caller contributes its Agent Identity principal
+   (`agents/<name>:agent_identity_principal`) and its service account
+   (`layer-3-security:<name>_sa_email`), and a `service_account` caller contributes its `ref`.
+   `env.yaml` decodes the lists as `catalog_iap_egress`, and the `iap-egress` unit maps each
+   reference to the matching unit output (`identity_refs`). A reference with no mapping fails the
+   plan.
+
+    ```json
+    "iap_egress": {
+      "agents":      { "ai-coe-mortgage-specialist": ["agents/cx-mortgage-orchestrator:agent_identity_principal",
+                                                      "layer-3-security:cx_mortgage_orchestrator_sa_email",
+                                                      "layer-3-security:test_vm_sa_email"] },
+      "mcp_servers": { "legacy-dms": ["agents/ai-coe-mortgage-specialist:agent_identity_principal",
+                                      "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+                                      "layer-3-security:mcp_invoker_sa_email",
+                                      "layer-3-security:test_vm_sa_email"] }
+    }
+    ```
+
+    One `callers` entry therefore drives both the Cloud Run / Agent Runtime IAM grants and the
+    gateway list, so the two can't disagree. A new agent caller also needs its `dependency` block and
+    its `identity_refs` entry in the `iap-egress` unit; `make test-guards` checks that every
+    reference has one and that each list names exactly the target's callers.
+
+    A caller that reaches its targets directly, not through the Agent Gateway, is declared with
+    `agent_gateway: false`. In dev, the Apigee partner-mcp proxy (`apigee-partner-mcp`) calls the
+    MCP servers it exposes with its own ID token: it keeps `run.invoker` on them but is left out of
+    their gateway lists, since Apigee never egresses through the Agent Gateway. A gateway-listed
+    caller whose service account comes from a unit the `iap-egress` unit doesn't map (anything other
+    than `layer-3-security`) fails the resolve with a hint to set the flag.
+
+    `policy.agent_gateway.shared_workload_identity` adds one more member. While agents run with
+    `enable_native_spiffe_auth = false`, they mint their tokens as the shared MCP invoker service
+    account, so every `mcp` target with at least one agent caller also lists
+    `layer-3-security:mcp_invoker_sa_email`. Delete the block (or set it to `null` in one
+    environment's overrides) once every agent authenticates with its native Agent Identity.
+
 Later phases compile the same resolved catalog into Apigee products and `allowed_tools`, Agent
-Gateway rules, the `esmeralda serve` caller allowlist, observability configuration and the
-`principal → team` attribution table.
+Gateway rules beyond caller lists, the `esmeralda serve` caller allowlist, observability
+configuration and the `principal → team` attribution table.
 
 ---
 

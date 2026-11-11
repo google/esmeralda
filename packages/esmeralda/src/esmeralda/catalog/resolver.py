@@ -54,6 +54,12 @@ WORKLOAD_KINDS = frozenset({"a2a", "adk"})
 COMPILED_KINDS = frozenset({"mcp", "a2a", "adk"})
 # The serving token each deployed kind requires (Cloud Run IAM vs Agent Runtime).
 EXPECTED_TOKEN = {"mcp": "id", "a2a": "access", "adk": "access"}
+# Agent Registry entries that get a per-target Agent Gateway policy, by IAP_TARGET_POLICIES_JSON group.
+IAP_GROUPS = {"mcp": "mcp_servers", "a2a": "agents"}
+# Agent unit output holding the agent's Agent Identity principal (principal://...).
+WORKLOAD_PRINCIPAL_OUTPUT = "agent_identity_principal"
+# Units whose service-account outputs the iap-egress unit maps (identity_refs); agent principals aside.
+IAP_REF_SOURCES = frozenset({"layer-3-security"})
 
 
 @dataclass
@@ -158,6 +164,25 @@ def caller_team(resolved_doc: dict[str, Any], caller: str) -> str | None:
     return None
 
 
+def _iap_ref_problems(label: str, caller: str, doc: dict[str, Any]) -> list[str]:
+    """A gateway-listed caller's service-account ref must come from a unit the iap-egress unit reads."""
+    if caller in doc["callers"]:
+        entry = doc["callers"][caller]
+        if entry.get("example") or entry.get("agent_gateway") is False:
+            return []
+        identity = entry["identity"]
+    elif caller in doc["targets"]:
+        identity = doc["targets"][caller].get("identity") or {}
+    else:
+        return []
+    ref = identity.get("ref") if identity.get("type") == "service_account" else None
+    if ref and ref.split(":", 1)[0] not in IAP_REF_SOURCES:
+        return [f"{label}: caller '{caller}' would go on the Agent Gateway list as '{ref}', but the iap-egress "
+                f"unit only maps {', '.join(sorted(IAP_REF_SOURCES))} refs (and agent principals); set "
+                "'agent_gateway: false' on a caller that doesn't call through the Agent Gateway"]
+    return []
+
+
 def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) -> list[str]:
     problems: list[str] = []
     teams, callers, targets, policy = doc["teams"], doc["callers"], doc["targets"], doc["policy"]
@@ -206,6 +231,8 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
             if caller == name:
                 problems.append(f"{label}: lists itself as a caller")
                 continue
+            if _is_compiled(target) and target["kind"] in IAP_GROUPS:
+                problems += _iap_ref_problems(label, caller, doc)
             if caller in targets:
                 if targets[caller]["kind"] not in WORKLOAD_KINDS:
                     problems.append(f"{label}: caller '{caller}' is a {targets[caller]['kind']} target, which has no "
@@ -371,6 +398,58 @@ def compile_terraform(resolved: Resolved) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _identity_member(identity: dict[str, Any] | None) -> str | None:
+    """A service-account identity as an IAP member: its ``<unit>:<output>`` ref, or its literal id."""
+    if not identity or identity.get("type") != "service_account":
+        return None
+    return identity.get("ref") or identity.get("id")
+
+
+def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
+    """The Agent Gateway per-target ``roles/iap.egressor`` member lists, derived from target callers.
+
+    Shape: ``{"agents": {<a2a target>: [...]}, "mcp_servers": {<mcp target>: [...]}}`` (the
+    ``IAP_TARGET_POLICIES_JSON`` layout of ``grant_iap_egress.sh``). Members are unresolved
+    references the ``iap-egress`` unit maps to unit outputs: ``<unit>:agent_identity_principal``
+    (an agent caller's Agent Identity principal) and ``<unit>:<output>`` service-account refs
+    (``layer-3-security:<x>_sa_email``); a literal service-account id passes through unchanged.
+    Per target, in order: each agent caller's principal then service account, the policy
+    ``agent_gateway.shared_workload_identity`` when the target has an agent caller, then the other
+    service-account callers. Callers that are not enforced (groups, examples, ...) are skipped, the
+    same set ``compile_terraform`` leaves out of ``callers``, and so are callers marked
+    ``agent_gateway: false``: they reach the target directly (an Apigee proxy runtime, say), so they
+    keep the target's IAM grant but never hold ``roles/iap.egressor`` on its registry entry.
+    """
+    shared = (resolved.policy.get("agent_gateway") or {}).get("shared_workload_identity") or {}
+    out: dict[str, dict[str, list[str]]] = {group: {} for group in IAP_GROUPS.values()}
+    for name in sorted(resolved.targets):
+        target = resolved.targets[name]
+        if not _is_compiled(target) or target["kind"] not in IAP_GROUPS:
+            continue
+        callers, _ = _compiled_callers(resolved, target)
+        workload: list[str] = []
+        others: list[str] = []
+        for caller in callers:
+            if caller in resolved.targets:
+                agent = resolved.targets[caller]
+                workload.append(f"{agent['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}")
+                member = _identity_member(agent.get("identity"))
+                if member:
+                    workload.append(member)
+            else:
+                if resolved.callers[caller].get("agent_gateway") is False:
+                    continue  # reaches the target directly (e.g. Apigee): IAM only, no gateway grant
+                member = _identity_member(resolved.callers[caller]["identity"])
+                if member:
+                    others.append(member)
+        members = list(workload)
+        if workload and shared and target["kind"] in shared.get("kinds", []):
+            members.append(shared["ref"])
+        members += others
+        out[IAP_GROUPS[target["kind"]]][name] = list(dict.fromkeys(members))
+    return out
+
+
 def resolved_path(root: Path, env: str) -> Path:
     schema = load_schema(root)
     resolved_dir = _sources_doc(root, schema).get("resolved_dir", ".resolved")
@@ -384,6 +463,7 @@ def render_resolved_file(resolved: Resolved) -> str:
         "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
         "environment": resolved.env,
         "catalog": compile_terraform(resolved),
+        "iap_egress": compile_iap_egress(resolved),
     }
     return json.dumps(doc, indent=2, sort_keys=True) + "\n"
 

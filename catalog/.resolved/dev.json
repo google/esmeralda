@@ -13,7 +13,6 @@
     "corporate-email": {
       "callers": [
         "ai-coe-mortgage-specialist",
-        "cx-mortgage-orchestrator",
         "test-vm",
         "apigee-partner-mcp"
       ],
@@ -32,7 +31,6 @@
     "income-verification": {
       "callers": [
         "ai-coe-mortgage-specialist",
-        "cx-mortgage-orchestrator",
         "test-vm",
         "apigee-partner-mcp"
       ],
@@ -44,7 +42,6 @@
     "legacy-dms": {
       "callers": [
         "ai-coe-mortgage-specialist",
-        "cx-mortgage-orchestrator",
         "test-vm"
       ],
       "kind": "mcp",
@@ -55,5 +52,34 @@
   },
   "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
   "environment": "dev",
-  "generated_by": "esmeralda catalog resolve --env dev --write"
+  "generated_by": "esmeralda catalog resolve --env dev --write",
+  "iap_egress": {
+    "agents": {
+      "ai-coe-mortgage-specialist": [
+        "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "layer-3-security:cx_mortgage_orchestrator_sa_email",
+        "layer-3-security:test_vm_sa_email"
+      ]
+    },
+    "mcp_servers": {
+      "corporate-email": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+        "layer-3-security:mcp_invoker_sa_email",
+        "layer-3-security:test_vm_sa_email"
+      ],
+      "income-verification": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+        "layer-3-security:mcp_invoker_sa_email",
+        "layer-3-security:test_vm_sa_email"
+      ],
+      "legacy-dms": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+        "layer-3-security:mcp_invoker_sa_email",
+        "layer-3-security:test_vm_sa_email"
+      ]
+    }
+  }
 }
