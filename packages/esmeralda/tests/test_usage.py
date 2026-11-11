@@ -36,6 +36,7 @@ WORKLOAD_ENV = (
     "KUBERNETES_SERVICE_HOST",
     "USER_AUTH_ID",
     usage.TRANSPORT_ENV,
+    usage.VALIDATE_ENV,
 )
 
 

@@ -68,6 +68,9 @@ DIMENSION_ATTRIBUTE_PREFIX = "esmeralda.dimension."
 """Span attributes with this prefix become ``dimensions`` in records made by ``UsageSpanProcessor``."""
 
 REDACTED = "[REDACTED]"
+VALIDATE_ENV = "ESMERALDA_USAGE_VALIDATE"
+SCHEMA_RESOURCE = "contracts/usage-event.schema.json"
+"""Package resource holding the contract (a copy of the repository's ``contracts/`` file)."""
 
 _MAX_MAP_ENTRIES = 32
 _MAX_VALUE_LEN = 256
@@ -204,6 +207,47 @@ def transport_from_env(stream: TextIO | None = None) -> Transport:
     if not transports:
         transports.append(StdoutTransport(stream))
     return transports[0] if len(transports) == 1 else MultiTransport(*transports)
+
+
+# --------------------------------------------------------------------------------------------
+# The contract, shipped with the package
+# --------------------------------------------------------------------------------------------
+
+
+def schema_text() -> str:
+    """The ``esmeralda.usage`` JSON Schema, as shipped in the package."""
+    from importlib.resources import files
+
+    return files("esmeralda").joinpath(SCHEMA_RESOURCE).read_text(encoding="utf-8")
+
+
+_schema_cache: dict[str, Any] | None = None
+_validator_cache: Any = None
+
+
+def schema() -> dict[str, Any]:
+    """The ``esmeralda.usage`` JSON Schema, parsed (cached)."""
+    global _schema_cache
+    if _schema_cache is None:
+        _schema_cache = json.loads(schema_text())
+    return _schema_cache
+
+
+def validate(record: Mapping[str, Any]) -> list[str]:
+    """Validates a record against the contract; returns the violations (empty when valid).
+
+    Needs the ``jsonschema`` package (not a hard dependency of ``esmeralda``); raises
+    ``ImportError`` with a hint if it is missing.
+    """
+    global _validator_cache
+    if _validator_cache is None:
+        try:
+            from jsonschema import Draft202012Validator
+        except ImportError as exc:  # pragma: no cover - depends on the environment
+            raise ImportError("esmeralda.usage.validate needs the 'jsonschema' package") from exc
+        _validator_cache = Draft202012Validator(schema())
+    errors = sorted(_validator_cache.iter_errors(record), key=lambda e: list(e.absolute_path))
+    return [f"{'/'.join(str(p) for p in e.absolute_path) or '<record>'}: {e.message}" for e in errors]
 
 
 # --------------------------------------------------------------------------------------------
@@ -401,6 +445,9 @@ class UsageRecorder:
         framework: default ``workload.framework`` when ``workload`` is not given.
         source: ``workload`` (default) or ``gateway``.
         dimensions: dimensions added to every record (per-record dimensions win).
+        validate: check every record against the shipped schema before sending it and log a
+            warning for violations (the record is still sent). Default: ``ESMERALDA_USAGE_VALIDATE``
+            (off). Needs ``jsonschema``; skipped with a warning when it is missing.
     """
 
     def __init__(
@@ -411,12 +458,16 @@ class UsageRecorder:
         framework: str | None = None,
         source: str = "workload",
         dimensions: Mapping[str, Any] | None = None,
+        validate: bool | None = None,
     ):
         self.transport = transport or transport_from_env()
         self._workload = workload
         self._framework = framework
         self._source = source
         self._dimensions = dict(dimensions or {})
+        if validate is None:
+            validate = (os.environ.get(VALIDATE_ENV) or "").strip().lower() in {"1", "true", "yes", "on"}
+        self._validate = validate
 
     @property
     def workload(self) -> Workload:
@@ -478,6 +529,15 @@ class UsageRecorder:
     def emit(self, record: Mapping[str, Any]) -> dict[str, Any]:
         """Redacts and sends a record; returns what was sent. Never raises."""
         clean = redact(record)
+        if self._validate:
+            try:
+                violations = validate(clean)
+            except ImportError:
+                logger.warning("%s is set but jsonschema is not installed; validation disabled", VALIDATE_ENV)
+                self._validate = False
+            else:
+                if violations:
+                    logger.warning("Usage record violates %s v%s: %s", SCHEMA, SCHEMA_VERSION, "; ".join(violations))
         try:
             self.transport.emit(clean)
         except Exception:

@@ -74,27 +74,74 @@ Default prepare steps, in this order:
 ### `class EsmeraldaTelemetryPlugin(google.adk.plugins.base_plugin.BasePlugin)`
 
 ```python
-EsmeraldaTelemetryPlugin(*, agent_name=None, finalize_steps=lifecycle.FINALIZE, emitter=None)
+EsmeraldaTelemetryPlugin(*, agent_name=None, finalize_steps=lifecycle.FINALIZE, emitter=None,
+                         recorder=None, legacy_events=None)
 ```
 
 | Parameter | Description |
 |---|---|
-| `agent_name` | `agent_id` in telemetry events. Defaults to the `AGENT_NAME` environment variable, then `unknown_agent` |
+| `agent_name` | `workload.name` of usage records (unless `ESMERALDA_WORKLOAD_NAME` is set) and `agent_id` in legacy events. Defaults to the `AGENT_NAME` environment variable, then `unknown_agent` |
 | `finalize_steps` | The steps passed to `finalize()` at the start of each run |
-| `emitter` | A `TelemetryEmitter`. Defaults to one that writes to stdout |
+| `emitter` | A `TelemetryEmitter` for the legacy events. Defaults to one on `usage.transport_from_env()` (stdout) |
+| `recorder` | The `usage.UsageRecorder` for `esmeralda.usage` records. Defaults to one on the emitter's transport, with `workload` from the environment and framework `adk` |
+| `legacy_events` | Also write the legacy `genai_token_consumption` / `mcp_tool_execution` events. Defaults to `ESMERALDA_LEGACY_TELEMETRY_EVENTS` (on) |
 
 Plugin name: `esmeralda_telemetry`. Callbacks:
 
 | Callback | Behavior |
 |---|---|
-| `before_run_callback` | Runs `finalize`. Reads the caller context (`context.from_invocation`) and, if present, attaches it as baggage for the run |
-| `after_run_callback` | Detaches the baggage of that invocation |
+| `before_run_callback` | Runs `finalize`. Reads the caller context (`context.from_invocation`) and, if present, attaches it as baggage for the run. Starts the invocation's latency clock and token roll-up |
+| `after_run_callback` | Emits `agent.invocation` (latency, token roll-up, `status=error` if a model call failed) and detaches the baggage of that invocation |
 | `before_tool_callback` | Records the tool start time |
-| `after_tool_callback` | Emits `mcp_tool_execution` with `status=SUCCESS` |
-| `on_tool_error_callback` | Emits `mcp_tool_execution` with `status=ERROR` and `error_reason`. Returns `None`, so the agent's own error handling still runs |
-| `after_model_callback` | Emits `genai_token_consumption` for complete (non-partial) responses with token counts |
+| `after_tool_callback` | Emits `tool.call` with `status=ok` (and legacy `mcp_tool_execution` with `status=SUCCESS`) |
+| `on_tool_error_callback` | Emits `tool.call` with `status=error` and the exception type (and legacy `mcp_tool_execution` with `status=ERROR` and a redacted `error_reason`). Returns `None`, so the agent's own error handling still runs |
+| `before_model_callback` | Records the model start time and the requested model |
+| `after_model_callback` | For complete (non-partial) responses with token counts, emits `llm.call` (and legacy `genai_token_consumption`) |
+| `on_model_error_callback` | Emits `llm.call` with `status=error` and the exception type |
+
+Usage records carry `caller.declared` = the caller context (`project_id`, `agent_name`) with `caller.verified=false`, because that context is self-declared. Token counts follow OpenTelemetry GenAI semantics: `usage.input_tokens` = prompt + tool-use prompt tokens (cached included), `usage.output_tokens` = candidate + reasoning tokens.
 
 None of the callbacks change the request or the response. Telemetry failures are logged and never break the run. Per-invocation bookkeeping is bounded (1024 entries) for runs that never reach `after_run`.
+
+## `esmeralda.usage`
+
+Producer of the `esmeralda.usage` contract ([`contracts/usage-event.schema.json`](https://github.com/google/esmeralda/blob/main/contracts/usage-event.schema.json); see [2.5 Usage Telemetry Contract](../3-agentops-and-lifecycle/05-usage-telemetry-contract.md)). Framework-agnostic: no ADK import.
+
+### Records
+
+| Function / method | Event |
+|---|---|
+| `record_llm_call(*, request_model=None, response_model=None, system=None, input_tokens=None, output_tokens=None, cached_tokens=None, reasoning_tokens=None, finish_reasons=None, operation_name="generate_content", agent_name=None, conversation_id=None, status="ok", error_type=None, latency_ms=None, caller=None, dimensions=None, span=None, timestamp=None)` | `llm.call` |
+| `record_tool_call(*, name, status="ok", duration_ms=None, server=None, call_id=None, error_type=None, agent_name=None, conversation_id=None, caller=None, dimensions=None, span=None, timestamp=None)` | `tool.call` |
+| `record_agent_invocation(*, agent_name, latency_ms=None, status="ok", error_type=None, input_tokens=None, output_tokens=None, cached_tokens=None, reasoning_tokens=None, conversation_id=None, caller=None, dimensions=None, span=None, timestamp=None)` | `agent.invocation` |
+
+The module functions run on the process-wide recorder (`get_recorder()`, replaced with `set_recorder(recorder)`); the same methods exist on every `UsageRecorder`. Each returns the record as sent. `trace_id` / `span_id` come from `span` (default: the current span) and are omitted outside a span. Unknown values are omitted, never sent as `null`.
+
+### Classes
+
+| Name | Description |
+|---|---|
+| `UsageRecorder(transport=None, *, workload=None, framework=None, source="workload", dimensions=None, validate=None)` | Builds (`build(event, ...)`) and sends (`emit(record)`) records. `workload` is a `Workload` or a callable returning one (default: `Workload.from_env(framework=framework)` per record). `dimensions` are added to every record. `validate` checks each record against the shipped schema and logs violations (default: `ESMERALDA_USAGE_VALIDATE`) |
+| `Workload(name, team=None, runtime=None, framework=None, cloud=None)` | `Workload.from_env(*, name=None, framework=None)` reads the environment variables below; `runtime` is detected (Agent Runtime, Cloud Run, GKE, else `external`) |
+| `Caller(principal=None, team=None, verified=False, declared={})` | `Caller.from_declared(mapping)` builds an unverified caller from declared context |
+| `StdoutTransport(stream=None)` | One JSON line per record on stdout (Cloud Logging `jsonPayload`). The default |
+| `OTelLogsTransport(logger_provider=None)` | One OpenTelemetry log record per record (body = the record, event name `esmeralda.usage`) |
+| `MultiTransport(*transports)` | Sends to several transports; one failing does not stop the others |
+| `UsageSpanProcessor(recorder=None, *, framework=None)` | OpenTelemetry `SpanProcessor` that turns finished GenAI spans into records: `generate_content` / `chat` / `text_completion` → `llm.call`, `execute_tool` → `tool.call`, `invoke_agent` → `agent.invocation`. `caller.*` attributes become `caller.declared`, `esmeralda.dimension.<key>` attributes become `dimensions`. Don't combine it with `EsmeraldaTelemetryPlugin` in one process |
+
+### Functions
+
+| Function | Description |
+|---|---|
+| `transport_from_env(stream=None)` | Transport chosen by `ESMERALDA_USAGE_TRANSPORT` |
+| `usage_from_span(span, recorder=None)` | The record for one finished span (not sent), or `None` for non-GenAI spans |
+| `redact(value)` | Drops credential-like keys and masks token-like values (bearer tokens, OAuth access tokens, JWTs, API keys). Applied to every record and legacy event |
+| `is_secret_key(key)` | Whether `redact` drops a key; includes `user_auth_token` and the key named by `USER_AUTH_ID` |
+| `string_map(values)` | Normalizes `dimensions` / `caller.declared` (snake_case keys, string values, at most 32 entries of 256 characters) |
+| `schema_text()` / `schema()` | The contract shipped in the package (`esmeralda/contracts/usage-event.schema.json`, a copy of `contracts/` kept identical by a test), as text / parsed |
+| `validate(record)` | List of contract violations (empty when valid). Needs `jsonschema` |
+
+Constants: `SCHEMA = "esmeralda.usage"`, `SCHEMA_VERSION = 1`, `EVENTS`, `RUNTIMES`, `CLOUDS`.
 
 ## `esmeralda.context`
 
@@ -218,23 +265,25 @@ An A2A `message:send` is not idempotent (a re-send runs the remote agent again),
 
 ## `esmeralda.telemetry`
 
-### `class TelemetryEmitter(stream=None)`
+### `class TelemetryEmitter(stream=None, *, transport=None, recorder=None)`
 
-Writes each event as one JSON line to `stream` (stdout by default). Agent Runtime ingests the line as the log entry's `jsonPayload`.
+Backwards-compatible facade over `esmeralda.usage`. `transport` defaults to `usage.StdoutTransport(stream)` when `stream` is given, else `usage.transport_from_env()`. `emitter.usage` is a `usage.UsageRecorder` on the same transport (or `recorder`). Every event goes through `usage.redact`.
 
-| Method | Event |
+| Member | Event |
 |---|---|
-| `emit(payload)` | Any payload |
-| `token_consumption(*, agent_id, session_id, user_id, model, prompt_tokens, completion_tokens, total_tokens, thoughts_tokens=0, cached_tokens=0, finish_reason="STOP", execution_path=None, turn_index=1)` | `genai_token_consumption` |
-| `tool_execution(*, agent_id, tool_name, session_id, user_id, status, duration_ms, error_reason=None)` | `mcp_tool_execution` |
+| `usage` | `esmeralda.usage` records (`record_llm_call`, `record_tool_call`, `record_agent_invocation`) |
+| `transport` | The shared transport |
+| `emit(payload)` | Any payload (redacted) |
+| `token_consumption(*, agent_id, session_id, user_id, model, prompt_tokens, completion_tokens, total_tokens, thoughts_tokens=0, cached_tokens=0, finish_reason="STOP", execution_path=None, turn_index=1)` | Legacy `genai_token_consumption` (deprecated) |
+| `tool_execution(*, agent_id, tool_name, session_id, user_id, status, duration_ms, error_reason=None)` | Legacy `mcp_tool_execution` (deprecated) |
 
 ### `class BaggageSpanProcessor(opentelemetry.sdk.trace.SpanProcessor)`
 
 When a span starts, copies the baggage entries `caller.project_id` and `caller.agent_name` onto it as attributes.
 
-### Event schemas
+### Legacy event schemas
 
-The Layer 4 log sinks, log-based metrics and dashboards key on `jsonPayload.event`.
+The current Layer 4 log sinks, log-based metrics and dashboards key on `jsonPayload.event`, so the plugin keeps writing these events (`ESMERALDA_LEGACY_TELEMETRY_EVENTS`, on by default) next to the `esmeralda.usage` records. New consumers select `jsonPayload.schema = "esmeralda.usage"` instead.
 
 `genai_token_consumption`:
 
@@ -416,17 +465,25 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | Variable | Read by | Effect |
 |---|---|---|
 | `AGENT_GATEWAY_ROOT_CERTIFICATES` | `esmeralda run` | PEM bundle to trust. Injected by Terraform (Layer 4 output `agw_root_ca_bundle`) |
-| `AGENT_NAME` | Plugin, `current_identity` | Agent name in telemetry and in outgoing caller context |
+| `AGENT_NAME` | Plugin, `current_identity`, `usage.Workload.from_env` | Agent name in telemetry and in outgoing caller context |
 | `GOOGLE_CLOUD_PROJECT` | `default_environment`, `genai_client_defaults`, `current_identity` | Set from ADC if missing |
 | `GOOGLE_CLOUD_LOCATION` | `default_environment` | Defaulted to `global` if missing |
 | `GOOGLE_GENAI_USE_VERTEXAI` | `default_environment` | Defaulted to `True` if missing |
 | `GRPC_DNS_RESOLVER` | `default_environment` | Defaulted to `native` if missing |
 | `MODEL_LOCATION` | `genai_client_defaults` | Location for every genai client (for example `global`) |
-| `MODEL_NAME` | Plugin | Fallback `model` in token events, when the response has no model version |
+| `MODEL_NAME` | Plugin | Fallback model in token events and usage records, when neither the request nor the response names one |
 | `*_PROXY` | `log_egress_proxy` | Logged at startup |
 | `SERVICE_ACCOUNT_EMAIL` | `auth.id_token`, `auth.access_token` | Service account to impersonate for ID and access tokens (set by Terraform) |
 | `ACCESS_TOKEN_HOSTS` | `auth.token_kind` | Comma-separated hostnames that take an access token instead of an ID token (agent hosts served by `direct`; set by Terraform from the service catalog) |
 | `ESMERALDA_REPO` | `esmeralda mcp`, `esmeralda.ops` | Repository root (default: the checkout containing the working directory) |
-| `USER_AUTH_ID` | `context.user_token` | Gemini Enterprise authorization id of the user token (default `user_auth_token`) |
+| `USER_AUTH_ID` | `context.user_token`, `usage.redact` | Gemini Enterprise authorization id of the user token (default `user_auth_token`); that key is never emitted in telemetry |
 | `ESMERALDA_USER_CREDENTIAL_TARGETS` | `user_credential`, `mcp.headers_for`, `a2a.request_metadata` | JSON `{"<host>": "<header>"}`: the only hosts that receive the delegated user credential, and the header each reads (default `X-User-Token`). Unset or malformed: none |
 | `USER_CREDENTIAL_HEADER` | `mcp_authz.verify_request` (MCP servers) | Header the server reads the user credential from (default `X-User-Token`) |
+| `ESMERALDA_WORKLOAD_NAME` | `usage.Workload.from_env` | `workload.name` of usage records (default: the plugin's agent name, else `AGENT_NAME`, `OTEL_SERVICE_NAME`, `K_SERVICE`) |
+| `ESMERALDA_TEAM` | `usage.Workload.from_env` | `workload.team` |
+| `ESMERALDA_RUNTIME` | `usage.Workload.from_env` | `workload.runtime` (`agent_engine`, `cloud_run`, `gke`, `external`); detected from `GOOGLE_CLOUD_AGENT_ENGINE_ID`, `K_SERVICE`, `KUBERNETES_SERVICE_HOST` if unset |
+| `ESMERALDA_FRAMEWORK` | `usage.Workload.from_env` | `workload.framework` (default set by the producer: `adk` for the plugin) |
+| `ESMERALDA_CLOUD` | `usage.Workload.from_env` | `workload.cloud` (default `gcp`) |
+| `ESMERALDA_USAGE_TRANSPORT` | `usage.transport_from_env` | `stdout` (default), `otel`, or `stdout,otel` |
+| `ESMERALDA_USAGE_VALIDATE` | `usage.UsageRecorder` | `true` validates every record against the shipped schema and logs violations (needs `jsonschema`) |
+| `ESMERALDA_LEGACY_TELEMETRY_EVENTS` | Plugin | `false` stops the legacy `genai_token_consumption` / `mcp_tool_execution` events (default on) |

@@ -43,6 +43,41 @@ def test_schema_is_valid_draft_2020_12(usage_schema):
     assert tuple(usage_schema["properties"]["event"]["enum"]) == usage.EVENTS
 
 
+def test_packaged_schema_is_a_copy_of_the_contract():
+    """The wheel ships packages/esmeralda/src/esmeralda/contracts/: keep it identical to contracts/."""
+    contract = (CONTRACTS / "usage-event.schema.json").read_text(encoding="utf-8")
+    assert usage.schema_text() == contract, (
+        "copy contracts/usage-event.schema.json to packages/esmeralda/src/esmeralda/contracts/"
+    )
+    assert usage.schema() == json.loads(contract)
+
+
+@pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.name)
+def test_runtime_validate_accepts_examples(path):
+    assert usage.validate(load(path)) == []
+
+
+def test_runtime_validate_reports_violations():
+    record = load(CONTRACTS / "examples" / "tool.call.json")
+    record["tool"]["status"] = "SUCCESS"
+    del record["timestamp"]
+    violations = usage.validate(record)
+    assert len(violations) == 2
+    assert any(v.startswith("tool/status:") for v in violations)
+    assert any(v.startswith("<record>:") and "timestamp" in v for v in violations)
+
+
+def test_recorder_can_validate_at_runtime(caplog, monkeypatch):
+    stream = io.StringIO()
+    monkeypatch.setenv(usage.VALIDATE_ENV, "true")
+    recorder = usage.UsageRecorder(usage.StdoutTransport(stream), workload=usage.Workload("a"))
+    recorder.record_tool_call(name="t")
+    assert "violates" not in caplog.text
+    recorder.emit({"schema": "esmeralda.usage", "event": "tool.call"})
+    assert "Usage record violates esmeralda.usage v1" in caplog.text
+    assert len(stream.getvalue().splitlines()) == 2  # still sent
+
+
 def test_there_is_one_example_per_event():
     assert sorted(load(p)["event"] for p in EXAMPLES) == sorted(usage.EVENTS)
     for path in EXAMPLES:

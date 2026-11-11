@@ -52,3 +52,8 @@ There are no `v1/` folders or modules. The rules:
 
 `packages/esmeralda/tests/test_usage_contract.py` validates every file in `examples/` and every
 record the `esmeralda` library produces against the schema, on each test run.
+
+The `esmeralda` package ships a copy of the schema
+(`packages/esmeralda/src/esmeralda/contracts/usage-event.schema.json`), read at runtime by
+`esmeralda.usage.schema()` / `validate()`. The same test fails if the copy differs from this
+folder: after changing a schema here, copy it there.
