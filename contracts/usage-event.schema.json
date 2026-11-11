@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/google/esmeralda/blob/main/contracts/usage-event.schema.json",
+  "title": "Esmeralda usage event",
+  "description": "One usage record (a model call, a tool call, an agent invocation or a gateway request), from any producer: the esmeralda library, an OpenTelemetry GenAI span adapter, a gateway access log or a collector processor. Field names follow the OpenTelemetry GenAI semantic conventions wherever they exist. Records travel as structured JSON (Cloud Logging jsonPayload) or OTLP log bodies; consumers select them by `schema`, never by log name. See contracts/README.md for the versioning rules.",
+  "type": "object",
+  "required": ["schema", "schema_version", "event", "timestamp", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "esmeralda.usage",
+      "description": "Record type. Sinks and metrics filter on this field."
+    },
+    "schema_version": {
+      "const": 1,
+      "description": "Integer contract version. Bumped only on a breaking change; additive changes keep the version."
+    },
+    "event": {
+      "enum": ["llm.call", "tool.call", "agent.invocation", "gateway.request"],
+      "description": "What the record measures."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+      "description": "RFC 3339 time the measured operation ended."
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "W3C trace id (32 lowercase hex). Gateway and workload records of one request join on it. Omitted when there is no active trace."
+    },
+    "span_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "W3C span id (16 lowercase hex) of the measured operation."
+    },
+    "source": {
+      "enum": ["gateway", "workload"],
+      "description": "Who produced the record: a gateway on the hop, or the workload itself."
+    },
+    "workload": {
+      "type": "object",
+      "description": "The workload that served the operation (for gateway records: the target behind the gateway).",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "team": {"$ref": "#/$defs/name"},
+        "runtime": {"enum": ["agent_engine", "cloud_run", "gke", "external"]},
+        "framework": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,63}$",
+          "description": "Agent framework, e.g. adk, langgraph, langchain, crewai, custom."
+        },
+        "cloud": {"enum": ["gcp", "aws", "azure", "on_prem", "other"]}
+      }
+    },
+    "caller": {
+      "type": "object",
+      "description": "Who made the call. Only `principal` and `team` with `verified: true` may be used for chargeback; `declared` is caller-supplied context.",
+      "required": ["verified"],
+      "additionalProperties": false,
+      "properties": {
+        "principal": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Authenticated identity (SPIFFE id, service account, gateway app, federated subject)."
+        },
+        "team": {"$ref": "#/$defs/name"},
+        "verified": {
+          "type": "boolean",
+          "description": "true only when principal/team come from authentication, never from the payload."
+        },
+        "declared": {
+          "$ref": "#/$defs/string_map",
+          "description": "Caller-declared context (e.g. cost_center, country, project_id, agent_name). Untrusted until the catalog accepts it."
+        }
+      }
+    },
+    "gen_ai": {
+      "type": "object",
+      "description": "OpenTelemetry GenAI attributes, without the `gen_ai.` prefix. input_tokens includes cached tokens; output_tokens includes reasoning tokens (OTel GenAI semantics).",
+      "additionalProperties": false,
+      "properties": {
+        "system": {"type": "string", "maxLength": 128, "description": "Provider (gen_ai.provider.name / gen_ai.system), e.g. gcp.vertex_ai."},
+        "operation.name": {"type": "string", "maxLength": 64, "description": "e.g. generate_content, chat, execute_tool, invoke_agent."},
+        "request.model": {"type": "string", "maxLength": 256},
+        "response.model": {"type": "string", "maxLength": 256},
+        "response.finish_reasons": {"type": "array", "items": {"type": "string", "maxLength": 64}, "maxItems": 16},
+        "usage.input_tokens": {"$ref": "#/$defs/count"},
+        "usage.output_tokens": {"$ref": "#/$defs/count"},
+        "usage.cached_tokens": {"$ref": "#/$defs/count", "description": "Subset of input_tokens served from a cache."},
+        "usage.reasoning_tokens": {"$ref": "#/$defs/count", "description": "Subset of output_tokens spent on reasoning."},
+        "agent.name": {"type": "string", "maxLength": 256},
+        "conversation.id": {"type": "string", "maxLength": 256}
+      }
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "server": {"type": "string", "maxLength": 256, "description": "MCP server or toolset that served the tool, when known."},
+        "call_id": {"type": "string", "maxLength": 256},
+        "status": {"enum": ["ok", "error"]},
+        "error_type": {"type": "string", "maxLength": 256},
+        "duration_ms": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "description": "Gateway that produced a gateway.request record.",
+      "required": ["product"],
+      "additionalProperties": false,
+      "properties": {
+        "product": {"enum": ["apigee", "envoy", "agent_gateway", "direct", "other"]},
+        "name": {"type": "string", "maxLength": 256, "description": "Proxy, route or listener name."}
+      }
+    },
+    "http": {
+      "type": "object",
+      "description": "OpenTelemetry HTTP attributes, without the `http.` prefix.",
+      "additionalProperties": false,
+      "properties": {
+        "request.method": {"type": "string", "maxLength": 16},
+        "response.status_code": {"type": "integer", "minimum": 100, "maximum": 599},
+        "route": {"type": "string", "maxLength": 512}
+      }
+    },
+    "status": {"enum": ["ok", "error"], "description": "Outcome of the measured operation."},
+    "error_type": {"type": "string", "maxLength": 256},
+    "dimensions": {
+      "$ref": "#/$defs/string_map",
+      "description": "Business dimensions (e.g. loan_product). Consumers accept a key only if the catalog registers it."
+    },
+    "latency_ms": {"$ref": "#/$defs/duration"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"source": {"const": "workload"}}},
+      "then": {"required": ["workload"]}
+    },
+    {
+      "if": {"properties": {"event": {"const": "llm.call"}}},
+      "then": {
+        "required": ["gen_ai"],
+        "properties": {"gen_ai": {"anyOf": [{"required": ["request.model"]}, {"required": ["response.model"]}]}}
+      }
+    },
+    {
+      "if": {"properties": {"event": {"const": "tool.call"}}},
+      "then": {"required": ["tool"]}
+    },
+    {
+      "if": {"properties": {"event": {"const": "agent.invocation"}}},
+      "then": {"required": ["gen_ai"], "properties": {"gen_ai": {"required": ["agent.name"]}}}
+    },
+    {
+      "if": {"properties": {"event": {"const": "gateway.request"}}},
+      "then": {"required": ["gateway"], "properties": {"source": {"const": "gateway"}}}
+    }
+  ],
+  "$defs": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "count": {"type": "integer", "minimum": 0},
+    "duration": {"type": "number", "minimum": 0},
+    "string_map": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"},
+      "additionalProperties": {"type": "string", "maxLength": 256}
+    }
+  }
+}

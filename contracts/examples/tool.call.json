@@ -1,0 +1,34 @@
+{
+  "schema": "esmeralda.usage",
+  "schema_version": 1,
+  "event": "tool.call",
+  "timestamp": "2026-01-15T14:03:08.950Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "b7ad6b7169203331",
+  "source": "workload",
+  "workload": {
+    "name": "ai-coe-mortgage-specialist",
+    "team": "ai-coe",
+    "runtime": "agent_engine",
+    "framework": "adk",
+    "cloud": "gcp"
+  },
+  "caller": {
+    "verified": false,
+    "declared": {"project_id": "example-cx-project", "agent_name": "cx_mortgage_orchestrator"}
+  },
+  "gen_ai": {
+    "operation.name": "execute_tool",
+    "agent.name": "mortgage_specialist",
+    "conversation.id": "session-julian-sterling-001"
+  },
+  "tool": {
+    "name": "verify_income",
+    "server": "income-verification",
+    "call_id": "call-7f3a",
+    "status": "ok",
+    "duration_ms": 218.4
+  },
+  "status": "ok",
+  "latency_ms": 218.4
+}

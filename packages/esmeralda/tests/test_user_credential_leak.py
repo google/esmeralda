@@ -172,6 +172,7 @@ def test_user_credential_reaches_only_listed_targets_and_never_telemetry(monkeyp
     # The run really happened and was observed.
     assert exporter.get_finished_spans(), "no spans captured"
     assert '"genai_token_consumption"' in sinks["usage_records"]
+    assert '"esmeralda.usage"' in sinks["usage_records"] and '"tool.call"' in sinks["usage_records"]
     assert '"tool_execution"' in sinks["usage_records"] or "fetch_documents" in sinks["spans"]
     assert "tool ran for Sterling" in sinks["logs"]
     assert sinks["stdout"] and sinks["report"]

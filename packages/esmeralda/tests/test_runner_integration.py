@@ -61,7 +61,7 @@ def exporter():
     return exporter
 
 
-def test_runner_carries_caller_context_and_emits_tokens(exporter):
+def test_runner_carries_caller_context_and_emits_tokens(exporter, assert_valid_usage):
     stream = io.StringIO()
     app = esmeralda.create_app(Agent(name="root", model=FakeLlm(model="fake-model")))
     app.plugins[0] = EsmeraldaTelemetryPlugin(
@@ -92,7 +92,61 @@ def test_runner_carries_caller_context_and_emits_tokens(exporter):
     assert tagged, [s.name for s in exporter.get_finished_spans()]
     assert all(s.attributes.get("caller.agent_name") == "caller_agent" for s in tagged)
 
-    (token_event,) = [json.loads(line) for line in stream.getvalue().splitlines()]
-    assert token_event["event"] == "genai_token_consumption"
+    lines = [json.loads(line) for line in stream.getvalue().splitlines()]
+    (token_event,) = [e for e in lines if e.get("event") == "genai_token_consumption"]
     assert token_event["tokens"]["total_tokens"] == 15
     assert token_event["user_id"] == "u-1" and token_event["session_id"] == stored.id
+
+    records = [e for e in lines if e.get("schema") == "esmeralda.usage"]
+    assert [r["event"] for r in records] == ["llm.call", "agent.invocation"]
+    for record in records:
+        assert_valid_usage(record)
+        assert record["workload"]["name"] == "root" and record["workload"]["framework"] == "adk"
+        assert record["caller"] == {
+            "verified": False,
+            "declared": {"project_id": "caller-project", "agent_name": "caller_agent"},
+        }
+        assert record["gen_ai"]["conversation.id"] == stored.id
+    llm, invocation = records
+    assert llm["gen_ai"]["request.model"] == "fake-model"
+    assert (llm["gen_ai"]["usage.input_tokens"], llm["gen_ai"]["usage.output_tokens"]) == (10, 5)
+    assert len(llm["trace_id"]) == 32 and llm["trace_id"] == invocation["trace_id"]
+    assert invocation["gen_ai"]["agent.name"] == "root"
+    assert invocation["gen_ai"]["usage.input_tokens"] == 10
+
+
+def test_span_adapter_on_real_adk_spans(exporter, assert_valid_usage):
+    """The OTel GenAI adapter turns the spans ADK itself creates into valid usage records."""
+    from esmeralda import usage
+    from esmeralda.telemetry import BaggageSpanProcessor
+
+    stream = io.StringIO()
+    recorder = usage.UsageRecorder(usage.StdoutTransport(stream), workload=usage.Workload("root", framework="adk"))
+    provider = trace.get_tracer_provider()
+    provider.add_span_processor(BaggageSpanProcessor())
+    provider.add_span_processor(usage.UsageSpanProcessor(recorder))
+    app = esmeralda.create_app(Agent(name="root", model=FakeLlm(model="fake-model")))
+    app.plugins[0] = EsmeraldaTelemetryPlugin(
+        agent_name="root", finalize_steps=(), recorder=recorder, legacy_events=False
+    )
+
+    async def run():
+        sessions = InMemorySessionService()
+        runner = Runner(app=app, session_service=sessions)
+        session = await sessions.create_session(app_name="agent", user_id="u-1")
+        async for _ in runner.run_async(
+            user_id="u-1",
+            session_id=session.id,
+            new_message=types.Content(role="user", parts=[types.Part(text="hi")]),
+        ):
+            pass
+
+    asyncio.run(run())
+    records = [json.loads(line) for line in stream.getvalue().splitlines()]
+    for record in records:
+        assert_valid_usage(record)
+    # The plugin and the adapter each produce one llm.call and one agent.invocation for the run,
+    # which is why a process should use one of them, not both.
+    events = sorted(r["event"] for r in records)
+    assert events.count("llm.call") == 2, records
+    assert events.count("agent.invocation") == 2, records
