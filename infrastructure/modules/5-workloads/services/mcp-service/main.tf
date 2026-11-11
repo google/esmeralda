@@ -45,6 +45,28 @@ locals {
     "https://${var.internal_hostname}/mcp",
   ]
   effective_custom_audiences = length(var.custom_audiences) > 0 ? var.custom_audiences : local.default_custom_audiences
+
+  # Catalog caller guard (caller_guard.py in the image): the catalog-compiled allowlist of this
+  # target (catalog/.resolved/<env>.json attribution.allowlists) with its `<unit>:<output>`
+  # references replaced by identity_refs values. Agent Identity principals (agents/<name>:...) are
+  # dropped: the agents deploy after the services, and today they call MCP servers with a service
+  # account ID token (the shared invoker identity until per-agent identities land, google/esmeralda#134),
+  # whose entry is kept. Any other reference left unresolved fails the plan.
+  ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
+  caller_guard_callers = var.caller_allowlist == null ? [] : concat(
+    [
+      for entry in var.caller_allowlist.callers : merge(entry, { principal = lookup(var.identity_refs, entry.principal, entry.principal) })
+      if !startswith(entry.principal, "agents/")
+    ],
+    var.extra_allowed_callers,
+  )
+  caller_guard_unresolved = [for entry in local.caller_guard_callers : entry.principal if can(regex(local.ref_pattern, entry.principal))]
+  caller_guard_env = var.caller_allowlist == null ? {} : {
+    ESMERALDA_CALLER_ALLOWLIST = jsonencode({
+      policy  = var.caller_allowlist.policy
+      callers = local.caller_guard_callers
+    })
+  }
 }
 
 # Dedicated per-service workload Service Account (sa-<service>-<env>)
@@ -128,7 +150,7 @@ resource "google_cloud_run_v2_service" "service" {
       }
 
       dynamic "env" {
-        for_each = var.extra_env_vars
+        for_each = merge(var.extra_env_vars, local.caller_guard_env)
         content {
           name  = env.key
           value = env.value
@@ -156,6 +178,13 @@ resource "google_cloud_run_v2_service" "service" {
         subnetwork = var.subnet_id
       }
       egress = "ALL_TRAFFIC"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.caller_guard_unresolved) == 0
+      error_message = "caller_allowlist references without a value in identity_refs: ${join(", ", local.caller_guard_unresolved)}. Map them to unit outputs in the service's terragrunt unit."
     }
   }
 }

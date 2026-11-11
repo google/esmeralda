@@ -27,7 +27,10 @@ who may call them, through which gateway, and who pays. It is defined by
    runtime never reads the catalog sources directly. :func:`compile_iap_egress` derives, from the
    same callers, the Agent Gateway per-target ``roles/iap.egressor`` lists (``iap_egress`` in the
    same file, read by the ``iap-egress`` units), so one caller entry drives both Cloud Run /
-   Agent Runtime IAM and the gateway.
+   Agent Runtime IAM and the gateway. :func:`compile_attribution` derives the verified attribution
+   block (``attribution``): the ``principal_teams`` rows (verified principal -> caller -> team),
+   the shared identities, and the per-target allowlists of the in-process caller guard
+   (``esmeralda.attribution``).
 3. **Inspect** (:func:`show`): who can call each target, through which gateway, and who pays.
 """
 
@@ -35,7 +38,10 @@ from esmeralda.catalog.resolver import (
     CatalogError,
     Resolved,
     check_resolved,
+    compile_attribution,
+    compile_caller_allowlists,
     compile_iap_egress,
+    compile_principal_teams,
     compile_terraform,
     render_hcl,
     render_resolved_file,
@@ -52,7 +58,10 @@ __all__ = [
     "Resolved",
     "Source",
     "check_resolved",
+    "compile_attribution",
+    "compile_caller_allowlists",
     "compile_iap_egress",
+    "compile_principal_teams",
     "compile_terraform",
     "register_source",
     "render_hcl",

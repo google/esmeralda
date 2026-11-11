@@ -41,7 +41,7 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["server", "otel_setup"]
+py-modules = ["server", "otel_setup", "caller_guard"]
 
 
 [dependency-groups]

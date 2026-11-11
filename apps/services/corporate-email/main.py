@@ -20,6 +20,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
+from caller_guard import CallerGuard
 from otel_setup import init_telemetry, trace_tool
 
 tracer = init_telemetry()
@@ -140,10 +141,14 @@ async def health(request):
 
 _mcp_app = mcp.http_app(path="/mcp", stateless_http=True, json_response=True, host_origin_protection=False)
 
-app = Starlette(
+_starlette = Starlette(
     routes=[
         Route("/health", health),
         Mount("/", app=_mcp_app),
     ],
     lifespan=_mcp_app.lifespan,
 )
+
+# Catalog caller guard: only the callers compiled from the catalog (ESMERALDA_CALLER_ALLOWLIST,
+# set by the Terraform unit) get through, each attributed to its team. Off when the variable is unset.
+app = CallerGuard(_starlette)

@@ -193,7 +193,34 @@ def a2a_server(config: AgentConfig, *, otel_to_cloud: bool = False) -> Any:
     for path in A2A_MOUNTS:
         server.mount(path, rest)
     maybe_install_request_metrics_middleware(server, otel_to_cloud=otel_to_cloud)
+    install_caller_guard(server)
     return server
+
+
+def install_caller_guard(server: Any) -> bool:
+    """Adds the catalog caller guard (``esmeralda.attribution``) when an allowlist is configured.
+
+    Only where the platform hands the container a verified caller identity (Cloud Run, GKE behind
+    an authenticating proxy, local runs with a configured allowlist). On Agent Runtime the
+    container never sees the caller's credential, so the guard would reject every call: it is
+    skipped there and the Agent Gateway record attributes the hop. Returns whether it was added.
+    """
+    from esmeralda import attribution, usage
+
+    allowlist = attribution.Allowlist.from_env()
+    if allowlist is None:
+        return False
+    if usage.detect_runtime() == "agent_engine":
+        logger.warning(
+            "%s is set, but Agent Runtime does not forward the caller's credential to the container: "
+            "the caller guard is off and the Agent Gateway record attributes calls to this agent.",
+            attribution.ALLOWLIST_ENV,
+        )
+        return False
+    server.add_middleware(attribution.CallerGuard, allowlist=allowlist)
+    logger.info("Caller guard on (%d principal(s), unmapped_caller=%s, declared_mismatch=%s)",
+                len(allowlist.entries), allowlist.unmapped_caller, allowlist.declared_mismatch)
+    return True
 
 
 # ------------------------------------------------------------------------------------------

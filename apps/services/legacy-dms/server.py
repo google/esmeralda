@@ -24,6 +24,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
+from caller_guard import CallerGuard
 from otel_setup import init_telemetry, trace_tool
 
 tracer = init_telemetry()
@@ -302,4 +303,7 @@ _starlette = Starlette(
     lifespan=_mcp_app.lifespan,
 )
 
-app = UserContextMiddleware(_starlette)
+# Catalog caller guard (outermost): only the callers compiled from the catalog
+# (ESMERALDA_CALLER_ALLOWLIST, set by the Terraform unit) get through, each attributed to its team.
+# Off when the variable is unset.
+app = CallerGuard(UserContextMiddleware(_starlette))

@@ -74,3 +74,21 @@ variable "internal_hostname" {
   type        = string
   default     = "corporate-email.esmeralda.internal"
 }
+
+variable "caller_allowlist" {
+  description = "Catalog caller guard allowlist (catalog/.resolved/<env>.json attribution policy + this target's allowlist); null turns the guard off. Typed in ../mcp-service."
+  type        = any
+  default     = null
+}
+
+variable "identity_refs" {
+  description = "Values of the <unit>:<output> references used by caller_allowlist"
+  type        = map(string)
+  default     = {}
+}
+
+variable "extra_allowed_callers" {
+  description = "Identities the caller guard accepts besides the catalog callers (e.g. an enabled gateway adapter)"
+  type        = any
+  default     = []
+}

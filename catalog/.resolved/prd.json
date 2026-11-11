@@ -1,4 +1,215 @@
 {
+  "attribution": {
+    "allowlists": {
+      "ai-coe-mortgage-specialist": [
+        {
+          "caller": "cx-mortgage-orchestrator",
+          "cost_centers": [
+            "cc-cx-br",
+            "cc-cx-mx"
+          ],
+          "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal",
+          "team": "cx"
+        },
+        {
+          "caller": "cx-mortgage-orchestrator",
+          "cost_centers": [
+            "cc-cx-br",
+            "cc-cx-mx"
+          ],
+          "principal": "layer-3-security:cx_mortgage_orchestrator_sa_email",
+          "team": "cx"
+        },
+        {
+          "caller": "test-vm",
+          "cost_centers": [
+            "cc-platform"
+          ],
+          "principal": "layer-3-security:test_vm_sa_email",
+          "team": "platform"
+        }
+      ],
+      "corporate-email": [
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+          "team": "ai-coe"
+        },
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+          "team": "ai-coe"
+        },
+        {
+          "caller": "test-vm",
+          "cost_centers": [
+            "cc-platform"
+          ],
+          "principal": "layer-3-security:test_vm_sa_email",
+          "team": "platform"
+        },
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "layer-3-security:mcp_invoker_sa_email",
+          "shared": true,
+          "team": "ai-coe"
+        }
+      ],
+      "income-verification": [
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+          "team": "ai-coe"
+        },
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+          "team": "ai-coe"
+        },
+        {
+          "caller": "test-vm",
+          "cost_centers": [
+            "cc-platform"
+          ],
+          "principal": "layer-3-security:test_vm_sa_email",
+          "team": "platform"
+        },
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "layer-3-security:mcp_invoker_sa_email",
+          "shared": true,
+          "team": "ai-coe"
+        }
+      ],
+      "legacy-dms": [
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+          "team": "ai-coe"
+        },
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+          "team": "ai-coe"
+        },
+        {
+          "caller": "test-vm",
+          "cost_centers": [
+            "cc-platform"
+          ],
+          "principal": "layer-3-security:test_vm_sa_email",
+          "team": "platform"
+        },
+        {
+          "caller": "ai-coe-mortgage-specialist",
+          "cost_centers": [
+            "cc-ai-coe"
+          ],
+          "principal": "layer-3-security:mcp_invoker_sa_email",
+          "shared": true,
+          "team": "ai-coe"
+        }
+      ]
+    },
+    "policy": {
+      "declared_mismatch": "reject",
+      "unmapped_caller": "deny"
+    },
+    "principal_teams": [
+      {
+        "caller": "ai-coe-mortgage-specialist",
+        "cost_centers": [
+          "cc-ai-coe"
+        ],
+        "principal": "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "team": "ai-coe",
+        "verified_by": "spiffe"
+      },
+      {
+        "caller": "cx-mortgage-orchestrator",
+        "cost_centers": [
+          "cc-cx-br",
+          "cc-cx-mx"
+        ],
+        "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "team": "cx",
+        "verified_by": "spiffe"
+      },
+      {
+        "caller": "platform-ops",
+        "cost_centers": [
+          "cc-platform"
+        ],
+        "principal": "group:platform-ops@example.com",
+        "team": "platform",
+        "verified_by": "group"
+      },
+      {
+        "caller": "ai-coe-mortgage-specialist",
+        "cost_centers": [
+          "cc-ai-coe"
+        ],
+        "principal": "layer-3-security:ai_coe_mortgage_specialist_sa_email",
+        "team": "ai-coe",
+        "verified_by": "service_account"
+      },
+      {
+        "caller": "cx-mortgage-orchestrator",
+        "cost_centers": [
+          "cc-cx-br",
+          "cc-cx-mx"
+        ],
+        "principal": "layer-3-security:cx_mortgage_orchestrator_sa_email",
+        "team": "cx",
+        "verified_by": "service_account"
+      },
+      {
+        "caller": "test-vm",
+        "cost_centers": [
+          "cc-platform"
+        ],
+        "principal": "layer-3-security:test_vm_sa_email",
+        "team": "platform",
+        "verified_by": "service_account"
+      },
+      {
+        "caller": "apigee-partner-mcp",
+        "cost_centers": [
+          "cc-platform"
+        ],
+        "principal": "layer-5-workloads/apigee/platform:proxy_runtime_sa_email",
+        "team": "platform",
+        "verified_by": "service_account"
+      }
+    ],
+    "shared_principals": [
+      "layer-3-security:mcp_invoker_sa_email"
+    ]
+  },
   "catalog": {
     "ai-coe-mortgage-specialist": {
       "callers": [

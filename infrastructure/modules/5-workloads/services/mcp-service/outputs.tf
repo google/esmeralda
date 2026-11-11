@@ -17,3 +17,8 @@ output "service_account_email" {
   description = "The dedicated per-service workload service account email"
   value       = google_service_account.service_sa.email
 }
+
+output "caller_guard" {
+  description = "Whether the catalog caller guard is on (ESMERALDA_CALLER_ALLOWLIST set on the service)"
+  value       = var.caller_allowlist != null
+}

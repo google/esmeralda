@@ -120,3 +120,18 @@ def test_tools_json_matches_search_signature():
     tool = next(t for t in spec["tools"] if t["name"] == "search_documents")
     assert set(tool["inputSchema"]["properties"]) == set(inspect.signature(_search_documents).parameters)
     assert "required" not in tool["inputSchema"]
+
+
+def test_served_app_is_behind_the_catalog_caller_guard():
+    """The served app is CallerGuard(UserContextMiddleware(...)); with an allowlist it rejects unknown callers."""
+    import server
+    from caller_guard import Allowlist, CallerGuard
+
+    assert isinstance(server.app, CallerGuard)
+    guarded = CallerGuard(
+        server.app.app,
+        Allowlist.from_mapping({"policy": {"unmapped_caller": "deny", "declared_mismatch": "reject"}, "callers": []}),
+    )
+    client = TestClient(guarded)
+    assert client.get("/health").status_code == 200  # health stays open for probes
+    assert client.post("/mcp", json={}).status_code == 401  # no platform-verified identity

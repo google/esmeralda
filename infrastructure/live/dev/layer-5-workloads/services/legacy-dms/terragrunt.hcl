@@ -78,4 +78,24 @@ inputs = {
     length([for caller in local.callers : caller if !contains(["test-vm", "apigee-partner-mcp"], caller)]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
     contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
   )))
+
+  # Catalog caller guard (ESMERALDA_CALLER_ALLOWLIST, read by caller_guard.py in the image): this
+  # service's allowlist compiled from the catalog (attribution.allowlists), its refs mapped to unit
+  # outputs below. Off when env.yaml attribution.caller_guard is false.
+  caller_allowlist = try(local.env_vars.locals.attribution.caller_guard, false) ? {
+    policy  = local.env_vars.locals.catalog_attribution.policy
+    callers = try(local.env_vars.locals.catalog_attribution.allowlists[local.name], [])
+  } : null
+  identity_refs = merge(
+    { for k, v in dependency.security.outputs : "layer-3-security:${k}" => v if can(regex("_sa_email$", k)) && v != null },
+    {
+      for k, v in { "layer-5-workloads/apigee/platform:proxy_runtime_sa_email" = try(dependency.apigee.outputs.proxy_runtime_sa_email, null) } :
+      k => v if local.apigee_partner && v != null
+    },
+  )
+  # An enabled adapter calls with its own token: accepted, but it carries no team (the gateway
+  # record attributes those calls).
+  extra_allowed_callers = contains(local.gateways.enabled, "envoy") ? [
+    { principal = try(dependency.security.outputs.envoy_sa_email, ""), caller = "gateway-adapter-envoy" },
+  ] : []
 }

@@ -60,6 +60,18 @@ IAP_GROUPS = {"mcp": "mcp_servers", "a2a": "agents"}
 WORKLOAD_PRINCIPAL_OUTPUT = "agent_identity_principal"
 # Units whose service-account outputs the iap-egress unit maps (identity_refs); agent principals aside.
 IAP_REF_SOURCES = frozenset({"layer-3-security"})
+# Environments where policy.attribution.unmapped_caller may be `flag` unless the policy lists others.
+DEFAULT_FLAG_ENVIRONMENTS = ("dev",)
+# Targets that serve requests in a process the caller guard can run in (Cloud Run MCP, A2A servers).
+GUARDED_KINDS = frozenset({"mcp", "a2a"})
+# principal_teams.verified_by per catalog identity type (Phase 4 table contract).
+VERIFIED_BY = {
+    "service_account": "service_account",
+    "spiffe": "spiffe",
+    "group": "group",
+    "apigee_app": "apigee_app",
+    "federated": "oidc",
+}
 
 
 @dataclass
@@ -264,6 +276,25 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
     return problems
 
 
+def attribution_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """``policy.attribution`` with its defaults: fail closed (deny / reject), flag only in dev."""
+    attribution = policy.get("attribution") or {}
+    return {
+        "unmapped_caller": attribution.get("unmapped_caller", "deny"),
+        "declared_mismatch": attribution.get("declared_mismatch", "reject"),
+        "flag_environments": list(attribution.get("flag_environments", DEFAULT_FLAG_ENVIRONMENTS)),
+    }
+
+
+def _check_attribution(doc: dict[str, Any], env: str) -> list[str]:
+    attribution = attribution_policy(doc["policy"])
+    if attribution["unmapped_caller"] == "flag" and env not in attribution["flag_environments"]:
+        allowed = ", ".join(attribution["flag_environments"]) or "(none)"
+        return [f"policy.attribution.unmapped_caller: 'flag' is not allowed in environment '{env}' (only in: "
+                f"{allowed}); unknown callers must be denied there"]
+    return []
+
+
 # ------------------------------------------------------------------------------------------
 # resolve
 # ------------------------------------------------------------------------------------------
@@ -345,7 +376,7 @@ def resolve(root: Path, env: str) -> Resolved:
     problems = validate(schema, "resolved", doc, label)
     if problems:
         raise CatalogError(problems)
-    problems = _check_references(doc, acc.origins)
+    problems = _check_references(doc, acc.origins) + _check_attribution(doc, env)
     if problems:
         raise CatalogError(problems)
     return Resolved(env=env, document=doc, origins=acc.origins)
@@ -450,6 +481,176 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
     return out
 
 
+# ------------------------------------------------------------------------------------------
+# verified attribution (principal -> caller -> team)
+# ------------------------------------------------------------------------------------------
+
+
+def _principal(identity: dict[str, Any] | None) -> tuple[str, str] | None:
+    """``(principal, verified_by)`` of a catalog identity, in the form ``caller.principal`` takes.
+
+    Service accounts and SPIFFE identities stay unresolved references (``<unit>:<output>``) when
+    they have one; the unit that writes the table maps them to values. Groups read
+    ``group:<email>``, federated identities ``<issuer>#<subject>`` (two issuers may share a subject).
+    """
+    if not identity:
+        return None
+    kind = identity.get("type")
+    if kind in ("service_account", "spiffe"):
+        value = identity.get("ref") or identity.get("id")
+    elif kind == "group":
+        value = f"group:{identity['id']}"
+    elif kind == "apigee_app":
+        value = identity["id"]
+    elif kind == "federated":
+        value = f"{identity['issuer']}#{identity['subject']}"
+    else:
+        return None
+    return (value, VERIFIED_BY[kind]) if value else None
+
+
+def _workload_principals(target: dict[str, Any]) -> list[tuple[str, str]]:
+    """An agent's verified identities: its Agent Identity principal, then the identity it calls out as."""
+    out = [(f"{target['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}", "spiffe")]
+    own = _principal(target.get("identity"))
+    if own:
+        out.append(own)
+    return out
+
+
+def _shared_identity(resolved: Resolved) -> dict[str, Any]:
+    return (resolved.policy.get("agent_gateway") or {}).get("shared_workload_identity") or {}
+
+
+def compile_principal_teams(resolved: Resolved) -> list[dict[str, Any]]:
+    """Rows of the ``principal_teams`` attribution table: every verified principal the catalog knows.
+
+    One row per principal: ``principal`` (a ``<unit>:<output>`` reference, a literal id,
+    ``group:<email>`` or ``<issuer>#<subject>``), ``caller`` (catalog caller or agent target),
+    ``team``, the team's ``cost_centers`` and ``verified_by``. Agents contribute their Agent
+    Identity principal and the service account they call out as; callers their identity. Example
+    entries are left out, and so is the policy's shared workload identity: several agents present
+    it, so it can't name one team (the fix is per-agent outbound identity, google/esmeralda#134).
+    A principal mapped to two different teams is an error.
+    """
+    shared = _shared_identity(resolved).get("ref")
+    rows: dict[str, dict[str, Any]] = {}
+    problems: list[str] = []
+
+    def add(principal: str, verified_by: str, caller: str, team: str) -> None:
+        if principal == shared:
+            return
+        row = {
+            "principal": principal,
+            "caller": caller,
+            "team": team,
+            "cost_centers": list((resolved.teams.get(team) or {}).get("cost_centers") or []),
+            "verified_by": verified_by,
+        }
+        existing = rows.get(principal)
+        if existing and existing["team"] != team:
+            problems.append(f"principal '{principal}' maps to team '{existing['team']}' (caller "
+                            f"'{existing['caller']}') and to team '{team}' (caller '{caller}')")
+        rows.setdefault(principal, row)
+
+    for name in sorted(resolved.targets):
+        target = resolved.targets[name]
+        if target["kind"] in WORKLOAD_KINDS and _is_compiled(target):
+            for principal, verified_by in _workload_principals(target):
+                add(principal, verified_by, name, target["owner_team"])
+    for name in sorted(resolved.callers):
+        entry = resolved.callers[name]
+        if entry.get("example"):
+            continue
+        found = _principal(entry["identity"])
+        if found:
+            add(found[0], found[1], name, entry["team"])
+    if problems:
+        raise CatalogError(problems)
+    return [rows[p] for p in sorted(rows)]
+
+
+def compile_caller_allowlists(resolved: Resolved) -> dict[str, list[dict[str, Any]]]:
+    """Per guarded target (deployed ``mcp`` / ``a2a``), the principals the in-process guard accepts.
+
+    Entries: ``principal``, ``caller``, ``team`` and ``cost_centers`` (the cost centres the caller
+    may declare on this target: its grant's, else its team's). The callers are the same set that
+    gets the target's IAM grant (agents with a unit, service-account callers, including those
+    marked ``agent_gateway: false``). When agents call out as the policy's shared workload identity
+    (targets of ``shared_workload_identity.kinds`` with an agent caller), that identity is accepted
+    too, flagged ``shared``: its team is the agents' team when they all belong to one team, else
+    ``null`` (the call is verified but the gateway record decides who pays).
+    """
+    shared = _shared_identity(resolved)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for name in sorted(resolved.targets):
+        target = resolved.targets[name]
+        if not _is_compiled(target) or target["kind"] not in GUARDED_KINDS:
+            continue
+        compiled, _ = _compiled_callers(resolved, target)
+        grants = target.get("callers") or {}
+        entries: list[dict[str, Any]] = []
+        agents: list[tuple[str, str, list[str]]] = []
+        for caller in compiled:
+            team = caller_team(resolved.document, caller)
+            cost_centers = list((grants.get(caller) or {}).get("cost_centers")
+                                or (resolved.teams.get(team) or {}).get("cost_centers") or [])
+            if caller in resolved.targets:
+                principals = _workload_principals(resolved.targets[caller])
+                agents.append((caller, team, cost_centers))
+            else:
+                found = _principal(resolved.callers[caller]["identity"])
+                principals = [found] if found else []
+            for principal, _ in principals:
+                entries.append({"principal": principal, "caller": caller, "team": team, "cost_centers": cost_centers})
+        if agents and shared and target["kind"] in shared.get("kinds", []):
+            teams = {team for _, team, _ in agents}
+            single = next(iter(teams)) if len(teams) == 1 else None
+            entries.append({
+                "principal": shared["ref"],
+                "caller": "+".join(caller for caller, _, _ in agents),
+                "team": single,
+                "cost_centers": sorted({cc for _, _, ccs in agents for cc in ccs}) if single else [],
+                "shared": True,
+            })
+        seen: set[str] = set()
+        out[name] = [e for e in entries if not (e["principal"] in seen or seen.add(e["principal"]))]
+    return out
+
+
+def compile_attribution(resolved: Resolved) -> dict[str, Any]:
+    """The ``attribution`` block of ``catalog/.resolved/<env>.json``.
+
+    ``policy`` (``unmapped_caller``, ``declared_mismatch``), ``principal_teams`` (the table rows),
+    ``shared_principals`` and ``allowlists`` (per guarded target). Also checks that every identity
+    the catalog lets through a gateway or IAM grant can be attributed: allowed implies attributable.
+    """
+    policy = attribution_policy(resolved.policy)
+    rows = compile_principal_teams(resolved)
+    shared = _shared_identity(resolved).get("ref")
+    known = {row["principal"] for row in rows} | ({shared} if shared else set())
+    known_callers = {row["caller"] for row in rows}
+    problems: list[str] = []
+    for group, targets in compile_iap_egress(resolved).items():
+        for target, members in targets.items():
+            for member in members:
+                if member not in known:
+                    problems.append(f"iap_egress.{group}.{target}: '{member}' is allowed through the Agent Gateway "
+                                    "but has no principal_teams row (it couldn't be attributed)")
+    for target, entry in compile_terraform(resolved).items():
+        for caller in entry.get("callers", []):
+            if caller not in known_callers:
+                problems.append(f"catalog.{target}: caller '{caller}' gets an IAM grant but has no principal_teams row")
+    if problems:
+        raise CatalogError(problems)
+    return {
+        "policy": {k: policy[k] for k in ("unmapped_caller", "declared_mismatch")},
+        "principal_teams": rows,
+        "shared_principals": [shared] if shared else [],
+        "allowlists": compile_caller_allowlists(resolved),
+    }
+
+
 def resolved_path(root: Path, env: str) -> Path:
     schema = load_schema(root)
     resolved_dir = _sources_doc(root, schema).get("resolved_dir", ".resolved")
@@ -464,6 +665,7 @@ def render_resolved_file(resolved: Resolved) -> str:
         "environment": resolved.env,
         "catalog": compile_terraform(resolved),
         "iap_egress": compile_iap_egress(resolved),
+        "attribution": compile_attribution(resolved),
     }
     return json.dumps(doc, indent=2, sort_keys=True) + "\n"
 

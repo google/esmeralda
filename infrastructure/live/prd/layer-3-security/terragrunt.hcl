@@ -51,6 +51,10 @@ inputs = {
   environment = local.env_vars.locals.environment
   org_id      = lookup(local.env_vars.locals, "org_id", "")
 
+  # Verified attribution probe identity (env.yaml attribution.unregistered_probe): in no catalog
+  # entry and granted nothing, impersonable by the test VM only.
+  enable_unregistered_probe = try(local.env_vars.locals.attribution.unregistered_probe, false)
+
   backend_subnet_id = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 
   # Entry point certificate (<domain> + *.<domain>), derived from the layer-2 private zone

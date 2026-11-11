@@ -6,9 +6,13 @@ schema_version: 1
 policy:
   attribution:
     # An authenticated caller that is not in the catalog: deny (fail closed) | flag (allow + alert).
+    # Gateway and IAM grants always come from the catalog, so an unknown caller is refused there in
+    # both modes; flag only relaxes the in-process caller guard (esmeralda.attribution).
     unmapped_caller: deny
     # Declared cost centre / country the catalog does not allow for the caller: reject | bill_own_team.
     declared_mismatch: reject
+    # Environments that may set unmapped_caller: flag (environments/<env>.yaml overrides).
+    flag_environments: [dev]
 
   # Applied to every target that leaves the field unset (resolved view only; the Terraform
   # catalog map only carries what targets set explicitly).
@@ -33,7 +37,9 @@ policy:
   agent_gateway:
     # While agents run with enable_native_spiffe_auth = false they mint ID tokens as the shared
     # MCP invoker service account, so MCP targets with at least one agent caller also list it.
-    # Delete this block once every agent authenticates with its native Agent Identity.
+    # Delete this block once every agent authenticates with its native Agent Identity (#134). Until
+    # then the shared identity has no principal_teams row: several agents present it, so it can't
+    # name one team (verified attribution falls back to the Agent Gateway record).
     shared_workload_identity:
       ref: "layer-3-security:mcp_invoker_sa_email"
       kinds: [mcp]

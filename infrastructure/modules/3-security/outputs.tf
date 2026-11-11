@@ -27,6 +27,11 @@ output "envoy_sa_email" {
   value       = google_service_account.envoy_sa.email
 }
 
+output "probe_unregistered_sa_email" {
+  description = "Unregistered-caller probe identity (in no catalog entry, granted nothing; the test VM mints its tokens for `esmeralda verify`), or null when enable_unregistered_probe is false"
+  value       = var.enable_unregistered_probe ? google_service_account.probe_unregistered_sa[0].email : null
+}
+
 output "telemetry_dataset_id" {
   description = "The BigQuery dataset ID capturing agentic telemetry and audit logs"
   value       = "esmeralda_telemetry_logs_${var.environment}"

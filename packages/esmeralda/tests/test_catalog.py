@@ -461,3 +461,96 @@ def test_cli_show_json_and_text(capsys):
 def test_cli_reports_catalog_errors(capsys):
     assert cli.main(["catalog", "show", "--env", "stg", "--repo", str(REPO)]) == 2
     assert "unknown environment 'stg'" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------------------------------
+# verified attribution (principal_teams, caller allowlists, policy)
+# ------------------------------------------------------------------------------------------
+
+
+def test_principal_teams_maps_every_verified_identity_to_its_team():
+    rows = {r["principal"]: r for r in catalog.compile_principal_teams(catalog.resolve(REPO, "dev"))}
+    assert rows["agents/cx-mortgage-orchestrator:agent_identity_principal"] == {
+        "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "caller": "cx-mortgage-orchestrator", "team": "cx", "cost_centers": ["cc-cx-br", "cc-cx-mx"],
+        "verified_by": "spiffe",
+    }
+    assert rows["layer-3-security:ai_coe_mortgage_specialist_sa_email"]["team"] == "ai-coe"
+    assert rows["layer-3-security:test_vm_sa_email"]["verified_by"] == "service_account"
+    assert rows["group:platform-ops@example.com"] == {
+        "principal": "group:platform-ops@example.com", "caller": "platform-ops", "team": "platform",
+        "cost_centers": ["cc-platform"], "verified_by": "group",
+    }
+    # The shared invoker identity names no single team (several agents present it).
+    assert "layer-3-security:mcp_invoker_sa_email" not in rows
+    # Examples never become attribution rows.
+    assert not any(r["caller"] == "aws-underwriter" for r in rows.values())
+
+
+def test_attribution_block_is_in_the_committed_resolved_files():
+    for env in ("dev", "prd"):
+        data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
+        resolved = catalog.resolve(REPO, env)
+        assert data["attribution"] == catalog.compile_attribution(resolved)
+        assert data["attribution"]["shared_principals"] == ["layer-3-security:mcp_invoker_sa_email"]
+    dev = json.loads((REPO / "catalog/.resolved/dev.json").read_text())["attribution"]
+    prd = json.loads((REPO / "catalog/.resolved/prd.json").read_text())["attribution"]
+    # Rollout: dev flags unknown callers first; prd always denies.
+    assert dev["policy"] == {"unmapped_caller": "flag", "declared_mismatch": "reject"}
+    assert prd["policy"] == {"unmapped_caller": "deny", "declared_mismatch": "reject"}
+
+
+def test_caller_allowlists_follow_the_iam_callers():
+    resolved = catalog.resolve(REPO, "dev")
+    allowlists = catalog.compile_caller_allowlists(resolved)
+    assert set(allowlists) == {"legacy-dms", "income-verification", "corporate-email", "ai-coe-mortgage-specialist"}
+    by_principal = {e["principal"]: e for e in allowlists["corporate-email"]}
+    assert by_principal["layer-5-workloads/apigee/platform:proxy_runtime_sa_email"]["caller"] == "apigee-partner-mcp"
+    # Shared invoker on MCP targets: every agent caller is in ai-coe, so the team resolves.
+    shared = by_principal["layer-3-security:mcp_invoker_sa_email"]
+    assert shared == {"principal": "layer-3-security:mcp_invoker_sa_email", "caller": "ai-coe-mortgage-specialist",
+                      "team": "ai-coe", "cost_centers": ["cc-ai-coe"], "shared": True}
+    # The specialist (a2a) is not of a shared kind: the orchestrator's grant limits its cost centres.
+    spec = {e["principal"]: e for e in allowlists["ai-coe-mortgage-specialist"]}
+    assert "layer-3-security:mcp_invoker_sa_email" not in spec
+    assert spec["layer-3-security:cx_mortgage_orchestrator_sa_email"]["cost_centers"] == ["cc-cx-br", "cc-cx-mx"]
+    # Groups get no IAM grant, so no allowlist entry; the ADK orchestrator has no guard.
+    assert "cx-mortgage-orchestrator" not in allowlists
+
+
+def test_shared_identity_across_teams_is_verified_without_a_team(repo):
+    path = repo / "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
+    path.write_text(path.read_text().replace("  test-vm: {}\n", "  test-vm: {}\n  cx-mortgage-orchestrator: {}\n"))
+    allowlists = catalog.compile_caller_allowlists(catalog.resolve(repo, "dev"))
+    (shared,) = [e for e in allowlists["legacy-dms"] if e.get("shared")]
+    assert shared["team"] is None and shared["cost_centers"] == []
+    assert shared["caller"] == "ai-coe-mortgage-specialist+cx-mortgage-orchestrator"
+
+
+def test_unmapped_caller_flag_is_refused_outside_flag_environments(repo):
+    _write(repo, "environments/prd.yaml",
+           "environment: prd\noverrides:\n  policy:\n    attribution: { unmapped_caller: flag }\n")
+    assert "'flag' is not allowed in environment 'prd'" in _problems(repo, "prd")
+    path = repo / "catalog/policy.yaml"
+    path.write_text(path.read_text().replace("flag_environments: [dev]", "flag_environments: [dev, prd]"))
+    assert catalog.resolve(repo, "prd").policy["attribution"]["unmapped_caller"] == "flag"
+
+
+def test_principal_mapped_to_two_teams_fails(repo):
+    _write(repo, "teams/cx/callers.yaml",
+           "callers:\n  cx-batch:\n    team: cx\n"
+           "    identity: { type: service_account, ref: \"layer-3-security:test_vm_sa_email\" }\n")
+    with pytest.raises(CatalogError) as exc:
+        catalog.compile_principal_teams(catalog.resolve(repo, "dev"))
+    message = str(exc.value)
+    assert "principal 'layer-3-security:test_vm_sa_email' maps to team" in message
+    assert "'cx' (caller 'cx-batch')" in message and "'platform' (caller 'test-vm')" in message
+
+
+def test_unregistered_probe_identity_is_never_compiled():
+    """The verify probe identity must stay out of every catalog-compiled binding and table."""
+    for env in ("dev", "prd"):
+        text = (REPO / "catalog/.resolved" / f"{env}.json").read_text()
+        assert "probe_unregistered" not in text and "probe-unregistered" not in text
+    for path in (REPO / "catalog").rglob("*.yaml"):
+        assert "probe_unregistered" not in path.read_text(), path
