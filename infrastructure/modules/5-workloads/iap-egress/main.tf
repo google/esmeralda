@@ -5,7 +5,9 @@
 # Layer 4 governance grants roles/iap.egressor on the registry root, conditioned to system Google
 # API endpoint entries only. This unit re-runs the same script with the same root inputs (so both
 # writers produce the identical conditional root policy) and, once MCP servers and A2A agents have
-# registered themselves, applies least-privilege per-target policies on their entries:
+# registered themselves, applies least-privilege per-target policies on their entries. The per-target
+# lists come from the service catalog (target callers, compiled into catalog/.resolved/<env>.json
+# `iap_egress`), the same callers that drive Cloud Run run.invoker and Agent Runtime IAM:
 #   - cx-mortgage-orchestrator is listed only on ai-coe-mortgage-specialist (not on MCP tools)
 #   - ai-coe-mortgage-specialist is listed only on the registered MCP servers
 # ====================================================================
@@ -26,9 +28,24 @@ locals {
     if m != "" && m != null
   ])
 
+  # Catalog-compiled lists name identities by `<unit>:<output>` reference; the unit passes their
+  # values in identity_refs. Anything that still looks like a reference afterwards is an error.
+  ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
+  resolved_target_iap_members = {
+    for group in ["mcp_servers", "agents"] : group => {
+      for target_id, members in coalesce(var.target_iap_members[group], {}) :
+      target_id => [for m in members : lookup(var.identity_refs, m, m) if m != "" && m != null]
+    }
+  }
+  unresolved_refs = distinct(flatten([
+    for group, targets in local.resolved_target_iap_members : [
+      for target_id, members in targets : [for m in members : m if can(regex(local.ref_pattern, m))]
+    ]
+  ]))
+
   normalized_target_iap_members = {
     mcp_servers = {
-      for target_id, members in coalesce(var.target_iap_members.mcp_servers, {}) :
+      for target_id, members in local.resolved_target_iap_members.mcp_servers :
       target_id => distinct([
         for m in members :
         startswith(m, "serviceAccount:") || startswith(m, "principalSet:") || startswith(m, "principal:") ? m : "serviceAccount:${m}"
@@ -36,7 +53,7 @@ locals {
       ])
     }
     agents = {
-      for target_id, members in coalesce(var.target_iap_members.agents, {}) :
+      for target_id, members in local.resolved_target_iap_members.agents :
       target_id => distinct([
         for m in members :
         startswith(m, "serviceAccount:") || startswith(m, "principalSet:") || startswith(m, "principal:") ? m : "serviceAccount:${m}"
@@ -58,6 +75,13 @@ resource "null_resource" "grant_iap_egress" {
     target_policies           = md5(jsonencode(local.normalized_target_iap_members))
     governance_project_number = data.google_project.governance.number
     version                   = "2"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.unresolved_refs) == 0
+      error_message = "target_iap_members references without a value in identity_refs: ${join(", ", local.unresolved_refs)}. Map them to unit outputs in the iap-egress terragrunt unit."
+    }
   }
 
   provisioner "local-exec" {

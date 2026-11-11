@@ -84,7 +84,18 @@ optional `callers` (agents with a unit, and `service_account` callers; their ser
 ```hcl
 catalog_sources = "catalog/sources.yaml"
 catalog         = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "catalog")
+
+catalog_iap_egress = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "iap_egress")
 ```
+
+The same callers also compile into `iap_egress`: the Agent Gateway per-target `roles/iap.egressor`
+lists (`agents` for `a2a` targets, `mcp_servers` for `mcp` targets) the `iap-egress` unit writes.
+Members are `<unit>:<output>` references (an agent caller's `agent_identity_principal` and its
+service account, `service_account` callers' `ref`), plus `policy.agent_gateway.shared_workload_identity`
+on targets with an agent caller. The unit maps each reference to a unit output, so one `callers`
+entry drives both the invoker grants and the gateway list. Callers with `agent_gateway: false`
+(such as the Apigee proxy, which calls the services directly) keep their invoker grant but are left
+out of `iap_egress`.
 
 The runtime and Terraform never read the sources directly. After editing `catalog/`, run
 `esmeralda catalog resolve --env all --write` and commit the generated files with the change;

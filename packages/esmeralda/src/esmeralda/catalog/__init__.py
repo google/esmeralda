@@ -24,7 +24,10 @@ who may call them, through which gateway, and who pays. It is defined by
 2. **Compile** (:func:`compile_terraform`): the map the Terraform units consume today (``kind``,
    ``unit``, ``token``, ``probe``, ``timeout``, ``callers``), written to
    ``catalog/.resolved/<env>.json`` and decoded by ``infrastructure/live/<env>/env.yaml``. The
-   runtime never reads the catalog sources directly.
+   runtime never reads the catalog sources directly. :func:`compile_iap_egress` derives, from the
+   same callers, the Agent Gateway per-target ``roles/iap.egressor`` lists (``iap_egress`` in the
+   same file, read by the ``iap-egress`` units), so one caller entry drives both Cloud Run /
+   Agent Runtime IAM and the gateway.
 3. **Inspect** (:func:`show`): who can call each target, through which gateway, and who pays.
 """
 
@@ -32,6 +35,7 @@ from esmeralda.catalog.resolver import (
     CatalogError,
     Resolved,
     check_resolved,
+    compile_iap_egress,
     compile_terraform,
     render_hcl,
     render_resolved_file,
@@ -48,6 +52,7 @@ __all__ = [
     "Resolved",
     "Source",
     "check_resolved",
+    "compile_iap_egress",
     "compile_terraform",
     "register_source",
     "render_hcl",

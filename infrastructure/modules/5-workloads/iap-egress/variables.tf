@@ -21,10 +21,16 @@ variable "registry_service_ids" {
 }
 
 variable "target_iap_members" {
-  description = "Per-target IAM members granted roles/iap.egressor on specific Agent Registry MCP servers and A2A agents"
+  description = "Per-target IAM members granted roles/iap.egressor on specific Agent Registry MCP servers and A2A agents. Members may be `<unit>:<output>` references (the catalog-compiled lists in catalog/.resolved/<env>.json `iap_egress`), resolved through identity_refs"
   type = object({
     mcp_servers = optional(map(list(string)), {})
     agents      = optional(map(list(string)), {})
   })
   default = {}
+}
+
+variable "identity_refs" {
+  description = "Value of each `<unit>:<output>` reference target_iap_members may use (e.g. layer-3-security:test_vm_sa_email => the test VM SA email, agents/<name>:agent_identity_principal => its principal://). A reference without a value fails the plan; members that are not references pass through unchanged"
+  type        = map(string)
+  default     = {}
 }

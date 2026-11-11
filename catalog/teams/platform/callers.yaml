@@ -11,10 +11,13 @@ callers:
 
   # The Apigee proxy runtime identity: partner-mcp calls the MCP servers it exposes to partners
   # with a Google ID token of this service account (only where partner_access = "apigee").
+  # agent_gateway: false: Apigee calls the services directly, not through the Agent Gateway, so it
+  # gets run.invoker but no place on the gateway's per-target roles/iap.egressor lists.
   apigee-partner-mcp:
     team: platform
     description: Apigee partner-mcp proxy (runtime service account) forwarding partner MCP calls.
     identity: { type: service_account, ref: "layer-5-workloads/apigee/platform:proxy_runtime_sa_email" }
+    agent_gateway: false
 
   # Humans / ops: group membership maps to the platform team.
   platform-ops:

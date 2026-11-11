@@ -1,6 +1,12 @@
 # infrastructure/live/prd/layer-5-workloads/iap-egress/terragrunt.hcl
 # Layer 5 (final step): grant least-privilege per-target roles/iap.egressor on each Agent Registry
 # entry once the MCP services and Reasoning Engine agents have registered themselves.
+#
+# Who may call each target comes from the service catalog: the callers in catalog/ compile into
+# catalog/.resolved/<env>.json `iap_egress` (env.yaml catalog_iap_egress) as `<unit>:<output>`
+# references; identity_refs below maps them to unit outputs. Adding a caller in catalog/ updates both
+# the run.invoker / aiplatform.user grants and these gateway lists. A new agent caller also needs its
+# dependency block and its identity_refs entry here (the plan fails on an unmapped reference).
 include "root" {
   path = find_in_parent_folders("root.hcl")
 }
@@ -78,35 +84,19 @@ inputs = {
     dependency.income_verification.outputs.registry_service_id,
     dependency.legacy_dms.outputs.registry_service_id,
   ]
-  target_iap_members = {
-    agents = {
-      # Callers allowed to invoke the A2A specialist through the Agent Gateway (never the specialist itself)
-      "ai-coe-mortgage-specialist" = [
-        dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal,
-        dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-        dependency.security.outputs.test_vm_sa_email,
-      ]
-    }
-    mcp_servers = {
-      # Callers allowed to invoke the MCP tool servers through the Agent Gateway (never cx-mortgage-orchestrator)
-      "corporate-email" = [
-        dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
-        dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
-        dependency.security.outputs.mcp_invoker_sa_email,
-        dependency.security.outputs.test_vm_sa_email,
-      ]
-      "income-verification" = [
-        dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
-        dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
-        dependency.security.outputs.mcp_invoker_sa_email,
-        dependency.security.outputs.test_vm_sa_email,
-      ]
-      "legacy-dms" = [
-        dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal,
-        dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
-        dependency.security.outputs.mcp_invoker_sa_email,
-        dependency.security.outputs.test_vm_sa_email,
-      ]
-    }
-  }
+
+  # Per-target callers, compiled from the catalog ({agents = {...}, mcp_servers = {...}} of refs):
+  # never hand-written here. The orchestrator is a caller of the specialist only, never of an MCP server.
+  target_iap_members = local.env_vars.locals.catalog_iap_egress
+
+  # Values of the references the compiled lists use.
+  identity_refs = merge(
+    # layer-3-security:<name>_sa_email: the service accounts layer 3 creates.
+    { for k, v in dependency.security.outputs : "layer-3-security:${k}" => v if can(regex("_sa_email$", k)) && v != null },
+    # agents/<name>:agent_identity_principal: each agent's Agent Identity principal (principal://).
+    {
+      "agents/cx-mortgage-orchestrator:agent_identity_principal"   = dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal
+      "agents/ai-coe-mortgage-specialist:agent_identity_principal" = dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal
+    },
+  )
 }
