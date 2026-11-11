@@ -205,7 +205,11 @@ def outgoing_headers(url: str, ctx: Any = None, *, auth_provider: str | None = N
     except Exception as exc:  # never log the message: it is not ours to vouch for
         logger.warning("No user credential for %s (%s); calling without one", host_of(url), type(exc).__name__)
         return {}
-    return {header: token} if token else {}
+    if not token:
+        return {}
+    # Value-free audit line: which host got the credential, in which header. Never the value.
+    logger.info("User credential attached for %s (%s header)", host_of(url), header)
+    return {header: token}
 
 
 # ---- redaction ------------------------------------------------------------------------------

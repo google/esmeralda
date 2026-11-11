@@ -76,11 +76,17 @@ def test_targets_env_is_reread(monkeypatch):
     assert user_credential.header_for("https://legacy-dms.esmeralda.internal/mcp") == "X-User-Token"
 
 
-def test_outgoing_headers_only_for_listed_hosts(monkeypatch):
+def test_outgoing_headers_only_for_listed_hosts(monkeypatch, caplog):
     monkeypatch.setenv("ESMERALDA_USER_CREDENTIAL_TARGETS", '{"legacy-dms.esmeralda.internal": "X-Dms-User"}')
     ctx = SimpleNamespace(state={"temp:user_auth_token": TOKEN})
-    assert user_credential.outgoing_headers("https://legacy-dms.esmeralda.internal/mcp", ctx) == {"X-Dms-User": TOKEN}
-    assert user_credential.outgoing_headers("https://email.esmeralda.internal/mcp", ctx) == {}
+    with caplog.at_level(logging.INFO, logger="esmeralda.user_credential"):
+        assert user_credential.outgoing_headers("https://legacy-dms.esmeralda.internal/mcp", ctx) == {
+            "X-Dms-User": TOKEN
+        }
+        assert user_credential.outgoing_headers("https://email.esmeralda.internal/mcp", ctx) == {}
+    # Value-free audit line, for the listed host only.
+    assert "User credential attached for legacy-dms.esmeralda.internal (X-Dms-User header)" in caplog.text
+    assert "email.esmeralda.internal" not in caplog.text and TOKEN not in caplog.text
     no_token = SimpleNamespace(state={})
     assert user_credential.outgoing_headers("https://legacy-dms.esmeralda.internal/mcp", no_token) == {}
 
