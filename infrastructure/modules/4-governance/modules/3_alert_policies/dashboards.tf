@@ -204,7 +204,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (caller_team, verified) (increase(logging_googleapis_com:user_usage_input_tokens_sum{${local.usage_resource_matcher_json}}[1m])) + sum by (caller_team, verified) (increase(logging_googleapis_com:user_usage_output_tokens_sum{${local.usage_resource_matcher_json}}[1m]))"
+                "prometheusQuery": "sum by (caller_team, verified) (${local.usage_promql_json["increase|input_tokens_sum|1m"]}) + sum by (caller_team, verified) (${local.usage_promql_json["increase|output_tokens_sum|1m"]})"
               },
               "plotType": "STACKED_AREA"
             }
@@ -217,7 +217,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (workload, model) (increase(logging_googleapis_com:user_usage_input_tokens_sum{${local.usage_resource_matcher_json}}[1m])) + sum by (workload, model) (increase(logging_googleapis_com:user_usage_output_tokens_sum{${local.usage_resource_matcher_json}}[1m]))"
+                "prometheusQuery": "sum by (workload, model) (${local.usage_promql_json["increase|input_tokens_sum|1m"]}) + sum by (workload, model) (${local.usage_promql_json["increase|output_tokens_sum|1m"]})"
               },
               "plotType": "LINE"
             }
@@ -230,7 +230,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (workload) (increase(logging_googleapis_com:user_usage_cached_tokens_sum{${local.usage_resource_matcher_json}}[1m]))"
+                "prometheusQuery": "sum by (workload) (${local.usage_promql_json["increase|cached_tokens_sum|1m"]})"
               },
               "plotType": "LINE"
             }
@@ -243,7 +243,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (workload, model) (increase(logging_googleapis_com:user_usage_reasoning_tokens_sum{${local.usage_resource_matcher_json}}[1m]))"
+                "prometheusQuery": "sum by (workload, model) (${local.usage_promql_json["increase|reasoning_tokens_sum|1m"]})"
               },
               "plotType": "LINE"
             }
@@ -256,7 +256,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (tool, status) (increase(logging_googleapis_com:user_usage_tool_calls{${local.usage_resource_matcher_json}}[1m]))"
+                "prometheusQuery": "sum by (tool, status) (${local.usage_promql_json["increase|tool_calls|1m"]})"
               },
               "plotType": "STACKED_BAR"
             }
@@ -269,7 +269,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (server) (increase(logging_googleapis_com:user_usage_tool_calls{${local.usage_resource_matcher_json}}[1m]))"
+                "prometheusQuery": "sum by (server) (${local.usage_promql_json["increase|tool_calls|1m"]})"
               },
               "plotType": "STACKED_BAR"
             }
@@ -282,7 +282,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "histogram_quantile(0.99, sum by (le, workload) (rate(logging_googleapis_com:user_usage_input_tokens_bucket{${local.usage_resource_matcher_json}}[5m])))"
+                "prometheusQuery": "histogram_quantile(0.99, sum by (le, workload) (${local.usage_promql_json["rate|input_tokens_bucket|5m"]}))"
               },
               "plotType": "LINE"
             }
@@ -295,7 +295,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (workload, source) (increase(logging_googleapis_com:user_usage_unattributed_records{${local.usage_resource_matcher_json}}[5m]))"
+                "prometheusQuery": "sum by (workload, source) (${local.usage_promql_json["increase|unattributed_records|5m"]})"
               },
               "plotType": "STACKED_BAR"
             }

@@ -40,12 +40,23 @@ locals {
   usage_record_filter   = "jsonPayload.schema=\"esmeralda.usage\""
 
   # A log-based metric is written against the monitored resource of each log entry (Reasoning Engine,
-  # Cloud Run revision, GKE container, global...). PromQL then requires a matcher on monitored_resource:
-  # every usage query selects all producer resource types with this regex matcher. The _json variant is
+  # Cloud Run revision, GKE container, global...), and Cloud Monitoring PromQL requires every selector to
+  # name one exact monitored_resource. So each usage term is the union (`or`) of one selector per
+  # producer resource type: usage_promql["<function>|<metric suffix>|<range>"]. The _json variant is
   # for PromQL embedded in dashboard JSON (quotes escaped).
-  usage_resource_regex        = join("|", var.usage_metric_resource_types)
-  usage_resource_matcher      = "monitored_resource=~\"${local.usage_resource_regex}\""
-  usage_resource_matcher_json = "monitored_resource=~\\\"${local.usage_resource_regex}\\\""
+  usage_promql_terms = [
+    "increase|input_tokens_sum|1m", "increase|output_tokens_sum|1m", "increase|cached_tokens_sum|1m",
+    "increase|reasoning_tokens_sum|1m", "increase|tool_calls|1m",
+    "increase|input_tokens_sum|5m", "increase|output_tokens_sum|5m", "increase|unattributed_records|5m",
+    "rate|input_tokens_bucket|5m",
+  ]
+  usage_promql = {
+    for term in local.usage_promql_terms : term => format("(%s)", join(" or ", [
+      for t in var.usage_metric_resource_types :
+      format("%s(logging_googleapis_com:user_usage_%s{monitored_resource=\"%s\"}[%s])", split("|", term)[0], split("|", term)[1], t, split("|", term)[2])
+    ]))
+  }
+  usage_promql_json = { for term, q in local.usage_promql : term => replace(q, "\"", "\\\"") }
 
   usage_token_metrics = {
     input_tokens = {
@@ -223,7 +234,7 @@ EOF
     display_name = "Unattributed esmeralda.usage records"
     # PromQL: one query across every producer's monitored resource type (see runaway_loop_token_cap).
     condition_prometheus_query_language {
-      query               = "sum by (workload, source) (increase(logging_googleapis_com:user_usage_unattributed_records{${local.usage_resource_matcher}}[5m])) > 0"
+      query               = "sum by (workload, source) (${local.usage_promql["increase|unattributed_records|5m"]}) > 0"
       duration            = "0s"
       evaluation_interval = "60s"
     }
@@ -264,7 +275,7 @@ EOF
     # PromQL: the usage metrics are written against every producer's monitored resource (Reasoning
     # Engine, Cloud Run revision, global...), and a metric-filter condition must pin one resource type.
     condition_prometheus_query_language {
-      query               = "histogram_quantile(0.99, sum by (le, workload) (rate(logging_googleapis_com:user_usage_input_tokens_bucket{${local.usage_resource_matcher}}[5m]))) > ${var.runaway_loop_token_threshold}"
+      query               = "histogram_quantile(0.99, sum by (le, workload) (${local.usage_promql["rate|input_tokens_bucket|5m"]})) > ${var.runaway_loop_token_threshold}"
       duration            = "60s"
       evaluation_interval = "60s"
     }
@@ -504,7 +515,7 @@ resource "google_monitoring_alert_policy" "token_anomaly_spike" {
 
 #### 🛠️ Immediate On-Call Action Plan:
 1. Find who is consuming in Metrics Explorer (PromQL):
-   `sum by (workload, caller_team) (increase(logging_googleapis_com:user_usage_input_tokens_sum[5m]))`
+   `sum by (workload, caller_team) (increase(logging_googleapis_com:user_usage_input_tokens_sum{monitored_resource="aiplatform.googleapis.com/ReasoningEngine"}[5m]))` (repeat with `cloud_run_revision` for Cloud Run producers)
 2. Check if a high-volume batch job or looping agent identity was launched (`vw_request_level_telemetry`, newest first).
 3. Apply gateway rate limit or revoke compromised credentials if unauthorized.
 EOF
@@ -514,7 +525,7 @@ EOF
   conditions {
     display_name = "Token Rate of Change 300% Spike"
     condition_prometheus_query_language {
-      query               = "(sum(increase(logging_googleapis_com:user_usage_input_tokens_sum{${local.usage_resource_matcher}}[5m])) or vector(0)) + (sum(increase(logging_googleapis_com:user_usage_output_tokens_sum{${local.usage_resource_matcher}}[5m])) or vector(0)) > ${local.token_anomaly_threshold}"
+      query               = "(sum(${local.usage_promql["increase|input_tokens_sum|5m"]}) or vector(0)) + (sum(${local.usage_promql["increase|output_tokens_sum|5m"]}) or vector(0)) > ${local.token_anomaly_threshold}"
       duration            = "300s"
       evaluation_interval = "60s"
     }

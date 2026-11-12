@@ -417,21 +417,25 @@ def test_alerts_run_on_usage_metrics():
     alerts = _module_tf(ALERTS_DIR)
     policies = _blocks(alerts, "resource", "google_monitoring_alert_policy")
     runaway = policies["runaway_loop_token_cap"]
-    assert "logging_googleapis_com:user_usage_input_tokens_bucket" in runaway
-    assert "logging_googleapis_com:user_usage_input_tokens_sum" in policies["token_anomaly_spike"]
+    assert 'local.usage_promql["rate|input_tokens_bucket|5m"]' in runaway
+    assert 'local.usage_promql["increase|input_tokens_sum|5m"]' in policies["token_anomaly_spike"]
     unattributed = policies["unattributed_usage"]
-    assert "logging_googleapis_com:user_usage_unattributed_records" in unattributed
+    assert 'local.usage_promql["increase|unattributed_records|5m"]' in unattributed
     assert ") > 0" in unattributed
     # Usage metrics span several monitored resource types: no metric-filter (single-resource) conditions.
     for name in ("runaway_loop_token_cap", "token_anomaly_spike", "unattributed_usage"):
         assert "condition_prometheus_query_language" in policies[name] and "condition_threshold" not in policies[name], name
-    # Usage metrics live on several monitored resource types: every PromQL selector needs the matcher.
+    # Usage metrics live on several monitored resource types and Cloud Monitoring PromQL needs one exact
+    # monitored_resource per selector: queries use the per-type unions, never a bare selector.
+    assert 'monitored_resource=\\"%s\\"}[%s])' in alerts
+    assert "for t in var.usage_metric_resource_types" in alerts
+    terms = set(re.findall(r'"((?:increase|rate)\|\w+\|\w+)",?', alerts))
     for path in (ALERTS_DIR / "main.tf", ALERTS_DIR / "dashboards.tf"):
         for line in _read(path).splitlines():
-            if ("query" in line or "prometheusQuery" in line) and "user_usage_" in line:
-                selectors = re.findall(r"logging_googleapis_com:user_usage_\w+(.)", line)
-                assert selectors and set(selectors) == {"{"}, line
-                assert "${local.usage_resource_matcher" in line, line
+            if "query" in line.lower():
+                assert "logging_googleapis_com:user_usage_" not in line, line
+                for used in re.findall(r'usage_promql(?:_json)?\["([^"]+)"\]', line):
+                    assert used in terms, used
     unattributed_metric = _blocks(alerts, "resource", "google_logging_metric")["usage_unattributed_records"]
     assert "NOT jsonPayload.caller.verified=true" in unattributed_metric
     # Security alerting is kept.
@@ -443,10 +447,10 @@ def test_dashboards_are_valid_json_and_read_usage_metrics():
     bodies = re.findall(r"dashboard_json = <<EOF\n(.*?)\nEOF", text, re.S)
     assert len(bodies) == 2
     for body in bodies:
-        json.loads(body.replace("${var.environment}", "dev"))
+        json.loads(re.sub(r'\$\{local\.usage_promql_json\["[^"]+"\]\}', "q", body.replace("${var.environment}", "dev")))
     assert "timeSeriesQueryLanguage" not in text  # no MQL on removed metrics
-    assert "user_usage_input_tokens_sum" in bodies[1]
-    assert "user_usage_tool_calls" in bodies[1]
+    assert 'usage_promql_json["increase|input_tokens_sum|1m"]' in bodies[1]
+    assert 'usage_promql_json["increase|tool_calls|1m"]' in bodies[1]
     assert "gen_ai.invoke_agent.duration_bucket" in bodies[0]  # native ADK OTel ops tiles
 
 
