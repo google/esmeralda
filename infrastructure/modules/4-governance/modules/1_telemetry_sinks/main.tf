@@ -21,8 +21,8 @@ resource "google_logging_project_sink" "central_sinks" {
   project     = each.value
   destination = "bigquery.googleapis.com/projects/${var.governance_project_id}/datasets/${google_bigquery_dataset.telemetry_logs.dataset_id}"
 
-  # Filter stdout/stderr logs from Reasoning Engines, Cloud Run microservices, and Cloud Audit logs
-  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
+  # Filter stdout/stderr logs from Reasoning Engines, Cloud Run microservices, Apigee partner gateway interactions, and Cloud Audit logs
+  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR logName=~\"esmeralda-apigee-interactions\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
 
   bigquery_options {
     use_partitioned_tables = true
@@ -31,9 +31,9 @@ resource "google_logging_project_sink" "central_sinks" {
   exclusions {
     name        = "exclude-debug-logs"
     description = "Exclude verbose debug log entries to minimize BigQuery ingestion costs"
-    # Never drop usage records: the esmeralda.usage contract and the legacy agent token events that the
-    # views still read for historical data.
-    filter = "severity < INFO AND NOT jsonPayload.schema=\"esmeralda.usage\" AND NOT jsonPayload.event=\"genai_token_consumption\""
+    # Never drop usage records: the esmeralda.usage contract, the legacy agent token events and the
+    # legacy Apigee interaction records that the views still read for historical data.
+    filter = "severity < INFO AND NOT jsonPayload.schema=\"esmeralda.usage\" AND NOT jsonPayload.event=\"genai_token_consumption\" AND NOT jsonPayload.event=\"apigee.gateway.interaction\""
   }
 
   unique_writer_identity = true

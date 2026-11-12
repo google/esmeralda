@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+  Adapted from github.com/ricardosmh/adk-apigee-multiagent-demo (Apache-2.0).
+-->
+<DataCapture name="DC-capture-llm-metrics" continueOnError="true" enabled="true">
+  <DisplayName>DC-capture-llm-metrics</DisplayName>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+  <Capture>
+    <Collect ref="llm.model" default="gemini-2.5-flash"/>
+    <DataCollector>dc_llm_model</DataCollector>
+  </Capture>
+  <Capture>
+    <Collect ref="llm.promptTokenCount" default="0"/>
+    <DataCollector>dc_prompt_tokens</DataCollector>
+  </Capture>
+  <Capture>
+    <Collect ref="llm.candidatesTokenCount" default="0"/>
+    <DataCollector>dc_candidates_tokens</DataCollector>
+  </Capture>
+  <Capture>
+    <Collect ref="llm.totalTokenCount" default="0"/>
+    <DataCollector>dc_total_tokens</DataCollector>
+  </Capture>
+  <Capture>
+    <Collect ref="consumer.app.name" default="anonymous"/>
+    <DataCollector>dc_consumer_app</DataCollector>
+  </Capture>
+</DataCapture>

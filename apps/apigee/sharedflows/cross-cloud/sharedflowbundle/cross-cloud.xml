@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<SharedFlowBundle revision="1" name="cross-cloud">
+  <DisplayName>cross-cloud</DisplayName>
+  <Description>Removable Apigee capability shared flow for inbound cross-cloud OIDC/JWT issuer lookup, JWKS signature verification, and verified principal propagation.</Description>
+  <Policies>
+    <Policy>AM-Propagate-Cross-Cloud-Principal</Policy>
+    <Policy>KVM-Get-Cross-Cloud-Issuer</Policy>
+    <Policy>VJ-Verify-Cross-Cloud-JWT</Policy>
+  </Policies>
+  <SharedFlows>
+    <SharedFlow>default</SharedFlow>
+  </SharedFlows>
+</SharedFlowBundle>
