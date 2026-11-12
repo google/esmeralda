@@ -24,6 +24,31 @@ output "chargeback_view_id" {
   description = "BigQuery FinOps monthly chargeback view ID"
 }
 
+output "usage_dataset_id" {
+  value       = module.telemetry_sinks.usage_dataset_id
+  description = "BigQuery dataset holding the esmeralda.usage landing tables"
+}
+
+output "usage_events_view_id" {
+  value       = module.finops_analytics.usage_events_view_id
+  description = "BigQuery view (in governance_dataset_id) of every esmeralda.usage record, flattened"
+}
+
+output "usage_normalized_view_id" {
+  value       = module.finops_analytics.usage_normalized_view_id
+  description = "BigQuery view (in governance_dataset_id) of native and legacy usage in one shape, with attribution"
+}
+
+output "principal_teams_table_id" {
+  value       = module.finops_analytics.principal_teams_table_id
+  description = "BigQuery principal -> team attribution table (in governance_dataset_id), filled by the catalog compiler"
+}
+
+output "principal_teams_view_id" {
+  value       = module.finops_analytics.principal_teams_view_id
+  description = "BigQuery view (in governance_dataset_id) of the effective principal -> team mapping (table + Terraform-declared rows)"
+}
+
 output "golden_signals_dashboard_id" {
   value       = module.alert_policies.golden_signals_dashboard_id
   description = "Cloud Monitoring Agent Golden Signals Dashboard ID"

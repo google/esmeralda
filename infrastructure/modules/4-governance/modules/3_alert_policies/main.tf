@@ -24,33 +24,98 @@ resource "google_monitoring_notification_channel" "pubsub_alert" {
   }
 }
 
-# 3. Log-Based Metric: Real-Time Token Consumption
-resource "google_logging_metric" "realtime_token_consumption" {
-  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
-  name        = "genai/realtime_token_consumption"
-  project     = each.value
-  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.total_tokens > 0"
-  description = "Real-time delta metric for total token consumption per agent inference request"
+# 3. Log-Based Metrics: esmeralda.usage records (the FinOps source of truth)
+# Every metric keys on jsonPayload.schema = "esmeralda.usage" (contracts/usage-event.schema.json), never on
+# a log name or a text pattern, so any producer (esmeralda library, Apigee, Envoy, OTel collectors) feeds
+# them. Log-based metrics are per project: they are created in the governance project and every spoke,
+# and the governance metrics scope aggregates them. Field names with dots are quoted, as in the contract
+# (gen_ai."usage.input_tokens"). Labels:
+#   caller_team / verified   who pays (verified = "true" only when the identity came from authentication)
+#   workload / workload_team the agent, MCP server or gateway target that served the call
+#   model / source / event   gen_ai."request.model", gateway | workload, llm.call | gateway.request | ...
+# Token metrics are distributions of the per-record count; PromQL reads their totals as
+# logging_googleapis_com:user_usage_<metric>_sum.
+locals {
+  usage_metric_projects = toset(concat([var.governance_project_id], var.spoke_project_ids))
+  usage_record_filter   = "jsonPayload.schema=\"esmeralda.usage\""
+
+  # A log-based metric is written against the monitored resource of each log entry (Reasoning Engine,
+  # Cloud Run revision, GKE container, global...), and Cloud Monitoring PromQL requires every selector to
+  # name one exact monitored_resource. So each usage term is the union (`or`) of one selector per
+  # producer resource type: usage_promql["<function>|<metric suffix>|<range>"]. The _json variant is
+  # for PromQL embedded in dashboard JSON (quotes escaped).
+  usage_promql_terms = [
+    "increase|input_tokens_sum|1m", "increase|output_tokens_sum|1m", "increase|cached_tokens_sum|1m",
+    "increase|reasoning_tokens_sum|1m", "increase|tool_calls|1m",
+    "increase|input_tokens_sum|5m", "increase|output_tokens_sum|5m", "increase|unattributed_records|5m",
+    "rate|input_tokens_bucket|5m",
+  ]
+  usage_promql = {
+    for term in local.usage_promql_terms : term => format("(%s)", join(" or ", [
+      for t in var.usage_metric_resource_types :
+      format("%s(logging_googleapis_com:user_usage_%s{monitored_resource=\"%s\"}[%s])", split("|", term)[0], split("|", term)[1], t, split("|", term)[2])
+    ]))
+  }
+  usage_promql_json = { for term, q in local.usage_promql : term => replace(q, "\"", "\\\"") }
+
+  usage_token_metrics = {
+    input_tokens = {
+      field       = "jsonPayload.gen_ai.\"usage.input_tokens\""
+      description = "Input tokens per esmeralda.usage record (includes cached tokens), by caller team, workload and model"
+    }
+    output_tokens = {
+      field       = "jsonPayload.gen_ai.\"usage.output_tokens\""
+      description = "Output tokens per esmeralda.usage record (includes reasoning tokens), by caller team, workload and model"
+    }
+    cached_tokens = {
+      field       = "jsonPayload.gen_ai.\"usage.cached_tokens\""
+      description = "Context-cache hits (subset of input tokens) per esmeralda.usage record"
+    }
+    reasoning_tokens = {
+      field       = "jsonPayload.gen_ai.\"usage.reasoning_tokens\""
+      description = "Reasoning / thinking tokens (subset of output tokens) per esmeralda.usage record"
+    }
+  }
+
+  usage_token_metric_instances = {
+    for pair in setproduct(keys(local.usage_token_metrics), local.usage_metric_projects) :
+    "${pair[0]}/${pair[1]}" => { metric = pair[0], project = pair[1] }
+  }
+
+  usage_labels = {
+    caller_team   = "EXTRACT(jsonPayload.caller.team)"
+    verified      = "EXTRACT(jsonPayload.caller.verified)"
+    workload      = "EXTRACT(jsonPayload.workload.name)"
+    workload_team = "EXTRACT(jsonPayload.workload.team)"
+    model         = "EXTRACT(jsonPayload.gen_ai.\"request.model\")"
+    source        = "EXTRACT(jsonPayload.source)"
+    event         = "EXTRACT(jsonPayload.event)"
+  }
+}
+
+# 3a. Token metrics: usage/input_tokens, usage/output_tokens, usage/cached_tokens, usage/reasoning_tokens
+resource "google_logging_metric" "usage_tokens" {
+  for_each    = local.usage_token_metric_instances
+  name        = "usage/${each.value.metric}"
+  project     = each.value.project
+  filter      = "${local.usage_record_filter} AND ${local.usage_token_metrics[each.value.metric].field}>0"
+  description = local.usage_token_metrics[each.value.metric].description
 
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "DISTRIBUTION"
     unit        = "1"
-    labels {
-      key        = "agent_id"
-      value_type = "STRING"
-    }
-    labels {
-      key        = "user_id"
-      value_type = "STRING"
+    dynamic "labels" {
+      for_each = keys(local.usage_labels)
+      content {
+        key        = labels.value
+        value_type = "STRING"
+      }
     }
   }
 
-  value_extractor = "EXTRACT(jsonPayload.tokens.total_tokens)"
-  label_extractors = {
-    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
-    "user_id"  = "EXTRACT(jsonPayload.user_id)"
-  }
+  value_extractor  = "EXTRACT(${local.usage_token_metrics[each.value.metric].field})"
+  label_extractors = local.usage_labels
 
   bucket_options {
     exponential_buckets {
@@ -61,165 +126,117 @@ resource "google_logging_metric" "realtime_token_consumption" {
   }
 }
 
-# 3b. Log-Based Metric: Cached Tokens Counter
-resource "google_logging_metric" "cached_tokens_counter" {
-  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
-  name        = "genai/cached_tokens"
+# 3b. Tool calls by tool, MCP server and status (usage/tool_calls)
+resource "google_logging_metric" "usage_tool_calls" {
+  for_each    = local.usage_metric_projects
+  name        = "usage/tool_calls"
   project     = each.value
-  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.cached_tokens > 0"
-  description = "Real-time metric for Gemini Context Caching token hits"
+  filter      = "${local.usage_record_filter} AND jsonPayload.event=\"tool.call\""
+  description = "Tool calls (esmeralda.usage tool.call records) by tool, MCP server, status, workload and caller team"
 
   metric_descriptor {
     metric_kind = "DELTA"
-    value_type  = "DISTRIBUTION"
+    value_type  = "INT64"
     unit        = "1"
     labels {
-      key        = "agent_id"
+      key        = "tool"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "server"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "status"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "workload"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "caller_team"
       value_type = "STRING"
     }
   }
 
-  value_extractor = "EXTRACT(jsonPayload.tokens.cached_tokens)"
   label_extractors = {
-    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
-  }
-
-  bucket_options {
-    exponential_buckets {
-      num_finite_buckets = 64
-      growth_factor      = 2
-      scale              = 1
-    }
+    "tool"        = "EXTRACT(jsonPayload.tool.name)"
+    "server"      = "EXTRACT(jsonPayload.tool.server)"
+    "status"      = "EXTRACT(jsonPayload.tool.status)"
+    "workload"    = "EXTRACT(jsonPayload.workload.name)"
+    "caller_team" = "EXTRACT(jsonPayload.caller.team)"
   }
 }
 
-# 3c. Log-Based Metric: Prompt Tokens Counter
-resource "google_logging_metric" "prompt_tokens_counter" {
-  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
-  name        = "genai/prompt_tokens"
+# 3c. Unattributed usage (usage/unattributed_records): records without a verified caller. "Unattributed is
+# an alarm": the catalog fails closed, so the expected count is 0 (alert 3d). `NOT ...=true` also matches
+# records that omit caller or caller.verified.
+resource "google_logging_metric" "usage_unattributed_records" {
+  for_each    = local.usage_metric_projects
+  name        = "usage/unattributed_records"
   project     = each.value
-  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.prompt_tokens > 0"
-  description = "Real-time metric for prompt tokens"
+  filter      = "${local.usage_record_filter} AND NOT jsonPayload.caller.verified=true"
+  description = "esmeralda.usage records whose caller is missing or not verified (expected: 0)"
 
   metric_descriptor {
     metric_kind = "DELTA"
-    value_type  = "DISTRIBUTION"
+    value_type  = "INT64"
     unit        = "1"
     labels {
-      key        = "agent_id"
+      key        = "workload"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "source"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "event"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "caller_team"
       value_type = "STRING"
     }
   }
 
-  value_extractor = "EXTRACT(jsonPayload.tokens.prompt_tokens)"
   label_extractors = {
-    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
-  }
-
-  bucket_options {
-    exponential_buckets {
-      num_finite_buckets = 64
-      growth_factor      = 2
-      scale              = 1
-    }
+    "workload"    = "EXTRACT(jsonPayload.workload.name)"
+    "source"      = "EXTRACT(jsonPayload.source)"
+    "event"       = "EXTRACT(jsonPayload.event)"
+    "caller_team" = "EXTRACT(jsonPayload.caller.team)"
   }
 }
 
-# 3d. Log-Based Metric: Completion Tokens Counter
-resource "google_logging_metric" "completion_tokens_counter" {
-  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
-  name        = "genai/completion_tokens"
-  project     = each.value
-  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.completion_tokens > 0"
-  description = "Real-time metric for response completion tokens"
-
-  metric_descriptor {
-    metric_kind = "DELTA"
-    value_type  = "DISTRIBUTION"
-    unit        = "1"
-    labels {
-      key        = "agent_id"
-      value_type = "STRING"
-    }
-  }
-
-  value_extractor = "EXTRACT(jsonPayload.tokens.completion_tokens)"
-  label_extractors = {
-    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
-  }
-
-  bucket_options {
-    exponential_buckets {
-      num_finite_buckets = 64
-      growth_factor      = 2
-      scale              = 1
-    }
-  }
-}
-
-# 3e. Log-Based Metric: Thoughts / Reasoning Tokens Counter
-resource "google_logging_metric" "thoughts_tokens_counter" {
-  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
-  name        = "genai/thoughts_tokens"
-  project     = each.value
-  filter      = "jsonPayload.event=\"genai_token_consumption\" AND jsonPayload.tokens.thoughts_tokens > 0"
-  description = "Real-time metric for Gemini 3.7 internal reasoning/thoughts tokens"
-
-  metric_descriptor {
-    metric_kind = "DELTA"
-    value_type  = "DISTRIBUTION"
-    unit        = "1"
-    labels {
-      key        = "agent_id"
-      value_type = "STRING"
-    }
-  }
-
-  value_extractor = "EXTRACT(jsonPayload.tokens.thoughts_tokens)"
-  label_extractors = {
-    "agent_id" = "EXTRACT(jsonPayload.agent_id)"
-  }
-
-  bucket_options {
-    exponential_buckets {
-      num_finite_buckets = 64
-      growth_factor      = 2
-      scale              = 1
-    }
-  }
-}
-
-# 4. Alert Policy: Runaway Loop Single-Request Token Cap
-resource "google_monitoring_alert_policy" "runaway_loop_token_cap" {
+# 3d. Alert Policy: Unattributed / Unverified Usage (> 0)
+resource "google_monitoring_alert_policy" "unattributed_usage" {
+  count        = var.alert_on_unattributed_usage ? 1 : 0
   project      = var.governance_project_id
-  display_name = "[Esmeralda ${var.environment}] Runaway Agent Loop - Token Budget Exceeded"
+  display_name = "[Esmeralda ${var.environment}] Unattributed Usage - Records Without a Verified Caller"
   combiner     = "OR"
 
   documentation {
     content   = <<EOF
-### 🚨 RUNAWAY AGENT REASONING LOOP DETECTED
-**Alert Trigger**: A single inference request exceeded the configured token budget cap.
+### 🚨 USAGE WITHOUT A VERIFIED CALLER
+**Alert Trigger**: At least one `esmeralda.usage` record in the last 5 minutes had no verified caller (`caller.verified != true`). Chargeback bills only verified teams, so this usage lands in `billed_team = 'unattributed'`.
 
 #### 🛠️ Immediate On-Call Action Plan:
-1. Open Cloud Logging in `prj-esmeralda-governance` and query the flagged session ID:
-   `jsonPayload.event="genai_token_consumption" AND jsonPayload.tokens.total_tokens > ${var.runaway_loop_token_threshold}`
-2. Identify the `execution_path` and `user_id` breaching the threshold.
-3. If an API key or service account is malfunctioning, run the Gateway revocation command.
+1. Find the records in Cloud Logging (the `workload` and `source` labels of the alert narrow it down):
+   `jsonPayload.schema="esmeralda.usage" AND NOT jsonPayload.caller.verified=true`
+2. In BigQuery: `SELECT * FROM esmeralda_telemetry_logs_${var.environment}.vw_usage_normalized WHERE attribution IN ('declared', 'unattributed') ORDER BY timestamp DESC`
+3. `declared` = the caller sent a team that authentication didn't confirm; `unattributed` = no caller identity at all. Register the caller in the catalog (its principal lands in `principal_teams`), or fix the producer / gateway that dropped the verified identity.
 EOF
     mime_type = "text/markdown"
   }
 
   conditions {
-    display_name = "Single Request Token Budget Limit"
-    condition_threshold {
-      filter          = "resource.type = \"global\" AND metric.type = \"logging.googleapis.com/user/genai/realtime_token_consumption\""
-      duration        = "60s"
-      comparison      = "COMPARISON_GT"
-      threshold_value = var.runaway_loop_token_threshold
-      aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_PERCENTILE_99"
-      }
+    display_name = "Unattributed esmeralda.usage records"
+    # PromQL: one query across every producer's monitored resource type (see runaway_loop_token_cap).
+    condition_prometheus_query_language {
+      query               = "sum by (workload, source) (${local.usage_promql["increase|unattributed_records|5m"]}) > 0"
+      duration            = "0s"
+      evaluation_interval = "60s"
     }
   }
 
@@ -228,7 +245,48 @@ EOF
     google_monitoring_notification_channel.pubsub_alert.name
   ]
 
-  depends_on = [google_logging_metric.realtime_token_consumption]
+  depends_on = [google_logging_metric.usage_unattributed_records]
+}
+
+# 4. Alert Policy: Runaway Loop Single-Request Token Cap
+# A runaway reasoning loop re-sends its growing context on every model call, so the per-call input tokens
+# of usage/input_tokens climb past the budget.
+resource "google_monitoring_alert_policy" "runaway_loop_token_cap" {
+  project      = var.governance_project_id
+  display_name = "[Esmeralda ${var.environment}] Runaway Agent Loop - Token Budget Exceeded"
+  combiner     = "OR"
+
+  documentation {
+    content   = <<EOF
+### 🚨 RUNAWAY AGENT REASONING LOOP DETECTED
+**Alert Trigger**: A single model call or gateway request exceeded the configured token budget cap (${var.runaway_loop_token_threshold} input tokens).
+
+#### 🛠️ Immediate On-Call Action Plan:
+1. Open Cloud Logging in `prj-esmeralda-governance` and query the flagged records:
+   `jsonPayload.schema="esmeralda.usage" AND jsonPayload.gen_ai."usage.input_tokens" > ${var.runaway_loop_token_threshold}`
+2. Identify the `workload.name`, `trace_id` and `caller.principal` breaching the threshold (`vw_request_level_telemetry` has the whole request).
+3. If an API key or service account is malfunctioning, run the Gateway revocation command.
+EOF
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Single Request Token Budget Limit"
+    # PromQL: the usage metrics are written against every producer's monitored resource (Reasoning
+    # Engine, Cloud Run revision, global...), and a metric-filter condition must pin one resource type.
+    condition_prometheus_query_language {
+      query               = "histogram_quantile(0.99, sum by (le, workload) (${local.usage_promql["rate|input_tokens_bucket|5m"]})) > ${var.runaway_loop_token_threshold}"
+      duration            = "60s"
+      evaluation_interval = "60s"
+    }
+  }
+
+  notification_channels = [
+    try(google_monitoring_notification_channel.email_alert[0].name, ""),
+    google_monitoring_notification_channel.pubsub_alert.name
+  ]
+
+  depends_on = [google_logging_metric.usage_tokens]
 }
 
 # 5. Alert Policy: Reasoning Engine Quota & 429 Rate Limit
@@ -270,39 +328,6 @@ EOF
     try(google_monitoring_notification_channel.email_alert[0].name, ""),
     google_monitoring_notification_channel.pubsub_alert.name
   ]
-}
-
-# 6. Log-Based Metric: MCP Tool Execution Frequency & Latency
-resource "google_logging_metric" "mcp_tool_execution_count" {
-  for_each    = toset(concat([var.governance_project_id], var.spoke_project_ids))
-  name        = "genai/mcp_tool_execution_count"
-  project     = each.value
-  filter      = "jsonPayload.event=\"mcp_tool_execution\""
-  description = "Real-time delta metric tracking execution frequency per MCP tool microservice"
-
-  metric_descriptor {
-    metric_kind = "DELTA"
-    value_type  = "INT64"
-    unit        = "1"
-    labels {
-      key        = "tool_name"
-      value_type = "STRING"
-    }
-    labels {
-      key        = "mcp_service"
-      value_type = "STRING"
-    }
-    labels {
-      key        = "status"
-      value_type = "STRING"
-    }
-  }
-
-  label_extractors = {
-    "tool_name"   = "EXTRACT(jsonPayload.tool_name)"
-    "mcp_service" = "EXTRACT(jsonPayload.mcp_service)"
-    "status"      = "EXTRACT(jsonPayload.status)"
-  }
 }
 
 # 7. Alert Policy: High P95 Latency (>10,000 ms) with Embedded SRE Runbook
@@ -477,6 +502,7 @@ EOF
 }
 
 # 9. Alert Policy: Token Rate-of-Change Anomaly Alert (>300% Spike in 5 Mins)
+# Total tokens (input + output, all producers) over 5 minutes, from the usage/* distributions' sums.
 resource "google_monitoring_alert_policy" "token_anomaly_spike" {
   project      = var.governance_project_id
   display_name = "[Esmeralda ${var.environment}] Token Rate-of-Change Anomaly (>300% Spike)"
@@ -485,12 +511,12 @@ resource "google_monitoring_alert_policy" "token_anomaly_spike" {
   documentation {
     content   = <<EOF
 ### 🚨 REAL-TIME TOKEN RATE ANOMALY SPIKE DETECTED
-**Alert Trigger**: 5-minute token consumption rate increased by >300% compared to baseline.
+**Alert Trigger**: Tokens consumed in 5 minutes (input + output, all esmeralda.usage producers) exceeded ${local.token_anomaly_threshold}.
 
 #### 🛠️ Immediate On-Call Action Plan:
-1. Inspect active user sessions in Cloud Logging:
-   `resource.type="global" AND metric.type="logging.googleapis.com/user/genai/realtime_token_consumption"`
-2. Check if a high-volume batch job or looping agent identity was launched.
+1. Find who is consuming in Metrics Explorer (PromQL):
+   `sum by (workload, caller_team) (increase(logging_googleapis_com:user_usage_input_tokens_sum{monitored_resource="aiplatform.googleapis.com/ReasoningEngine"}[5m]))` (repeat with `cloud_run_revision` for Cloud Run producers)
+2. Check if a high-volume batch job or looping agent identity was launched (`vw_request_level_telemetry`, newest first).
 3. Apply gateway rate limit or revoke compromised credentials if unauthorized.
 EOF
     mime_type = "text/markdown"
@@ -498,15 +524,10 @@ EOF
 
   conditions {
     display_name = "Token Rate of Change 300% Spike"
-    condition_threshold {
-      filter          = "resource.type = \"global\" AND metric.type = \"logging.googleapis.com/user/genai/realtime_token_consumption\""
-      duration        = "300s"
-      comparison      = "COMPARISON_GT"
-      threshold_value = 500000
-      aggregations {
-        alignment_period   = "300s"
-        per_series_aligner = "ALIGN_PERCENTILE_99"
-      }
+    condition_prometheus_query_language {
+      query               = "(sum(${local.usage_promql["increase|input_tokens_sum|5m"]}) or vector(0)) + (sum(${local.usage_promql["increase|output_tokens_sum|5m"]}) or vector(0)) > ${local.token_anomaly_threshold}"
+      duration            = "300s"
+      evaluation_interval = "60s"
     }
   }
 
@@ -514,6 +535,12 @@ EOF
     try(google_monitoring_notification_channel.email_alert[0].name, ""),
     google_monitoring_notification_channel.pubsub_alert.name
   ]
+
+  depends_on = [google_logging_metric.usage_tokens]
+}
+
+locals {
+  token_anomaly_threshold = 500000
 }
 
 # 10. Log-Based Metric: IAM Privilege Changes

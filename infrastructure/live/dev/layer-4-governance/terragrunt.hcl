@@ -42,6 +42,14 @@ inputs = {
   monitoring_config            = local.env_vars.locals.monitoring_config
   governance_config            = try(local.env.governance, {})
 
+  # Usage attribution floor: the team that owns each workload project (catalog teams.yaml keys).
+  # Workload usage records logged from these projects are billed to that team until callers are verified.
+  principal_teams = [
+    { principal = dependency.projects.outputs.cx_agents_project_id, principal_type = "gcp_project", team = "cx" },
+    { principal = dependency.projects.outputs.ai_coe_agents_project_id, principal_type = "gcp_project", team = "ai-coe" },
+    { principal = dependency.projects.outputs.mcps_project_id, principal_type = "gcp_project", team = "ai-coe" },
+  ]
+
   # Envoy ingress gateway alerts (5xx ratio, token fetch failures) when envoy is in gateways.enabled
   ingress_gateway_service_name = contains(local.env_vars.locals.gateways.enabled, "envoy") ? "envoy-gateway-${local.env_vars.locals.environment}" : ""
 
