@@ -156,7 +156,7 @@ resource "terraform_data" "semantic_governance_contract" {
     precondition {
       condition = alltrue([
         for policy in values(local.semantic_governance_policies) :
-        trimspace(policy.principal) != "" && policy.principal != "*" && ! strcontains(policy.principal, "/*")
+        trimspace(policy.principal) != "" && policy.principal != "*" && !strcontains(policy.principal, "/*")
       ])
       error_message = "GEAP Semantic Governance policies must bind an explicit workload principal (wildcard principals are forbidden)."
     }

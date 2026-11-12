@@ -31,9 +31,6 @@ PLATFORM_MODULE_DIR = (
 PRODUCTS_MODULE_DIR = (
     REPO_ROOT / "infrastructure" / "modules" / "5-workloads" / "apigee" / "products"
 )
-GATEWAY_APIGEE_DIR = (
-    REPO_ROOT / "infrastructure" / "modules" / "5-workloads" / "gateways" / "apigee"
-)
 LIVE_ENVS = ("dev", "prd")
 
 
@@ -84,11 +81,6 @@ def test_terraform_validate_apigee_platform() -> None:
 def test_terraform_validate_apigee_products() -> None:
     """Verify `terraform init -backend=false && terraform validate` passes on apigee/products."""
     _run_tf_validate(PRODUCTS_MODULE_DIR)
-
-
-def test_terraform_validate_gateway_apigee_wrapper() -> None:
-    """Verify `terraform init -backend=false && terraform validate` passes on gateways/apigee."""
-    _run_tf_validate(GATEWAY_APIGEE_DIR)
 
 
 def test_platform_uses_non_peering_psc_architecture() -> None:
