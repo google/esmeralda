@@ -9,6 +9,20 @@ include "root" {
 
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  catalog  = local.env_vars.locals.catalog
+  gateways = local.env_vars.locals.gateways
+  apigee_partner = (
+    try(local.env_vars.locals.governance.apigee.enabled, false) &&
+    try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee"
+  )
+
+  # Envoy re-signs every request it forwards with its own identity, so whoever may invoke Envoy reaches
+  # every host routed to it. Its invokers are therefore the catalog callers of those hosts only (not
+  # every agent): the same callers that get run.invoker / aiplatform.user on the targets themselves.
+  envoy_callers = distinct(flatten([
+    for name, entry in local.catalog : try(entry.callers, [])
+    if lookup(local.gateways.host_rules, name, local.gateways.default) == "envoy"
+  ]))
 
   # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
   # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
@@ -59,6 +73,17 @@ dependency "security" {
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
   mock_outputs_merge_strategy_with_state  = "shallow"
+}
+
+# Apigee partner front door (partner_access = "apigee"): its proxy runtime service account is the
+# identity of the catalog caller apigee-partner-mcp.
+dependency "apigee" {
+  config_path = "../../apigee/platform"
+  enabled     = local.apigee_partner
+  mock_outputs = {
+    proxy_runtime_sa_email = "sa-apigee-proxy-mock@mock.iam.gserviceaccount.com"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
 dependency "ai_coe_mortgage_specialist" {
@@ -118,12 +143,18 @@ inputs = {
   # Identity upstreams see (layer 3): invoker on the MCP services, aiplatform.user on the agents.
   gateway_sa_email = dependency.security.outputs.envoy_sa_email
 
-  invoker_service_accounts = [
-    dependency.security.outputs.test_vm_sa_email,
-    dependency.security.outputs.ai_coe_mortgage_specialist_sa_email,
-    dependency.security.outputs.cx_mortgage_orchestrator_sa_email,
-    dependency.security.outputs.mcp_invoker_sa_email
-  ]
+  # roles/run.invoker on Envoy: the service accounts of the catalog callers of the hosts routed to it
+  # (apigee-partner-mcp: the Apigee proxy runtime service account, only with partner_access = "apigee");
+  # when an agent is among them, also the identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared
+  # MCP invoker service account). Nothing when no host is routed to Envoy.
+  invoker_service_accounts = distinct(compact(concat(
+    [for caller in local.envoy_callers : (
+      caller == "apigee-partner-mcp"
+      ? (local.apigee_partner ? dependency.apigee.outputs.proxy_runtime_sa_email : "")
+      : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]
+    )],
+    length([for caller in local.envoy_callers : caller if !contains(["test-vm", "apigee-partner-mcp"], caller)]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+  )))
 
   # Every catalog entry (env.yaml catalog), built from its unit's outputs (catalog unit => dependency
   # below). Envoy swaps the caller's ID token for the upstream credential: an ID token for Cloud Run

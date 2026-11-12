@@ -81,7 +81,8 @@ def test_agent_modules_export_spiffe_and_principal_outputs(agent_dir: pathlib.Pa
 def test_layer_3_security_restricts_orchestrator_from_mcp_project_egress():
     """Layer 3 security must not grant cx-mortgage-orchestrator roles/iap.egressor on mcps_project_id."""
     content = SECURITY_AGENT_ID_TF.read_text()
-    assert 'resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_mcp_run_invoker"' in content
+    # No agent principalSet holds project-level run.invoker on the MCPs project (see test_agent_impersonation_scope.py).
+    assert 'resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_mcp_run_invoker"' not in content
 
     # Extract the cx_mortgage_orchestrator_iap_egressor resource block
     marker = 'resource "google_project_iam_member" "cx_mortgage_orchestrator_iap_egressor"'
