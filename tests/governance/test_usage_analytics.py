@@ -223,6 +223,10 @@ def test_usage_events_unions_every_landing_table():
     assert "%{ for i, table in landing_tables ~}" in sql
     assert "UNION ALL" in sql
     assert "WHERE jsonPayload.schema = 'esmeralda.usage'" in sql
+    # Sinks may export an entry twice: one row per (insertId, timestamp), here and in the legacy stdout branch.
+    assert "QUALIFY ROW_NUMBER() OVER (PARTITION BY insertId, timestamp) = 1" in sql
+    assert "QUALIFY ROW_NUMBER() OVER (PARTITION BY insertId, timestamp) = 1" in _read(SQL_DIR / "vw_usage_normalized.sql.tpl")
+    assert '{"name": "insertId", "type": "STRING"' in _read(FINOPS_TF)
     # Logging's export names for the contract's dotted keys.
     for col in ("gen_ai.usage_input_tokens", "gen_ai.usage_output_tokens", "gen_ai.request_model", "caller.verified", "gateway.product"):
         assert f"jsonPayload.{col}" in sql, col

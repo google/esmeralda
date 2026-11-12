@@ -92,6 +92,7 @@ resource "google_bigquery_table" "reasoning_engine_stdout" {
   schema = <<EOF
 [
   {"name": "timestamp", "type": "TIMESTAMP", "mode": "NULLABLE"},
+  {"name": "insertId", "type": "STRING", "mode": "NULLABLE"},
   {"name": "logName", "type": "STRING", "mode": "NULLABLE"},
   {"name": "severity", "type": "STRING", "mode": "NULLABLE"},
   {"name": "trace", "type": "STRING", "mode": "NULLABLE"},

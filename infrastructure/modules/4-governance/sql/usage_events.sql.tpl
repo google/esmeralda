@@ -67,4 +67,6 @@ SELECT
   jsonPayload.latency_ms AS latency_ms
 FROM `${usage_dataset_id}.${table}`
 WHERE jsonPayload.schema = 'esmeralda.usage'
+-- Log sinks may export one entry more than once: keep one row per (insertId, timestamp).
+QUALIFY ROW_NUMBER() OVER (PARTITION BY insertId, timestamp) = 1
 %{ endfor ~}

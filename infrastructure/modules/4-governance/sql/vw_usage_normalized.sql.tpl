@@ -141,6 +141,8 @@ legacy_stdout AS (
     CAST(NULL AS JSON) AS dimensions
   FROM `${dataset_id}.aiplatform_googleapis_com_reasoning_engine_stdout`
   WHERE jsonPayload.event = 'genai_token_consumption'
+  -- Log sinks may export one entry more than once: keep one row per (insertId, timestamp).
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY insertId, timestamp) = 1
 ),
 
 legacy_events_table AS (
