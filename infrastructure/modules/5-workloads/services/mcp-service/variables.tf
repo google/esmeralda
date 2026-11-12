@@ -116,3 +116,39 @@ variable "secret_env_vars" {
   }))
   default = {}
 }
+
+variable "caller_allowlist" {
+  description = "Catalog caller guard allowlist of this target (catalog/.resolved/<env>.json attribution: policy + allowlists[<target>] as callers), with <unit>:<output> principal references. null turns the guard off (ESMERALDA_CALLER_ALLOWLIST unset)."
+  type = object({
+    policy = object({
+      unmapped_caller   = string
+      declared_mismatch = string
+    })
+    callers = list(object({
+      principal    = string
+      caller       = optional(string)
+      team         = optional(string)
+      cost_centers = optional(list(string), [])
+      shared       = optional(bool, false)
+    }))
+  })
+  default = null
+}
+
+variable "identity_refs" {
+  description = "Values of the <unit>:<output> references used by caller_allowlist (service account e-mails from unit outputs)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "extra_allowed_callers" {
+  description = "Identities the guard accepts besides the catalog callers, e.g. an enabled gateway adapter that calls with its own token (team null: the gateway record attributes the call)"
+  type = list(object({
+    principal    = string
+    caller       = optional(string)
+    team         = optional(string)
+    cost_centers = optional(list(string), [])
+    shared       = optional(bool, false)
+  }))
+  default = []
+}

@@ -40,9 +40,16 @@ SERVICES_DIR = Path(__file__).resolve().parents[3] / "services"
 
 
 def _load_service(name: str, relpath: str) -> ModuleType:
-    """Import a service module by path with telemetry stubbed (no GCP calls)."""
+    """Import a service module by path with telemetry stubbed (no GCP calls).
+
+    The service's vendored ``caller_guard`` (standard library only) is imported from its own folder.
+    """
     otel = MagicMock()
-    with patch.dict(sys.modules, {"otel_setup": otel}):
+    guard_path = (SERVICES_DIR / relpath).parent / "caller_guard.py"
+    guard_spec = importlib.util.spec_from_file_location("caller_guard", guard_path)
+    guard = importlib.util.module_from_spec(guard_spec)
+    with patch.dict(sys.modules, {"otel_setup": otel, "caller_guard": guard}):
+        guard_spec.loader.exec_module(guard)
         spec = importlib.util.spec_from_file_location(name, SERVICES_DIR / relpath)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

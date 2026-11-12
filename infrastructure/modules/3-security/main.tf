@@ -394,6 +394,24 @@ resource "google_service_account_iam_member" "test_vm_token_creator" {
   member             = "serviceAccount:${google_service_account.test_vm_sa.email}"
 }
 
+# Verified attribution probe: an authenticated identity that is deliberately in no catalog entry.
+# `esmeralda verify` mints its tokens on the test VM and expects 403 from every target (no gateway,
+# IAM or caller-guard binding is ever compiled for it). It is granted NOTHING: the only binding is
+# the test VM's right to mint its tokens. Never add it to the catalog or to any role.
+resource "google_service_account" "probe_unregistered_sa" {
+  count        = var.enable_unregistered_probe ? 1 : 0
+  account_id   = "sa-probe-unregistered-${var.environment}"
+  display_name = "Esmeralda unregistered-caller probe (no roles; verify expects 403)"
+  project      = var.cx_agents_project_id
+}
+
+resource "google_service_account_iam_member" "probe_unregistered_test_vm_token_creator" {
+  count              = var.enable_unregistered_probe ? 1 : 0
+  service_account_id = google_service_account.probe_unregistered_sa[0].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.test_vm_sa.email}"
+}
+
 # --------------------------------------------------------------------
 # Direct VPC Egress Subnet User Permissions
 # --------------------------------------------------------------------

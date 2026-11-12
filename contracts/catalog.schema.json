@@ -231,8 +231,9 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "unmapped_caller": {"enum": ["deny", "flag"]},
-            "declared_mismatch": {"enum": ["reject", "bill_own_team"]}
+            "unmapped_caller": {"enum": ["deny", "flag"], "description": "An authenticated caller that is not in the catalog: deny (403, fail closed) or flag (allow, mark the record unattributed and alert). flag is accepted only in the environments listed in flag_environments, and never widens a gateway or IAM grant."},
+            "declared_mismatch": {"enum": ["reject", "bill_own_team"], "description": "A declared cost centre the catalog does not allow for the verified caller: reject (403) or bill_own_team (bill the caller's verified team and flag the record)."},
+            "flag_environments": {"$ref": "#/$defs/names", "description": "Environments where unmapped_caller: flag is accepted (default: [dev])."}
           }
         },
         "defaults": {

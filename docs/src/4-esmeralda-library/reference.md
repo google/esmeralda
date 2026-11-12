@@ -233,6 +233,21 @@ A frozen dataclass.
 | `is_service_account_email(value) -> bool` | `True` when `value` is a `*.gserviceaccount.com` service account identifier |
 | `AuthorizationError(reason, *, status_code=403)` | Raised when verification fails |
 
+## `esmeralda.attribution`
+
+The catalog caller guard: it maps the platform-verified caller to a catalog caller and team, and rejects (`deny`) or flags callers missing from the catalog. Standard library only; the MCP servers vendor it unchanged as `caller_guard.py`. See [5.3 §5](../5-multi-cloud/03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end).
+
+| Name | Description |
+|---|---|
+| `CallerGuard(app, allowlist=None, *, exempt_paths=("/health", "/healthz"))` | ASGI middleware. `allowlist` defaults to `Allowlist.from_env()`; without one it passes everything through. Denied requests get `401` (no verified identity) or `403` (unmapped caller, declared mismatch) with a JSON reason. Allowed requests carry the decision in `scope["state"]["esmeralda.caller"]` and `current()`, plus `X-Esmeralda-Billed-Team` when attributed |
+| `Allowlist.from_env()` / `from_json(text)` / `from_mapping(data)` | The compiled allowlist (`{"policy": {...}, "token_validated_by": "cloud_run_iam", "callers": [{principal, caller, team, cost_centers, shared}]}`); invalid values raise |
+| `verified_principal(headers, *, validated_by=None) -> str \| None` | The caller from the Google ID token in `X-Serverless-Authorization` or `Authorization`: `email`, else `sub` (`spiffe://` ids in their `principal://` form). With `validated_by="cloud_run_iam"` (Cloud Run IAM validated the header) the token counts as is; otherwise only a platform signature-stripped token counts. Malformed or missing tokens give `None` |
+| `identity_evidence(headers) -> dict` | The shape of each identity header (`absent`, `opaque`, `jwt_signed`, `jwt_stripped`, `malformed`), never its value; logged with unverified decisions |
+| `decide(allowlist, principal, declared_cost_center=None) -> Decision` | Applies `unmapped_caller` and `declared_mismatch` |
+| `Decision` | `allowed`, `status`, `reason` (`mapped`, `unmapped`, `unverified`, `declared_mismatch`), `principal`, `caller`, `team`, `cost_center`, `declared_cost_center`, `declared_mismatch`; `verified` is true only for a mapped principal with a team; `caller_record()` is the usage record's `caller` |
+| `current() -> Decision \| None` | The decision for the request being served (the plugin uses it to fill `caller.verified`, `caller.principal`, `caller.team`) |
+| `ALLOWLIST_ENV`, `DECLARED_COST_CENTER_HEADER`, `BILLED_TEAM_HEADER` | `ESMERALDA_CALLER_ALLOWLIST`, `X-Esmeralda-Cost-Center`, `X-Esmeralda-Billed-Team` |
+
 ## `esmeralda.a2a`
 
 | Name | Description |
@@ -432,6 +447,7 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | `a2a_server(config, *, otel_to_cloud=False)` | The FastAPI app for an A2A agent: the package's `app` behind the A2A REST transport, mounted at `/`, `/a2a` and `/api/a2a`. Uses the package's `a2a_task_store_builder` if it has one, else `InMemoryTaskStore` (warns if `resources.max_instances > 1` without a custom builder) |
 | `agent_card(config)` | The A2A `AgentCard` from `agent.yaml` `agent_card`. `A2A_AGENT_URL` overrides `url`; missing fields get defaults |
 | `session_service()` | `VertexAiSessionService` when `GOOGLE_CLOUD_AGENT_ENGINE_ID` is set and `USE_IN_MEMORY_SESSIONS` isn't `1`; else `InMemorySessionService` |
+| `install_caller_guard(server) -> bool` | Adds `attribution.CallerGuard` when `ESMERALDA_CALLER_ALLOWLIST` is set, except on Agent Runtime (the container never sees the caller's credential; the Agent Gateway record attributes those calls). Called by `a2a_server` |
 
 ## `esmeralda.config`
 
@@ -479,6 +495,7 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | `USER_AUTH_ID` | `context.user_token`, `usage.redact` | Gemini Enterprise authorization id of the user token (default `user_auth_token`); that key is never emitted in telemetry |
 | `ESMERALDA_USER_CREDENTIAL_TARGETS` | `user_credential`, `mcp.headers_for`, `a2a.request_metadata` | JSON `{"<host>": "<header>"}`: the only hosts that receive the delegated user credential, and the header each reads (default `X-User-Token`). Unset or malformed: none |
 | `USER_CREDENTIAL_HEADER` | `mcp_authz.verify_request` (MCP servers) | Header the server reads the user credential from (default `X-User-Token`) |
+| `ESMERALDA_CALLER_ALLOWLIST` | `attribution.CallerGuard`, `serve.install_caller_guard` | JSON allowlist compiled from the catalog (`attribution` in `catalog/.resolved/<env>.json`, written by the Terraform unit). Unset: guard off. Invalid: startup error |
 | `ESMERALDA_WORKLOAD_NAME` | `usage.Workload.from_env` | `workload.name` of usage records (default: the plugin's agent name, else `AGENT_NAME`, `OTEL_SERVICE_NAME`, `K_SERVICE`) |
 | `ESMERALDA_TEAM` | `usage.Workload.from_env` | `workload.team` |
 | `ESMERALDA_RUNTIME` | `usage.Workload.from_env` | `workload.runtime` (`agent_engine`, `cloud_run`, `gke`, `external`); detected from `GOOGLE_CLOUD_AGENT_ENGINE_ID`, `K_SERVICE`, `KUBERNETES_SERVICE_HOST` if unset |

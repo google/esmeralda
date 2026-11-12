@@ -29,8 +29,9 @@ Per invocation it:
   ``mcp_tool_execution`` events (``ESMERALDA_LEGACY_TELEMETRY_EVENTS=false`` turns them off).
 
 ``workload`` comes from the environment (``usage.Workload.from_env``, framework ``adk``).
-``caller.declared`` comes from the caller context, with ``caller.verified=false``: the caller
-context is self-declared, so it is never used as verified attribution.
+``caller.declared`` comes from the caller context. ``caller.verified``, ``caller.principal`` and
+``caller.team`` are set only when the caller guard (``esmeralda.attribution``) verified the caller
+for this request; the caller context is self-declared, so it is never used as verified attribution.
 
 Telemetry never breaks a request: failures are logged and the run continues.
 """
@@ -47,7 +48,7 @@ from urllib.parse import urlsplit
 
 from google.adk.plugins.base_plugin import BasePlugin
 
-from esmeralda import context, lifecycle, usage, user_credential
+from esmeralda import attribution, context, lifecycle, usage, user_credential
 from esmeralda.telemetry import TelemetryEmitter
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
                 invocation_context.invocation_id,
                 _Run(
                     started=time.monotonic(),
-                    caller=usage.Caller.from_declared(caller.to_dict() if caller else None),
+                    caller=_caller(caller),
                     agent_name=str(getattr(agent, "name", None) or self.agent_name),
                     conversation_id=_session_id(invocation_context, default=None),
                 ),
@@ -296,6 +297,23 @@ class EsmeraldaTelemetryPlugin(BasePlugin):
     def _run_for(self, ctx: Any) -> _Run | None:
         invocation_id = getattr(ctx, "invocation_id", None)
         return self._runs.get(invocation_id) if isinstance(invocation_id, str) else None
+
+
+def _caller(declared: context.CallerContext | None) -> usage.Caller | None:
+    """The record's ``caller``: verified principal and team only from the caller guard
+    (``esmeralda.attribution``, i.e. from authentication); the caller context stays ``declared``."""
+    decision = attribution.current()
+    declared_map = dict(declared.to_dict()) if declared else {}
+    if decision is None:
+        return usage.Caller.from_declared(declared_map or None)
+    record = decision.caller_record()
+    declared_map.update(record.get("declared") or {})
+    return usage.Caller(
+        principal=record.get("principal"),
+        team=record.get("team"),
+        verified=bool(record.get("verified")),
+        declared=usage.string_map(declared_map),
+    )
 
 
 def _remember(store: OrderedDict, key: str, value: Any) -> None:

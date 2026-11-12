@@ -295,7 +295,7 @@ resource "google_monitoring_dashboard" "finops_token_analytics" {
           "dataSets": [
             {
               "timeSeriesQuery": {
-                "prometheusQuery": "sum by (workload, source) (${local.usage_promql_json["increase|unattributed_records|5m"]})"
+                "prometheusQuery": "sum by (workload, source) (${local.usage_promql_json["increase|unattributed_guarded_records|5m"]})"
               },
               "plotType": "STACKED_BAR"
             }

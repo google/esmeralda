@@ -17,6 +17,7 @@ care, and update both agents and the docs in the same PR):
 | `user_credential.outgoing_headers(...)`, `user_credential.redact(...)` | `user_credential.py` | Which hosts receive the user credential (`ESMERALDA_USER_CREDENTIAL_TARGETS`) and redaction; the credential never enters telemetry |
 | `auth_manager.resolve_user_token(ctx, ...)`, `auth_manager.DelegatedContext`, `auth_manager.spiffe_id()` | `auth_manager.py` | Agent Identity Auth Manager client (3LO/2LO delegation & SPIFFE identity) |
 | `mcp_authz.verify_request(headers, ...)` | `mcp_authz.py` | Zero-latency MCP end-user & agent delegation claim guard |
+| `attribution.CallerGuard`, `attribution.decide`, `attribution.current()` | `attribution.py` | Catalog caller guard: platform-verified caller → catalog caller → team, deny/flag unknown callers. Standard library only: MCP servers vendor it byte-identical as `apps/services/*/caller_guard.py` (copy it over after every change; a guard test checks) |
 | `a2a.remote_agent(name, url=..., description=...)` | `a2a.py` | `RemoteA2aAgent` pinned to the gateway URL, card from `<url>/v1/card` |
 | `auth.id_token(audience)`, `auth.access_token()`, `auth.token_kind(url)`, `auth.bearer_token(url)` | `auth.py` | Cached ID and OAuth2 access tokens (plus `*_async`); impersonates `SERVICE_ACCOUNT_EMAIL` when set; skipped for local URLs |
 | `context.user_token(ctx)`, `context.CallerContext` | `context.py` | End-user token and caller identity propagation |

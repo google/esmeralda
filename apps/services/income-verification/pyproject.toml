@@ -40,4 +40,4 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["main", "otel_setup"]
+py-modules = ["main", "otel_setup", "caller_guard"]

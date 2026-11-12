@@ -164,4 +164,89 @@ Two alarms keep the view honest:
 
 ---
 
+## 5. Verified Attribution on Internal Hops, End to End
+
+This section follows one internal call from catalog entry to chargeback row: an agent or a platform identity calling an agent or an MCP server inside Google Cloud. The partner front door (Apigee apps and cross-cloud callers) uses the same table and policy and is documented separately as a follow-up.
+
+### 5.1 Who the callee can verify, per hop
+
+| Hop | Verified identity | Read by | Deny enforced by |
+| :--- | :--- | :--- | :--- |
+| Agent → agent or MCP server through the Agent Gateway | The calling agent's Agent Identity (`principal://…/reasoningEngines/<id>`), proven by mTLS | The Agent Gateway's authorization decision (IAP egress audit record: principal, target, granted or denied) | Per-target `roles/iap.egressor` lists compiled from the catalog: a principal with no binding gets `403` at the gateway |
+| Any caller → MCP server on Cloud Run | The caller's Google ID token (`email`, or the service account's numeric id in `sub` when the token has no email claim). Cloud Run IAM validates it before the request reaches the container | The in-process **caller guard** (`esmeralda.attribution`) | Cloud Run `run.invoker` (catalog callers only), then the guard's allowlist |
+| Any caller → agent on Agent Runtime | The caller's access token, checked by Agent Runtime IAM. The container never receives the caller's credential | The Agent Gateway record only (when the caller is an agent) | `aiplatform.user` and the gateway lists; no in-process check is possible |
+| Humans and operators | Group membership | IAM | Group grants (the catalog maps the group to a team) |
+
+Self-asserted values (`X-Agent-Spiffe-Id`, `X-API-Key`, the A2A caller context) never count as verified.
+
+> [!NOTE]
+> **Why Agent Runtime records are attributed at the gateway, not in the process.** Agent Runtime authenticates the caller at its front end, then calls the agent's container with the platform's own credential. The caller's token never reaches the container, so no code in the agent can verify who called. The usage records an agent on Agent Runtime writes therefore always carry `caller.verified = false`, and the Agent Gateway's authorization record (verified principal and target) is what attributes the hop. For the same reason, the "unattributed" checks are split in two, each with an expected count of 0:
+>
+> * workload records from guarded workloads (`workload.runtime` other than `agent_engine`) without `caller.verified = true`;
+> * Agent Gateway decisions that let a principal through (`granted = true`) when that principal has no `principal_teams` row.
+
+### 5.2 Catalog policy
+
+```yaml
+# catalog/policy.yaml
+policy:
+  attribution:
+    unmapped_caller: deny          # deny (403) | flag (allow, record unattributed, alert)
+    declared_mismatch: reject      # reject (403) | bill_own_team
+    flag_environments: [dev]       # flag is a resolve error anywhere else
+```
+
+`flag` only relaxes the in-process guard. Gateway and IAM grants always come from the catalog, so a caller that is not in the catalog has no grant in either mode.
+
+### 5.3 What the catalog compiles
+
+`esmeralda catalog resolve --env <env> --write` adds an `attribution` block to `catalog/.resolved/<env>.json`:
+
+* **`principal_teams`**: one row per verified principal (`principal`, `principal_type`, `caller`, `team`, `cost_centers`). Each agent contributes its Agent Identity principal (`agent_runtime`) and the service account it calls out as. Callers contribute their identity (`group:<email>` for groups); a caller identified by a unit output is included only when a target of the environment lists it. The Layer 5 `iap-egress` unit resolves the references and replaces the `source = catalog` rows of the Layer 4 `principal_teams` table in one transaction, only when the rows change. The usage views read that table through `vw_principal_teams`.
+* **`allowlists`**: for each guarded target (MCP servers and A2A agents), the principals the caller guard accepts, with the team and the cost centres each one may declare on that target.
+* **`shared_principals`**: identities several agents present (the shared invoker service account while agents don't have their own outbound identity, [#134](https://github.com/google/esmeralda/issues/134)). They are not in `principal_teams`. On a target they resolve to a team only when every agent caller of that target belongs to the same team. Otherwise the call is accepted but carries no team, and the gateway record decides who pays.
+
+The compiler also checks that **anything allowed is attributable**. A principal that would get a gateway or IAM grant without a `principal_teams` row, or one principal mapped to two teams, fails the build.
+
+### 5.4 The caller guard
+
+The MCP servers wrap their app with the guard: `app = CallerGuard(app)`. Each one ships a byte-identical copy of the package module as `caller_guard.py`, because the module uses only the standard library. The guard reads its allowlist from `ESMERALDA_CALLER_ALLOWLIST`, which the service's Terraform unit writes from the compiled block (`env.yaml` `attribution.caller_guard`). The unit also writes:
+
+* `"token_validated_by": "cloud_run_iam"`. The service requires IAM invoker auth and internal ingress, so Cloud Run has already validated the identity header (`X-Serverless-Authorization`, else `Authorization`) when the request arrives. Behind the internal load balancer the token arrives with its signature. Without this setting the guard trusts only a token whose signature the platform removed.
+  * **Trust assumption:** the unit sets it only for services with internal ingress and IAM invoker auth required (no `allUsers`).
+  * The first identity header present decides. When `X-Serverless-Authorization` is present, `Authorization` is never read, even if the former is empty or unparseable: Cloud Run validates only `X-Serverless-Authorization` and passes `Authorization` through untouched.
+* An alias for every service-account entry under the account's numeric unique id. A Google ID token minted without the email claim (the VM metadata server's default format, an Apigee `GoogleIDToken` without `IncludeEmail`) names the account only in `sub`.
+
+Each decision is one JSON log line (`jsonPayload.event = "esmeralda.caller_decision"`, with `reason`, `principal`, `team`). Unverified decisions also log the shape of each identity header (`absent`, `opaque`, `jwt_signed`, `jwt_stripped`, `malformed`), never its value. For each request:
+
+| Situation | `deny` / `reject` | `flag` / `bill_own_team` |
+| :--- | :--- | :--- |
+| No validated identity (missing or malformed header; or a still-signed token where the platform's validation isn't declared) | `401` | Allowed, `caller.verified = false` |
+| Verified principal not in the allowlist | `403` | Allowed, principal recorded, no team |
+| Mapped principal declaring a cost centre (`X-Esmeralda-Cost-Center`) it may not use | `403` | Allowed, billed to its own team, `declared` keeps the claim |
+| Mapped principal | Allowed. `caller.verified = true`, `caller.principal`, `caller.team`; the response carries `X-Esmeralda-Billed-Team` | Same |
+
+`esmeralda serve` installs the same guard on A2A servers when an allowlist is configured, except on Agent Runtime, where the container can't see the caller. The ADK plugin then fills `caller.verified`, `caller.principal` and `caller.team` only from the guard's decision.
+
+### 5.5 Proving it: `esmeralda verify`
+
+On top of the route probes, `scripts/test_gateway.sh` (run by `esmeralda verify`) runs two attribution probes from the test VM:
+
+* **Unregistered caller:** the probe identity `sa-probe-unregistered-<env>` is in no catalog entry and holds no role. The test VM can only mint its tokens. It calls every MCP and A2A host and must get `403`, in both `deny` and `flag`, because IAM and the Agent Gateway reject it before any caller guard. The probe reads the effective policy from the resolved catalog. If a host ever let the identity through to its guard, `deny` still requires `403`. Under `flag`, the call may succeed but must stay unattributed, and the probe warns that the IAM grant shouldn't exist.
+* **Declared mismatch:** the test VM declares another team's cost centre on every guarded MCP host. It must get `403` under `reject`, or `2xx` billed to its own team under `bill_own_team`.
+
+Both are controlled by `env.yaml` `attribution` (`unregistered_probe`, `caller_guard`): on in `dev`, off in `prd` until the rollout below is done there.
+
+### 5.6 Rolling it out without locking out traffic
+
+1. In `dev`, set `catalog/environments/dev.yaml` `policy.attribution.unmapped_caller: flag`. Redeploy the MCP services, run `esmeralda verify --env dev`, and check that the guard logged no `"reason": "unmapped"` or `"unverified"` decision (`esmeralda logs <service> --env dev`).
+2. Remove the override (deny), redeploy, and run `esmeralda verify --env dev` again, including the `403` probes.
+3. Apply the `iap-egress` unit (`env.yaml` `attribution.principal_teams`). It loads the `principal_teams` rows and creates the gateway attribution count and alert. Both unattributed alerts are on by default (Layer 4 `alert_on_unattributed_usage`), each expecting 0.
+4. Repeat in `prd` by enabling `attribution.caller_guard`, `attribution.unregistered_probe` and `attribution.principal_teams` in its `env.yaml` (`flag` is refused there).
+
+> [!NOTE]
+> The partner hop (Apigee apps and cross-cloud `iss#sub` callers) attributes from the gateway's `ML-interaction` record: the callee only sees the proxy's identity. Mapping those principals through the same `principal_teams` table, with the same `unmapped_caller` policy, is the next step.
+
+---
+
 **Next Subsection:** Identity, connectivity and telemetry are in place. Let's put them together and onboard a real (synthetic) agent from another cloud, step by step. Continue to **[5.4 Bringing an Agent from Another Cloud, End to End](./04-bringing-an-agent-from-another-cloud.md)**.

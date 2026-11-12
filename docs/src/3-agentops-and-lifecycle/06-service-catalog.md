@@ -169,9 +169,17 @@ flowchart LR
     `layer-3-security:mcp_invoker_sa_email`. Delete the block (or set it to `null` in one
     environment's overrides) once every agent authenticates with its native Agent Identity.
 
+6. **Compile verified attribution.** The same callers compile into an `attribution` block: the
+    `principal_teams` rows (each verified principal, its catalog caller and the team that pays), the
+    shared identities, and per-target allowlists for the in-process caller guard on MCP servers
+    (`ESMERALDA_CALLER_ALLOWLIST`). `policy.attribution.unmapped_caller` (`deny`, or `flag` in the
+    environments listed in `flag_environments`) and `declared_mismatch` (`reject` or `bill_own_team`)
+    decide what the guard does with unknown callers and foreign cost centres. The compile fails if a
+    principal that gets a grant has no team, or if one principal maps to two teams. See
+    [5.3 §5](../5-multi-cloud/03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end).
+
 Later phases compile the same resolved catalog into Apigee products and `allowed_tools`, Agent
-Gateway rules beyond caller lists, the `esmeralda serve` caller allowlist, observability
-configuration and the `principal → team` attribution table.
+Gateway rules beyond caller lists and observability configuration.
 
 ---
 

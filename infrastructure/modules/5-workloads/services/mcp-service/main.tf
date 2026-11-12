@@ -45,6 +45,50 @@ locals {
     "https://${var.internal_hostname}/mcp",
   ]
   effective_custom_audiences = length(var.custom_audiences) > 0 ? var.custom_audiences : local.default_custom_audiences
+
+  # Catalog caller guard (caller_guard.py in the image): the catalog-compiled allowlist of this
+  # target (catalog/.resolved/<env>.json attribution.allowlists) with its `<unit>:<output>`
+  # references replaced by identity_refs values. Agent Identity principals (agents/<name>:...) are
+  # dropped: the agents deploy after the services, and today they call MCP servers with a service
+  # account ID token (the shared invoker identity until per-agent identities land, google/esmeralda#134),
+  # whose entry is kept. Any other reference left unresolved fails the plan.
+  ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
+  caller_guard_callers = var.caller_allowlist == null ? [] : concat(
+    [
+      for entry in var.caller_allowlist.callers : merge(entry, { principal = lookup(var.identity_refs, entry.principal, entry.principal) })
+      if !startswith(entry.principal, "agents/")
+    ],
+    var.extra_allowed_callers,
+  )
+  caller_guard_unresolved = [for entry in local.caller_guard_callers : entry.principal if can(regex(local.ref_pattern, entry.principal))]
+
+  # A Google ID token minted without the email claim (VM metadata server default, Apigee
+  # GoogleIDToken without IncludeEmail) names a service account only by its numeric unique id in
+  # `sub`: each service-account entry is also listed under that id, with the same caller and team.
+  caller_guard_sa_emails = toset([
+    for entry in local.caller_guard_callers : entry.principal
+    if can(regex("^[^@:/]+@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", entry.principal))
+  ])
+  caller_guard_aliases = [
+    for entry in local.caller_guard_callers : merge(entry, { principal = data.google_service_account.caller_guard[entry.principal].unique_id })
+    if contains(local.caller_guard_sa_emails, entry.principal)
+  ]
+  caller_guard_env = var.caller_allowlist == null ? {} : {
+    ESMERALDA_CALLER_ALLOWLIST = jsonencode({
+      policy  = var.caller_allowlist.policy
+      callers = concat(local.caller_guard_callers, local.caller_guard_aliases)
+      # This service requires IAM invoker auth (no allUsers binding) and internal ingress, so Cloud
+      # Run has validated the caller's identity header before the request reaches the container.
+      token_validated_by = "cloud_run_iam"
+    })
+  }
+}
+
+# Unique ids of the caller guard's service-account principals (see caller_guard_aliases).
+data "google_service_account" "caller_guard" {
+  for_each   = local.caller_guard_sa_emails
+  account_id = split("@", each.value)[0]
+  project    = regex("@([a-z0-9-]+)\\.iam\\.gserviceaccount\\.com$", each.value)[0]
 }
 
 # Dedicated per-service workload Service Account (sa-<service>-<env>)
@@ -128,7 +172,7 @@ resource "google_cloud_run_v2_service" "service" {
       }
 
       dynamic "env" {
-        for_each = var.extra_env_vars
+        for_each = merge(var.extra_env_vars, local.caller_guard_env)
         content {
           name  = env.key
           value = env.value
@@ -156,6 +200,13 @@ resource "google_cloud_run_v2_service" "service" {
         subnetwork = var.subnet_id
       }
       egress = "ALL_TRAFFIC"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.caller_guard_unresolved) == 0
+      error_message = "caller_allowlist references without a value in identity_refs: ${join(", ", local.caller_guard_unresolved)}. Map them to unit outputs in the service's terragrunt unit."
     }
   }
 }

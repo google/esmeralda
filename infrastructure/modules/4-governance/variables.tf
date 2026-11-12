@@ -97,10 +97,11 @@ variable "slo_config" {
 
 variable "alert_on_unattributed_usage" {
   type    = bool
-  default = false
-  # Off until verified attribution lands (observability design, phase 6): until then workloads send
-  # caller.verified = false and every record would count as unattributed. Flip the default to true then.
-  description = "Alert when any esmeralda.usage record lacks a verified caller (expected count: 0, design principle 'fail closed')."
+  default = true
+  # On since verified attribution (catalog caller guard + principal_teams): the record metric counts only
+  # guarded workloads (not Agent Runtime, whose agents never see the caller's credential), and the
+  # iap-egress unit counts gateway decisions for principals without a principal_teams row.
+  description = "Alert when a guarded workload's esmeralda.usage record lacks a verified caller, or a gateway lets through a principal without a principal_teams row (expected count: 0, design principle 'fail closed')."
 }
 
 # env.yaml's monitoring_config. Only error_rate_threshold_pct is wired so far (the ingress gateway 5xx

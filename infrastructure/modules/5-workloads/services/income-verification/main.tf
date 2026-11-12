@@ -19,6 +19,9 @@ module "mcp_service" {
   memory_limit             = var.memory_limit
   tools_spec_path          = var.tools_spec_path
   internal_hostname        = var.internal_hostname
+  caller_allowlist         = var.caller_allowlist
+  identity_refs            = var.identity_refs
+  extra_allowed_callers    = var.extra_allowed_callers
 }
 
 moved {

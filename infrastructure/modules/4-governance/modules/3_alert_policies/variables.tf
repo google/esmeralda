@@ -60,8 +60,8 @@ variable "slo_config" {
 
 variable "alert_on_unattributed_usage" {
   type        = bool
-  description = "Alert when any esmeralda.usage record lacks a verified caller (off until verified attribution, phase 6)"
-  default     = false
+  description = "Alert when a guarded workload's esmeralda.usage record (not Agent Runtime) lacks a verified caller"
+  default     = true
 }
 
 variable "usage_metric_resource_types" {

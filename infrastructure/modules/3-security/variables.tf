@@ -112,3 +112,9 @@ variable "enable_agent_identity" {
   default     = true
 }
 
+
+variable "enable_unregistered_probe" {
+  description = "Create the unregistered-caller probe identity (sa-probe-unregistered-<env>): in no catalog entry, granted no role, impersonable by the test VM only. `esmeralda verify` uses it to prove unknown callers get 403."
+  type        = bool
+  default     = false
+}

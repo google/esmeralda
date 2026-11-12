@@ -3,8 +3,9 @@
 The catalog says which **targets** exist (agents, MCP servers, models, legacy APIs), which **team**
 owns each one, which **callers** may call it, through which **gateway**, and **who pays**. It is the
 source of truth for the entry-point hosts, the direct backends, the `run.invoker` /
-`aiplatform.user` grants and `esmeralda verify` probes; later phases compile it into Apigee
-products, Agent Gateway rules, the `esmeralda serve` allowlist and the usage attribution table.
+`aiplatform.user` grants, the Agent Gateway caller lists, the caller guard allowlists, the
+`principal_teams` attribution rows and `esmeralda verify` probes; later phases compile it into
+Apigee products and further Agent Gateway rules.
 
 Every document follows [`contracts/catalog.schema.json`](../contracts/catalog.schema.json) and starts with:
 
@@ -96,6 +97,24 @@ on targets with an agent caller. The unit maps each reference to a unit output, 
 entry drives both the invoker grants and the gateway list. Callers with `agent_gateway: false`
 (such as the Apigee proxy, which calls the services directly) keep their invoker grant but are left
 out of `iap_egress`.
+
+**Verified attribution.** The same callers also compile into `attribution` (env.yaml
+`catalog_attribution`):
+
+- `policy`: `unmapped_caller` (`deny`, or `flag` only in `policy.attribution.flag_environments`,
+  default `[dev]`) and `declared_mismatch` (`reject` or `bill_own_team`);
+- `principal_teams`: one row per verified principal (agent principals and service accounts, caller
+  identities, `group:<email>`), with its `principal_type` (`agent_runtime`, `service_account`,
+  `group`, ...), caller, team and cost centres. Callers with a unit-output identity are included
+  only when a target of the environment lists them. These are
+  the rows of the attribution table the usage views join;
+- `shared_principals`: the shared workload identity, which several agents present, so it has no row;
+- `allowlists`: per MCP / A2A target, the principals the in-process caller guard accepts and the
+  cost centres each one may declare there. The service units write them into
+  `ESMERALDA_CALLER_ALLOWLIST`.
+
+The compile fails when a principal that gets a grant has no team, or when one principal maps to
+two teams.
 
 The runtime and Terraform never read the sources directly. After editing `catalog/`, run
 `esmeralda catalog resolve --env all --write` and commit the generated files with the change;

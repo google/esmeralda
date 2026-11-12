@@ -47,7 +47,7 @@ locals {
   usage_promql_terms = [
     "increase|input_tokens_sum|1m", "increase|output_tokens_sum|1m", "increase|cached_tokens_sum|1m",
     "increase|reasoning_tokens_sum|1m", "increase|tool_calls|1m",
-    "increase|input_tokens_sum|5m", "increase|output_tokens_sum|5m", "increase|unattributed_records|5m",
+    "increase|input_tokens_sum|5m", "increase|output_tokens_sum|5m", "increase|unattributed_guarded_records|5m",
     "rate|input_tokens_bucket|5m",
   ]
   usage_promql = {
@@ -172,12 +172,58 @@ resource "google_logging_metric" "usage_tool_calls" {
 # 3c. Unattributed usage (usage/unattributed_records): records without a verified caller. "Unattributed is
 # an alarm": the catalog fails closed, so the expected count is 0 (alert 3d). `NOT ...=true` also matches
 # records that omit caller or caller.verified.
+# It counts every unverified record (Agent Runtime included, for reference); the alert (3d) and the
+# dashboard tile read the guarded variant below.
 resource "google_logging_metric" "usage_unattributed_records" {
   for_each    = local.usage_metric_projects
   name        = "usage/unattributed_records"
   project     = each.value
   filter      = "${local.usage_record_filter} AND NOT jsonPayload.caller.verified=true"
   description = "esmeralda.usage records whose caller is missing or not verified (expected: 0)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key        = "workload"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "source"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "event"
+      value_type = "STRING"
+    }
+    labels {
+      key        = "caller_team"
+      value_type = "STRING"
+    }
+  }
+
+  label_extractors = {
+    "workload"    = "EXTRACT(jsonPayload.workload.name)"
+    "source"      = "EXTRACT(jsonPayload.source)"
+    "event"       = "EXTRACT(jsonPayload.event)"
+    "caller_team" = "EXTRACT(jsonPayload.caller.team)"
+  }
+}
+
+# 3c'. Unattributed usage from guarded workloads (usage/unattributed_guarded_records): the same records
+# minus Agent Runtime. Agent Runtime never hands the caller's credential to the agent container, so
+# agents there always write caller.verified = false and their hops are attributed from the Agent
+# Gateway record instead (the iap-egress unit counts gateway decisions for principals without a
+# principal_teams row: attribution/gateway_unattributed_decisions, expected 0 as well). A separate
+# metric (not a label on 3c) so the deployed metric is never replaced. Records without
+# workload.runtime count (they are not Agent Runtime).
+resource "google_logging_metric" "usage_unattributed_guarded_records" {
+  for_each    = local.usage_metric_projects
+  name        = "usage/unattributed_guarded_records"
+  project     = each.value
+  filter      = "${local.usage_record_filter} AND NOT jsonPayload.caller.verified=true AND NOT jsonPayload.workload.runtime=\"agent_engine\""
+  description = "esmeralda.usage records from guarded workloads (not Agent Runtime) whose caller is missing or not verified (expected: 0)"
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -219,22 +265,24 @@ resource "google_monitoring_alert_policy" "unattributed_usage" {
   documentation {
     content   = <<EOF
 ### 🚨 USAGE WITHOUT A VERIFIED CALLER
-**Alert Trigger**: At least one `esmeralda.usage` record in the last 5 minutes had no verified caller (`caller.verified != true`). Chargeback bills only verified teams, so this usage lands in `billed_team = 'unattributed'`.
+**Alert Trigger**: At least one `esmeralda.usage` record from a guarded workload (Cloud Run, GKE, other clouds; not Agent Runtime) in the last 5 minutes had no verified caller (`caller.verified != true`). Chargeback bills only verified teams, so this usage lands in `billed_team = 'unattributed'` (or the workload floor). Agent Runtime hops are covered by the gateway count (`attribution/gateway_unattributed_decisions`).
 
 #### 🛠️ Immediate On-Call Action Plan:
 1. Find the records in Cloud Logging (the `workload` and `source` labels of the alert narrow it down):
-   `jsonPayload.schema="esmeralda.usage" AND NOT jsonPayload.caller.verified=true`
-2. In BigQuery: `SELECT * FROM esmeralda_telemetry_logs_${var.environment}.vw_usage_normalized WHERE attribution IN ('declared', 'unattributed') ORDER BY timestamp DESC`
-3. `declared` = the caller sent a team that authentication didn't confirm; `unattributed` = no caller identity at all. Register the caller in the catalog (its principal lands in `principal_teams`), or fix the producer / gateway that dropped the verified identity.
+   `jsonPayload.schema="esmeralda.usage" AND NOT jsonPayload.caller.verified=true AND NOT jsonPayload.workload.runtime="agent_engine"`
+2. On an MCP server, its caller guard logged why: `jsonPayload.event="esmeralda.caller_decision"` (reason `unmapped` or `unverified`, which only pass under `unmapped_caller: flag`).
+3. In BigQuery: `SELECT * FROM esmeralda_telemetry_logs_${var.environment}.vw_usage_normalized WHERE attribution IN ('declared', 'unattributed') ORDER BY timestamp DESC`
+4. `declared` = the caller sent a team that authentication didn't confirm; `unattributed` = no caller identity at all. Register the caller in the catalog (its principal lands in `principal_teams`), or fix the producer / gateway that dropped the verified identity.
 EOF
     mime_type = "text/markdown"
   }
 
   conditions {
     display_name = "Unattributed esmeralda.usage records"
-    # PromQL: one query across every producer's monitored resource type (see runaway_loop_token_cap).
+    # PromQL: one query across every producer's monitored resource type (see runaway_loop_token_cap),
+    # guarded workloads only (Agent Runtime hops are counted at the gateway).
     condition_prometheus_query_language {
-      query               = "sum by (workload, source) (${local.usage_promql["increase|unattributed_records|5m"]}) > 0"
+      query               = "sum by (workload, source) (${local.usage_promql["increase|unattributed_guarded_records|5m"]}) > 0"
       duration            = "0s"
       evaluation_interval = "60s"
     }
@@ -245,7 +293,7 @@ EOF
     google_monitoring_notification_channel.pubsub_alert.name
   ]
 
-  depends_on = [google_logging_metric.usage_unattributed_records]
+  depends_on = [google_logging_metric.usage_unattributed_guarded_records]
 }
 
 # 4. Alert Policy: Runaway Loop Single-Request Token Cap

@@ -47,7 +47,8 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | Python producers: ADK plugin, OTel GenAI span adapter, manual API, OTel logs transport | 🚧 | Same branch as the contract. |
 | Layer 4 usage analytics: usage table, normalized and billable views, schema-keyed metrics | 🚧 | Branch in progress; the "unattributed" alert ships disabled until verified attribution lands. |
 | `caller_identity` / `caller_issuer` in Apigee records and the partner chargeback view | 🚧 | Part of the cross-cloud shared flow pull request. |
-| Verified attribution: principal → team table compiled from the catalog, `unmapped_caller: deny`, unattributed alarm on | 🗺️ | Turns chargeback from declared to verified. |
+| Verified attribution, internal hops: principal → team table compiled from the catalog, catalog caller guard on MCP servers (`unmapped_caller: deny`, flag in dev first), unregistered-caller and declared-mismatch probes, unattributed alarm on | 🚧 | Branch in progress. Turns chargeback from declared to verified. See [5.3 §5](./03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end). |
+| Verified attribution, partner hop: Apigee apps and cross-cloud `iss#sub` callers in the same table and policy | 🗺️ | Follows the cross-cloud shared flow. |
 | Reference OpenTelemetry Collector configuration and GenAI-span-to-record processor for non-Python workloads on other clouds | 🗺️ | [5.3 §2](./03-unified-observability-and-chargeback.md#2-producers-on-every-cloud) shows a starting point. |
 | Gateway records from Envoy in the `esmeralda.usage` shape | 🗺️ | JSON access-log template. |
 

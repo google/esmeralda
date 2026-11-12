@@ -68,8 +68,26 @@ dependency "legacy_dms" {
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
 
+# Apigee partner front door (partner_access = "apigee"): its proxy runtime service account is the
+# identity of the catalog caller apigee-partner-mcp (a principal_teams row when a target lists it).
+dependency "apigee" {
+  config_path = "../apigee/platform"
+  enabled     = local.apigee_partner
+  mock_outputs = {
+    proxy_runtime_sa_email = "sa-apigee-proxy-mock@mock.iam.gserviceaccount.com"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 locals {
   env_vars = read_terragrunt_config(find_in_parent_folders("env.yaml"))
+  apigee_partner = (
+    try(local.env_vars.locals.governance.apigee.enabled, false) &&
+    try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee"
+  )
+  # Verified attribution (env.yaml attribution.principal_teams): load the catalog principal_teams
+  # rows and count gateway decisions for principals without one.
+  attribution_enabled = try(local.env_vars.locals.attribution.principal_teams, false)
 }
 
 inputs = {
@@ -98,5 +116,21 @@ inputs = {
       "agents/cx-mortgage-orchestrator:agent_identity_principal"   = dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal
       "agents/ai-coe-mortgage-specialist:agent_identity_principal" = dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal
     },
+    # layer-5-workloads/apigee/platform:proxy_runtime_sa_email: the Apigee proxy runtime identity.
+    {
+      for k, v in { "layer-5-workloads/apigee/platform:proxy_runtime_sa_email" = try(dependency.apigee.outputs.proxy_runtime_sa_email, null) } :
+      k => v if local.apigee_partner && v != null
+    },
   )
+
+  # Verified attribution (attribution.tf): the catalog's principal -> team rows (refs resolved through
+  # identity_refs) replace the `source = catalog` rows of the layer-4 principal_teams table, and the
+  # governance project counts gateway decisions for principals without a row (expected: 0). Off until
+  # layer 4 publishes the table (try: older layer-4 state has no such output).
+  environment           = local.env_vars.locals.environment
+  attribution_enabled   = local.attribution_enabled && try(dependency.governance.outputs.principal_teams_table_id, "") != ""
+  principal_teams_rows  = try(local.env_vars.locals.catalog_attribution.principal_teams, [])
+  principal_teams_table = "${dependency.projects.outputs.governance_project_id}.${try(dependency.governance.outputs.governance_dataset_id, "")}.${try(dependency.governance.outputs.principal_teams_table_id, "")}"
+  notification_channels = try(dependency.governance.outputs.alert_notification_channels, [])
+  alert_on_unattributed = try(dependency.governance.outputs.alert_on_unattributed_usage, false)
 }

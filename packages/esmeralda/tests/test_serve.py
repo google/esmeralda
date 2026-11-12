@@ -194,3 +194,48 @@ def test_a2a_server_warns_when_max_instances_exceeds_one_with_in_memory_task_sto
     with caplog.at_level(logging.WARNING, logger="esmeralda.serve"):
         serve.a2a_server(config)
     assert any("InMemoryTaskStore" in rec.message and "max_instances=2" in rec.message for rec in caplog.records)
+
+
+# ------------------------------------------------------------------------------------------
+# catalog caller guard
+# ------------------------------------------------------------------------------------------
+
+_GUARD_ALLOWLIST = (
+    '{"policy": {"unmapped_caller": "deny", "declared_mismatch": "reject"}, '
+    '"callers": [{"principal": "sa-vm@example.iam.gserviceaccount.com", "team": "platform"}]}'
+)
+
+
+def _guarded_app():
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    @app.get("/v1/card")
+    def card():
+        return {"name": "fake"}
+
+    return app
+
+
+def test_caller_guard_is_off_without_an_allowlist(monkeypatch):
+    monkeypatch.delenv("ESMERALDA_CALLER_ALLOWLIST", raising=False)
+    app = _guarded_app()
+    assert serve.install_caller_guard(app) is False
+
+
+def test_caller_guard_is_skipped_on_agent_runtime(monkeypatch, caplog):
+    monkeypatch.setenv("ESMERALDA_CALLER_ALLOWLIST", _GUARD_ALLOWLIST)
+    monkeypatch.setenv("ESMERALDA_RUNTIME", "agent_engine")
+    assert serve.install_caller_guard(_guarded_app()) is False
+    assert "does not forward the caller's credential" in caplog.text
+
+
+def test_caller_guard_rejects_unverified_callers_off_agent_runtime(monkeypatch):
+    from starlette.testclient import TestClient
+
+    monkeypatch.setenv("ESMERALDA_CALLER_ALLOWLIST", _GUARD_ALLOWLIST)
+    monkeypatch.setenv("ESMERALDA_RUNTIME", "cloud_run")
+    app = _guarded_app()
+    assert serve.install_caller_guard(app) is True
+    assert TestClient(app).get("/v1/card").status_code == 401

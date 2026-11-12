@@ -21,6 +21,17 @@
 #                 timeout 120 s)
 #        none  -> GET  /                                   TLS + routing only, any HTTP status
 #      A gateway "no route" answer fails every kind. Non-query probes time out after 20 s.
+#   3. Verified attribution (catalog `attribution`):
+#        unregistered caller -> the layer-3 probe identity (in no catalog entry) calls every mcp/a2a
+#                               host with its own token                     expects 403 (IAM rejects
+#                                                                           it first; should it reach
+#                                                                           a caller guard: 403 under
+#                                                                           deny, 2xx unattributed
+#                                                                           under flag, with a warning)
+#        declared mismatch   -> the test VM declares another team's cost centre on every MCP host
+#                               whose caller guard is on                    expects 403 (reject) or
+#                                                                           2xx billed to its team
+#                                                                           (bill_own_team)
 #
 # Usage: scripts/test_gateway.sh <env>     (run from the repo root; `make test-gateway ENV=<env>`)
 #   TEST_GATEWAY_QUERY  message sent by `query` probes (default: the `make query` default question)
@@ -84,6 +95,28 @@ QUERY_MESSAGE="${TEST_GATEWAY_QUERY:-${DEFAULT_QUERY}}"
 QUERY_BODY="$(jq -cn --arg m "${QUERY_MESSAGE}" \
   '{class_method: "async_stream_query", input: {user_id: "test-gateway", message: $m}}')"
 
+# Verified attribution probes (catalog/.resolved/<env>.json `attribution`):
+#   - unregistered caller: the probe identity (layer 3 probe_unregistered_sa_email, in no catalog
+#     entry) calls every mcp/a2a host and must get HTTP 403;
+#   - declared mismatch: the test VM declares a cost centre of another team on every MCP host whose
+#     caller guard is on: 403 under declared_mismatch: reject, 2xx billed to its own team
+#     (X-Esmeralda-Billed-Team) under bill_own_team.
+RESOLVED="catalog/.resolved/${ENV_NAME}.json"
+PROBE_SA="$(tg_output "${LIVE_DIR}/layer-3-security" probe_unregistered_sa_email)"
+[ "${PROBE_SA}" = "null" ] && PROBE_SA=""
+MISMATCH_MODE="$(jq -r '.attribution.policy.declared_mismatch // "reject"' "${RESOLVED}" 2>/dev/null || echo reject)"
+UNMAPPED_MODE="$(jq -r '.attribution.policy.unmapped_caller // "deny"' "${RESOLVED}" 2>/dev/null || echo deny)"
+VM_TEAM="$(jq -r '[.attribution.principal_teams[]? | select(.caller == "test-vm") | .team][0] // empty' "${RESOLVED}" 2>/dev/null || true)"
+FOREIGN_CC="$(jq -r '([.attribution.principal_teams[]? | select(.caller != "test-vm") | .cost_centers[]]
+  - [.attribution.principal_teams[]? | select(.caller == "test-vm") | .cost_centers[]])[0] // empty' "${RESOLVED}" 2>/dev/null || true)"
+GUARDED_HOSTS=""
+while read -r host probe _kind _backend; do
+  [ "${probe}" = "mcp" ] || continue
+  if [ "$(tg_output "${L5_DIR}/services/${host%%.*}" caller_guard)" = "true" ]; then
+    GUARDED_HOSTS="${GUARDED_HOSTS} ${host}"
+  fi
+done <<< "${ROUTES}"
+
 echo "🔎 Probing $(echo "${ROUTES}" | wc -l) host(s) through the entry point ${ENTRY_IP} (*.${DOMAIN}) from ${VM_NAME}..."
 
 REMOTE="$(mktemp)"
@@ -93,6 +126,12 @@ trap 'rm -f "${REMOTE}"' EXIT
   printf 'ROUTES=%q\n' "${ROUTES}"
   printf 'CA_PEM=%q\n' "${CA_PEM}"
   printf 'QUERY_BODY=%q\n' "${QUERY_BODY}"
+  printf 'PROBE_SA=%q\n' "${PROBE_SA}"
+  printf 'MISMATCH_MODE=%q\n' "${MISMATCH_MODE}"
+  printf 'UNMAPPED_MODE=%q\n' "${UNMAPPED_MODE}"
+  printf 'VM_TEAM=%q\n' "${VM_TEAM}"
+  printf 'FOREIGN_CC=%q\n' "${FOREIGN_CC}"
+  printf 'GUARDED_HOSTS=%q\n' "${GUARDED_HOSTS}"
   cat <<'REMOTE_EOF'
 set -u
 WORK="$(mktemp -d)"
@@ -153,8 +192,9 @@ while read -r host probe kind backend; do
     token="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' "${METADATA}/token" |
       python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')" || token=""
   else                               # Cloud Run IAM (direct MCP hosts, adapters): ID token for the host
+                                     # (format=full: with the email claim the caller guard maps)
     token="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' \
-      "${METADATA}/identity?audience=https://${host}")" || token=""
+      "${METADATA}/identity?audience=https://${host}&format=full")" || token=""
   fi
   args=(-sS -o "${WORK}/body" -w '%{http_code}' --connect-timeout 5 -m 20 --cacert "${WORK}/ca.pem"
     --resolve "${host}:443:${ENTRY_IP}" -H "Authorization: Bearer ${token}")
@@ -192,6 +232,82 @@ while read -r host probe kind backend; do
     failures=$((failures + 1))
   fi
 done <<< "${ROUTES}"
+
+# --- Verified attribution: unregistered caller (expects 403 on every mcp/a2a host) -------------
+IAMCREDS="https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts"
+if [ -n "${PROBE_SA}" ]; then
+  echo "🔒 Unregistered caller ${PROBE_SA%%@*} (in no catalog entry): every host must answer 403"
+  vm_access="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' "${METADATA}/token" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')" || vm_access=""
+  while read -r host probe kind backend; do
+    case "${probe}" in mcp | a2a) ;; *) continue ;; esac
+    if [ "${kind}" = "access" ]; then
+      ptoken="$(curl -sS -m 10 -X POST -H "Authorization: Bearer ${vm_access}" -H 'Content-Type: application/json' \
+        -d '{"scope":["https://www.googleapis.com/auth/cloud-platform"]}' "${IAMCREDS}/${PROBE_SA}:generateAccessToken" |
+        python3 -c 'import json,sys; print(json.load(sys.stdin).get("accessToken",""))' 2>/dev/null)" || ptoken=""
+    else
+      ptoken="$(curl -sS -m 10 -X POST -H "Authorization: Bearer ${vm_access}" -H 'Content-Type: application/json' \
+        -d "{\"audience\":\"https://${host}\",\"includeEmail\":true}" "${IAMCREDS}/${PROBE_SA}:generateIdToken" |
+        python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null)" || ptoken=""
+    fi
+    if [ -z "${ptoken}" ]; then
+      printf '  ❌ %-45s %-5s unregistered: could not mint a probe token (test VM needs token creator on the probe identity)\n' "${host}" "${probe}"
+      failures=$((failures + 1))
+      continue
+    fi
+    args=(-sS -o "${WORK}/body" -w '%{http_code}' --connect-timeout 5 -m 20 --cacert "${WORK}/ca.pem"
+      --resolve "${host}:443:${ENTRY_IP}" -H "Authorization: Bearer ${ptoken}")
+    if [ "${probe}" = "mcp" ]; then
+      code="$(curl "${args[@]}" -D "${WORK}/headers" -X POST -H 'Content-Type: application/json' \
+        -H 'Accept: application/json, text/event-stream' -d "${MCP_INIT}" "https://${host}/mcp" 2>/dev/null)"
+    else
+      code="$(curl "${args[@]}" -D "${WORK}/headers" "https://${host}/v1/card" 2>/dev/null)"
+    fi
+    billed="$(grep -i '^x-esmeralda-billed-team:' "${WORK}/headers" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' \r')"
+    guarded=0
+    case " ${GUARDED_HOSTS} " in *" ${host} "*) guarded=1 ;; esac
+    # IAM / the Agent Gateway reject the probe before any guard (it holds no grant): 403 in both modes.
+    # Only if a host let it through to its caller guard does the effective policy decide: 403 under
+    # deny; under flag the call is allowed but must stay unattributed (no billed team).
+    if [ "${code:-000}" = "403" ]; then
+      printf '  ✅ %-45s %-5s unregistered caller denied: HTTP 403\n' "${host}" "${probe}"
+    elif [ "${guarded}" = 1 ] && [ "${UNMAPPED_MODE}" = "flag" ] && [[ "${code:-000}" == 2?? ]] && [ -z "${billed}" ]; then
+      printf '  ⚠️  %-45s %-5s unregistered caller reached the guard: allowed, unattributed (unmapped_caller: flag). Its IAM grant should not exist\n' "${host}" "${probe}"
+    else
+      printf '  ❌ %-45s %-5s unregistered caller expected HTTP 403%s, got %s%s\n' "${host}" "${probe}" \
+        "$([ "${guarded}" = 1 ] && [ "${UNMAPPED_MODE}" = "flag" ] && echo ' (or 2xx unattributed under flag)')" "${code:-000}" "${billed:+ billed to ${billed}}"
+      failures=$((failures + 1))
+    fi
+  done <<< "${ROUTES}"
+fi
+
+# --- Verified attribution: declared cost centre of another team (guarded MCP hosts) -------------
+if [ -n "${GUARDED_HOSTS// /}" ] && [ -n "${FOREIGN_CC}" ]; then
+  echo "🧾 Declared mismatch (test VM declares ${FOREIGN_CC}; declared_mismatch: ${MISMATCH_MODE})"
+  for host in ${GUARDED_HOSTS}; do
+    token="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' \
+      "${METADATA}/identity?audience=https://${host}&format=full")" || token=""
+    code="$(curl -sS -o "${WORK}/body" -D "${WORK}/headers" -w '%{http_code}' --connect-timeout 5 -m 20 \
+      --cacert "${WORK}/ca.pem" --resolve "${host}:443:${ENTRY_IP}" -H "Authorization: Bearer ${token}" \
+      -H "X-Esmeralda-Cost-Center: ${FOREIGN_CC}" -X POST -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' -d "${MCP_INIT}" "https://${host}/mcp" 2>/dev/null)"
+    billed="$(grep -i '^x-esmeralda-billed-team:' "${WORK}/headers" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' \r')"
+    ok=0
+    if [ "${MISMATCH_MODE}" = "reject" ]; then
+      [ "${code:-000}" = "403" ] && ok=1
+      expected="HTTP 403"
+    else
+      [[ "${code:-000}" == 2?? ]] && [ "${billed}" = "${VM_TEAM}" ] && ok=1
+      expected="2xx billed to ${VM_TEAM}"
+    fi
+    if [ "${ok}" = 1 ]; then
+      printf '  ✅ %-45s mcp   declared %s: HTTP %s%s\n' "${host}" "${FOREIGN_CC}" "${code}" "${billed:+ billed to ${billed}}"
+    else
+      printf '  ❌ %-45s mcp   declared %s: expected %s, got HTTP %s%s\n' "${host}" "${FOREIGN_CC}" "${expected}" "${code:-000}" "${billed:+ billed to ${billed}}"
+      failures=$((failures + 1))
+    fi
+  done
+fi
 
 [ "${failures}" -eq 0 ]
 REMOTE_EOF
