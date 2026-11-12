@@ -45,7 +45,8 @@ def test_caller_guard_uses_the_standard_library_only():
             imported |= {alias.name.split(".")[0] for alias in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
-    allowed = {"__future__", "base64", "contextvars", "json", "logging", "os", "collections", "dataclasses", "typing"}
+    allowed = {"__future__", "base64", "contextvars", "json", "logging", "os", "sys", "collections", "dataclasses",
+               "typing"}
     assert imported <= allowed, f"non-stdlib imports in the vendored guard: {sorted(imported - allowed)}"
 
 

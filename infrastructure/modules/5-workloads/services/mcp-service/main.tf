@@ -61,12 +61,34 @@ locals {
     var.extra_allowed_callers,
   )
   caller_guard_unresolved = [for entry in local.caller_guard_callers : entry.principal if can(regex(local.ref_pattern, entry.principal))]
+
+  # A Google ID token minted without the email claim (VM metadata server default, Apigee
+  # GoogleIDToken without IncludeEmail) names a service account only by its numeric unique id in
+  # `sub`: each service-account entry is also listed under that id, with the same caller and team.
+  caller_guard_sa_emails = toset([
+    for entry in local.caller_guard_callers : entry.principal
+    if can(regex("^[^@:/]+@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", entry.principal))
+  ])
+  caller_guard_aliases = [
+    for entry in local.caller_guard_callers : merge(entry, { principal = data.google_service_account.caller_guard[entry.principal].unique_id })
+    if contains(local.caller_guard_sa_emails, entry.principal)
+  ]
   caller_guard_env = var.caller_allowlist == null ? {} : {
     ESMERALDA_CALLER_ALLOWLIST = jsonencode({
       policy  = var.caller_allowlist.policy
-      callers = local.caller_guard_callers
+      callers = concat(local.caller_guard_callers, local.caller_guard_aliases)
+      # This service requires IAM invoker auth (no allUsers binding) and internal ingress, so Cloud
+      # Run has validated the caller's identity header before the request reaches the container.
+      token_validated_by = "cloud_run_iam"
     })
   }
+}
+
+# Unique ids of the caller guard's service-account principals (see caller_guard_aliases).
+data "google_service_account" "caller_guard" {
+  for_each   = local.caller_guard_sa_emails
+  account_id = split("@", each.value)[0]
+  project    = regex("@([a-z0-9-]+)\\.iam\\.gserviceaccount\\.com$", each.value)[0]
 }
 
 # Dedicated per-service workload Service Account (sa-<service>-<env>)

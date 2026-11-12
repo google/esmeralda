@@ -192,8 +192,9 @@ while read -r host probe kind backend; do
     token="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' "${METADATA}/token" |
       python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')" || token=""
   else                               # Cloud Run IAM (direct MCP hosts, adapters): ID token for the host
+                                     # (format=full: with the email claim the caller guard maps)
     token="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' \
-      "${METADATA}/identity?audience=https://${host}")" || token=""
+      "${METADATA}/identity?audience=https://${host}&format=full")" || token=""
   fi
   args=(-sS -o "${WORK}/body" -w '%{http_code}' --connect-timeout 5 -m 20 --cacert "${WORK}/ca.pem"
     --resolve "${host}:443:${ENTRY_IP}" -H "Authorization: Bearer ${token}")
@@ -285,7 +286,7 @@ if [ -n "${GUARDED_HOSTS// /}" ] && [ -n "${FOREIGN_CC}" ]; then
   echo "🧾 Declared mismatch (test VM declares ${FOREIGN_CC}; declared_mismatch: ${MISMATCH_MODE})"
   for host in ${GUARDED_HOSTS}; do
     token="$(curl -sS --connect-timeout 3 -m 5 -H 'Metadata-Flavor: Google' \
-      "${METADATA}/identity?audience=https://${host}")" || token=""
+      "${METADATA}/identity?audience=https://${host}&format=full")" || token=""
     code="$(curl -sS -o "${WORK}/body" -D "${WORK}/headers" -w '%{http_code}' --connect-timeout 5 -m 20 \
       --cacert "${WORK}/ca.pem" --resolve "${host}:443:${ENTRY_IP}" -H "Authorization: Bearer ${token}" \
       -H "X-Esmeralda-Cost-Center: ${FOREIGN_CC}" -X POST -H 'Content-Type: application/json' \

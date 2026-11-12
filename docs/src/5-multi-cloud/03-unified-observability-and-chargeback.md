@@ -173,7 +173,7 @@ This section follows one internal call from catalog entry to chargeback row: an 
 | Hop | Verified identity | Read by | Deny enforced by |
 | :--- | :--- | :--- | :--- |
 | Agent → agent or MCP server through the Agent Gateway | The calling agent's Agent Identity (`principal://…/reasoningEngines/<id>`), proven by mTLS | The Agent Gateway's authorization decision (IAP egress audit record: principal, target, granted or denied) | Per-target `roles/iap.egressor` lists compiled from the catalog: a principal with no binding gets `403` at the gateway |
-| Any caller → MCP server on Cloud Run | The caller's Google ID token (`email` or `sub`). Cloud Run validates it, then passes it on with its signature removed | The in-process **caller guard** (`esmeralda.attribution`) | Cloud Run `run.invoker` (catalog callers only), then the guard's allowlist |
+| Any caller → MCP server on Cloud Run | The caller's Google ID token (`email`, or the service account's numeric id in `sub` when the token has no email claim). Cloud Run IAM validates it before the request reaches the container | The in-process **caller guard** (`esmeralda.attribution`) | Cloud Run `run.invoker` (catalog callers only), then the guard's allowlist |
 | Any caller → agent on Agent Runtime | The caller's access token, checked by Agent Runtime IAM. The container never receives the caller's credential | The Agent Gateway record only (when the caller is an agent) | `aiplatform.user` and the gateway lists; no in-process check is possible |
 | Humans and operators | Group membership | IAM | Group grants (the catalog maps the group to a team) |
 
@@ -210,11 +210,18 @@ The compiler also checks that **anything allowed is attributable**. A principal 
 
 ### 5.4 The caller guard
 
-The MCP servers wrap their app with the guard: `app = CallerGuard(app)`. Each one ships a byte-identical copy of the package module as `caller_guard.py`, because the module uses only the standard library. The guard reads its allowlist from `ESMERALDA_CALLER_ALLOWLIST`, which the service's Terraform unit writes from the compiled block (`env.yaml` `attribution.caller_guard`). For each request:
+The MCP servers wrap their app with the guard: `app = CallerGuard(app)`. Each one ships a byte-identical copy of the package module as `caller_guard.py`, because the module uses only the standard library. The guard reads its allowlist from `ESMERALDA_CALLER_ALLOWLIST`, which the service's Terraform unit writes from the compiled block (`env.yaml` `attribution.caller_guard`). The unit also writes:
+
+* `"token_validated_by": "cloud_run_iam"`. The service requires IAM invoker auth and internal ingress, so Cloud Run has already validated the identity header (`X-Serverless-Authorization`, else `Authorization`) when the request arrives. Behind the internal load balancer the token arrives with its signature. Without this setting the guard trusts only a token whose signature the platform removed.
+  * **Trust assumption:** the unit sets it only for services with internal ingress and IAM invoker auth required (no `allUsers`).
+  * The first identity header present decides. When `X-Serverless-Authorization` is present, `Authorization` is never read, even if the former is empty or unparseable: Cloud Run validates only `X-Serverless-Authorization` and passes `Authorization` through untouched.
+* An alias for every service-account entry under the account's numeric unique id. A Google ID token minted without the email claim (the VM metadata server's default format, an Apigee `GoogleIDToken` without `IncludeEmail`) names the account only in `sub`.
+
+Each decision is one JSON log line (`jsonPayload.event = "esmeralda.caller_decision"`, with `reason`, `principal`, `team`). Unverified decisions also log the shape of each identity header (`absent`, `opaque`, `jwt_signed`, `jwt_stripped`, `malformed`), never its value. For each request:
 
 | Situation | `deny` / `reject` | `flag` / `bill_own_team` |
 | :--- | :--- | :--- |
-| No platform-validated identity (missing, malformed, or still signed) | `401` | Allowed, `caller.verified = false` |
+| No validated identity (missing or malformed header; or a still-signed token where the platform's validation isn't declared) | `401` | Allowed, `caller.verified = false` |
 | Verified principal not in the allowlist | `403` | Allowed, principal recorded, no team |
 | Mapped principal declaring a cost centre (`X-Esmeralda-Cost-Center`) it may not use | `403` | Allowed, billed to its own team, `declared` keeps the claim |
 | Mapped principal | Allowed. `caller.verified = true`, `caller.principal`, `caller.team`; the response carries `X-Esmeralda-Billed-Team` | Same |

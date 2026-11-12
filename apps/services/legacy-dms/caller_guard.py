@@ -17,11 +17,17 @@
 The in-process second layer behind the gateway and IAM grants (both compiled from the catalog).
 It runs where the platform hands the workload a verified caller identity:
 
-* **Cloud Run** validates the caller's Google ID token (IAM invoker check) and passes it on with
-  the signature replaced by ``SIGNATURE_REMOVED_BY_GOOGLE``, in ``X-Serverless-Authorization`` or
-  ``Authorization``. Ingress is internal and the IAM check already passed, so the payload
-  (``email`` / ``sub``) is the verified caller. A token that still carries a signature was not
-  validated by Cloud Run and is never trusted here.
+* **Cloud Run with IAM invoker auth** validates the caller's Google ID token before the request
+  reaches the container (``X-Serverless-Authorization`` when sent, else ``Authorization``), and
+  ingress is internal. The Terraform unit that sets the allowlist knows that and says so with
+  ``"token_validated_by": "cloud_run_iam"``: the payload of that header (``email`` / ``sub``) is
+  then the verified caller, whether or not the platform stripped the signature (behind the internal
+  load balancer the token arrives signed). Trust assumption: the unit sets it only for a service
+  with internal ingress and IAM invoker auth required (no ``allUsers``). The first identity header
+  present decides: when ``X-Serverless-Authorization`` is present, ``Authorization`` (which Cloud
+  Run passes through unvalidated) is never read, even if the former is empty or unparseable.
+  Without that setting only a token whose signature the platform replaced with
+  ``SIGNATURE_REMOVED_BY_GOOGLE`` counts: nothing else proves the token was validated.
 * **Agent Runtime** never forwards the caller's credential to the container, so the guard can't
   run there: those hops are attributed from the Agent Gateway record only.
 
@@ -29,6 +35,7 @@ The allowlist (``ESMERALDA_CALLER_ALLOWLIST``, JSON) is compiled from the catalo
 (``catalog/.resolved/<env>.json`` ``attribution``) and written by the workload's Terraform unit::
 
     {"policy": {"unmapped_caller": "deny", "declared_mismatch": "reject"},
+     "token_validated_by": "cloud_run_iam",
      "callers": [{"principal": "sa@...", "caller": "test-vm", "team": "platform",
                   "cost_centers": ["cc-platform"]}, ...]}
 
@@ -55,6 +62,7 @@ import contextvars
 import json
 import logging
 import os
+import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -66,6 +74,8 @@ DECLARED_COST_CENTER_HEADER = "X-Esmeralda-Cost-Center"
 BILLED_TEAM_HEADER = "X-Esmeralda-Billed-Team"
 STRIPPED_SIGNATURE = "SIGNATURE_REMOVED_BY_GOOGLE"
 IDENTITY_HEADERS = ("x-serverless-authorization", "authorization")
+CLOUD_RUN_IAM = "cloud_run_iam"
+"""``token_validated_by`` value: Cloud Run IAM validated the identity header before the request arrived."""
 DEFAULT_EXEMPT_PATHS = ("/health", "/healthz")
 
 DENY, FLAG = "deny", "flag"
@@ -92,6 +102,7 @@ class Allowlist:
     entries: Mapping[str, Entry] = field(default_factory=dict)
     unmapped_caller: str = DENY
     declared_mismatch: str = REJECT
+    token_validated_by: str | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Allowlist:
@@ -102,6 +113,9 @@ class Allowlist:
             raise ValueError(f"unmapped_caller must be '{DENY}' or '{FLAG}', got {unmapped!r}")
         if mismatch not in (REJECT, BILL_OWN_TEAM):
             raise ValueError(f"declared_mismatch must be '{REJECT}' or '{BILL_OWN_TEAM}', got {mismatch!r}")
+        validated_by = data.get("token_validated_by") or None
+        if validated_by not in (None, CLOUD_RUN_IAM):
+            raise ValueError(f"token_validated_by must be '{CLOUD_RUN_IAM}' or unset, got {validated_by!r}")
         entries: dict[str, Entry] = {}
         for item in data.get("callers") or []:
             principal = normalize_principal(item.get("principal"))
@@ -114,7 +128,8 @@ class Allowlist:
                 cost_centers=tuple(item.get("cost_centers") or ()),
                 shared=bool(item.get("shared")),
             )
-        return cls(entries=entries, unmapped_caller=unmapped, declared_mismatch=mismatch)
+        return cls(entries=entries, unmapped_caller=unmapped, declared_mismatch=mismatch,
+                   token_validated_by=validated_by)
 
     @classmethod
     def from_json(cls, text: str) -> Allowlist:
@@ -201,22 +216,30 @@ def _claims(token: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def verified_principal(headers: Mapping[str, str] | Iterable[tuple[str, str]]) -> str | None:
-    """The caller principal from a platform-validated (signature-stripped) Google ID token.
+def verified_principal(
+    headers: Mapping[str, str] | Iterable[tuple[str, str]], *, validated_by: str | None = None
+) -> str | None:
+    """The caller principal from the Google ID token the platform validated.
 
     Reads ``X-Serverless-Authorization`` first (Cloud Run validates that one when both are sent),
-    then ``Authorization``. Returns None when there is no such token, it is malformed, or its
-    signature was not stripped by the platform (so it was never validated). ``email`` wins when
-    present and not marked unverified, else ``sub``.
+    then ``Authorization``. With ``validated_by="cloud_run_iam"`` the platform's IAM check already
+    validated that header, so its payload counts as is; otherwise only a signature-stripped token
+    counts (the platform's proof that it validated it). Returns None when there is no such token or
+    it is malformed. ``email`` wins when present and not marked unverified, else ``sub``.
     """
     items = headers.items() if isinstance(headers, Mapping) else headers
     found = {k.lower(): v for k, v in items if isinstance(k, str) and isinstance(v, str)}
     for name in IDENTITY_HEADERS:
-        value = found.get(name, "").strip()
-        if not value:
+        if name not in found:
             continue
+        # The first identity header present decides, even when empty or unparseable: Cloud Run
+        # validates X-Serverless-Authorization when it is sent and passes Authorization through
+        # untouched, so falling back to Authorization would trust an unvalidated token.
+        value = found[name].strip()
+        if not value:
+            return None
         token = value[7:].strip() if value[:7].lower() == "bearer " else value
-        if token.rsplit(".", 1)[-1] != STRIPPED_SIGNATURE:
+        if validated_by != CLOUD_RUN_IAM and token.rsplit(".", 1)[-1] != STRIPPED_SIGNATURE:
             return None
         claims = _claims(token)
         if claims is None:
@@ -226,6 +249,30 @@ def verified_principal(headers: Mapping[str, str] | Iterable[tuple[str, str]]) -
             return normalize_principal(email)
         return normalize_principal(claims.get("sub"))
     return None
+
+
+def identity_evidence(headers: Mapping[str, str] | Iterable[tuple[str, str]]) -> dict[str, str]:
+    """Why a request is unverified, without any credential: the shape of each identity header.
+
+    ``absent``, ``opaque`` (not a JWT), ``jwt_signed`` (a JWT the platform did not validate),
+    ``jwt_stripped`` (validated by the platform) or ``malformed``. Logged with unverified decisions.
+    """
+    items = headers.items() if isinstance(headers, Mapping) else headers
+    found = {k.lower(): v for k, v in items if isinstance(k, str) and isinstance(v, str)}
+    out: dict[str, str] = {}
+    for name in IDENTITY_HEADERS:
+        value = found.get(name, "").strip()
+        token = value[7:].strip() if value[:7].lower() == "bearer " else value
+        parts = token.split(".") if token else []
+        if not token:
+            out[name] = "absent"
+        elif len(parts) != 3:
+            out[name] = "opaque"
+        elif _claims(token) is None:
+            out[name] = "malformed"
+        else:
+            out[name] = "jwt_stripped" if parts[2] == STRIPPED_SIGNATURE else "jwt_signed"
+    return out
 
 
 def decide(
@@ -261,12 +308,33 @@ def current() -> Decision | None:
     return _current.get()
 
 
-def _log(decision: Decision, path: str | None) -> None:
-    line = json.dumps({"event": "esmeralda.caller_decision", "path": path, **decision.log_fields()})
-    if decision.allowed and decision.verified:
+def _log(decision: Decision, path: str | None, evidence: Mapping[str, str] | None = None) -> None:
+    allowed_verified = decision.allowed and decision.verified
+    fields: dict[str, Any] = {
+        "severity": "INFO" if allowed_verified else "WARNING",
+        "event": "esmeralda.caller_decision",
+        "path": path,
+        **decision.log_fields(),
+    }
+    if evidence:
+        fields["identity_headers"] = dict(evidence)
+    line = json.dumps(fields)
+    if allowed_verified:
         logger.info(line)
     else:
         logger.warning(line)
+
+
+def _ensure_decision_logging() -> None:
+    """Every decision (INFO included) reaches the logs even when nobody configured logging: then one
+    JSON line per decision goes to stdout, which Cloud Logging stores as jsonPayload (with severity)."""
+    if logger.level == logging.NOTSET:
+        logger.setLevel(logging.INFO)
+    if not logger.handlers and not logging.getLogger().handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+        logger.propagate = False
 
 
 class CallerGuard:
@@ -285,14 +353,17 @@ class CallerGuard:
         allowlist: Allowlist | None = None,
         *,
         exempt_paths: Iterable[str] = DEFAULT_EXEMPT_PATHS,
-        principal_reader: Callable[[Iterable[tuple[str, str]]], str | None] = verified_principal,
+        principal_reader: Callable[[Iterable[tuple[str, str]]], str | None] | None = None,
     ):
         self.app = app
         self.allowlist = allowlist if allowlist is not None else Allowlist.from_env()
         self.exempt_paths = tuple(exempt_paths)
-        self.principal_reader = principal_reader
+        validated_by = self.allowlist.token_validated_by if self.allowlist is not None else None
+        self.principal_reader = principal_reader or (lambda h: verified_principal(h, validated_by=validated_by))
         if self.allowlist is None:
             logger.info("Caller guard off: %s is not set", ALLOWLIST_ENV)
+        else:
+            _ensure_decision_logging()
 
     async def __call__(self, scope: dict[str, Any], receive: Callable[..., Any], send: Callable[..., Any]) -> None:
         if scope.get("type") != "http" or self.allowlist is None or scope.get("path") in self.exempt_paths:
@@ -301,7 +372,7 @@ class CallerGuard:
         headers = [(k.decode("latin-1"), v.decode("latin-1")) for k, v in scope.get("headers", ())]
         declared = next((v for k, v in headers if k.lower() == DECLARED_COST_CENTER_HEADER.lower()), None)
         decision = decide(self.allowlist, self.principal_reader(headers), declared)
-        _log(decision, scope.get("path"))
+        _log(decision, scope.get("path"), identity_evidence(headers) if decision.reason == "unverified" else None)
         if not decision.allowed:
             body = json.dumps({"error": "caller not allowed", "reason": decision.reason}).encode()
             await send({"type": "http.response.start", "status": decision.status,

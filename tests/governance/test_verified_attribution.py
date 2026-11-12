@@ -102,7 +102,9 @@ def test_gateway_count_excludes_every_attributed_principal():
         assert fragment in tf, fragment
     alert = _block(tf, "resource", "google_monitoring_alert_policy", "gateway_unattributed")
     assert "var.attribution_enabled && var.alert_on_unattributed" in alert
-    assert "threshold_value         = 0" in alert
+    assert "threshold_value = 0" in alert
+    # Cloud Monitoring rejects evaluation_missing_data with a zero duration.
+    assert "evaluation_missing_data =" not in alert
 
 
 def test_iap_egress_units_wire_the_attribution():

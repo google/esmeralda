@@ -10,14 +10,13 @@ environment: dev
 # "apigee"): the partner-mcp proxy reaches the MCP servers it exposes as the caller
 # apigee-partner-mcp (roles/run.invoker on those services).
 #
-# Verified attribution rollout: dev starts with unmapped_caller: flag, so the in-process caller
-# guard logs unknown callers (and marks their records unattributed) instead of rejecting them. Once
-# `esmeralda verify --env dev` and the logs show no unmapped caller, delete the policy block below
-# to fall back to policy.yaml (deny). flag never widens a gateway or IAM grant, and only the
-# environments in policy.attribution.flag_environments (default: dev) accept it.
+# Verified attribution rollout: dev ran with unmapped_caller: flag first (the in-process caller guard
+# logged unknown callers instead of rejecting them) until `esmeralda verify --env dev` and the guard
+# logs showed no unmapped or unverified caller; it now follows policy.yaml (deny). To onboard callers
+# again, set `policy: { attribution: { unmapped_caller: flag } }` under overrides. flag never widens
+# a gateway or IAM grant, and only the environments in policy.attribution.flag_environments
+# (default: dev) accept it.
 overrides:
-  policy:
-    attribution: { unmapped_caller: flag }
   targets:
     corporate-email:
       callers: { apigee-partner-mcp: {} }

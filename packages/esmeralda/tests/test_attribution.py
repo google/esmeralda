@@ -268,3 +268,81 @@ def test_plugin_caller_uses_the_guard_decision_and_keeps_declared_context():
         attribution._current.reset(token)
     assert (caller.verified, caller.principal, caller.team) == (True, VM, "platform")
     assert dict(caller.declared) == {"project_id": "p", "agent_name": "cx-agent", "cost_center": "cc-cx-br"}
+
+
+def test_identity_evidence_describes_headers_without_values():
+    token = _stripped({"email": VM})
+    signed = f"{_b64({'alg': 'RS256'})}.{_b64({'email': VM})}.real-signature"
+    evidence = attribution.identity_evidence({"Authorization": f"Bearer {signed}", "X-Serverless-Authorization": token})
+    assert evidence == {"x-serverless-authorization": "jwt_stripped", "authorization": "jwt_signed"}
+    assert attribution.identity_evidence({}) == {"x-serverless-authorization": "absent", "authorization": "absent"}
+    assert attribution.identity_evidence({"Authorization": "Bearer opaque-access-token"})["authorization"] == "opaque"
+    assert VM not in json.dumps(evidence)
+
+
+def test_unverified_decisions_log_the_identity_header_shapes(caplog):
+    with caplog.at_level(logging.WARNING, logger="esmeralda.attribution"):
+        _client(_allowlist(unmapped="flag"), []).post("/mcp", headers={"Authorization": "Bearer opaque-access-token"})
+    assert '"identity_headers": {"x-serverless-authorization": "absent", "authorization": "opaque"}' in caplog.text
+    assert "opaque-access-token" not in caplog.text
+
+
+def _signed(claims: dict) -> str:
+    return f"{_b64({'alg': 'RS256'})}.{_b64(claims)}.real-signature"
+
+
+def test_cloud_run_iam_validated_tokens_count_even_when_signed():
+    """Behind the internal load balancer Cloud Run forwards the validated token with its signature."""
+    headers = {"Authorization": f"Bearer {_signed({'email': VM})}"}
+    assert verified_principal(headers) is None  # default: only a platform-stripped token is proof
+    assert verified_principal(headers, validated_by=attribution.CLOUD_RUN_IAM) == VM
+    # X-Serverless-Authorization is the one Cloud Run validated when both are sent.
+    both = {**{"Authorization": f"Bearer {_signed({'email': STRANGER})}"},
+            "X-Serverless-Authorization": f"Bearer {_signed({'email': VM})}"}
+    assert verified_principal(both, validated_by=attribution.CLOUD_RUN_IAM) == VM
+    assert verified_principal({"Authorization": "Bearer opaque-access-token"}, validated_by=attribution.CLOUD_RUN_IAM) is None
+
+
+def test_guard_uses_the_allowlist_token_validation_setting():
+    data = {"policy": {"unmapped_caller": "deny", "declared_mismatch": "reject"},
+            "token_validated_by": "cloud_run_iam",
+            "callers": [{"principal": VM, "caller": "test-vm", "team": "platform", "cost_centers": ["cc-platform"]}]}
+    allowlist = Allowlist.from_mapping(data)
+    assert allowlist.token_validated_by == attribution.CLOUD_RUN_IAM
+    seen: list = []
+    client = _client(allowlist, seen)
+    ok = client.post("/mcp", headers={"Authorization": f"Bearer {_signed({'email': VM})}"})
+    assert ok.status_code == 200 and ok.headers[attribution.BILLED_TEAM_HEADER] == "platform"
+    mismatch = client.post("/mcp", headers={"Authorization": f"Bearer {_signed({'email': VM})}",
+                                            attribution.DECLARED_COST_CENTER_HEADER: "cc-cx-br"})
+    assert mismatch.status_code == 403
+    # Without the setting the same signed token is unverified.
+    strict = _client(Allowlist.from_mapping({**data, "token_validated_by": None}), [])
+    assert strict.post("/mcp", headers={"Authorization": f"Bearer {_signed({'email': VM})}"}).status_code == 401
+    with pytest.raises(ValueError):
+        Allowlist.from_mapping({**data, "token_validated_by": "anything"})
+
+
+def test_x_serverless_authorization_wins_over_a_forged_authorization():
+    """(a) Cloud Run validated X-Serverless-Authorization; Authorization passed through untouched."""
+    forged = _signed({"email": SPECIALIST})
+    headers = {"X-Serverless-Authorization": f"Bearer {_signed({'email': VM})}", "Authorization": f"Bearer {forged}"}
+    assert verified_principal(headers, validated_by=attribution.CLOUD_RUN_IAM) == VM
+    d = decide(_allowlist(), verified_principal(headers, validated_by=attribution.CLOUD_RUN_IAM))
+    assert (d.caller, d.team) == ("test-vm", "platform")
+
+
+def test_unparseable_x_serverless_authorization_never_falls_back_to_authorization():
+    """(b) X-Serverless-Authorization present but unusable: unverified, Authorization is not read."""
+    valid_looking = f"Bearer {_signed({'email': VM})}"
+    for bad in ("Bearer not-a-jwt", "Bearer abc.@@@.sig", "", "   "):
+        headers = {"X-Serverless-Authorization": bad, "Authorization": valid_looking}
+        assert verified_principal(headers, validated_by=attribution.CLOUD_RUN_IAM) is None, bad
+        assert verified_principal(headers) is None, bad
+    allowlist = Allowlist.from_mapping({"policy": {"unmapped_caller": "deny", "declared_mismatch": "reject"},
+                                        "token_validated_by": "cloud_run_iam",
+                                        "callers": [{"principal": VM, "team": "platform"}]})
+    client = _client(allowlist, [])
+    response = client.post("/mcp", headers={"X-Serverless-Authorization": "Bearer not-a-jwt",
+                                            "Authorization": valid_looking})
+    assert (response.status_code, response.json()["reason"]) == (401, "unverified")

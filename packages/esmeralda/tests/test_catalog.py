@@ -499,8 +499,8 @@ def test_attribution_block_is_in_the_committed_resolved_files():
         assert data["attribution"]["shared_principals"] == ["layer-3-security:mcp_invoker_sa_email"]
     dev = json.loads((REPO / "catalog/.resolved/dev.json").read_text())["attribution"]
     prd = json.loads((REPO / "catalog/.resolved/prd.json").read_text())["attribution"]
-    # Rollout: dev flags unknown callers first; prd always denies.
-    assert dev["policy"] == {"unmapped_caller": "flag", "declared_mismatch": "reject"}
+    # Rollout done: dev flagged unknown callers first and now denies, like prd.
+    assert dev["policy"] == {"unmapped_caller": "deny", "declared_mismatch": "reject"}
     assert prd["policy"] == {"unmapped_caller": "deny", "declared_mismatch": "reject"}
 
 

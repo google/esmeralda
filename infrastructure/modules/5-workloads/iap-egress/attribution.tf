@@ -144,11 +144,13 @@ EOF
   conditions {
     display_name = "Gateway decisions for principals without a principal_teams row"
     condition_threshold {
-      filter                  = "metric.type = \"logging.googleapis.com/user/attribution/gateway_unattributed_decisions\""
-      duration                = "0s"
-      comparison              = "COMPARISON_GT"
-      threshold_value         = 0
-      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
+      # IAP data_access audit entries are written against the audited_resource monitored resource.
+      filter          = "metric.type = \"logging.googleapis.com/user/attribution/gateway_unattributed_decisions\" AND resource.type = \"audited_resource\""
+      duration        = "0s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      # No evaluation_missing_data: Cloud Monitoring only accepts it with a non-zero duration, and a
+      # missing series (no decision for an unattributed principal) is the expected state.
       aggregations {
         alignment_period     = "300s"
         per_series_aligner   = "ALIGN_DELTA"
