@@ -16,6 +16,8 @@
     <Policy>FC-Cross-Cloud</Policy>
     <Policy>JS-extract-tokens</Policy>
     <Policy>JS-rewrite-target-path</Policy>
+    <Policy>JS-Usage-Context</Policy>
+    <Policy>JS-Usage-Context-Fault</Policy>
     <Policy>KVM-Get-Agent-Config</Policy>
     <Policy>LTQ-count</Policy>
     <Policy>LTQ-enforce</Policy>
@@ -31,6 +33,7 @@
   <Resources>
     <Resource>jsc://extract-tokens.js</Resource>
     <Resource>jsc://rewrite-target-path.js</Resource>
+    <Resource>jsc://usage-context.js</Resource>
   </Resources>
   <TargetEndpoints>
     <TargetEndpoint>default</TargetEndpoint>

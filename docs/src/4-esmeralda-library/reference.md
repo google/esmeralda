@@ -44,6 +44,19 @@ Returns an ADK `App` whose plugins are `EsmeraldaTelemetryPlugin()` followed by 
 | `name` | App name. Must match the agent package directory and `--gemini_enterprise_app_name` (both `agent` in this repo) |
 | `plugins` | Additional ADK plugins, run after `EsmeraldaTelemetryPlugin` |
 
+When `ESMERALDA_MODEL_GATEWAY_URL` is set, it first calls `esmeralda.models.route_models(root_agent)`.
+
+## `esmeralda.models`
+
+Model egress through a model gateway ([Apigee `llm-gateway`](../2-workloads-and-catalog/04-apigee-partner-gateway.md)). A no-op unless `ESMERALDA_MODEL_GATEWAY_URL` is set.
+
+| Function / class | Description |
+|---|---|
+| `route_models(root_agent)` | Replaces every Gemini model name in the agent tree with `gemini(name)`; model objects and inherited models are left alone. Returns `root_agent` |
+| `gemini(model, *, url=None)` | `model` unchanged without a gateway, else an ADK `Gemini` with `base_url` = the gateway, explicit `project` / `location` (`MODEL_LOCATION`, else `global`) and `GatewayIdTokenCredentials` |
+| `GatewayIdTokenCredentials(audience)` | Bearer credentials holding a Google ID token for the agent's runtime identity (not `SERVICE_ACCOUNT_EMAIL`), refreshed before expiry |
+| `gateway_url()` | The configured gateway URL (must be `https`), or `None` |
+
 ## `esmeralda.lifecycle`
 
 Process lifecycle. Each step is a function without arguments (`Step = Callable[[], None]`), is idempotent, and raises on failure.
@@ -509,3 +522,4 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | `ESMERALDA_USAGE_TRANSPORT` | `usage.transport_from_env` | `stdout` (default), `otel`, or `stdout,otel` |
 | `ESMERALDA_USAGE_VALIDATE` | `usage.UsageRecorder` | `true` validates every record against the shipped schema and logs violations (needs `jsonschema`) |
 | `ESMERALDA_LEGACY_TELEMETRY_EVENTS` | Plugin | `false` stops the legacy `genai_token_consumption` / `mcp_tool_execution` events (default on) |
+| `ESMERALDA_MODEL_GATEWAY_URL` | `models.route_models` (via `create_app`) | Gemini base URL of the model gateway, e.g. `https://apigee.esmeralda.internal/llm`. Set by Terraform only when `governance.capabilities.model_gateway = "apigee"`; unset = direct Vertex AI calls |

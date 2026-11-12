@@ -44,6 +44,7 @@ variable "governance_config" {
       token_quota      = optional(string, "none")
       usage_metering   = optional(string, "agent_gateway")
       cross_cloud      = optional(string, "agent_gateway")
+      model_gateway    = optional(string, "none")
     }), {})
   })
   default  = {}
@@ -93,6 +94,20 @@ variable "governance_config" {
     )
     error_message = "governance_config.capabilities.partner_access = \"apigee\" requires cross_cloud = \"apigee\": the partner proxies call the cross-cloud shared flow, which must be deployed in the environment."
   }
+
+  # Agent -> model egress: "none" = agents call Vertex AI directly (workload usage records only);
+  # "apigee" = through the llm-gateway proxy (verified caller, per-caller LLMTokenQuota, gateway
+  # usage records), which writes to the usage-metering data collectors.
+  validation {
+    condition = (
+      contains(["none", "apigee"], var.governance_config.capabilities.model_gateway) &&
+      (var.governance_config.capabilities.model_gateway != "apigee" || (
+        var.governance_config.capabilities.usage_metering == "apigee" &&
+        contains(["INTERMEDIATE", "COMPREHENSIVE"], var.governance_config.apigee.environment_type)
+      ))
+    )
+    error_message = "governance_config.capabilities.model_gateway must be \"none\" or \"apigee\"; \"apigee\" requires usage_metering = \"apigee\" and an INTERMEDIATE or COMPREHENSIVE Apigee environment."
+  }
 }
 
 resource "terraform_data" "capabilities_contract" {
@@ -119,7 +134,7 @@ resource "terraform_data" "capabilities_contract" {
 
 output "capabilities" {
   value       = terraform_data.capabilities_contract.output.capabilities
-  description = "Active provider map for each governance capability (egress_allowlist, content_safety, partner_access, token_quota, usage_metering, cross_cloud)."
+  description = "Active provider map for each governance capability (egress_allowlist, content_safety, partner_access, token_quota, usage_metering, cross_cloud, model_gateway)."
 }
 
 output "apigee_enabled" {

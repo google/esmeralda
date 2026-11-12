@@ -25,7 +25,7 @@ When Julian Sterling asks `cx-mortgage-orchestrator` to check his loan status, h
 1. **Caller Context Propagation (`caller.project_id`, `caller.agent_name`):**
    When `cx-mortgage-orchestrator` (in `esm-<env>-cx-agents-<sfx>`) calls `ai-coe-mortgage-specialist` (in `esm-<env>-ai-coe-agents-<sfx>`) over A2A, the `esmeralda` library attaches W3C OpenTelemetry baggage carrying `caller.project_id` and `caller.agent_name`. Inside the specialist container, `BaggageSpanProcessor` ([`telemetry.py`](../../../packages/esmeralda/src/esmeralda/telemetry.py)) automatically copies those attributes onto every child Cloud Trace span—including the specialist's Gemini model calls and MCP tool calls.
 2. **One usage record per model call, tool call and gateway request (`esmeralda.usage`):**
-   Every producer writes the same structured JSON record: the agents (any framework, through the `esmeralda` library), and any gateway that adopts the contract (`source = gateway`). Each record carries `"schema": "esmeralda.usage"`, a `schema_version`, the `event` (`llm.call`, `tool.call`, `agent.invocation`, `gateway.request`), `source` (`gateway` or `workload`), the serving `workload`, the `caller` (`principal`, `team`, `verified`), OpenTelemetry GenAI token counts (`gen_ai."usage.input_tokens"`, ...), tool details and the W3C `trace_id`. The contract lives in `contracts/usage-event.schema.json`.
+   Every producer writes the same structured JSON record: the agents (any framework, through the `esmeralda` library), and any gateway that adopts the contract (`source = gateway`; the Apigee partner proxies and the Apigee LLM gateway do). Each record carries `"schema": "esmeralda.usage"`, a `schema_version`, the `event` (`llm.call`, `tool.call`, `agent.invocation`, `gateway.request`), `source` (`gateway` or `workload`), the serving `workload`, the `caller` (`principal`, `team`, `verified`), OpenTelemetry GenAI token counts (`gen_ai."usage.input_tokens"`, ...), tool details and the W3C `trace_id`. The contract lives in `contracts/usage-event.schema.json`.
 3. **A sink keyed on the record type, not on a log name:**
    A Layer 4 sink in every project routes `jsonPayload.schema = "esmeralda.usage"` into a dedicated BigQuery dataset (`esmeralda_usage_<env>`), wherever the record was logged (Agent Engine stdout, Cloud Run, Apigee, the Cloud Logging API).
 4. **Gateway and workload records joined, billed to the verified team (`vw_monthly_agent_chargeback` & `vw_request_level_telemetry`):**
@@ -133,7 +133,7 @@ flowchart TD
   | :--- | :--- |
   | `aiplatform_googleapis_com_reasoning_engine_stdout`, `..._stderr` | `esmeralda` library on Agent Engine |
   | `run_googleapis_com_stdout`, `run_googleapis_com_stderr` | Cloud Run workloads, the Envoy gateway access log |
-  | `esmeralda_apigee_interactions` | Apigee `ML-interaction` MessageLogging policy, once it writes contract records |
+  | `esmeralda_apigee_interactions` | Apigee `ML-interaction` MessageLogging policy (partner proxies, `usage-metering` shared flow, LLM gateway) |
   | `esmeralda_usage` | Producers writing through the Cloud Logging API (OTel collector, other clouds) |
 
   Cloud Logging exports dotted keys with underscores (`gen_ai."usage.input_tokens"` becomes `gen_ai.usage_input_tokens`) and every JSON number as `FLOAT`; the `usage_events` view casts. A producer writing under another log ID needs its table name added to `usage_landing_tables`; until then the sink auto-creates the table and its rows are stored but not visible in `usage_events`.

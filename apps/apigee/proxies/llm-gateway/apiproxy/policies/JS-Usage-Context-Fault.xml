@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<Javascript name="JS-Usage-Context-Fault" continueOnError="true" enabled="true" timeLimit="200">
+  <DisplayName>JS-Usage-Context-Fault</DisplayName>
+  <Properties>
+    <Property name="phase">fault</Property>
+    <Property name="principal_ref">llmgw.caller.principal</Property>
+    <Property name="gen_ai">always</Property>
+    <Property name="gen_ai_system">gcp.vertex_ai</Property>
+    <Property name="operation_name">generate_content</Property>
+    <Property name="request_model_ref">llm.request.model</Property>
+  </Properties>
+  <ResourceURL>jsc://usage-context.js</ResourceURL>
+</Javascript>

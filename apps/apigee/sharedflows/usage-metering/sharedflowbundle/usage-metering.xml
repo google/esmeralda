@@ -13,10 +13,12 @@
     <Policy>DC-capture-llm-metrics</Policy>
     <Policy>EV-ExtractTokenCount</Policy>
     <Policy>JS-extract-tokens</Policy>
+    <Policy>JS-Usage-Context</Policy>
     <Policy>ML-interaction</Policy>
   </Policies>
   <Resources>
     <Resource>jsc://extract-tokens.js</Resource>
+    <Resource>jsc://usage-context.js</Resource>
   </Resources>
   <SharedFlows>
     <SharedFlow>default</SharedFlow>

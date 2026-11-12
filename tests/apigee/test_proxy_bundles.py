@@ -116,7 +116,7 @@ def test_every_proxy_wires_cross_cloud_flow_callout_before_identity_check(proxy_
     assert "requires_cross_cloud" in fc_cond
 
 
-@pytest.mark.parametrize("proxy_name", ["partner-agents", "partner-mcp"])
+@pytest.mark.parametrize("proxy_name", ["partner-agents", "partner-mcp", "llm-gateway"])
 def test_every_proxy_logs_in_postclientflow_without_bodies(proxy_name: str) -> None:
     """Every proxy must attach ML-interaction in PostClientFlow and never log request/response bodies."""
     apiproxy_dir = PROXIES_DIR / proxy_name / "apiproxy"
@@ -136,13 +136,15 @@ def test_every_proxy_logs_in_postclientflow_without_bodies(proxy_name: str) -> N
     ml_text = ml_policy.read_text(encoding="utf-8")
     assert "request.content" not in ml_text, f"{proxy_name}/ML-interaction.xml must not log request.content"
     assert "response.content" not in ml_text, f"{proxy_name}/ML-interaction.xml must not log response.content"
-    for otel_field in (
-        "gen_ai.usage.input_tokens",
-        "gen_ai.usage.output_tokens",
-        "gen_ai.usage.total_tokens",
-        "gen_ai.request.model",
+    # esmeralda.usage record (contracts/usage-event.schema.json); test_usage_records renders and validates it.
+    for usage_field in (
+        '"schema": "esmeralda.usage"',
+        "{usage.timestamp}",
+        "{usage.caller_fields}",
+        "{usage.outcome_fields}",
+        "{firstnonnull(usage.latency_ms,'0')}",
     ):
-        assert otel_field in ml_text, f"{proxy_name}/ML-interaction.xml is missing OTel field {otel_field}"
+        assert usage_field in ml_text, f"{proxy_name}/ML-interaction.xml is missing usage field {usage_field}"
 
 
 def test_usage_metering_ml_interaction_never_logs_bodies() -> None:
@@ -177,6 +179,7 @@ def test_sse_targets_enable_streaming_and_300s_timeouts_without_buffering() -> N
     sse_targets = [
         PROXIES_DIR / "partner-agents" / "apiproxy" / "targets" / "sse.xml",
         PROXIES_DIR / "partner-mcp" / "apiproxy" / "targets" / "default.xml",
+        PROXIES_DIR / "llm-gateway" / "apiproxy" / "targets" / "sse.xml",
     ]
     for target_path in sse_targets:
         root = ET.parse(target_path).getroot()
@@ -203,7 +206,7 @@ def test_sse_targets_enable_streaming_and_300s_timeouts_without_buffering() -> N
 def test_every_target_enforces_strict_tls_validation() -> None:
     """Every TargetEndpoint must enable TLS and set IgnoreValidationErrors=false."""
     target_files = sorted(PROXIES_DIR.glob("*/apiproxy/targets/*.xml"))
-    assert len(target_files) == 3
+    assert len(target_files) == 5
     for target_path in target_files:
         root = ET.parse(target_path).getroot()
         ssl_info = root.find("./HTTPTargetConnection/SSLInfo")
@@ -242,10 +245,10 @@ def test_ltq_policies_count_total_tokens_and_set_model_source() -> None:
 
 @pytest.mark.parametrize(
     "capability_module",
-    ["partner-agents", "partner-mcp", "token-quota", "usage-metering", "cross-cloud"],
+    ["partner-agents", "partner-mcp", "token-quota", "usage-metering", "cross-cloud", "llm-gateway"],
 )
 def test_capability_terraform_modules_validate_offline(capability_module: str) -> None:
-    """All 5 Apigee capability Terraform modules must pass `terraform init -backend=false && terraform validate`."""
+    """All Apigee capability Terraform modules must pass `terraform init -backend=false && terraform validate`."""
     tf_bin = _find_terraform_binary()
     mod_dir = CAPABILITIES_MODULES_DIR / capability_module
     assert (mod_dir / "main.tf").exists(), f"Missing {mod_dir / 'main.tf'}"
@@ -401,8 +404,9 @@ def test_no_message_logging_template_references_client_id_or_apikey() -> None:
             assert token not in lower, (
                 f"{ml_path.relative_to(REPO_ROOT)} references '{token}', which leaks the consumer API key"
             )
-        assert "consumer.app.name" in text, (
-            f"{ml_path.relative_to(REPO_ROOT)} must log consumer.app.name instead of client.id"
+        # The caller comes from JS-Usage-Context (verified app name, cross-cloud iss#sub or agent identity).
+        assert "{usage.caller_fields}" in text, (
+            f"{ml_path.relative_to(REPO_ROOT)} must log the verified caller (usage.caller_fields) instead of client.id"
         )
 
 

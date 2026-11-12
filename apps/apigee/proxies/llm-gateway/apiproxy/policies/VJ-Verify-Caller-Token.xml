@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<VerifyJWT name="VJ-Verify-Caller-Token" continueOnError="false" enabled="true">
+  <DisplayName>VJ-Verify-Caller-Token</DisplayName>
+  <!-- Verifies the agent's Google-signed ID token locally against Google's JWKS (cached by
+       Apigee): RS256 signature, issuer, audience bound to this gateway, expiry. With no
+       <Source>, the token is read from the Authorization header ("Bearer <jwt>").
+       Google OAuth2 access tokens are opaque, so no local policy can verify them; that would
+       take a tokeninfo ServiceCallout on every model call. -->
+  <Algorithm>RS256</Algorithm>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+  <PublicKey>
+    <JWKS uri="https://www.googleapis.com/oauth2/v3/certs"/>
+  </PublicKey>
+  <Issuer>https://accounts.google.com</Issuer>
+  <Audience ref="llmgw.audience"/>
+  <TimeAllowance>60s</TimeAllowance>
+</VerifyJWT>

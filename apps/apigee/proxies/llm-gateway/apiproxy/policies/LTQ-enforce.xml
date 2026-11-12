@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<LLMTokenQuota name="LTQ-enforce" continueOnError="false" enabled="true">
+  <DisplayName>LTQ-enforce</DisplayName>
+  <!-- Per verified caller (agent identity), not per API key. -->
+  <SharedName>esmeralda-llm-gateway-quota</SharedName>
+  <EnforceOnly>true</EnforceOnly>
+  <Identifier ref="llmgw.caller.principal"/>
+  <Allow count="1000000" countRef="llmgw.quota.limit"/>
+  <Interval>1</Interval>
+  <TimeUnit ref="llmgw.quota.timeunit">minute</TimeUnit>
+  <LLMModelSource>{llm.request.model}</LLMModelSource>
+  <Distributed>true</Distributed>
+  <Synchronous>true</Synchronous>
+</LLMTokenQuota>

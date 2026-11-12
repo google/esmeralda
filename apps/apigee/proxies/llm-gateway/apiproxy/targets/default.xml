@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<TargetEndpoint name="default">
+  <Description>Non-streaming Vertex AI target (generateContent, countTokens): token extraction, quota count and analytics capture on the JSON response.</Description>
+  <FaultRules/>
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step>
+        <Name>AM-Set-Target-Url</Name>
+      </Step>
+    </Request>
+    <Response/>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response>
+      <Step>
+        <Name>JS-extract-tokens</Name>
+        <Condition>!(response.header.Content-Type =| "text/event-stream")</Condition>
+      </Step>
+      <Step>
+        <Name>LTQ-count</Name>
+        <Condition>!(response.header.Content-Type =| "text/event-stream") and (llm.totalTokenCount != null)</Condition>
+      </Step>
+      <Step>
+        <Name>DC-capture-llm-metrics</Name>
+      </Step>
+    </Response>
+  </PostFlow>
+  <Flows/>
+  <HTTPTargetConnection>
+    <!-- Overridden per request by AM-Set-Target-Url with the host derived from the allowed location. -->
+    <URL>https://aiplatform.googleapis.com</URL>
+    <Properties>
+      <Property name="io.timeout.millis">300000</Property>
+      <Property name="api.timeout">300000</Property>
+    </Properties>
+    <SSLInfo>
+      <Enabled>true</Enabled>
+      <Enforce>true</Enforce>
+      <IgnoreValidationErrors>false</IgnoreValidationErrors>
+    </SSLInfo>
+    <Authentication>
+      <GoogleAccessToken>
+        <Scopes>
+          <Scope>https://www.googleapis.com/auth/cloud-platform</Scope>
+        </Scopes>
+      </GoogleAccessToken>
+    </Authentication>
+  </HTTPTargetConnection>
+</TargetEndpoint>

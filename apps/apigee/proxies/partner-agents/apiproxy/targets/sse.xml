@@ -29,6 +29,10 @@
         <Name>LTQ-count</Name>
         <Condition>isFinal = true</Condition>
       </Step>
+      <Step>
+        <Name>JS-Usage-Context</Name>
+        <Condition>isFinal = true</Condition>
+      </Step>
     </Response>
   </EventFlow>
   <HTTPTargetConnection>

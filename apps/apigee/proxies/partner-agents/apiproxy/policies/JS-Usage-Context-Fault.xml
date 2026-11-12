@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<Javascript name="JS-Usage-Context-Fault" continueOnError="true" enabled="true" timeLimit="200">
+  <DisplayName>JS-Usage-Context-Fault</DisplayName>
+  <Properties>
+    <Property name="phase">fault</Property>
+    <Property name="principal_ref">caller.identity,verifyapikey.VAK-Verify-Partner-Key.app.name</Property>
+    <Property name="workload_from_path">true</Property>
+    <Property name="workload_runtime">agent_engine</Property>
+    <Property name="gen_ai">tokens</Property>
+    <Property name="operation_name">invoke_agent</Property>
+  </Properties>
+  <ResourceURL>jsc://usage-context.js</ResourceURL>
+</Javascript>

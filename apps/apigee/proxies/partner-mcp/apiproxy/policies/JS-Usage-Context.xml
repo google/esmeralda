@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<Javascript name="JS-Usage-Context" continueOnError="true" enabled="true" timeLimit="200">
+  <DisplayName>JS-Usage-Context</DisplayName>
+  <Properties>
+    <!-- Verified cross-cloud principal (iss#sub) when present, else the verified Apigee app. -->
+    <Property name="principal_ref">caller.identity,verifyapikey.VAK-Verify-Partner-Key.app.name</Property>
+    <Property name="workload_ref">mcp.service.host</Property>
+    <Property name="workload_runtime">cloud_run</Property>
+    <Property name="tool_ref">mcp.tool.name</Property>
+    <Property name="tool_server_ref">mcp.service.host</Property>
+    <Property name="gen_ai">none</Property>
+  </Properties>
+  <ResourceURL>jsc://usage-context.js</ResourceURL>
+</Javascript>
