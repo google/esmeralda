@@ -146,6 +146,9 @@ EOF
 #     -> vw_usage_billable                   one row per (trace_id, agent): gateway and workload records
 #                                            joined on trace_id, gateway tokens and identity preferred
 #     -> vw_monthly_agent_chargeback, vw_request_level_telemetry (backwards-compatible columns)
+#   vw_usage_normalized (Apigee gateway.request rows) + esmeralda_apigee_interactions (legacy shape)
+#   + vw_principal_teams (apigee_app rows)
+#     -> vw_partner_apigee_chargeback        partner app chargeback, billed to the verified partner team
 
 # Principal -> team attribution lookup: one row per authenticated identity.
 #   principal       the identity, exactly as the attribution reads it: caller.principal (SPIFFE id,
@@ -261,9 +264,11 @@ resource "google_bigquery_table" "vw_usage_billable" {
   depends_on = [google_bigquery_table.vw_usage_normalized]
 }
 
-# Partitioned BigQuery Table for Apigee Partner Gateway interactions (when usage_metering = "apigee").
-# Pre-created with the OTel GenAI columns emitted by ML-interaction.xml so vw_partner_apigee_chargeback
-# can be validated and queried immediately before the first partner call arrives.
+# Partitioned BigQuery Table for Apigee Partner Gateway interactions in the legacy pre-contract shape
+# (event = "apigee.gateway.interaction", written by the central sinks). Kept so historical partner
+# traffic stays in vw_partner_apigee_chargeback; contract-shaped Apigee records (esmeralda.usage) are
+# read from the usage dataset instead, through vw_usage_normalized. Pre-created with the columns the
+# view reads so it can be created before the first partner call arrives.
 resource "google_bigquery_table" "apigee_interactions" {
   dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
   table_id            = "esmeralda_apigee_interactions"
@@ -335,7 +340,8 @@ EOF
   }
 }
 
-# Partner Apigee Gateway Chargeback & Latency Decomposition View
+# Partner Apigee Gateway Chargeback & Latency Decomposition View (contract + legacy Apigee records,
+# billed to the verified partner team)
 resource "google_bigquery_table" "vw_partner_apigee_chargeback" {
   dataset_id = "esmeralda_telemetry_logs_${var.environment}"
   table_id   = "vw_partner_apigee_chargeback"
@@ -348,7 +354,11 @@ resource "google_bigquery_table" "vw_partner_apigee_chargeback" {
     use_legacy_sql = false
   }
 
-  depends_on = [google_bigquery_table.apigee_interactions]
+  depends_on = [
+    google_bigquery_table.apigee_interactions,
+    google_bigquery_table.vw_usage_normalized,
+    google_bigquery_table.vw_principal_teams,
+  ]
 }
 
 # Monthly Agent Chargeback View (billed by verified team; built on vw_usage_billable)

@@ -174,17 +174,15 @@ def test_principal_teams_view_unions_table_and_terraform_rows():
     assert "%{ for r in rows ~}" in sql and "jsonencode(r.principal)" in sql
 
 
-def test_no_partner_view_without_its_sink():
-    # The partner Apigee chargeback view ships with the partner sink (separate change).
-    module = "\n".join(_read(p) for p in GOVERNANCE.rglob("*.tf"))
-    assert "vw_partner_apigee_chargeback" not in module
-    assert '"google_bigquery_table" "apigee_interactions"' not in module
-    assert not (SQL_DIR / "vw_partner_apigee_chargeback.sql.tpl").exists()
-
-
 def test_legacy_tables_are_kept_for_historical_data():
     tables = _blocks(_read(FINOPS_TF), "resource", "google_bigquery_table")
-    for name in ("reasoning_engine_stdout", "unified_telemetry_events", "cloudaudit_activity", "vw_security_audit_trail"):
+    for name in (
+        "reasoning_engine_stdout",
+        "unified_telemetry_events",
+        "cloudaudit_activity",
+        "vw_security_audit_trail",
+        "apigee_interactions",
+    ):
         assert name in tables, name
 
 
@@ -206,6 +204,12 @@ def test_legacy_tables_are_kept_for_historical_data():
         ("vw_usage_billable", "vw_usage_billable.sql.tpl", ["${dataset_id}.vw_usage_normalized"], ["reasoning_engine_stdout", "genai_telemetry_events"]),
         ("vw_monthly_chargeback", "vw_monthly_agent_chargeback.sql.tpl", ["${dataset_id}.vw_usage_billable"], ["reasoning_engine_stdout", "genai_telemetry_events"]),
         ("vw_request_level_telemetry", "vw_request_level_telemetry.sql.tpl", ["${dataset_id}.vw_usage_billable"], ["reasoning_engine_stdout", "genai_telemetry_events"]),
+        (
+            "vw_partner_apigee_chargeback",
+            "vw_partner_apigee_chargeback.sql.tpl",
+            ["${dataset_id}.vw_usage_normalized", "${dataset_id}.esmeralda_apigee_interactions", "${dataset_id}.vw_principal_teams"],
+            ["${dataset_id}.principal_teams`", "vw_usage_billable", "reasoning_engine_stdout", "genai_telemetry_events"],
+        ),
     ],
 )
 def test_view_references(view, template, must_reference, must_not_reference):
@@ -306,6 +310,58 @@ def test_request_level_columns_are_backwards_compatible():
     ]
     assert cols[: len(legacy)] == legacy
     assert {"billed_team", "verified", "token_source"} <= set(cols)
+
+
+def test_partner_chargeback_columns_are_backwards_compatible():
+    cols = _final_select_columns("vw_partner_apigee_chargeback.sql.tpl")
+    legacy = [
+        "billing_month", "consumer_app", "caller_identity", "caller_issuer", "proxy_name", "model_name",
+        "total_requests", "error_requests", "quota_exceeded_requests", "total_input_tokens", "total_output_tokens",
+        "total_thinking_tokens", "total_billed_tokens", "avg_request_gateway_latency_ms",
+        "avg_target_backend_latency_ms", "avg_response_gateway_latency_ms", "avg_total_e2e_latency_ms",
+        "estimated_cost_usd",
+    ]
+    assert cols[: len(legacy)] == legacy
+    assert cols[len(legacy) :] == ["billed_team", "verified", "attribution"]
+    sql = _sql_without_comments("vw_partner_apigee_chargeback.sql.tpl")
+    # Contract rows: Apigee partner gateway records only (never workload records, never the model hop).
+    assert "AND source = 'gateway'" in sql
+    assert "AND gateway_product = 'apigee'" in sql
+    assert "AND event = 'gateway.request'" in sql
+    assert "source = 'workload'" not in sql
+    # Legacy rows: attribution only from the authenticated Apigee app.
+    assert "WHERE principal_type = 'apigee_app'" in sql
+    assert "ON pt.principal = a.jsonPayload.consumer_app" in sql
+    assert "consumer_client_id" not in sql  # the API key is never read
+    # Never double counts a sink export.
+    assert "QUALIFY ROW_NUMBER() OVER (PARTITION BY jsonPayload.apigee_message_id, timestamp) = 1" in sql
+    assert "GROUP BY 1, 2, 3, 4, 5, 6, billed_team, verified, attribution" in sql
+
+
+def test_partner_chargeback_tokens_are_int64():
+    sql = _sql_without_comments("vw_partner_apigee_chargeback.sql.tpl")
+    for key in ("input", "output", "thinking", "total"):
+        assert f"CAST(SAFE_CAST(a.jsonPayload.gen_ai_usage_{key}_tokens AS FLOAT64) AS INT64)" in sql, key
+    assert "CAST(ROUND(latency_ms) AS INT64) AS total_e2e_latency_ms" in sql
+
+
+def test_partner_chargeback_attribution_tiers():
+    sql = _sql_without_comments("vw_partner_apigee_chargeback.sql.tpl")
+    order = ["THEN 'legacy'", "THEN 'principal_table'", "ELSE 'unattributed'"]
+    positions = [sql.index(o) for o in order]
+    assert positions == sorted(positions)
+    assert "COALESCE(pt.team, 'unattributed') AS billed_team" in sql
+    assert "pt.team IS NOT NULL AS verified" in sql
+    # Contract rows keep vw_usage_normalized's attribution as is.
+    contract = sql[sql.index("contract_interactions AS") : sql.index("apigee_app_teams AS")]
+    for col in ("billed_team,", "verified,", "attribution,"):
+        assert f"    {col}" in contract, col
+
+
+def test_partner_chargeback_template_renders(tmp_path):
+    rendered = _render(tmp_path, "vw_partner_apigee_chargeback.sql.tpl", '{dataset_id = "ds"}')
+    for table in ("vw_usage_normalized", "vw_principal_teams", "esmeralda_apigee_interactions"):
+        assert f"`ds.{table}`" in rendered, table
 
 
 def test_dev_attribution_rows_come_from_project_outputs():
