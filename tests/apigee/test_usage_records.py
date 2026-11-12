@@ -274,3 +274,27 @@ def test_hostile_principal_is_json_escaped(validator: jsonschema.Draft202012Vali
     record = _record("usage-metering", flow)
     validator.validate(record)
     assert record["caller"] == {"principal": 'evil","verified":false,"x":"', "verified": True}
+
+
+def test_partner_chargeback_view_selects_exactly_the_partner_records() -> None:
+    """vw_partner_apigee_chargeback reads the partner proxies' records (gateway.request) and never the
+    LLM gateway's llm.call records, which are internal agent usage billed in vw_usage_billable."""
+    sql = (REPO_ROOT / "infrastructure/modules/4-governance/sql/vw_partner_apigee_chargeback.sql.tpl").read_text(
+        encoding="utf-8"
+    )
+    flow = _base_flow(
+        **{
+            "verifyapikey.VAK-Verify-Partner-Key.app.name": "partner-smoke-test",
+            "proxy.pathsuffix": "/cx-mortgage-orchestrator:query",
+            "mcp.service.host": "income-verification",
+            "response.status.code": 200,
+        }
+    )
+    for bundle in ("partner-agents", "partner-mcp", "usage-metering"):
+        record = _record(bundle, flow)
+        assert f"AND event = '{record['event']}'" in sql, bundle
+        assert f"AND source = '{record['source']}'" in sql, bundle
+        assert f"AND gateway_product = '{record['gateway']['product']}'" in sql, bundle
+    model_hop = _record("llm-gateway", _base_flow(**{"llmgw.caller.principal": "sa@example.iam.gserviceaccount.com"}))
+    assert model_hop["event"] == "llm.call"
+    assert f"event = '{model_hop['event']}'" not in sql
