@@ -46,11 +46,27 @@ def _block(text: str, kind: str, rtype: str, name: str) -> str:
         i += 1
 
 
-def test_record_metric_counts_guarded_workloads_only():
-    """Agent Runtime agents never see the caller's credential: their records are gateway-attributed."""
-    metric = _block(_read(ALERTS_TF), "resource", "google_logging_metric", "usage_unattributed_records")
-    assert "NOT jsonPayload.caller.verified=true" in metric
-    assert 'NOT jsonPayload.workload.runtime=\\"agent_engine\\"' in metric
+def test_unattributed_checks_count_guarded_workloads_only():
+    """Agent Runtime agents never see the caller's credential: their records are gateway-attributed.
+
+    usage/unattributed_records stays as deployed (every unverified record); the alert and the dashboard
+    tile read usage/unattributed_guarded_records, a separate metric scoped in its log filter, through
+    the usage_promql generator (exact monitored_resource selectors). Separate, so no deployed metric is
+    replaced.
+    """
+    alerts = _read(ALERTS_TF)
+    metric = _block(alerts, "resource", "google_logging_metric", "usage_unattributed_records")
+    assert "NOT jsonPayload.caller.verified=true" in metric and "runtime" not in metric
+    guarded = _block(alerts, "resource", "google_logging_metric", "usage_unattributed_guarded_records")
+    assert 'name        = "usage/unattributed_guarded_records"' in guarded
+    assert 'NOT jsonPayload.caller.verified=true AND NOT jsonPayload.workload.runtime=\\"agent_engine\\"' in guarded
+    assert '"increase|unattributed_guarded_records|5m"' in alerts
+    alert = _block(alerts, "resource", "google_monitoring_alert_policy", "unattributed_usage")
+    assert 'local.usage_promql["increase|unattributed_guarded_records|5m"]' in alert
+    assert "google_logging_metric.usage_unattributed_guarded_records" in alert
+    dashboards = _read(GOVERNANCE / "modules/3_alert_policies/dashboards.tf")
+    assert 'usage_promql_json[\\"increase|unattributed_guarded_records|5m\\"]' in dashboards \
+        or 'usage_promql_json["increase|unattributed_guarded_records|5m"]' in dashboards
 
 
 def test_unattributed_alert_is_on_by_default():

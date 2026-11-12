@@ -390,7 +390,8 @@ def test_no_regex_or_stdout_only_finops_metric_remains():
     for legacy in ("genai_token_consumption", "mcp_tool_execution", "reasoning_engine_stdout"):
         assert legacy not in alerts, legacy
     usage_metrics = {n: b for n, b in metrics.items() if n.startswith("usage_")}
-    assert set(usage_metrics) == {"usage_tokens", "usage_tool_calls", "usage_unattributed_records"}
+    assert set(usage_metrics) == {"usage_tokens", "usage_tool_calls", "usage_unattributed_records",
+                                  "usage_unattributed_guarded_records"}
     assert f'usage_record_filter   = "{USAGE_FILTER}"' in alerts
     for name, body in usage_metrics.items():
         filter_line = next(line for line in body.splitlines() if line.strip().startswith("filter"))
@@ -424,7 +425,7 @@ def test_alerts_run_on_usage_metrics():
     assert 'local.usage_promql["rate|input_tokens_bucket|5m"]' in runaway
     assert 'local.usage_promql["increase|input_tokens_sum|5m"]' in policies["token_anomaly_spike"]
     unattributed = policies["unattributed_usage"]
-    assert 'local.usage_promql["increase|unattributed_records|5m"]' in unattributed
+    assert 'local.usage_promql["increase|unattributed_guarded_records|5m"]' in unattributed
     assert ") > 0" in unattributed
     # Usage metrics span several monitored resource types: no metric-filter (single-resource) conditions.
     for name in ("runaway_loop_token_cap", "token_anomaly_spike", "unattributed_usage"):

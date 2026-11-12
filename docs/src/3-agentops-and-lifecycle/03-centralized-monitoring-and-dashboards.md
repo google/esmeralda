@@ -232,7 +232,8 @@ Filters audit logs for security-critical methods:
 | :--- | :--- | :--- |
 | `usage/input_tokens`, `usage/output_tokens`, `usage/cached_tokens`, `usage/reasoning_tokens` | Usage records with that token count > 0 (distribution of the per-record count) | `caller_team`, `verified`, `workload`, `workload_team`, `model`, `source`, `event` |
 | `usage/tool_calls` | Usage records with `event = "tool.call"` | `tool`, `server`, `status`, `workload`, `caller_team` |
-| `usage/unattributed_records` | Usage records from guarded workloads (`workload.runtime` other than `agent_engine`) without `caller.verified = true` | `workload`, `source`, `event`, `caller_team` |
+| `usage/unattributed_records` | Usage records without `caller.verified = true` (every runtime, for reference) | `workload`, `source`, `event`, `caller_team` |
+| `usage/unattributed_guarded_records` | The same, from guarded workloads only (`workload.runtime` other than `agent_engine`); read by the alert and the dashboard tile | `workload`, `source`, `event`, `caller_team` |
 | `attribution/gateway_unattributed_decisions` (governance project, created by the Layer 5 `iap-egress` unit) | Agent Gateway (IAP egress) decisions on agents and MCP servers that granted a principal missing from the catalog's `principal_teams` rows | `target` |
 | `security/iam_privilege_changes`, `security/secret_access_operations`, `security/reasoning_engine_deployments` | Cloud Audit Logs (`SetIamPolicy`, `AccessSecretVersion`, `ReasoningEngine`) | |
 
@@ -248,7 +249,7 @@ All tiles are PromQL over the usage metrics:
 4. **Reasoning (Thinking) Tokens over Time** (`usage/reasoning_tokens`)
 5. **Tool Calls per Minute by Tool & Status** and **by MCP Server** (`usage/tool_calls`)
 6. **P99 Input Tokens per Call (Runaway Loop Detector)** (`histogram_quantile` on `usage/input_tokens`)
-7. **Unattributed Usage Records (expected: 0)**
+7. **Unattributed Usage Records (expected: 0)** (guarded workloads: `usage/unattributed_guarded_records`)
 
 ### 2. `[Esmeralda <env>] Agent Platform - Golden Signals & Health`
 * **Widgets**: Cloud Run latencies, Cloud Run request volume & HTTP status, Reasoning Engine query rates & 429s, Cloud Run instance count, the entry point's request rate by response code class (internal Application Load Balancer metrics), and Agent Engine query latency P95.
@@ -273,7 +274,7 @@ All tiles are PromQL over the usage metrics:
 | **Reasoning Engine High Query Rate / 429 Quota** | Reasoning Engine `request_count` rate > 80 for 3 min | Email + Pub/Sub |
 | **High P95 Latency (>10s)** | Cloud Run `request_latencies` P95 > 10,000 ms for 5 min | Email |
 | **Token Rate-of-Change Anomaly (>300% Spike)** | PromQL: input + output tokens over 5 min (all producers) > 500,000 | Email + Pub/Sub |
-| **Unattributed Usage - Records Without a Verified Caller** | Any `usage/unattributed_records` in 5 min (expected: 0). Counts guarded workloads only (not Agent Runtime). On by default (`alert_on_unattributed_usage`) | Email + Pub/Sub |
+| **Unattributed Usage - Records Without a Verified Caller** | Any `usage/unattributed_guarded_records` in 5 min (expected: 0): guarded workloads only (not Agent Runtime). On by default (`alert_on_unattributed_usage`) | Email + Pub/Sub |
 | **Gateway Attribution - Principal Without a Team** | Any `attribution/gateway_unattributed_decisions` in 5 min (expected: 0): an Agent Gateway decision let through a principal that has no `principal_teams` row. Created by the Layer 5 `iap-egress` unit, follows `alert_on_unattributed_usage` | Email + Pub/Sub |
 | **SecOps - Privilege Escalation & IAM Modification Alert** | Any `security/iam_privilege_changes` event | Email + Pub/Sub |
 
