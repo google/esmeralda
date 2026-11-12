@@ -69,6 +69,8 @@ flowchart TD
             BILL["vw_usage_billable<br/>(gateway + workload joined on trace_id)"]
             VW1["vw_monthly_agent_chargeback"]
             VW2["vw_request_level_telemetry"]
+            APIGEE_TBL["esmeralda_apigee_interactions<br/>(legacy Apigee records)"]
+            VWP["vw_partner_apigee_chargeback"]
             AUDIT_TBL["cloudaudit_googleapis_com_activity"]
             VW3["vw_security_audit_trail"]
         end
@@ -84,14 +86,15 @@ flowchart TD
         end
     end
 
-    Spokes -->|Reasoning Engine, Cloud Run & Audit Logs| SINK
+    Spokes -->|Reasoning Engine, Cloud Run, Apigee & Audit Logs| SINK
     Spokes -->|esmeralda.usage records| USINK
-    SINK --> LEG & AUDIT_TBL
+    SINK --> LEG & AUDIT_TBL & APIGEE_TBL
     USINK --> LAND
     LAND --> UE
     UE & LEG & PT --> NORM
     NORM --> BILL
     BILL --> VW1 & VW2
+    NORM & APIGEE_TBL & PT --> VWP
     AUDIT_TBL --> VW3
     Spokes -->|Metrics scope + usage log-based metrics| Monitoring
 ```
@@ -110,9 +113,9 @@ flowchart TD
 
 * **Routing Filter**:
   ```hcl
-  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
+  filter = "resource.type=\"aiplatform.googleapis.com/ReasoningEngine\" OR logName=~\"gen_ai\" OR logName=~\"reasoning_engine_stdout\" OR logName=~\"reasoning_engine_stderr\" OR logName=~\"esmeralda-apigee-interactions\" OR resource.type=\"cloud_run_revision\" OR logName=~\"cloudaudit.googleapis.com\""
   ```
-* **Exclusions**: Debug logs (`severity < INFO`) are excluded, except usage records (`jsonPayload.schema = "esmeralda.usage"`) and the legacy `genai_token_consumption` events, to reduce BigQuery ingestion costs.
+* **Exclusions**: Debug logs (`severity < INFO`) are excluded, except usage records (`jsonPayload.schema = "esmeralda.usage"`), the legacy `genai_token_consumption` events and the legacy Apigee `apigee.gateway.interaction` records, to reduce BigQuery ingestion costs.
 * **Metrics scope**: the spoke projects are also attached to the governance project's Cloud Monitoring metrics scope (`google_monitoring_monitored_project`), so dashboards and alerts in the hub can see spoke metrics.
 * **Agent Gateway audit logs**: `ADMIN_READ`, `DATA_READ` and `DATA_WRITE` audit logs are enabled on the governance project for `iap`, `networkservices` and `agentregistry`, and the `_Default` log buckets have Log Analytics enabled (with a linked BigQuery dataset `default_logs_analytics` in governance).
 
@@ -157,10 +160,11 @@ flowchart TD
 | **`cloudaudit_googleapis_com_activity`** | Terraform (schema), filled by the sinks | Partitioned `DAY` (`timestamp`) | Cloud Audit Activity logs for IAM, Secret Manager, and Reasoning Engine operations. |
 | **`aiplatform_googleapis_com_reasoning_engine_stdout`** | Terraform (schema), filled by the central sinks | Partitioned `DAY` (`timestamp`) | Reasoning Engine stdout, including the agents' legacy `genai_token_consumption` events (historical data, still read by `vw_usage_normalized`). |
 | **`genai_telemetry_events`** | Terraform | Partitioned `DAY` (`timestamp`), Clustered `(event_type, agent_id, session_id)` | Legacy unified JSON event envelope (historical data, read by `vw_usage_normalized`). |
+| **`esmeralda_apigee_interactions`** | Terraform (schema), filled by the central sinks | Partitioned `DAY` (`timestamp`) | Apigee partner gateway interactions in the pre-contract `ML-interaction` shape (`event = apigee.gateway.interaction`: consumer app, verified caller identity and issuer, OTel GenAI token counts, quota counters, per-leg latency timestamps; never the API key). Historical data, read by `vw_partner_apigee_chargeback`; contract-shaped Apigee records are read from `esmeralda_usage_<env>` instead. |
 | **`run_googleapis_com_requests`** | The sinks, on first log | Partitioned `DAY` | Cloud Run HTTP request logs (the MCP servers, and the Envoy adapter when enabled). |
 
 > [!NOTE]
-> The `principal_teams` table is created empty. Rows declared in Terraform (Layer 4 variable `principal_teams`, `source = terraform`) are served with it through the view `vw_principal_teams`, which is what the attribution reads. Each environment's `layer-4-governance` unit maps its workload projects to their owning teams (`principal_type = gcp_project`, from the Layer 1 project outputs). The Layer 5 `iap-egress` unit writes the catalog's verified principals (`catalog/.resolved/<env>.json` `attribution.principal_teams`, with references resolved to unit outputs) as `source = catalog` rows. It replaces only those rows, in one transaction, and only when they change.
+> The `principal_teams` table is created empty. Rows declared in Terraform (Layer 4 variable `principal_teams`, `source = terraform`) are served with it through the view `vw_principal_teams`, which is what the attribution reads. Each environment's `layer-4-governance` unit maps its workload projects to their owning teams (`principal_type = gcp_project`, from the Layer 1 project outputs). The Layer 5 `iap-egress` unit writes the catalog's verified principals (`catalog/.resolved/<env>.json` `attribution.principal_teams`, with references resolved to unit outputs) as `source = catalog` rows. It replaces only those rows, in one transaction, and only when they change. A partner Apigee app is one row with `principal_type = apigee_app`, e.g. `principal = example-partner-app`, `team = example-partner`.
 
 ### Analytical Views
 
@@ -174,6 +178,7 @@ The FinOps views are layered, each one built on the previous:
 | **`vw_usage_billable`** | One **billable unit** per (`trace_id`, agent) | Joins the gateway and workload records of a request on `trace_id`. Tokens come from the gateway when it recorded them, else from the workload's `llm.call` records, else from legacy events (`token_source`). Identity: the verified gateway caller first. `agent.invocation` records are never billed (they roll up the calls), and while agents emit both the legacy and the contract events nothing is counted twice. |
 | **`vw_monthly_agent_chargeback`** | Month × team × agent × model | Monthly cost and context-caching savings (below). |
 | **`vw_request_level_telemetry`** | One row per billable unit | Per-request cost (`request_cost_usd`), token counts (`prompt`, `completion`, `thoughts`, `cached`), session and trace IDs, plus `billed_team`, `verified`, `caller_principal` and `token_source`. |
+| **`vw_partner_apigee_chargeback`** | Month × partner app × caller × proxy × model × team | Partner gateway chargeback (below): Apigee `gateway.request` rows of `vw_usage_normalized` plus the legacy `esmeralda_apigee_interactions` records, billed to the verified partner team. |
 | **`vw_security_audit_trail`** | One row per audit event | SecOps audit (below). |
 
 > [!NOTE]
@@ -214,7 +219,32 @@ One row per billable unit (a request through one agent): per-request costs (`req
 > [!NOTE]
 > Agent Runtime reports project **numbers**, not IDs: the calling project the `esmeralda` library declares (`caller.declared.project_id`) is a number there. `vw_usage_normalized` maps numbers back to IDs for every project that produces usage (the governance and spoke projects, looked up by Terraform); an unknown number is kept as is and reported in `caller_project_number`.
 
-#### 3. `vw_security_audit_trail` (SecOps Compliance Audit)
+#### 3. `vw_partner_apigee_chargeback` (Partner Gateway Chargeback)
+Monthly chargeback, token consumption, quota exhaustion and latency for traffic through the Apigee partner proxies (`partner-agents`, `partner-mcp`, the `usage-metering` shared flow), one row per month, partner app (`consumer_app`), verified caller (`caller_identity`, `caller_issuer` for a cross-cloud JWT), proxy, model and paying team. Two sources, one shape:
+
+* **Contract records**: rows of `vw_usage_normalized` with `source = gateway`, `gateway_product = apigee` and `event = gateway.request`. They keep that view's `billed_team`, `verified` and `attribution`: the partner team counts only when the gateway verified the caller (`verified`, or the Apigee app's `principal_teams` row: `principal_table`); gateway records never fall back to the gateway project's team. The contract carries only the end-to-end `latency_ms`, so the per-leg latency columns are empty for these rows. Model calls through an Apigee model gateway (`llm.call`) are internal agent usage and stay in `vw_usage_billable`.
+* **Legacy records**: `esmeralda_apigee_interactions` rows with `event = apigee.gateway.interaction`. The Apigee app was authenticated by its API key, so its `principal_teams` row (`principal_type = apigee_app`) is verified attribution (`principal_table`); an app without a row is `unattributed`, and a record without an app (rejected before key verification) is `legacy`.
+
+Tokens come only from the gateway record (never from the records of the agent behind the proxy), each request is written by one template version, and duplicate sink exports are dropped, so nothing is counted twice. Token columns are `INT64`. The historical columns keep their names and order; `billed_team`, `verified` and `attribution` are appended.
+
+```sql
+SELECT
+  billing_month,
+  billed_team,
+  verified,
+  attribution,
+  consumer_app,
+  proxy_name,
+  total_requests,
+  quota_exceeded_requests,
+  total_billed_tokens,
+  avg_total_e2e_latency_ms,
+  estimated_cost_usd
+FROM `esm-<env>-governance-<sfx>.esmeralda_telemetry_logs_<env>.vw_partner_apigee_chargeback`
+ORDER BY billing_month DESC, estimated_cost_usd DESC;
+```
+
+#### 4. `vw_security_audit_trail` (SecOps Compliance Audit)
 Filters audit logs for security-critical methods:
 * `SetIamPolicy`: Tracks IAM role modifications and privilege escalations.
 * `AccessSecretVersion`: Audits Secret Manager credential reads.

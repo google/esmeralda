@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<FlowCallout name="FC-Cross-Cloud" continueOnError="false" enabled="true">
+  <DisplayName>FC-Cross-Cloud</DisplayName>
+  <SharedFlowBundle>cross-cloud</SharedFlowBundle>
+</FlowCallout>

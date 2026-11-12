@@ -9,12 +9,15 @@
   <Description>North-south partner front door for MCP tool servers via the internal entrypoint with server-side tool scope enforcement.</Description>
   <BasePaths>/partner/v1/mcp</BasePaths>
   <Policies>
+    <Policy>AM-Strip-Verified-Headers</Policy>
     <Policy>AM-clean-headers</Policy>
     <Policy>AM-set-target-host</Policy>
     <Policy>AM-set-user-var</Policy>
+    <Policy>FC-Cross-Cloud</Policy>
     <Policy>JS-Enforce-Tool-Scope</Policy>
     <Policy>KVM-Get-MCP-Config</Policy>
     <Policy>ML-interaction</Policy>
+    <Policy>RF-Key-Identity-Mismatch</Policy>
     <Policy>RF-Not-Found</Policy>
     <Policy>RF-Tool-Forbidden</Policy>
     <Policy>VAK-Verify-Partner-Key</Policy>

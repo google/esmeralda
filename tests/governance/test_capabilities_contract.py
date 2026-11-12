@@ -199,6 +199,7 @@ def test_token_quota_apigee_with_supported_environment_passes(tmp_path: pathlib.
             "partner_access": "apigee",
             "token_quota": "apigee",
             "usage_metering": "apigee",
+            "cross_cloud": "apigee",
         },
     }
     outputs = evaluate_capabilities(tmp_path / f"quota-{env_type.lower()}", config)
@@ -216,12 +217,25 @@ def test_partner_access_apigee_on_base_without_token_quota_passes(tmp_path: path
         "capabilities": {
             "partner_access": "apigee",
             "token_quota": "none",
+            "cross_cloud": "apigee",
         },
     }
     outputs = evaluate_capabilities(tmp_path / "partner-base", config)
     assert outputs["apigee_enabled"] is True
     assert outputs["capabilities"]["partner_access"] == "apigee"
     assert outputs["capabilities"]["token_quota"] == "none"
+
+
+def test_partner_access_apigee_requires_the_cross_cloud_shared_flow(tmp_path: pathlib.Path):
+    """The partner proxies call the cross-cloud shared flow: partner_access = "apigee" needs cross_cloud = "apigee"."""
+    config = {
+        "apigee": {"enabled": True, "byo": False, "environment_type": "INTERMEDIATE"},
+        "capabilities": {"partner_access": "apigee", "cross_cloud": "agent_gateway"},
+    }
+    with pytest.raises(AssertionError) as exc_info:
+        evaluate_capabilities(tmp_path / "partner-no-cross-cloud", config)
+
+    assert 'partner_access = "apigee" requires cross_cloud = "apigee"' in _squash(str(exc_info.value))
 
 
 def test_invalid_environment_type_fails(tmp_path: pathlib.Path):

@@ -131,6 +131,9 @@ Every capability in `governance.capabilities` accepts one of three provider valu
 | **`usage_metering`** | Captures token consumption and request latency for FinOps chargeback | OpenTelemetry structured logs sunk to BigQuery (`vw_monthly_agent_chargeback`) | Layer 5 Apigee `usage-metering` unit (structured `PostClientFlow` `MessageLogging` + SSE token extraction into Cloud Logging / BigQuery) | Disables gateway-level usage metering |
 | **`cross_cloud`** | Governs traffic between Esmeralda and workloads on other clouds | Outbound calls to registered external endpoints via Agent Registry | Layer 5 Apigee `cross-cloud` unit (inbound partner/cross-cloud traffic via Apigee API products) | Disables cross-cloud governance routes |
 
+> [!NOTE]
+> `cross_cloud = "apigee"` only affects **inbound** cross-cloud traffic (the Apigee `cross-cloud` shared flow and its trusted-issuer allowlist, required whenever `partner_access = "apigee"`). Outbound calls from agents to other clouds always go through the Central Agent Gateway and Agent Registry, whatever the value.
+
 ---
 
 ## 4. Stopping the "Confused Deputy": GEAP Unified Access Policies (UAPs) & Semantic Governance (NLC)
@@ -251,7 +254,7 @@ To enable B2B partner access and consumer token quotas via Apigee in an environm
        partner_access   = "apigee"
        token_quota      = "apigee"
        usage_metering   = "apigee"
-       cross_cloud      = "agent_gateway"
+       cross_cloud      = "apigee" # required with partner_access = "apigee" (cross-cloud shared flow)
      }
    }
    ```

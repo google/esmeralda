@@ -65,7 +65,13 @@ variable "products" {
 }
 
 variable "consumers" {
-  description = "Map of partner or internal consumer applications, their subscribed API products, and owner_identity binding."
+  description = <<-EOT
+    Map of partner or internal consumer applications, their subscribed API products, and owner_identity binding.
+    key_rotation: rotation keeper for the app's API key. Changing it to any new value (e.g. the rotation
+    date) replaces the developer app on the next apply, so Apigee issues a new key and the Secret Manager
+    version is replaced with it; the old key stops working at once. Requires --allow-destroy (the app and
+    the secret version are replaced). A consumer's first apply never rotates, whatever the value.
+  EOT
   type = map(object({
     display_name                     = string
     developer_email                  = string
@@ -73,6 +79,7 @@ variable "consumers" {
     owner_identity                   = string
     callback_url                     = optional(string, "https://partner.esmeralda.internal/oauth/callback")
     secret_accessor_service_accounts = optional(list(string), [])
+    key_rotation                     = optional(string, "")
   }))
   default = {}
 }

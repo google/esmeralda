@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<AssignMessage name="AM-Strip-Verified-Headers" continueOnError="false" enabled="true">
+  <DisplayName>AM-Strip-Verified-Headers</DisplayName>
+  <!-- Strips any client-supplied x-verified-* headers at the very start of
+       PreFlow so callers cannot spoof verified identity, issuer, app, or
+       principal headers before VAK-Verify-Partner-Key and FC-Cross-Cloud run. -->
+  <Remove>
+    <Headers>
+      <Header name="x-verified-identity"/>
+      <Header name="x-verified-issuer"/>
+      <Header name="x-verified-app"/>
+      <Header name="x-verified-client-id"/>
+      <Header name="x-verified-principal"/>
+    </Headers>
+  </Remove>
+  <AssignVariable>
+    <Name>caller.identity</Name>
+    <Value>anonymous</Value>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>caller.issuer</Name>
+    <Value></Value>
+  </AssignVariable>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+  <AssignTo createNew="false" transport="http" type="request"/>
+</AssignMessage>

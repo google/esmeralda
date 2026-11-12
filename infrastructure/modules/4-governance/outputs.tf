@@ -49,6 +49,11 @@ output "principal_teams_view_id" {
   description = "BigQuery view (in governance_dataset_id) of the effective principal -> team mapping (table + Terraform-declared rows)"
 }
 
+output "partner_apigee_chargeback_view_id" {
+  value       = module.finops_analytics.partner_apigee_chargeback_view_id
+  description = "BigQuery FinOps partner Apigee gateway chargeback and latency decomposition view ID"
+}
+
 output "golden_signals_dashboard_id" {
   value       = module.alert_policies.golden_signals_dashboard_id
   description = "Cloud Monitoring Agent Golden Signals Dashboard ID"

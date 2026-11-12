@@ -95,6 +95,16 @@ resource "google_apigee_developer" "developer" {
   user_name  = replace(split("@", each.value)[0], ".", "-")
 }
 
+# API key rotation keeper, one per consumer: changing consumers[*].key_rotation updates it, which
+# replaces the developer app below (new Apigee-generated key) and, through secret_data, the Secret
+# Manager version. Creating a keeper never triggers a replacement, so adding a consumer or upgrading
+# to this module version does not rotate existing keys.
+resource "terraform_data" "consumer_key_rotation" {
+  for_each = var.consumers
+
+  input = each.value.key_rotation
+}
+
 resource "google_apigee_developer_app" "consumer" {
   for_each = var.consumers
 
@@ -113,6 +123,10 @@ resource "google_apigee_developer_app" "consumer" {
   attributes {
     name  = "display_name"
     value = each.value.display_name
+  }
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.consumer_key_rotation[each.key]]
   }
 }
 

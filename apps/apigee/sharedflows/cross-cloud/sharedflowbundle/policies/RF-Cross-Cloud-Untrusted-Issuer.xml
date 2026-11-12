@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<RaiseFault name="RF-Cross-Cloud-Untrusted-Issuer" continueOnError="false" enabled="true">
+  <DisplayName>RF-Cross-Cloud-Untrusted-Issuer</DisplayName>
+  <FaultResponse>
+    <Set>
+      <StatusCode>403</StatusCode>
+      <Payload contentType="application/json">{"error":"cross_cloud_untrusted_issuer","detail":"The requested x-cross-cloud-issuer is not registered in kvm-cross-cloud-issuers."}</Payload>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

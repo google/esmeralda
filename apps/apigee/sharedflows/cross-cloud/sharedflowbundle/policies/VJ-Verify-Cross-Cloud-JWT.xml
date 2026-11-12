@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<VerifyJWT name="VJ-Verify-Cross-Cloud-JWT" continueOnError="false" enabled="true">
+  <DisplayName>VJ-Verify-Cross-Cloud-JWT</DisplayName>
+  <Algorithm>RS256</Algorithm>
+  <Source>request.header.x-cross-cloud-token</Source>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+  <PublicKey>
+    <JWKS uriRef="crosscloud.jwks_uri"/>
+  </PublicKey>
+  <Issuer ref="crosscloud.issuer_uri"/>
+  <Audience ref="crosscloud.audience"/>
+</VerifyJWT>

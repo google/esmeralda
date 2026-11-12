@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<SharedFlow name="default">
+  <Step>
+    <Name>RF-Cross-Cloud-Missing-Credentials</Name>
+    <Condition>(request.header.x-cross-cloud-issuer = null) or (request.header.x-cross-cloud-issuer = "") or (request.header.x-cross-cloud-token = null) or (request.header.x-cross-cloud-token = "")</Condition>
+  </Step>
+  <Step>
+    <Name>KVM-Get-Cross-Cloud-Issuer</Name>
+  </Step>
+  <Step>
+    <Name>RF-Cross-Cloud-Untrusted-Issuer</Name>
+    <Condition>(crosscloud.issuer_uri = null) or (crosscloud.issuer_uri = "") or (crosscloud.jwks_uri = null) or (crosscloud.jwks_uri = "") or (crosscloud.audience = null) or (crosscloud.audience = "")</Condition>
+  </Step>
+  <Step>
+    <Name>VJ-Verify-Cross-Cloud-JWT</Name>
+  </Step>
+  <Step>
+    <Name>RF-Cross-Cloud-Invalid-Token</Name>
+    <Condition>(jwt.VJ-Verify-Cross-Cloud-JWT.valid != true) or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer = null) or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer = "") or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject = null) or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject = "")</Condition>
+  </Step>
+  <Step>
+    <Name>AM-Propagate-Cross-Cloud-Principal</Name>
+  </Step>
+</SharedFlow>

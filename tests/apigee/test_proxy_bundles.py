@@ -55,20 +55,65 @@ def test_all_xml_files_are_well_formed() -> None:
 
 @pytest.mark.parametrize("proxy_name", ["partner-agents", "partner-mcp"])
 def test_every_proxy_requires_verify_api_key_in_preflow(proxy_name: str) -> None:
-    """Every proxy must enforce VAK-Verify-Partner-Key in PreFlow (no unauthenticated proxies)."""
-    proxy_default = PROXIES_DIR / proxy_name / "apiproxy" / "proxies" / "default.xml"
+    """Every proxy must strip client-supplied x-verified-* headers first and then enforce VAK-Verify-Partner-Key."""
+    apiproxy_dir = PROXIES_DIR / proxy_name / "apiproxy"
+    proxy_default = apiproxy_dir / "proxies" / "default.xml"
     root = ET.parse(proxy_default).getroot()
     preflow_steps = [
         el.text.strip()
         for el in root.findall("./PreFlow/Request/Step/Name")
         if el.text
     ]
-    assert "VAK-Verify-Partner-Key" in preflow_steps, (
-        f"{proxy_name} is missing VAK-Verify-Partner-Key in PreFlow/Request"
+    assert preflow_steps[0] == "AM-Strip-Verified-Headers", (
+        f"{proxy_name} must run AM-Strip-Verified-Headers as the very first PreFlow step"
     )
-    assert preflow_steps[0] == "VAK-Verify-Partner-Key", (
-        f"{proxy_name} must run VAK-Verify-Partner-Key as the first PreFlow step"
+    assert preflow_steps[1] == "VAK-Verify-Partner-Key", (
+        f"{proxy_name} must run VAK-Verify-Partner-Key immediately after AM-Strip-Verified-Headers"
     )
+    strip_policy = apiproxy_dir / "policies" / "AM-Strip-Verified-Headers.xml"
+    assert strip_policy.exists(), f"{proxy_name} is missing policies/AM-Strip-Verified-Headers.xml"
+    strip_root = ET.parse(strip_policy).getroot()
+    removed_headers = {
+        (h.attrib.get("name") or "").lower()
+        for h in strip_root.findall("./Remove/Headers/Header")
+    }
+    for required_header in (
+        "x-verified-identity",
+        "x-verified-issuer",
+        "x-verified-app",
+        "x-verified-client-id",
+        "x-verified-principal",
+    ):
+        assert required_header in removed_headers, (
+            f"{proxy_name}/AM-Strip-Verified-Headers.xml must strip {required_header}"
+        )
+
+
+@pytest.mark.parametrize("proxy_name", ["partner-agents", "partner-mcp"])
+def test_every_proxy_wires_cross_cloud_flow_callout_before_identity_check(proxy_name: str) -> None:
+    """Every proxy must invoke FC-Cross-Cloud before RF-Key-Identity-Mismatch and AM-set-user-var."""
+    apiproxy_dir = PROXIES_DIR / proxy_name / "apiproxy"
+    fc_policy = apiproxy_dir / "policies" / "FC-Cross-Cloud.xml"
+    assert fc_policy.exists(), f"{proxy_name} is missing policies/FC-Cross-Cloud.xml"
+    fc_root = ET.parse(fc_policy).getroot()
+    assert fc_root.tag == "FlowCallout"
+    assert (fc_root.findtext("SharedFlowBundle") or "").strip() == "cross-cloud"
+
+    proxy_default = apiproxy_dir / "proxies" / "default.xml"
+    root = ET.parse(proxy_default).getroot()
+    step_nodes = root.findall("./PreFlow/Request/Step")
+    steps = [(s.findtext("Name") or "").strip() for s in step_nodes]
+    assert "FC-Cross-Cloud" in steps
+    assert "RF-Key-Identity-Mismatch" in steps
+    assert steps.index("VAK-Verify-Partner-Key") < steps.index("FC-Cross-Cloud")
+    assert steps.index("FC-Cross-Cloud") < steps.index("RF-Key-Identity-Mismatch")
+    assert steps.index("FC-Cross-Cloud") < steps.index("AM-set-user-var")
+
+    fc_step = next(s for s in step_nodes if (s.findtext("Name") or "").strip() == "FC-Cross-Cloud")
+    fc_cond = (fc_step.findtext("Condition") or "").strip()
+    assert "x-cross-cloud-issuer" in fc_cond
+    assert "x-cross-cloud-token" in fc_cond
+    assert "requires_cross_cloud" in fc_cond
 
 
 @pytest.mark.parametrize("proxy_name", ["partner-agents", "partner-mcp"])
@@ -260,3 +305,151 @@ def test_partner_mcp_southbound_target() -> None:
     }
     assert "KVM-Get-MCP-Config" in conditions
     assert conditions.get("RF-Not-Found") == "mcp.service.allowed != true", "unexposed services must not be routed"
+
+
+def test_usage_metering_data_capture_populates_all_five_collectors() -> None:
+    """DC-capture-llm-metrics.xml must populate all 5 org-scoped DataCollectors in usage-metering."""
+    dc_policy = (
+        SHAREDFLOWS_DIR / "usage-metering" / "sharedflowbundle" / "policies" / "DC-capture-llm-metrics.xml"
+    )
+    assert dc_policy.exists(), "Missing DC-capture-llm-metrics.xml in usage-metering shared flow"
+    root = ET.parse(dc_policy).getroot()
+    assert root.tag == "DataCapture"
+    assert (root.findtext("IgnoreUnresolvedVariables") or "").strip() == "true"
+
+    collectors = {
+        (cap.findtext("DataCollector") or "").strip(): (
+            cap.find("Collect").attrib.get("ref") if cap.find("Collect") is not None else ""
+        )
+        for cap in root.findall("./Capture")
+    }
+    assert collectors == {
+        "dc_llm_model": "llm.model",
+        "dc_prompt_tokens": "llm.promptTokenCount",
+        "dc_candidates_tokens": "llm.candidatesTokenCount",
+        "dc_total_tokens": "llm.totalTokenCount",
+        "dc_consumer_app": "consumer.app.name",
+    }
+
+
+def test_cross_cloud_sharedflow_verifies_jwt_and_propagates_identity() -> None:
+    """cross-cloud shared flow must fail closed (401/403) and propagate iss#sub as caller.identity."""
+    sf_dir = SHAREDFLOWS_DIR / "cross-cloud" / "sharedflowbundle"
+    flow_root = ET.parse(sf_dir / "sharedflows" / "default.xml").getroot()
+    step_nodes = flow_root.findall("./Step")
+    steps = [
+        (el.findtext("Name") or "").strip()
+        for el in step_nodes
+    ]
+    assert steps == [
+        "RF-Cross-Cloud-Missing-Credentials",
+        "KVM-Get-Cross-Cloud-Issuer",
+        "RF-Cross-Cloud-Untrusted-Issuer",
+        "VJ-Verify-Cross-Cloud-JWT",
+        "RF-Cross-Cloud-Invalid-Token",
+        "AM-Propagate-Cross-Cloud-Principal",
+    ]
+
+    cond_by_step = {
+        (s.findtext("Name") or "").strip(): (s.findtext("Condition") or "").strip()
+        for s in step_nodes
+    }
+    assert "x-cross-cloud-issuer = null" in cond_by_step["RF-Cross-Cloud-Missing-Credentials"]
+    assert "x-cross-cloud-token = null" in cond_by_step["RF-Cross-Cloud-Missing-Credentials"]
+    assert "crosscloud.jwks_uri = null" in cond_by_step["RF-Cross-Cloud-Untrusted-Issuer"]
+    assert "crosscloud.issuer_uri = null" in cond_by_step["RF-Cross-Cloud-Untrusted-Issuer"]
+    assert "jwt.VJ-Verify-Cross-Cloud-JWT.valid != true" in cond_by_step["RF-Cross-Cloud-Invalid-Token"]
+    assert "jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer = null" in cond_by_step["RF-Cross-Cloud-Invalid-Token"]
+    assert "jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject = null" in cond_by_step["RF-Cross-Cloud-Invalid-Token"]
+    assert cond_by_step["KVM-Get-Cross-Cloud-Issuer"] == ""
+    assert cond_by_step["VJ-Verify-Cross-Cloud-JWT"] == ""
+    assert cond_by_step["AM-Propagate-Cross-Cloud-Principal"] == ""
+
+    missing_rf = ET.parse(sf_dir / "policies" / "RF-Cross-Cloud-Missing-Credentials.xml").getroot()
+    assert (missing_rf.findtext(".//StatusCode") or "").strip() == "401"
+    untrusted_rf = ET.parse(sf_dir / "policies" / "RF-Cross-Cloud-Untrusted-Issuer.xml").getroot()
+    assert (untrusted_rf.findtext(".//StatusCode") or "").strip() == "403"
+    invalid_rf = ET.parse(sf_dir / "policies" / "RF-Cross-Cloud-Invalid-Token.xml").getroot()
+    assert (invalid_rf.findtext(".//StatusCode") or "").strip() == "401"
+
+    vj_root = ET.parse(sf_dir / "policies" / "VJ-Verify-Cross-Cloud-JWT.xml").getroot()
+    assert vj_root.tag == "VerifyJWT"
+    assert (vj_root.attrib.get("continueOnError") or "").lower() == "false"
+    jwks_el = vj_root.find("./PublicKey/JWKS")
+    assert jwks_el is not None and jwks_el.attrib.get("uriRef") == "crosscloud.jwks_uri"
+
+    am_root = ET.parse(sf_dir / "policies" / "AM-Propagate-Cross-Cloud-Principal.xml").getroot()
+    templates_by_var = {
+        (av.findtext("Name") or "").strip(): (av.findtext("Template") or "").strip()
+        for av in am_root.findall("./AssignVariable")
+    }
+    assert (
+        templates_by_var.get("caller.identity")
+        == "{jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer}#{jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject}"
+    )
+
+
+def test_no_message_logging_template_references_client_id_or_apikey() -> None:
+    """No MessageLogging policy may log client.id, client_id, apikey, or x-api-key (which leak the API key)."""
+    ml_files = sorted(APIGEE_APPS_DIR.rglob("ML-*.xml"))
+    assert len(ml_files) >= 3
+    forbidden_tokens = ("client.id", "client_id", "apikey", "x-api-key")
+    for ml_path in ml_files:
+        text = ml_path.read_text(encoding="utf-8")
+        lower = text.lower()
+        for token in forbidden_tokens:
+            assert token not in lower, (
+                f"{ml_path.relative_to(REPO_ROOT)} references '{token}', which leaks the consumer API key"
+            )
+        assert "consumer.app.name" in text, (
+            f"{ml_path.relative_to(REPO_ROOT)} must log consumer.app.name instead of client.id"
+        )
+
+
+def test_layer_4_telemetry_sink_and_partner_chargeback_view() -> None:
+    """Layer 4 telemetry sink must export esmeralda-apigee-interactions and 4_finops_analytics must expose vw_partner_apigee_chargeback."""
+    sink_tf = (
+        REPO_ROOT
+        / "infrastructure"
+        / "modules"
+        / "4-governance"
+        / "modules"
+        / "1_telemetry_sinks"
+        / "main.tf"
+    ).read_text(encoding="utf-8")
+    assert "esmeralda-apigee-interactions" in sink_tf
+    assert "apigee.gateway.interaction" in sink_tf
+
+    finops_dir = (
+        REPO_ROOT
+        / "infrastructure"
+        / "modules"
+        / "4-governance"
+        / "modules"
+        / "4_finops_analytics"
+    )
+    finops_tf = (finops_dir / "main.tf").read_text(encoding="utf-8")
+    assert "esmeralda_apigee_interactions" in finops_tf
+    assert "vw_partner_apigee_chargeback" in finops_tf
+
+    sql_tpl = (
+        REPO_ROOT
+        / "infrastructure"
+        / "modules"
+        / "4-governance"
+        / "sql"
+        / "vw_partner_apigee_chargeback.sql.tpl"
+    )
+    assert sql_tpl.exists()
+    sql_text = sql_tpl.read_text(encoding="utf-8")
+    for required_col in (
+        "consumer_app",
+        "total_input_tokens",
+        "total_output_tokens",
+        "total_thinking_tokens",
+        "avg_request_gateway_latency_ms",
+        "avg_target_backend_latency_ms",
+        "avg_response_gateway_latency_ms",
+        "estimated_cost_usd",
+    ):
+        assert required_col in sql_text

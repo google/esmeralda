@@ -64,6 +64,14 @@ dependency "security" {
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
+# Ordering only: FC-Cross-Cloud calls the cross-cloud shared flow, which Apigee requires to be
+# deployed in the environment before this proxy (Layer 4 enforces cross_cloud = "apigee").
+dependency "cross_cloud" {
+  config_path                             = "../cross-cloud"
+  skip_outputs                            = true
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 inputs = {
   org_id            = dependency.platform.outputs.org_id
   apigee_env_name   = dependency.platform.outputs.apigee_env_name

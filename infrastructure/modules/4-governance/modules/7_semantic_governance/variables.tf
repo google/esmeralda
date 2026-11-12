@@ -57,10 +57,10 @@ variable "egress_allowlist_provider" {
 
 variable "custom_policies" {
   type = map(object({
-    target_mcp_server           = string
-    tools                       = list(string)
-    principal                   = string
-    enforcement_mode            = optional(string)
+    target_mcp_server            = string
+    tools                        = list(string)
+    principal                    = string
+    enforcement_mode             = optional(string)
     natural_language_constraints = list(string)
   }))
   default     = {}

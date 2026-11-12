@@ -12,4 +12,7 @@
   <Step>
     <Name>JS-extract-tokens</Name>
   </Step>
+  <Step>
+    <Name>DC-capture-llm-metrics</Name>
+  </Step>
 </SharedFlow>

@@ -23,12 +23,19 @@
   "traceparent": "{request.header.traceparent}",
   "apigee_message_id": "{messageid}",
   "consumer_app": "{consumer.app.name}",
-  "consumer_client_id": "{consumer.client.id}",
   "caller_identity": "{caller.identity}",
+  "caller_issuer": "{caller.issuer}",
   "gen_ai.request.model": "{firstnonnull(llm.model,'gemini-2.5-flash')}",
   "gen_ai.usage.input_tokens": "{firstnonnull(llm.promptTokenCount,'0')}",
   "gen_ai.usage.output_tokens": "{firstnonnull(llm.candidatesTokenCount,'0')}",
+  "gen_ai.usage.thinking_tokens": "{firstnonnull(llm.thoughtsTokenCount,'0')}",
   "gen_ai.usage.total_tokens": "{firstnonnull(llm.totalTokenCount,'0')}",
+  "quota": {
+    "allowed": "{ratelimit.LTQ-enforce.allowed.count}",
+    "used": "{ratelimit.LTQ-enforce.used.count}",
+    "available": "{ratelimit.LTQ-enforce.available.count}",
+    "exceeded": "{ratelimit.LTQ-enforce.exceed.count}"
+  },
   "latency_timestamps": {
     "client_received_start_ms": "{client.received.start.timestamp}",
     "target_sent_start_ms": "{target.sent.start.timestamp}",

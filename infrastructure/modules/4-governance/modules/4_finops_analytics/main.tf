@@ -146,6 +146,9 @@ EOF
 #     -> vw_usage_billable                   one row per (trace_id, agent): gateway and workload records
 #                                            joined on trace_id, gateway tokens and identity preferred
 #     -> vw_monthly_agent_chargeback, vw_request_level_telemetry (backwards-compatible columns)
+#   vw_usage_normalized (Apigee gateway.request rows) + esmeralda_apigee_interactions (legacy shape)
+#   + vw_principal_teams (apigee_app rows)
+#     -> vw_partner_apigee_chargeback        partner app chargeback, billed to the verified partner team
 
 # Principal -> team attribution lookup: one row per authenticated identity.
 #   principal       the identity, exactly as the attribution reads it: caller.principal (SPIFFE id,
@@ -259,6 +262,103 @@ resource "google_bigquery_table" "vw_usage_billable" {
   }
 
   depends_on = [google_bigquery_table.vw_usage_normalized]
+}
+
+# Partitioned BigQuery Table for Apigee Partner Gateway interactions in the legacy pre-contract shape
+# (event = "apigee.gateway.interaction", written by the central sinks). Kept so historical partner
+# traffic stays in vw_partner_apigee_chargeback; contract-shaped Apigee records (esmeralda.usage) are
+# read from the usage dataset instead, through vw_usage_normalized. Pre-created with the columns the
+# view reads so it can be created before the first partner call arrives.
+resource "google_bigquery_table" "apigee_interactions" {
+  dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
+  table_id            = "esmeralda_apigee_interactions"
+  project             = var.governance_project_id
+  deletion_protection = false
+
+  time_partitioning {
+    type  = "DAY"
+    field = "timestamp"
+  }
+
+  schema = <<EOF
+[
+  {"name": "timestamp", "type": "TIMESTAMP", "mode": "NULLABLE"},
+  {"name": "logName", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "severity", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "trace", "type": "STRING", "mode": "NULLABLE"},
+  {
+    "name": "jsonPayload",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {"name": "event", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "proxy", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "revision", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "verb", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "path", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "status", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "fault", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "traceparent", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "apigee_message_id", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "consumer_app", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "caller_identity", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "caller_issuer", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_request_model", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_input_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_output_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_thinking_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {"name": "gen_ai_usage_total_tokens", "type": "STRING", "mode": "NULLABLE"},
+      {
+        "name": "quota",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "allowed", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "used", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "available", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "exceeded", "type": "STRING", "mode": "NULLABLE"}
+        ]
+      },
+      {
+        "name": "latency_timestamps",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          {"name": "client_received_start_ms", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "target_sent_start_ms", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "target_received_end_ms", "type": "STRING", "mode": "NULLABLE"},
+          {"name": "gateway_responded_ms", "type": "STRING", "mode": "NULLABLE"}
+        ]
+      }
+    ]
+  }
+]
+EOF
+
+  lifecycle {
+    ignore_changes = [schema]
+  }
+}
+
+# Partner Apigee Gateway Chargeback & Latency Decomposition View (contract + legacy Apigee records,
+# billed to the verified partner team)
+resource "google_bigquery_table" "vw_partner_apigee_chargeback" {
+  dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+  table_id   = "vw_partner_apigee_chargeback"
+  project    = var.governance_project_id
+
+  view {
+    query = templatefile("${path.module}/../../sql/vw_partner_apigee_chargeback.sql.tpl", {
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+    })
+    use_legacy_sql = false
+  }
+
+  depends_on = [
+    google_bigquery_table.apigee_interactions,
+    google_bigquery_table.vw_usage_normalized,
+    google_bigquery_table.vw_principal_teams,
+  ]
 }
 
 # Monthly Agent Chargeback View (billed by verified team; built on vw_usage_billable)

@@ -97,8 +97,19 @@ def unit_dependencies(root: Path, env: str, unit: str) -> list[str]:
 
 
 def unit_enabled(root: Path, env: str, unit: str) -> bool:
-    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks and ``gateways``)."""
+    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks, ``gateways``, and ``governance``)."""
     hcl_path = repo.env_dir(root, env) / unit / repo.UNIT_FILE
+    if unit.startswith("layer-5-workloads/apigee/"):
+        gov = repo.governance_block(root, env)
+        if gov:
+            apigee_enabled = bool((gov.get("apigee") or {}).get("enabled", False))
+            if not apigee_enabled:
+                return False
+            if unit.startswith("layer-5-workloads/apigee/capabilities/"):
+                cap_key = unit.rsplit("/", 1)[-1].replace("-", "_")
+                caps = gov.get("capabilities") or {}
+                return caps.get(cap_key) == "apigee"
+            return True
     gw = repo.gateways_block(root, env)
     enabled_gws = gw.get("enabled")
     if unit == "layer-5-workloads/gateways/direct":

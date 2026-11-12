@@ -21,3 +21,13 @@ output "trusted_issuer_keys" {
   description = "Configured inbound cross-cloud issuer keys."
   value       = sort(keys(var.trusted_issuers))
 }
+
+output "sharedflow_name" {
+  description = "Deployed Apigee cross-cloud shared flow name."
+  value       = google_apigee_sharedflow.cross_cloud.name
+}
+
+output "revision" {
+  description = "Latest deployed revision ID of the cross-cloud shared flow."
+  value       = google_apigee_sharedflow.cross_cloud.latest_revision_id
+}

@@ -9,9 +9,11 @@
   <Description>North-south partner front door for allowlisted Esmeralda agents (SSE and JSON routes separated).</Description>
   <BasePaths>/partner/v1/agents</BasePaths>
   <Policies>
+    <Policy>AM-Strip-Verified-Headers</Policy>
     <Policy>AM-clean-headers</Policy>
     <Policy>AM-set-user-var</Policy>
     <Policy>EV-ExtractTokenCount</Policy>
+    <Policy>FC-Cross-Cloud</Policy>
     <Policy>JS-extract-tokens</Policy>
     <Policy>JS-rewrite-target-path</Policy>
     <Policy>KVM-Get-Agent-Config</Policy>

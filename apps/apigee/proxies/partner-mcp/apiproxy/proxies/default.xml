@@ -10,7 +10,18 @@
   <PreFlow name="PreFlow">
     <Request>
       <Step>
+        <Name>AM-Strip-Verified-Headers</Name>
+      </Step>
+      <Step>
         <Name>VAK-Verify-Partner-Key</Name>
+      </Step>
+      <Step>
+        <Name>FC-Cross-Cloud</Name>
+        <Condition>(request.header.x-cross-cloud-issuer != null) or (request.header.x-cross-cloud-token != null) or (verifyapikey.VAK-Verify-Partner-Key.apiproduct.requires_cross_cloud = "true") or (verifyapikey.VAK-Verify-Partner-Key.app.requires_cross_cloud = "true")</Condition>
+      </Step>
+      <Step>
+        <Name>RF-Key-Identity-Mismatch</Name>
+        <Condition>(verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != null) and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != "") and (request.header.x-verified-identity != null) and (request.header.x-verified-identity != "") and (verifyapikey.VAK-Verify-Partner-Key.app.owner_identity != request.header.x-verified-identity)</Condition>
       </Step>
       <Step>
         <Name>AM-set-user-var</Name>

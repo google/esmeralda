@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<RaiseFault name="RF-Cross-Cloud-Invalid-Token" continueOnError="false" enabled="true">
+  <DisplayName>RF-Cross-Cloud-Invalid-Token</DisplayName>
+  <FaultResponse>
+    <Set>
+      <StatusCode>401</StatusCode>
+      <Payload contentType="application/json">{"error":"cross_cloud_invalid_token","detail":"Cross-cloud JWT verification failed or token is missing required iss/sub claims."}</Payload>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>
