@@ -91,6 +91,8 @@ inputs = {
       developer_email = "partner-smoke-test@partner.esmeralda.internal"
       products        = ["esmeralda-partner-standard"]
       owner_identity  = dependency.security.outputs.test_vm_sa_email
+      # API key rotation keeper: a new value replaces the app and its key (apply with --allow-destroy).
+      key_rotation = "2026-11-12"
     }
   }
 }
