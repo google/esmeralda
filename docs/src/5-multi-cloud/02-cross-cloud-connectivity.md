@@ -14,65 +14,18 @@ Esmeralda treats each of those as a separate, swappable decision:
 
 ## 1. The Gateway per Hop
 
-The rule from [Section 1](../2-workloads-and-catalog/01-ingress-gateways.md) still holds across clouds: **every hop goes through a gateway role**, and the product filling that role is chosen per hop. `direct` is the always-available floor.
+Which gateway handles each hop, for every hop in the platform, is decided in one place: **[1.5 One Gateway per Hop](../2-workloads-and-catalog/05-gateway-per-hop.md)**. For calls that cross a cloud boundary, it comes down to two hops:
 
-| Hop | Gateway Role | With Apigee | Without Apigee |
-| :--- | :--- | :--- | :--- |
-| Other cloud → Esmeralda agent | North–south ingress + caller verification | Apigee partner proxies + cross-cloud shared flow | Internal load balancer + Envoy (JWT verification), or `direct` with IAM |
-| Other cloud → Esmeralda MCP server | Ingress + tool authorization | Apigee `partner-mcp` proxy (per-product `allowed_tools`) | Envoy, or `direct` with IAM |
-| Esmeralda agent → agent or MCP server on another cloud | East–west egress | Central Agent Gateway (Apigee optional for monetized or cross-organization APIs) | Central Agent Gateway |
-| Esmeralda agent → model on another provider | Model egress (AI gateway) | Apigee LLM proxy | Central Agent Gateway + workload usage records |
+| Hop | Default | Without Apigee | Status |
+| :--- | :--- | :--- | :---: |
+| Agent or MCP client on another cloud → Esmeralda agent or MCP server (inbound) | Apigee partner proxies + cross-cloud shared flow (caller verification, per-product `allowed_agents` / `allowed_tools`, `LLMTokenQuota`, verified `caller_identity` in the gateway record) | Envoy with JWT verification against the external issuer (🗺️), or `direct` with Workload Identity Federation and IAM only (no gateway record) | 🚧 |
+| Esmeralda agent → agent, MCP server or API on another cloud (outbound) | Central Agent Gateway + Agent Registry | Same: the Agent Gateway is always on | ✅ |
 
-```mermaid
-flowchart LR
-    subgraph Other["Another cloud"]
-        UW["Underwriting agent"]
-        RMCP["Remote MCP server"]
-    end
+The identity side of the inbound hop is in [5.1 §3](./01-identity-across-clouds.md#3-verifying-an-oidc-caller-at-apigee-the-cross-cloud-shared-flow), and the Apigee deep dive (PSC plumbing, products, quota phases) is in **[1.4 Partner API Management & Token Monetization with Apigee X](../2-workloads-and-catalog/04-apigee-partner-gateway.md)**.
 
-    subgraph Esm["Esmeralda (Google Cloud)"]
-        subgraph Ingress["Inbound gateway roles"]
-            AX["Apigee<br/>(cross-cloud shared flow)"]
-            ENV["Envoy<br/>(JWT verification)"]
-            DIR["direct<br/>(IAM only)"]
-        end
-        EP["Entry point<br/>(*.esmeralda.internal)"]
-        SPEC["ai-coe-mortgage-specialist"]
-        AGW["Central Agent Gateway<br/>+ Agent Registry"]
-    end
+### Registering Remote Resources for Outbound Calls
 
-    UW -->|"best path"| AX
-    UW -.->|"alternative"| ENV
-    UW -.->|"floor"| DIR
-    AX --> EP
-    ENV --> EP
-    DIR --> EP
-    EP --> SPEC
-    SPEC -->|"all egress"| AGW
-    AGW -->|"registered hostname only"| RMCP
-```
-
-### Apigee: The Best Path for Inbound Calls
-
-Apigee is the most complete inbound gateway for cross-cloud callers because it combines, in one hop, everything the call needs:
-
-* **Caller verification:** `VerifyAPIKey` for the app, plus the cross-cloud shared flow for the workload's OIDC token ([5.1 §3](./01-identity-across-clouds.md#3-verifying-an-oidc-caller-at-apigee-the-cross-cloud-shared-flow)).
-* **Authorization by product:** which agents (`allowed_agents`) and which MCP tools (`allowed_tools`) the caller's API product exposes.
-* **Commercial controls:** `LLMTokenQuota` per consumer, so a runaway loop on another cloud cannot exhaust a shared budget.
-* **The attribution record:** the `ML-interaction` log written in `PostClientFlow`, carrying the verified `caller_identity` and `caller_issuer` next to token counts.
-
-The full Apigee deep dive (PSC plumbing, products, quota phases) is in **[1.4 Partner API Management & Token Monetization with Apigee X](../2-workloads-and-catalog/04-apigee-partner-gateway.md)**.
-
-### Envoy and `direct`: The Alternatives
-
-Not every organization runs Apigee, so the cross-cloud model must work without it:
-
-* **Envoy** is already a gateway adapter in Esmeralda. Its standard JWT authentication filter can verify an external issuer's tokens against a JWKS, and its JSON access log can emit `esmeralda.usage` records natively. The cross-cloud configuration for Envoy is planned.
-* **`direct`** is the floor: the caller federates into Google Cloud with Workload Identity Federation ([5.1 pattern A](./01-identity-across-clouds.md#2-four-ways-a-workload-on-another-cloud-proves-who-it-is)) and calls the target with IAM authorization alone. There is no gateway record, so the workload's own usage records carry attribution, and only identities the target can verify count as verified.
-
-### Agent Gateway: Every Outbound Hop
-
-When an Esmeralda agent calls something on another cloud, the **Central Agent Gateway** is already on the path, because all agent egress crosses it (the `cross_cloud = "agent_gateway"` provider in [2.2 Capability-Based & Semantic Governance](../3-agentops-and-lifecycle/04-capability-based-governance.md)). The remote endpoint is registered in the **Agent Registry**, which accepts agents, MCP servers and plain HTTPS endpoints hosted outside Google Cloud:
+When an Esmeralda agent calls something on another cloud, the **Central Agent Gateway** is already on the path. Register the remote endpoint in the **Agent Registry**, which accepts agents, MCP servers and plain HTTPS endpoints hosted outside Google Cloud:
 
 | Remote Resource | Registry Entry |
 | :--- | :--- |

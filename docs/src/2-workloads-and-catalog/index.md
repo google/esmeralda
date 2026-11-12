@@ -109,7 +109,7 @@ uv run esmeralda verify --env dev
 
 ## Subsections in Section 1
 
-Follow Julian Sterling's request through the four subsections of Section 1:
+Follow Julian Sterling's request through the five subsections of Section 1:
 
 1. **[1.1 Two Teams, Two Agents — Orchestration vs. Specialization (ADK & A2A)](./03-ai-agents-and-database.md)**
    * Meet `cx-mortgage-orchestrator` (Google ADK) and `ai-coe-mortgage-specialist` (A2A).
@@ -123,6 +123,8 @@ Follow Julian Sterling's request through the four subsections of Section 1:
 4. **[1.4 Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**
    * Step-by-step walkthrough of how Apigee X (`partner.esmeralda.internal` / `10.0.1.3`) exposes curated agents (`partner-agents`) and MCP tools (`partner-mcp`) to external B2B partners.
    * How `VerifyAPIKey`, KVM allowlists, two-phase `<LLMTokenQuota>` (`EnforceOnly` + SSE `EventFlow` `CountOnly`), and `PostClientFlow` analytics work end-to-end with GEAP Agent Identity and the Central Agent Gateway.
+5. **[1.5 One Gateway per Hop](./05-gateway-per-hop.md)**
+   * Which gateway handles each hop by default (entry point, Central Agent Gateway, Apigee X, Envoy, API Gateway model routing), and when to choose an alternative.
 
 > [!TIP]
 > Curious how the outbound **Central Agent Gateway** verifies SPIFFE identities and private TLS certificates on every hop? After finishing Section 1, head to **[2.1 Central Agent Gateway & Private PKI](../3-agentops-and-lifecycle/01-central-agent-gateway.md)**.

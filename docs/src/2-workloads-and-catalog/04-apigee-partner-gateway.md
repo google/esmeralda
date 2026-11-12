@@ -93,7 +93,7 @@ flowchart LR
     INST -->|"GoogleIDToken via PSC"| EP_ATT --> MCPS
 ```
 
-1. **Apigee Organization & Instance ([`infrastructure/modules/5-workloads/gateways/apigee/`](../../../infrastructure/modules/5-workloads/gateways/apigee/main.tf)):**
+1. **Apigee Organization & Instance ([`infrastructure/modules/5-workloads/apigee/platform/`](../../../infrastructure/modules/5-workloads/apigee/platform/main.tf)):**
    * Provisions (or adopts via `byo = true`) the `google_apigee_organization` and regional `google_apigee_instance` in `esm-<env>-gateway-<sfx>`.
    * Creates the Apigee environment `esmeralda-<env>` (configurable tier: `BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`) and environment group `envgroup-esmeralda-<env>` listening on `partner.esmeralda.internal`.
    * Creates a regional **Private Service Connect (PSC) NEG** (`neg-apigee-psc-<env>`) pointing to `google_apigee_instance.apigee_instance.service_attachment`, wrapped in a regional `INTERNAL_MANAGED` HTTPS backend service (`backend-apigee-gateway-<env>`).
@@ -234,7 +234,7 @@ governance = {
 uv run esmeralda units --env dev
 
 # 2. Apply the Apigee platform, capability bundles, API products, and entrypoint
-uv run esmeralda apply layer-5-workloads/gateways/apigee --env dev
+uv run esmeralda apply layer-5-workloads/apigee/platform --env dev
 uv run esmeralda apply layer-5-workloads/apigee/capabilities/token-quota --env dev
 uv run esmeralda apply layer-5-workloads/apigee/capabilities/usage-metering --env dev
 uv run esmeralda apply layer-5-workloads/apigee/capabilities/partner-agents --env dev

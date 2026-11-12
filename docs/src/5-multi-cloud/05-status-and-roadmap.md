@@ -32,8 +32,8 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | A2A between agents and MCP to tool servers over `*.esmeralda.internal` | ✅ | Framework-neutral; any cloud can speak them. |
 | Central Agent Gateway + Agent Registry: deny-by-default egress to registered endpoints (`cross_cloud = "agent_gateway"`) | ✅ | External agents, MCP servers and HTTPS endpoints are registered as registry entries. |
 | Apigee partner front door (`partner-agents`, `partner-mcp`) with `LLMTokenQuota` | ✅ | Optional; enabled with `governance.apigee.enabled`. `partner-mcp` reaches the MCP servers through a private path to the entry point, with per-product tool scopes. See [1.4](../2-workloads-and-catalog/04-apigee-partner-gateway.md). |
-| Long unary agent-to-agent calls (no fixed 30 s time-to-first-byte cap) | ✅ | Opt-in hybrid agent backend (`gateways.agent_backend = "hybrid"`). See [1.1](../2-workloads-and-catalog/01-ingress-gateways.md). |
-| Apigee LLM proxy for agent → model calls | 🚧 | Branch in progress. |
+| Long unary agent-to-agent calls (no fixed 30 s time-to-first-byte cap) | ✅ | Opt-in hybrid agent backend (`gateways.agent_backend = "hybrid"`). See [1.3](../2-workloads-and-catalog/01-ingress-gateways.md). |
+| Apigee LLM proxy for agent → model calls | 🚧 | Branch in progress. The model-router choice for this hop is summarized in [1.5 One Gateway per Hop](../2-workloads-and-catalog/05-gateway-per-hop.md#h6-agent-model). |
 | Reference hybrid networking (HA VPN / Cross-Cloud Interconnect to another cloud) | 🗺️ | Conceptual guidance in [5.2](./02-cross-cloud-connectivity.md#2-network-options); no Terraform module yet. |
 | Registering `managed: false` external targets from the catalog into the Agent Registry | 🗺️ | Catalog shape exists; compile planned. |
 
@@ -43,11 +43,11 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | :--- | :---: | :--- |
 | Hub-and-spoke log sinks, OpenTelemetry baggage, `vw_monthly_agent_chargeback` | ✅ | Attribution from declared baggage. See [2.3](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md). |
 | Apigee `ML-interaction` gateway records | ✅ | Partner app, product and token counts. |
-| `esmeralda.usage` contract (`contracts/usage-event.schema.json`), validated in CI | 🚧 | Branch in progress. |
-| Python producers: ADK plugin, OTel GenAI span adapter, manual API, OTel logs transport | 🚧 | Same branch as the contract. |
-| Layer 4 usage analytics: usage table, normalized and billable views, schema-keyed metrics | 🚧 | Branch in progress; the "unattributed" alert ships disabled until verified attribution lands. |
+| `esmeralda.usage` contract (`contracts/usage-event.schema.json`), validated in CI | ✅ | See [5.3](./03-unified-observability-and-chargeback.md). |
+| Python producers: ADK plugin, OTel GenAI span adapter, manual API, OTel logs transport | ✅ | Ship with the `esmeralda` library. |
+| Layer 4 usage analytics: usage table, normalized and billable views, schema-keyed metrics | ✅ | Read only the `esmeralda.usage` contract. |
 | `caller_identity` / `caller_issuer` in Apigee records and the partner chargeback view | 🚧 | Part of the cross-cloud shared flow pull request. |
-| Verified attribution, internal hops: principal → team table compiled from the catalog, catalog caller guard on MCP servers (`unmapped_caller: deny`, flag in dev first), unregistered-caller and declared-mismatch probes, unattributed alarm on | 🚧 | Branch in progress. Turns chargeback from declared to verified. See [5.3 §5](./03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end). |
+| Verified attribution, internal hops: principal → team table compiled from the catalog, catalog caller guard on MCP servers (`unmapped_caller: deny`, flag in dev first), unregistered-caller and declared-mismatch probes, unattributed alarm on | ✅ | Turns chargeback from declared to verified. The caller guard, the unregistered-caller probe and the principal → team load are off in `prd` by default. See [5.3 §5](./03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end). |
 | Verified attribution, partner hop: Apigee apps and cross-cloud `iss#sub` callers in the same table and policy | 🗺️ | Follows the cross-cloud shared flow. |
 | Reference OpenTelemetry Collector configuration and GenAI-span-to-record processor for non-Python workloads on other clouds | 🗺️ | [5.3 §2](./03-unified-observability-and-chargeback.md#2-producers-on-every-cloud) shows a starting point. |
 | Gateway records from Envoy in the `esmeralda.usage` shape | 🗺️ | JSON access-log template. |
@@ -68,8 +68,8 @@ The remaining work follows a deliberate order: first a normalized way to *descri
 
 ```mermaid
 flowchart LR
-    A["Usage contract<br/>+ producers 🚧"] --> B["Layer 4 usage<br/>analytics 🚧"]
-    C["Team-owned<br/>catalog ✅"] --> D["Verified attribution<br/>(fail closed) 🗺️"]
+    A["Usage contract<br/>+ producers ✅"] --> B["Layer 4 usage<br/>analytics ✅"]
+    C["Team-owned<br/>catalog ✅"] --> D["Verified attribution<br/>internal ✅ · partner 🗺️"]
     B --> D
     E["Cross-cloud<br/>shared flow 🚧"] --> D
     D --> F["Catalog → Apigee<br/>products & apps 🗺️"]

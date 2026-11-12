@@ -27,6 +27,9 @@ Every private hostname under `*.esmeralda.internal` resolves to a single interna
 > `Caller Agent → Central Agent Gateway (egress check) → Entry Point (internal HTTPS LB) → Target Agent or MCP Server`.
 > Because the Central Agent Gateway passes the caller's `Authorization` header through unchanged, end-to-end per-caller credentials work seamlessly.
 
+> [!TIP]
+> For which gateway handles every hop (ingress, agent egress, models, partners, other clouds) and when to choose an alternative, see **[1.5 One Gateway per Hop](./05-gateway-per-hop.md)**.
+
 ### How the Entry Point Spans Layers 2, 3, and 5
 
 Because the IP address, DNS zone, and TLS certificate live in lower foundational layers, the `*.esmeralda.internal` hostnames outlive any workload or gateway change:
@@ -81,7 +84,7 @@ flowchart TD
 
 | Engineering Persona | Role & Daily Responsibilities | What They Own | What They NEVER Touch |
 | :--- | :--- | :--- | :--- |
-| **PlatformOps / Ingress Lead** | Managing the service catalog, the entry point routing, the `direct` backend, and any optional adapter. | `catalog` and `gateways` blocks in `env.yaml`, `infrastructure/modules/5-workloads/entrypoint/`, `gateways/direct/`, `gateways/envoy/` (and `gateways/apigee/`), `apps/services/envoy/`. | Internal agent prompt graphs or Python business logic. |
+| **PlatformOps / Ingress Lead** | Managing the service catalog, the entry point routing, the `direct` backend, and any optional adapter. | `catalog` and `gateways` blocks in `env.yaml`, `infrastructure/modules/5-workloads/entrypoint/`, `gateways/direct/`, `gateways/envoy/` (and `apigee/platform/`), `apps/services/envoy/`. | Internal agent prompt graphs or Python business logic. |
 | **NetOps Engineer** | Providing the Shared VPC subnets, private DNS zone, and reserved entry point address. | `sb-esmeralda-core-<env>` / `sb-esmeralda-proxy-<env>` subnets, the `esmeralda.internal.` zone, and the reserved entry point IP (Layer 2). | Route transformation policies. |
 | **SecOps Engineer** | Owning the internal Root CA and the entry point leaf certificate. | `infrastructure/modules/3-security/pki.tf` (Layer 3). | URL map host rules. |
 | **AI Application Developer** (CX and AI CoE Teams) | Calling targets via stable internal DNS hostnames. | Consuming `https://ai-coe-mortgage-specialist.esmeralda.internal` or `https://<svc>.esmeralda.internal/mcp`. | Entry point configuration or proxy infrastructure. |
@@ -196,11 +199,11 @@ Agents mint outbound tokens by impersonating `sa-mcp-invoker-<env>`, which holds
   * Enforces path normalization, rejects encoded slashes, strips upstream timing headers, and applies a per-`X-API-Key` local rate limit (120 req/min per instance).
 * **Offline & Sandbox Test Harnesses:** `make test-gateway-unit` renders the Terraform config and tests a real Envoy 1.40 binary against a mock metadata server and TLS upstreams ([`tests/gateway`](../../../tests/gateway)).
 
-### 7. Apigee X (`gateways/apigee/` & `apigee/capabilities/*`, optional partner front door)
+### 7. Apigee X (`apigee/platform/` & `apigee/capabilities/*`, optional partner front door)
 
 When an environment needs to expose curated agents or MCP tools to **external B2B partners** with commercial API Products (`bronze`, `silver`, `gold`), developer app API keys/OAuth, per-partner `<LLMTokenQuota>` enforcement (`HTTP 429`), and token monetization analytics, Esmeralda provides a complete **Apigee X** integration:
 
-* **Platform & PSC NEG Bridge ([`infrastructure/modules/5-workloads/gateways/apigee/`](../../../infrastructure/modules/5-workloads/gateways/apigee/main.tf)):** Provisions (or adopts via `byo = true`) the `google_apigee_organization`, regional `google_apigee_instance`, `esmeralda-<env>` environment (`BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`), `envgroup-esmeralda-<env>` (`partner.esmeralda.internal`), southbound PSC endpoint attachment to `*.esmeralda.internal`, and a regional PSC NEG (`neg-apigee-psc-<env>`) + `INTERNAL_MANAGED` backend service (`backend-apigee-gateway-<env>`) consumed by `entrypoint` on the partner VIP (`10.0.1.3`).
+* **Platform & PSC NEG Bridge ([`infrastructure/modules/5-workloads/apigee/platform/`](../../../infrastructure/modules/5-workloads/apigee/platform/main.tf)):** Provisions (or adopts via `byo = true`) the `google_apigee_organization`, regional `google_apigee_instance`, `esmeralda-<env>` environment (`BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`), `envgroup-esmeralda-<env>` (`partner.esmeralda.internal`), southbound PSC endpoint attachment to `*.esmeralda.internal`, and a regional PSC NEG (`neg-apigee-psc-<env>`) + `INTERNAL_MANAGED` backend service (`backend-apigee-gateway-<env>`) consumed by `entrypoint` on the partner VIP (`10.0.1.3`).
 * **Removable Capability Modules (`apigee/capabilities/*` & `apigee/products`):** Deploys the `partner-agents` and `partner-mcp` proxy bundles, `token-quota` (`<LLMTokenQuota>` `EnforceOnly` + SSE `EventFlow` `CountOnly`) and `usage-metering` (`DataCapture` + `PostClientFlow` `ML-interaction`) shared flows, and tiered API products whenever `governance.capabilities` in `env.yaml` selects `"apigee"`.
 
 For the complete architecture, packet flow, XML/JavaScript policy mechanics, and live conformance probes (`uv run esmeralda verify --env dev --partner`), see **[1.4 Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**.
