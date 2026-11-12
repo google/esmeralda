@@ -63,3 +63,20 @@ variable "alert_on_unattributed_usage" {
   description = "Alert when any esmeralda.usage record lacks a verified caller (off until verified attribution, phase 6)"
   default     = false
 }
+
+variable "usage_metric_resource_types" {
+  type = list(string)
+  default = [
+    "aiplatform.googleapis.com/ReasoningEngine", # agents on Agent Runtime (stdout / stderr)
+    "cloud_run_revision",                        # Cloud Run workloads, MCP servers, the Envoy gateway
+    "k8s_container",                             # GKE workloads
+    "global",                                    # entries written through the Logging API without a resource
+  ]
+  nullable    = false
+  description = "Monitored resource types the usage log-based metrics can be written against (PromQL needs a monitored_resource matcher on them)."
+
+  validation {
+    condition     = length(var.usage_metric_resource_types) > 0 && alltrue([for t in var.usage_metric_resource_types : can(regex("^[A-Za-z0-9_./-]+$", t))])
+    error_message = "usage_metric_resource_types needs at least one monitored resource type (letters, digits, _ . / - only)."
+  }
+}

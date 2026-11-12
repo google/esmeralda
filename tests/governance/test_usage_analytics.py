@@ -416,11 +416,22 @@ def test_token_metrics_cover_team_agent_model_and_tools_by_status():
 def test_alerts_run_on_usage_metrics():
     alerts = _module_tf(ALERTS_DIR)
     policies = _blocks(alerts, "resource", "google_monitoring_alert_policy")
-    assert "logging.googleapis.com/user/usage/input_tokens" in policies["runaway_loop_token_cap"]
+    runaway = policies["runaway_loop_token_cap"]
+    assert "logging_googleapis_com:user_usage_input_tokens_bucket" in runaway
     assert "logging_googleapis_com:user_usage_input_tokens_sum" in policies["token_anomaly_spike"]
     unattributed = policies["unattributed_usage"]
-    assert "logging.googleapis.com/user/usage/unattributed_records" in unattributed
-    assert "threshold_value         = 0" in unattributed and '"COMPARISON_GT"' in unattributed
+    assert "logging_googleapis_com:user_usage_unattributed_records" in unattributed
+    assert ") > 0" in unattributed
+    # Usage metrics span several monitored resource types: no metric-filter (single-resource) conditions.
+    for name in ("runaway_loop_token_cap", "token_anomaly_spike", "unattributed_usage"):
+        assert "condition_prometheus_query_language" in policies[name] and "condition_threshold" not in policies[name], name
+    # Usage metrics live on several monitored resource types: every PromQL selector needs the matcher.
+    for path in (ALERTS_DIR / "main.tf", ALERTS_DIR / "dashboards.tf"):
+        for line in _read(path).splitlines():
+            if ("query" in line or "prometheusQuery" in line) and "user_usage_" in line:
+                selectors = re.findall(r"logging_googleapis_com:user_usage_\w+(.)", line)
+                assert selectors and set(selectors) == {"{"}, line
+                assert "${local.usage_resource_matcher" in line, line
     unattributed_metric = _blocks(alerts, "resource", "google_logging_metric")["usage_unattributed_records"]
     assert "NOT jsonPayload.caller.verified=true" in unattributed_metric
     # Security alerting is kept.

@@ -39,6 +39,14 @@ locals {
   usage_metric_projects = toset(concat([var.governance_project_id], var.spoke_project_ids))
   usage_record_filter   = "jsonPayload.schema=\"esmeralda.usage\""
 
+  # A log-based metric is written against the monitored resource of each log entry (Reasoning Engine,
+  # Cloud Run revision, GKE container, global...). PromQL then requires a matcher on monitored_resource:
+  # every usage query selects all producer resource types with this regex matcher. The _json variant is
+  # for PromQL embedded in dashboard JSON (quotes escaped).
+  usage_resource_regex        = join("|", var.usage_metric_resource_types)
+  usage_resource_matcher      = "monitored_resource=~\"${local.usage_resource_regex}\""
+  usage_resource_matcher_json = "monitored_resource=~\\\"${local.usage_resource_regex}\\\""
+
   usage_token_metrics = {
     input_tokens = {
       field       = "jsonPayload.gen_ai.\"usage.input_tokens\""
@@ -213,18 +221,11 @@ EOF
 
   conditions {
     display_name = "Unattributed esmeralda.usage records"
-    condition_threshold {
-      filter                  = "metric.type = \"logging.googleapis.com/user/usage/unattributed_records\""
-      duration                = "0s"
-      comparison              = "COMPARISON_GT"
-      threshold_value         = 0
-      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
-      aggregations {
-        alignment_period     = "300s"
-        per_series_aligner   = "ALIGN_DELTA"
-        cross_series_reducer = "REDUCE_SUM"
-        group_by_fields      = ["metric.label.workload", "metric.label.source"]
-      }
+    # PromQL: one query across every producer's monitored resource type (see runaway_loop_token_cap).
+    condition_prometheus_query_language {
+      query               = "sum by (workload, source) (increase(logging_googleapis_com:user_usage_unattributed_records{${local.usage_resource_matcher}}[5m])) > 0"
+      duration            = "0s"
+      evaluation_interval = "60s"
     }
   }
 
@@ -260,16 +261,12 @@ EOF
 
   conditions {
     display_name = "Single Request Token Budget Limit"
-    condition_threshold {
-      filter                  = "metric.type = \"logging.googleapis.com/user/usage/input_tokens\""
-      duration                = "60s"
-      comparison              = "COMPARISON_GT"
-      threshold_value         = var.runaway_loop_token_threshold
-      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
-      aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_PERCENTILE_99"
-      }
+    # PromQL: the usage metrics are written against every producer's monitored resource (Reasoning
+    # Engine, Cloud Run revision, global...), and a metric-filter condition must pin one resource type.
+    condition_prometheus_query_language {
+      query               = "histogram_quantile(0.99, sum by (le, workload) (rate(logging_googleapis_com:user_usage_input_tokens_bucket{${local.usage_resource_matcher}}[5m]))) > ${var.runaway_loop_token_threshold}"
+      duration            = "60s"
+      evaluation_interval = "60s"
     }
   }
 
@@ -517,7 +514,7 @@ EOF
   conditions {
     display_name = "Token Rate of Change 300% Spike"
     condition_prometheus_query_language {
-      query               = "(sum(increase(logging_googleapis_com:user_usage_input_tokens_sum[5m])) or vector(0)) + (sum(increase(logging_googleapis_com:user_usage_output_tokens_sum[5m])) or vector(0)) > ${local.token_anomaly_threshold}"
+      query               = "(sum(increase(logging_googleapis_com:user_usage_input_tokens_sum{${local.usage_resource_matcher}}[5m])) or vector(0)) + (sum(increase(logging_googleapis_com:user_usage_output_tokens_sum{${local.usage_resource_matcher}}[5m])) or vector(0)) > ${local.token_anomaly_threshold}"
       duration            = "300s"
       evaluation_interval = "60s"
     }
