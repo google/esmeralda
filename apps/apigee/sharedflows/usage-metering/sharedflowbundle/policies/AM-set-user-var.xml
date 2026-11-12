@@ -20,17 +20,13 @@
     <Value>partner@example.com</Value>
   </AssignVariable>
   <AssignVariable>
-    <Name>consumer.client.id</Name>
-    <Ref>verifyapikey.VAK-Verify-Partner-Key.client_id</Ref>
-    <Value>unknown-client</Value>
-  </AssignVariable>
-  <AssignVariable>
     <Name>caller.identity</Name>
-    <Ref>jwt.VJ-Verify-Partner-JWT.claim.sub</Ref>
+    <Ref>caller.identity</Ref>
     <Value>anonymous</Value>
   </AssignVariable>
   <Set>
     <Headers>
+      <Header name="x-verified-app">{consumer.app.name}</Header>
       <Header name="X-Forwarded-Authorization">{request.header.Authorization}</Header>
     </Headers>
   </Set>

@@ -8,8 +8,8 @@ WITH partner_interactions AS (
   SELECT
     FORMAT_TIMESTAMP('%Y-%m', timestamp) AS billing_month,
     COALESCE(NULLIF(jsonPayload.consumer_app, ''), 'anonymous') AS consumer_app,
-    COALESCE(NULLIF(jsonPayload.consumer_client_id, ''), 'unknown') AS consumer_client_id,
-    COALESCE(NULLIF(jsonPayload.caller_identity, ''), 'unknown') AS caller_identity,
+    COALESCE(NULLIF(jsonPayload.caller_identity, ''), 'anonymous') AS caller_identity,
+    COALESCE(NULLIF(jsonPayload.caller_issuer, ''), '') AS caller_issuer,
     COALESCE(NULLIF(jsonPayload.proxy, ''), 'partner-agents') AS proxy_name,
     COALESCE(NULLIF(jsonPayload.gen_ai_request_model, ''), 'gemini-2.5-flash') AS model_name,
     SAFE_CAST(jsonPayload.status AS INT64) AS status_code,
@@ -59,8 +59,8 @@ WITH partner_interactions AS (
 SELECT
   billing_month,
   consumer_app,
-  consumer_client_id,
   caller_identity,
+  caller_issuer,
   proxy_name,
   model_name,
   COUNT(*) AS total_requests,

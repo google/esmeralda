@@ -6,9 +6,16 @@
 <AssignMessage name="AM-Propagate-Cross-Cloud-Principal" continueOnError="false" enabled="true">
   <DisplayName>AM-Propagate-Cross-Cloud-Principal</DisplayName>
   <AssignVariable>
+    <Name>caller.issuer</Name>
+    <Ref>jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer</Ref>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>caller.subject</Name>
+    <Ref>jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject</Ref>
+  </AssignVariable>
+  <AssignVariable>
     <Name>caller.identity</Name>
-    <Ref>jwt.VJ-Verify-Cross-Cloud-JWT.claim.sub</Ref>
-    <Value>anonymous</Value>
+    <Template>{jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer}#{jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject}</Template>
   </AssignVariable>
   <Remove>
     <Headers>
@@ -18,8 +25,8 @@
   <Set>
     <Headers>
       <Header name="x-verified-identity">{caller.identity}</Header>
-      <Header name="x-verified-issuer">{crosscloud.issuer_uri}</Header>
+      <Header name="x-verified-issuer">{caller.issuer}</Header>
     </Headers>
   </Set>
-  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
 </AssignMessage>

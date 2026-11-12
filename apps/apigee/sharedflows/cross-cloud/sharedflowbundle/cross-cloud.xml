@@ -5,10 +5,13 @@
 -->
 <SharedFlowBundle revision="1" name="cross-cloud">
   <DisplayName>cross-cloud</DisplayName>
-  <Description>Removable Apigee capability shared flow for inbound cross-cloud OIDC/JWT issuer lookup, JWKS signature verification, and verified principal propagation.</Description>
+  <Description>Removable Apigee capability shared flow for fail-closed inbound cross-cloud OIDC/JWT issuer lookup, JWKS signature verification, and verified iss#sub principal propagation.</Description>
   <Policies>
     <Policy>AM-Propagate-Cross-Cloud-Principal</Policy>
     <Policy>KVM-Get-Cross-Cloud-Issuer</Policy>
+    <Policy>RF-Cross-Cloud-Invalid-Token</Policy>
+    <Policy>RF-Cross-Cloud-Missing-Credentials</Policy>
+    <Policy>RF-Cross-Cloud-Untrusted-Issuer</Policy>
     <Policy>VJ-Verify-Cross-Cloud-JWT</Policy>
   </Policies>
   <SharedFlows>

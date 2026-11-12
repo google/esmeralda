@@ -5,15 +5,24 @@
 -->
 <SharedFlow name="default">
   <Step>
+    <Name>RF-Cross-Cloud-Missing-Credentials</Name>
+    <Condition>(request.header.x-cross-cloud-issuer = null) or (request.header.x-cross-cloud-issuer = "") or (request.header.x-cross-cloud-token = null) or (request.header.x-cross-cloud-token = "")</Condition>
+  </Step>
+  <Step>
     <Name>KVM-Get-Cross-Cloud-Issuer</Name>
-    <Condition>request.header.x-cross-cloud-issuer != null</Condition>
+  </Step>
+  <Step>
+    <Name>RF-Cross-Cloud-Untrusted-Issuer</Name>
+    <Condition>(crosscloud.issuer_uri = null) or (crosscloud.issuer_uri = "") or (crosscloud.jwks_uri = null) or (crosscloud.jwks_uri = "") or (crosscloud.audience = null) or (crosscloud.audience = "")</Condition>
   </Step>
   <Step>
     <Name>VJ-Verify-Cross-Cloud-JWT</Name>
-    <Condition>(request.header.x-cross-cloud-token != null) and (crosscloud.jwks_uri != null)</Condition>
+  </Step>
+  <Step>
+    <Name>RF-Cross-Cloud-Invalid-Token</Name>
+    <Condition>(jwt.VJ-Verify-Cross-Cloud-JWT.valid != true) or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer = null) or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.issuer = "") or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject = null) or (jwt.VJ-Verify-Cross-Cloud-JWT.claim.subject = "")</Condition>
   </Step>
   <Step>
     <Name>AM-Propagate-Cross-Cloud-Principal</Name>
-    <Condition>jwt.VJ-Verify-Cross-Cloud-JWT.valid = true</Condition>
   </Step>
 </SharedFlow>
