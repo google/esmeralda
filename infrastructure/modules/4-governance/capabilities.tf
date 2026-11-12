@@ -108,6 +108,16 @@ variable "governance_config" {
     )
     error_message = "governance_config.capabilities.model_gateway must be \"none\" or \"apigee\"; \"apigee\" requires usage_metering = \"apigee\" and an INTERMEDIATE or COMPREHENSIVE Apigee environment."
   }
+
+  # The entry point only enables its Apigee backend with partner_access = "apigee"; the llm-gateway
+  # host (apigee.<domain>) is routed through that backend.
+  validation {
+    condition = (
+      var.governance_config.capabilities.model_gateway != "apigee" ||
+      var.governance_config.capabilities.partner_access == "apigee"
+    )
+    error_message = "governance_config.capabilities.model_gateway = \"apigee\" requires partner_access = \"apigee\": the entry point routes apigee.<domain> through its Apigee backend, which partner_access enables."
+  }
 }
 
 resource "terraform_data" "capabilities_contract" {

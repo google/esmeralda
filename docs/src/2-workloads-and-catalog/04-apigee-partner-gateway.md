@@ -308,14 +308,17 @@ governance = {
     token_quota      = "apigee"        # Enables token-quota shared flow (LLMTokenQuota)
     usage_metering   = "apigee"        # Enables usage-metering shared flow & DataCollectors
     cross_cloud      = "apigee"        # Required with partner_access: deploys the cross-cloud shared flow the partner proxies call
-    model_gateway    = "apigee"        # Agent -> model through llm-gateway (needs usage_metering = "apigee", INTERMEDIATE+)
+    model_gateway    = "apigee"        # Agent -> model through llm-gateway (needs usage_metering and partner_access = "apigee", INTERMEDIATE+)
   }
 }
 ```
 
 The partner proxies call the `cross-cloud` shared flow (`FC-Cross-Cloud`), and Apigee does not deploy a proxy whose shared flow is missing from the environment, so Layer 4 rejects `partner_access = "apigee"` without `cross_cloud = "apigee"`. With no trusted issuers configured, the shared flow rejects every cross-cloud credential (fail closed); API-key partners are unaffected.
 
-`model_gateway` takes `"none"` (default: agents call Vertex AI directly and the workload records are the only token source) or `"apigee"`. Layer 4 rejects `"apigee"` unless `usage_metering = "apigee"` (the proxy writes to its data collectors) and the environment is `INTERMEDIATE` or `COMPREHENSIVE` (`LLMTokenQuota`). The entry point must route `apigee.<domain>` to the Apigee backend, and agents must be allowed to reach that host through the Central Agent Gateway.
+`model_gateway` takes `"none"` (default: agents call Vertex AI directly and the workload records are the only token source) or `"apigee"`. Layer 4 rejects `"apigee"` unless `usage_metering = "apigee"` (the proxy writes to its data collectors), the environment is `INTERMEDIATE` or `COMPREHENSIVE` (`LLMTokenQuota`), and `partner_access = "apigee"` (the entry point only enables its Apigee backend for partner access; with `model_gateway = "apigee"` it also routes `apigee.<domain>`, already a hostname of the Apigee environment group, to that backend).
+
+> [!WARNING]
+> `model_gateway = "apigee"` is not end to end yet. Agents egress through the Central Agent Gateway, which denies hosts that are not in the Agent Registry, and nothing registers `apigee.<domain>` or grants the agents `roles/iap.egressor` on it yet. Until the service catalog can declare the model gateway as a target, keep `model_gateway = "none"` (the default in dev and prd).
 
 ### Deploying & Running the Live Partner Conformance Probes
 

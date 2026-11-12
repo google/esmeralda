@@ -303,10 +303,36 @@ def test_invalid_model_gateway_fails(tmp_path: pathlib.Path, env_type: str, capa
 
 
 def test_model_gateway_apigee_passes(tmp_path: pathlib.Path):
-    """`model_gateway = "apigee"` with usage_metering on Apigee and an INTERMEDIATE environment passes."""
+    """`model_gateway = "apigee"` with usage_metering and partner access on Apigee and an INTERMEDIATE environment passes."""
+    config = {
+        "apigee": {"enabled": True, "byo": False, "environment_type": "INTERMEDIATE"},
+        "capabilities": {
+            "model_gateway": "apigee",
+            "usage_metering": "apigee",
+            "partner_access": "apigee",
+            "cross_cloud": "apigee",
+        },
+    }
+    outputs = evaluate_capabilities(tmp_path / "model-gateway", config)
+    assert outputs["capabilities"]["model_gateway"] == "apigee"
+
+
+def test_model_gateway_apigee_requires_the_entry_point_apigee_backend(tmp_path: pathlib.Path):
+    """The entry point only enables its Apigee backend with partner_access = "apigee"."""
     config = {
         "apigee": {"enabled": True, "byo": False, "environment_type": "INTERMEDIATE"},
         "capabilities": {"model_gateway": "apigee", "usage_metering": "apigee"},
     }
-    outputs = evaluate_capabilities(tmp_path / "model-gateway", config)
-    assert outputs["capabilities"]["model_gateway"] == "apigee"
+    with pytest.raises(AssertionError) as exc_info:
+        evaluate_capabilities(tmp_path / "model-gateway-no-partner", config)
+
+    assert 'model_gateway = "apigee" requires partner_access = "apigee"' in _squash(str(exc_info.value))
+
+
+@pytest.mark.parametrize("env", ["dev", "prd"])
+def test_entry_point_routes_the_model_gateway_host_to_apigee(env: str):
+    """With model_gateway = "apigee", the entry point sends apigee.<domain> to the Apigee backend."""
+    hcl = (REPO_ROOT / "infrastructure" / "live" / env / "layer-5-workloads" / "entrypoint" / "terragrunt.hcl").read_text(
+        encoding="utf-8"
+    )
+    assert 'capabilities.model_gateway, "none") == "apigee" ? { "apigee" = "apigee" } : {}' in hcl
