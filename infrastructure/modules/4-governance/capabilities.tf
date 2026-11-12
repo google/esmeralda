@@ -82,6 +82,17 @@ variable "governance_config" {
     )
     error_message = "governance_config.capabilities.token_quota = \"apigee\" requires governance_config.apigee.environment_type to be \"INTERMEDIATE\" or \"COMPREHENSIVE\" (LLMTokenQuota is not supported on BASE environments)."
   }
+
+  # The partner proxies call the cross-cloud shared flow (FC-Cross-Cloud), and Apigee refuses to
+  # deploy a proxy whose shared flow is not deployed in the environment. The cross-cloud unit deploys
+  # it (with its trusted-issuer KVM, empty by default, so cross-cloud credentials are rejected).
+  validation {
+    condition = (
+      var.governance_config.capabilities.partner_access != "apigee" ||
+      var.governance_config.capabilities.cross_cloud == "apigee"
+    )
+    error_message = "governance_config.capabilities.partner_access = \"apigee\" requires cross_cloud = \"apigee\": the partner proxies call the cross-cloud shared flow, which must be deployed in the environment."
+  }
 }
 
 resource "terraform_data" "capabilities_contract" {

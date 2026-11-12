@@ -222,10 +222,12 @@ governance = {
     partner_access   = "apigee"        # Enables partner-agents, partner-mcp, and partner VIP (10.0.1.3)
     token_quota      = "apigee"        # Enables token-quota shared flow (LLMTokenQuota)
     usage_metering   = "apigee"        # Enables usage-metering shared flow & DataCollectors
-    cross_cloud      = "agent_gateway"
+    cross_cloud      = "apigee"        # Required with partner_access: deploys the cross-cloud shared flow the partner proxies call
   }
 }
 ```
+
+The partner proxies call the `cross-cloud` shared flow (`FC-Cross-Cloud`), and Apigee does not deploy a proxy whose shared flow is missing from the environment, so Layer 4 rejects `partner_access = "apigee"` without `cross_cloud = "apigee"`. With no trusted issuers configured, the shared flow rejects every cross-cloud credential (fail closed); API-key partners are unaffected.
 
 ### Deploying & Running the Live Partner Conformance Probes
 

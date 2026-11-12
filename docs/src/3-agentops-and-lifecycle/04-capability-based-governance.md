@@ -251,7 +251,7 @@ To enable B2B partner access and consumer token quotas via Apigee in an environm
        partner_access   = "apigee"
        token_quota      = "apigee"
        usage_metering   = "apigee"
-       cross_cloud      = "agent_gateway"
+       cross_cloud      = "apigee" # required with partner_access = "apigee" (cross-cloud shared flow)
      }
    }
    ```
