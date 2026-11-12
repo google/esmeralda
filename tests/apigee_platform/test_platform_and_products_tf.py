@@ -209,3 +209,21 @@ def test_live_terragrunt_units_excluded_by_default_and_define_partner_tiers(env:
     assert "esmeralda-partner-standard" in products_hcl
     assert "esmeralda-partner-premium" in products_hcl
     assert "partner-smoke-test" in products_hcl
+
+
+def test_products_key_rotation_keeper_replaces_the_app_and_its_secret_version() -> None:
+    """consumers[*].key_rotation drives a terraform_data keeper that replaces the developer app (new
+    Apigee key); the Secret Manager version follows through secret_data. Never a manual console step."""
+    main_tf = (PRODUCTS_MODULE_DIR / "main.tf").read_text(encoding="utf-8")
+    variables_tf = (PRODUCTS_MODULE_DIR / "variables.tf").read_text(encoding="utf-8")
+
+    assert 'key_rotation                     = optional(string, "")' in variables_tf
+    assert 'resource "terraform_data" "consumer_key_rotation"' in main_tf
+    assert "input = each.value.key_rotation" in main_tf
+    app = main_tf[main_tf.index('resource "google_apigee_developer_app" "consumer"') :]
+    app = app[: app.index("\n}\n")]
+    assert "replace_triggered_by = [terraform_data.consumer_key_rotation[each.key]]" in app
+    assert (
+        "secret_data = sensitive(google_apigee_developer_app.consumer[each.key].credentials[0].consumer_key)"
+        in main_tf
+    )
