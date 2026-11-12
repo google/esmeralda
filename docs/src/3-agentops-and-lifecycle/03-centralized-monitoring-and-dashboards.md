@@ -351,7 +351,7 @@ flowchart LR
     RE["Vertex AI Reasoning Engine<br/>(identity_type: AGENT_IDENTITY)"]
     AGW["Central Agent Gateway<br/>(AGENT_TO_ANYWHERE)"]
     IAP["IAP REQUEST_AUTHZ<br/>(roles/iap.egressor on registry entry)"]
-    MA["Model Armor<br/>(CONTENT_AUTHZ, currently disabled)"]
+    MA["Model Armor<br/>(CONTENT_AUTHZ, off by default)"]
     LOG["Cloud Logging<br/>(gateway_requests, governance project)"]
     Gemini["Foundation Model<br/>(Gemini)"]
 
@@ -368,7 +368,8 @@ flowchart LR
    * The gateway is deny-by-default: it forwards a request only if the hostname is registered in Agent Registry and IAP confirms the identity holds `roles/iap.egressor` on that entry.
 2. **Model Armor Guardrails**:
    * Two templates are deployed: `esmeralda-prompt-guardrails-<env>` (prompt injection & jailbreak, malicious URIs, RAI filters) and `esmeralda-response-guardrails-<env>`.
-   * The gateway's `CONTENT_AUTHZ` extension that would send decrypted payloads to Model Armor is written but **disabled** (`count = 0`); the service-agent grants are already in place.
+   * Gemini calls are screened by Vertex AI built-in Model Armor (a floor setting on each agent project) when `governance.model_armor.model_calls` is `inspect` or `enforce`. With `enable_cloud_logging`, findings go to Cloud Logging in the agent projects.
+   * The gateway's `CONTENT_AUTHZ` extension, which sends decrypted unary MCP `tools/call` and agent card payloads to Model Armor, follows `governance.model_armor.gateway` (off by default). Sanitize results are logged in the governance project (`modelarmor.googleapis.com/sanitize_operations`). Coverage and limits: [Model Armor](./01-central-agent-gateway.md#35-model-armor-model-calls-and-optional-content_authz).
 3. **Gateway Request Logs**:
    * Every gateway decision (host, status, allow/deny) is logged in the governance project: `gcloud logging read 'logName:"gateway_requests"' --project=<governance-project-id>`.
    * Token counts for FinOps come from `esmeralda.usage` records (sections 1 to 3): the agents' own records today, and gateway records when a gateway on the hop writes them (Agent Gateway request logs would need an adapter view).

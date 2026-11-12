@@ -29,6 +29,35 @@ variable "region" {
   description = "Target region"
 }
 
+variable "model_calls" {
+  type        = string
+  default     = "off"
+  description = "Vertex AI built-in Model Armor on the agents' Gemini calls: off | inspect | enforce."
+
+  validation {
+    condition     = contains(["off", "inspect", "enforce"], var.model_calls)
+    error_message = "model_calls must be one of: off, inspect, enforce."
+  }
+}
+
+variable "model_calls_sdp" {
+  type        = bool
+  default     = false
+  description = "Also run the Sensitive Data Protection basic filter on model calls (blocks on a match, never masks)."
+}
+
+variable "enable_cloud_logging" {
+  type        = bool
+  default     = true
+  description = "Log the Vertex AI integration's Model Armor findings to Cloud Logging."
+}
+
+variable "agent_project_ids" {
+  type        = list(string)
+  default     = []
+  description = "Projects whose Gemini calls get the Vertex AI floor setting (one per agent team project)."
+}
+
 # Enable Model Armor API in Governance Project
 resource "google_project_service" "model_armor_api" {
   project            = var.governance_project_id

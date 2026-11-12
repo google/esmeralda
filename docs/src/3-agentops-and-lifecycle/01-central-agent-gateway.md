@@ -208,17 +208,64 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
   - Layer 5 runs it again (unit `iap-egress`) after the MCP servers and agents have registered, with the same registry-wide inputs.
 - **Known gap:** an agent with access to the generic Vertex AI (`aiplatform`) endpoint can call an Agent Runtime engine's A2A API directly through that endpoint, which skips the agent entry and its per-target policy. Restricting callers end to end also needs per-agent outbound identities (instead of a shared invoker service account) and per-engine `aiplatform` IAM on the callee (follow-up).
 
-### 3.5 Model Armor (optional `CONTENT_AUTHZ`)
+### 3.5 Model Armor (model calls and optional `CONTENT_AUTHZ`)
 
-**What it is:** a Google service that screens prompts and responses for PII, prompt injection, jailbreaks and malicious URLs, based on a *template*.
+**What it is:** a Google service that screens prompts and responses for prompt injection, jailbreaks, malicious URLs, harmful content and (optionally) sensitive data, based on a *template* or a *floor setting*.
 
-**In Agent Gateway:**
-- A second authz extension and policy, using the `CONTENT_AUTHZ` profile, sends the **decrypted** payload to Model Armor.
-- This only works because the gateway decrypts TLS (section 5).
+Esmeralda can use it at two points. Each one has its own switch in `env.yaml` (`governance.model_armor`, layer 4):
 
-**Esmeralda:**
-- The resources are written but disabled (`count = 0`).
-- The required grants (`roles/modelarmor.user` for the Agent Gateway and Network Security service agents) are already in place, so enabling inspection only means flipping the count.
+```hcl
+model_armor = {
+  model_calls        = "inspect" # "off" | "inspect" | "enforce": Vertex AI built-in Model Armor on Gemini calls
+  model_calls_sdp    = false     # Sensitive Data Protection on model calls (blocks, never masks)
+  gateway            = "off"     # "off" | "on": Agent Gateway CONTENT_AUTHZ on unary MCP calls and agent cards
+  gateway_fail_open  = true      # let traffic through when Model Armor errors or times out
+  gateway_timeout_ms = 10000     # per-message callout timeout, 10-10000 ms
+}
+```
+
+Defaults: dev uses `model_calls = "inspect"` and `gateway = "off"`. prd turns both off.
+
+**Model calls (Vertex AI built-in Model Armor):**
+- A project-level Model Armor floor setting with the Vertex AI integration (`google_model_armor_floorsetting`, `integrated_services = ["AI_PLATFORM"]`) goes on every agent project ([vertex_floor_settings.tf](../../../infrastructure/modules/4-governance/modules/5_model_armor/vertex_floor_settings.tf)). Vertex AI screens the prompt of every Gemini `generateContent` and `streamGenerateContent` call in that project before the model runs, and screens the response after it. `inspect` only logs findings; `enforce` blocks the call.
+- The integration only screens **regional** model endpoints. When `model_calls` is on, layer 4 outputs `model_armor_model_location` (the region) and the agent units set `MODEL_LOCATION` to it. When it is off, the agents keep the `agent.yaml` value (`global`). The model must be served in that region.
+- The Vertex AI service agent of each agent project gets `roles/modelarmor.user`, and the Model Armor API is enabled there.
+- **No de-identification:** a Sensitive Data Protection match blocks the call and is never masked. Synthetic account and tax numbers look like real ones, so `model_calls_sdp` is off by default.
+- **Fails open:** if Model Armor is unavailable, the call goes through unscreened. This path has no `fail_open` setting. Screening adds latency to every model call (Model Armor can take several seconds).
+- A floor setting is a singleton. Removing the Terraform resource leaves the last setting active, so going back to `off` runs [model_armor_floor_off.sh](../../../infrastructure/modules/_shared/scripts/model_armor_floor_off.sh), which turns the Vertex AI integration off in that project.
+
+**Agent Gateway (`CONTENT_AUTHZ`):**
+- A second authz extension and policy, using the `CONTENT_AUTHZ` profile, sends the **decrypted** payload to Model Armor, with the prompt template for requests and the response template for responses. This only works because the gateway decrypts TLS (section 5).
+- The policy is scoped with `http_rules` to the unary payloads Model Armor inspects: MCP `tools/call` and `prompts/get` on `/mcp` (Esmeralda's MCP servers answer with JSON, not SSE), and A2A agent cards (`GET /v1/card`). A2A messages, Gemini calls and streams don't match, so they never open a callout.
+- `gateway_fail_open` and `gateway_timeout_ms` set how a slow or failing Model Armor is handled. With `fail_open = true`, a timeout skips the check silently. With `false`, the call is rejected.
+- **Why it is off by default:** with `CONTENT_AUTHZ` on, the gateway's callout stream has a limited lifetime (about 60 s), and long streams through the gateway have been cut with 5xx errors. The A2A call from the orchestrator to the specialist can take minutes. Scoping the policy to `/mcp` and agent cards should keep it away from that hop, but this hasn't been verified yet. Turn the gateway on in dev only together with the long-call check below, and keep it on only if that check passes.
+- The grants (`roles/modelarmor.user` for the Agent Gateway and Network Security service agents) are always in place.
+
+**Coverage:** what Model Armor actually inspects, per hop.
+
+| Hop | Call shape | Inspected by | Notes |
+|---|---|---|---|
+| Agent → Gemini | `generateContent` (unary) | Vertex AI built-in Model Armor, when `model_calls` ≠ `off` | Regional endpoint only; fails open; SDP blocks instead of masking |
+| Agent → Gemini | `streamGenerateContent` (stream) | Vertex AI built-in Model Armor, when `model_calls` ≠ `off` | Same limits. Agent Gateway never inspects native Gemini calls |
+| Specialist → MCP server | `tools/call`, `prompts/get` (unary JSON) | Agent Gateway `CONTENT_AUTHZ`, when `gateway = "on"` | Request: prompt template. Response: response template |
+| Specialist → MCP server | `tools/list`, `initialize`, `notifications/*`, `resources/*` | Not inspected | Pass through |
+| Specialist → MCP server | Streamable HTTP SSE responses | Not inspected | Esmeralda's servers answer with JSON; an SSE response passes through |
+| Agent → agent card | `GET /v1/card` | Agent Gateway `CONTENT_AUTHZ`, when `gateway = "on"` | |
+| Orchestrator → specialist | A2A 0.3 `message:send` (unary) | Not inspected | Agent Gateway inspects A2A v1 `SendMessage` only; not matched by the policy (long calls) |
+| Orchestrator → specialist | A2A `message:stream`, task APIs | Not inspected | Streamed A2A passes through Agent Gateway without inspection |
+| Partner → Apigee → agents | Partner front door | Not by these switches | Use Apigee's Model Armor policies on that path |
+
+The model calls carry the conversation, including tool results that are sent back to the model. So `model_calls` also screens tool results and the specialist's answer as they enter the next model turn. It doesn't screen them on the wire.
+
+**Checking it:** `uv run esmeralda verify --model-armor --env <env>` reads the effective switches from layer 4 and runs three checks:
+- **Model calls:** a prompt-injection string through Gemini `generateContent` and `streamGenerateContent` in each agent project, on the regional endpoint. With `enforce`, both must be blocked. With `inspect`, both must go through, and findings show up in Cloud Logging.
+- **Gateway** (when it is on): a specialist query that makes an MCP `tools/call` through the gateway, followed by Model Armor sanitize log entries in the governance project.
+- **Long call:** a multi-step orchestrator query. It must succeed, and the output says whether it ran longer than 60 s.
+
+**Production recommendations:**
+- Turn `model_calls` on in `inspect` first. Review the findings, then move to `enforce` once the standard `verify` still passes. Keep `model_calls_sdp` off unless blocking every sensitive-data match is acceptable.
+- For `gateway`: wait until the long-call check passes in dev with the gateway on. Then turn it on with `gateway_fail_open = false` and the maximum timeout.
+- Never treat streamed A2A, MCP SSE or A2A earlier than v1 as inspected by the gateway.
 
 ### 3.6 Private Service Connect (PSC) network attachment
 
@@ -498,7 +545,7 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 | 10 | L4 governance | ACT `esmeralda-egress-act-<env>` (network attachment, DNS peering, `tls_config`) | Connectivity + TLS trust; must exist **before** the gateway |
 | 11 | L4 governance | Agent Gateway `esmeralda-agent-egress-gateway-<env>` (with ACT + registry) | The proxy |
 | 12 | L4 governance | IAP authz extension + `REQUEST_AUTHZ` authz policy | Allow/deny decisions |
-| 13 | L4 governance | Model Armor grants (+ optional `CONTENT_AUTHZ` extension/policy) | Payload inspection |
+| 13 | L4 governance | Model Armor grants (+ `CONTENT_AUTHZ` extension/policy when `governance.model_armor.gateway = "on"`; Vertex AI floor settings on the agent projects when `model_calls` is on) | Payload inspection |
 | 14 | L4 governance | Agent Registry entries for Google APIs (every hostname variant) | "Where" allowlist for platform and SDK traffic |
 | 15 | L4 governance | `roles/iap.egressor` on the registry, conditioned to system endpoints (`grant_iap_egress.sh`) | Authorizes the agents on the system Google API endpoints |
 | 16 | L4 governance | Trust bundle `agw_root_ca_bundle` + secret `agw-root-ca-cert-<env>` | What the agents must trust on leg 1 |

@@ -280,6 +280,7 @@ def test_env_manifests_have_key_parity_and_valid_capabilities():
     assert set(dev["governance"].keys()) == set(prd["governance"].keys()) == {
         "apigee",
         "capabilities",
+        "model_armor",
     }
     assert (
         set(dev["governance"]["apigee"].keys())

@@ -402,7 +402,7 @@ esmeralda doctor [--env dev|prd] [--json] [--repo PATH]
 esmeralda units [--env dev|prd] [--layer 0..5] [--json] [--repo PATH]
 esmeralda plan [<unit> | --all] [--env dev|prd] [--json] [--repo PATH]
 esmeralda apply <unit> [--env dev|prd] [--allow-destroy] [--json] [--repo PATH]
-esmeralda verify [--env dev|prd] [--probe NAME] [--skip-query] [--partner] [--json] [--repo PATH]
+esmeralda verify [--env dev|prd] [--probe NAME] [--skip-query] [--partner] [--model-armor] [--json] [--repo PATH]
 esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json] [--repo PATH]
 esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json] [--repo PATH]
 esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json] [--repo PATH]
@@ -415,7 +415,7 @@ esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json]
 | `units` | `esmeralda.ops.infra.list_units` | Lists Terragrunt units for `<env>`, their layer (`0..5`), dependencies, whether enabled/excluded in `env.yaml`, and whether local state exists |
 | `plan` | `esmeralda.ops.infra.plan_unit` | Runs read-only `terragrunt plan -lock=false` on a unit (full path or short name such as `entrypoint`) or `--all` enabled units, and prints the resource change summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `apply` | `esmeralda.ops.infra.apply_unit` | Plans `<unit>` to a planfile first, inspects the plan for `destroy` or `replace` actions, **refuses to apply with exit code `2` if `destroy > 0` unless `--allow-destroy` is passed**, and otherwise applies the saved planfile |
-| `verify` | `esmeralda.ops.runtime.verify` | Runs gateway conformance probes (`runtime.test_gateway`, optionally filtered by `--probe`) and, unless `--skip-query` is passed, runs remote queries against `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` (or with `--partner`, runs Apigee partner conformance checks via `runtime.test_partner`). Exits non-zero if any check fails |
+| `verify` | `esmeralda.ops.runtime.verify` | Runs gateway conformance probes (`runtime.test_gateway`, optionally filtered by `--probe`) and, unless `--skip-query` is passed, runs remote queries against `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` (or with `--partner`, runs Apigee partner conformance checks via `runtime.test_partner`; with `--model-armor`, runs `esmeralda.ops.model_armor.verify_model_armor`). Exits non-zero if any check fails |
 | `logs` | `esmeralda.ops.logs.agent_logs` | Pulls recent Cloud Logging entries for an agent (Reasoning Engine) or MCP/gateway service (Cloud Run), collapsing tracebacks and deduplicating repeats |
 | `contracts` | `esmeralda.ops.contracts.describe_contracts` | Prints architectural contracts (`all`, `entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
 | `guard` | `esmeralda.ops.guard.run_guard` | Public-repository sensitive-content scanner across `--staged` changes, `--diff <range>`, `--all` tracked files, or `--message-file`. Exits non-zero if any secret, forbidden path, or internal/customer marker is detected |

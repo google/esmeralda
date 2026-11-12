@@ -76,11 +76,16 @@ module "finops_analytics" {
   depends_on                    = [module.telemetry_sinks]
 }
 
-# 6. Submodule 5: Model Armor Guardrail Templates
+# 6. Submodule 5: Model Armor Guardrail Templates (+ Vertex AI floor settings, model_armor.tf)
 module "model_armor" {
   source                = "./modules/5_model_armor"
   environment           = var.environment
   governance_project_id = var.governance_project_id
+  region                = var.region
+  model_calls           = local.model_armor_model_calls
+  model_calls_sdp       = var.model_armor_config.model_calls_sdp
+  enable_cloud_logging  = var.model_armor_config.enable_cloud_logging
+  agent_project_ids     = var.agent_project_ids
 }
 
 # 7. Submodule 6: Central Agent Gateway & Registry (August 2026 Release)
@@ -93,6 +98,10 @@ module "agent_gateway" {
   net_host_project_id       = var.net_host_project_id
   vpc_name                  = var.vpc_name
   model_armor_template_name = module.model_armor.prompt_template_name
+  model_armor_response_tpl  = module.model_armor.response_template_name
+  model_armor_gateway       = local.model_armor_gateway_enabled
+  model_armor_fail_open     = var.model_armor_config.gateway_fail_open
+  model_armor_timeout_ms    = var.model_armor_config.gateway_timeout_ms
   agent_invoker_sa_emails   = var.agent_invoker_sa_emails
   agent_project_ids         = var.agent_project_ids
   enable_agent_gateway      = var.enable_agent_gateway

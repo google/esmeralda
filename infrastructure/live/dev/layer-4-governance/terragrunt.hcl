@@ -41,6 +41,7 @@ inputs = {
   runaway_loop_token_threshold = 50000
   monitoring_config            = local.env_vars.locals.monitoring_config
   governance_config            = try(local.env.governance, {})
+  model_armor_config           = try(local.env.governance.model_armor, {})
 
   # Usage attribution floor: the team that owns each workload project (catalog teams.yaml keys).
   # Workload usage records logged from these projects are billed to that team until callers are verified.

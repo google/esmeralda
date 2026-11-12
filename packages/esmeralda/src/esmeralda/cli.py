@@ -31,7 +31,7 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda units [--env dev|prd] [--layer 0..5] [--json]``
 * ``esmeralda plan <unit|--all> [--env dev|prd] [--json]``
 * ``esmeralda apply <unit> [--env dev|prd] [--allow-destroy] [--json]``
-* ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--json]``
+* ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
 * ``esmeralda guard [--staged | --diff <range> | --all] [--json]``
@@ -455,6 +455,7 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
                     probe=args.probe,
                     skip_query=args.skip_query,
                     partner=getattr(args, "partner", False),
+                    model_armor=getattr(args, "model_armor", False),
                 )
             )
             print(json.dumps(data, indent=2) if args.json else _format_verify(data))
@@ -598,6 +599,11 @@ def _parser() -> argparse.ArgumentParser:
         "--partner",
         action="store_true",
         help="run Apigee partner front-door conformance probes (scripts/test_partner.sh)",
+    )
+    verify.add_argument(
+        "--model-armor",
+        action="store_true",
+        help="run Model Armor checks: injection on model calls, gateway tools/call inspection, long-call regression",
     )
     _add_common_ops_flags(verify, with_env=True)
 
