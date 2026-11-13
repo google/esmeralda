@@ -20,8 +20,8 @@ variable "enable_agent_identity" {
   default     = true
 }
 
-variable "enable_native_spiffe_auth" {
-  description = "When true, omit SERVICE_ACCOUNT_EMAIL from container env vars so the agent authenticates with its native GEAP SPIFFE identity instead of impersonating mcp_invoker_sa_email"
+variable "legacy_shared_invoker" {
+  description = "Deprecated fallback (one release): set SERVICE_ACCOUNT_EMAIL to mcp_invoker_sa_email so the agent mints its outbound tokens by impersonating the shared invoker service account. Default false: the agent calls out with its own Agent Identity"
   type        = bool
   default     = false
 }
@@ -55,13 +55,13 @@ variable "agent_service_account" {
 }
 
 variable "invoker_service_accounts" {
-  description = "List of service account emails authorized to invoke this agent"
+  description = "Identities authorized to invoke this agent (roles/aiplatform.user on its project): service account emails, or full members (serviceAccount:, principal://, principalSet://), e.g. a calling agent's Agent Identity principal"
   type        = list(string)
   default     = []
 }
 
 variable "mcp_invoker_sa_email" {
-  description = "The email address of the shared MCP invoker service account for IAM impersonation"
+  description = "The shared MCP invoker service account, used only when legacy_shared_invoker = true"
   type        = string
   default     = ""
 }

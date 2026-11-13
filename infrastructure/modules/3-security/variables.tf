@@ -112,6 +112,12 @@ variable "enable_agent_identity" {
   default     = true
 }
 
+variable "legacy_shared_invoker" {
+  description = "Deprecated fallback (one release): keep the shared MCP invoker service account's grants (run.invoker on the MCPs project, tokenCreator for the agent principalSets) so agents can impersonate it again. Default false: agents call out with their own Agent Identity."
+  type        = bool
+  default     = false
+}
+
 
 variable "enable_unregistered_probe" {
   description = "Create the unregistered-caller probe identity (sa-probe-unregistered-<env>): in no catalog entry, granted no role, impersonable by the test VM only. `esmeralda verify` uses it to prove unknown callers get 403."

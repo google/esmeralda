@@ -48,19 +48,26 @@ locals {
 
   # Catalog caller guard (caller_guard.py in the image): the catalog-compiled allowlist of this
   # target (catalog/.resolved/<env>.json attribution.allowlists) with its `<unit>:<output>`
-  # references replaced by identity_refs values. Agent Identity principals (agents/<name>:...) are
-  # dropped: the agents deploy after the services, and today they call MCP servers with a service
-  # account ID token (the shared invoker identity until per-agent identities land, google/esmeralda#134),
-  # whose entry is kept. Any other reference left unresolved fails the plan.
+  # references replaced by identity_refs values (agents call out with their own Agent Identity, so
+  # their `agents/<name>:agent_identity_principal` entries resolve too). Any reference left unresolved
+  # fails the plan.
   ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
   caller_guard_callers = var.caller_allowlist == null ? [] : concat(
     [
       for entry in var.caller_allowlist.callers : merge(entry, { principal = lookup(var.identity_refs, entry.principal, entry.principal) })
-      if !startswith(entry.principal, "agents/")
     ],
     var.extra_allowed_callers,
   )
   caller_guard_unresolved = [for entry in local.caller_guard_callers : entry.principal if can(regex(local.ref_pattern, entry.principal))]
+
+  # roles/run.invoker members: service account emails, full members (serviceAccount:, principal://,
+  # principalSet://) or `<unit>:<output>` references resolved through identity_refs (a calling agent's
+  # Agent Identity principal).
+  invoker_members = distinct([
+    for m in [for v in var.invoker_service_accounts : lookup(var.identity_refs, v, v) if v != "" && v != null] :
+    startswith(m, "serviceAccount:") || startswith(m, "principal://") || startswith(m, "principalSet://") ? m : "serviceAccount:${m}"
+  ])
+  invoker_unresolved = [for v in var.invoker_service_accounts : v if can(regex(local.ref_pattern, lookup(var.identity_refs, v, v)))]
 
   # A Google ID token minted without the email claim (VM metadata server default, Apigee
   # GoogleIDToken without IncludeEmail) names a service account only by its numeric unique id in
@@ -208,18 +215,20 @@ resource "google_cloud_run_v2_service" "service" {
       condition     = length(local.caller_guard_unresolved) == 0
       error_message = "caller_allowlist references without a value in identity_refs: ${join(", ", local.caller_guard_unresolved)}. Map them to unit outputs in the service's terragrunt unit."
     }
+    precondition {
+      condition     = length(local.invoker_unresolved) == 0
+      error_message = "invoker_service_accounts references without a value in identity_refs: ${join(", ", local.invoker_unresolved)}. Map them to unit outputs in the service's terragrunt unit."
+    }
   }
 }
 
-# IAM Invoker Binding restricting access to authorized callers only
+# IAM Invoker Binding restricting access to authorized callers only (authoritative for the role)
 resource "google_cloud_run_v2_service_iam_binding" "invokers" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.service.name
   role     = "roles/run.invoker"
-  members = [
-    for sa in var.invoker_service_accounts : "serviceAccount:${sa}"
-  ]
+  members  = local.invoker_members
 }
 
 # Auto-registration of tools into local MCP registry post-deployment

@@ -36,6 +36,10 @@ locals {
   # This agent's catalog entry (env.yaml catalog), keyed by the unit's directory name.
   name    = basename(get_terragrunt_dir())
   callers = try(local.catalog[local.name].callers, [])
+  # Callers that are catalog agents (they call with their own Agent Identity).
+  agent_callers = [for caller in local.callers : caller if contains(["a2a", "adk"], try(local.catalog[caller].kind, ""))]
+  # Deprecated fallback (env.yaml legacy_shared_invoker): this agent impersonates the shared invoker again.
+  legacy_shared_invoker = try(local.env_vars.locals.legacy_shared_invoker, false)
   # Catalog hosts served by the built-in direct backend that take an access token (Agent Runtime):
   # this agent calls them with an access token instead of an ID token (ACCESS_TOKEN_HOSTS).
   access_token_names = [
@@ -61,18 +65,22 @@ inputs = {
   net_host_project_id   = dependency.projects.outputs.net_host_project_id
   vpc_name              = element(split("/", dependency.networking.outputs.network_id), 4)
   agent_service_account = dependency.security.outputs.ai_coe_mortgage_specialist_sa_email
+  # Outbound identity: its own Agent Identity; the shared invoker only with legacy_shared_invoker.
+  legacy_shared_invoker = local.legacy_shared_invoker
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
 
   # Agent Gateway binding + the CA bundle the env-neutral image installs at start-up
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle
 
-  # roles/aiplatform.user on this agent's project: the service accounts of the catalog callers; when an
-  # agent calls, also the identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared MCP invoker
-  # service account, whose access token reaches Agent Runtime through direct); and each enabled adapter.
+  # roles/aiplatform.user on this agent's project: the service accounts of the catalog callers that are
+  # not agents, and each enabled adapter. Agent callers call with their own Agent Identity: the
+  # iap-egress unit grants their principal:// (it runs after every agent, so agents never depend on
+  # each other). With the deprecated legacy_shared_invoker fallback, agent callers call as the shared
+  # MCP invoker service account, whose access token reaches Agent Runtime through direct.
   invoker_service_accounts = distinct(compact(concat(
-    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
-    length([for caller in local.callers : caller if caller != "test-vm"]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"] if !contains(local.agent_callers, caller)],
+    local.legacy_shared_invoker && length(local.agent_callers) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
     contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
   )))
 

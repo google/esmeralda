@@ -55,6 +55,9 @@ inputs = {
   # entry and granted nothing, impersonable by the test VM only.
   enable_unregistered_probe = try(local.env_vars.locals.attribution.unregistered_probe, false)
 
+  # Deprecated outbound-identity fallback (env.yaml legacy_shared_invoker): keeps the shared invoker's grants.
+  legacy_shared_invoker = try(local.env_vars.locals.legacy_shared_invoker, false)
+
   backend_subnet_id = local.byo_networking ? local.env_vars.locals.existing_subnet_id : dependency.networking.outputs.subnet_id
 
   # Entry point certificate (<domain> + *.<domain>), derived from the layer-2 private zone

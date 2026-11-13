@@ -54,18 +54,16 @@ DEV_MAP = {
 }
 ENV_MAPS = {"dev": DEV_MAP, "prd": LEGACY_MAP}
 
-# The per-target Agent Gateway lists the iap-egress units used to hand-write, as catalog refs.
+# The per-target Agent Gateway lists, as catalog refs. Agents call out with their own Agent Identity
+# (no shared workload identity, no agent service account).
 _SPECIALIST_ON_MCP = [
     "agents/ai-coe-mortgage-specialist:agent_identity_principal",
-    "layer-3-security:ai_coe_mortgage_specialist_sa_email",
-    "layer-3-security:mcp_invoker_sa_email",
     "layer-3-security:test_vm_sa_email",
 ]
 LEGACY_IAP_EGRESS = {
     "agents": {
         "ai-coe-mortgage-specialist": [
             "agents/cx-mortgage-orchestrator:agent_identity_principal",
-            "layer-3-security:cx_mortgage_orchestrator_sa_email",
             "layer-3-security:test_vm_sa_email",
         ],
     },
@@ -77,8 +75,7 @@ LEGACY_IAP_EGRESS = {
     "endpoints": {},
 }
 # dev also declares the synthetic external target external-probe (catalog/environments/dev.yaml).
-_SPECIALIST = ["agents/ai-coe-mortgage-specialist:agent_identity_principal",
-               "layer-3-security:ai_coe_mortgage_specialist_sa_email"]
+_SPECIALIST = ["agents/ai-coe-mortgage-specialist:agent_identity_principal"]
 ENV_IAP_EGRESS = {
     "prd": LEGACY_IAP_EGRESS,
     "dev": {**LEGACY_IAP_EGRESS, "endpoints": {"external-probe": _SPECIALIST}},
@@ -186,24 +183,47 @@ def test_adding_a_caller_updates_invokers_and_gateway_lists(repo):
     assert catalog.compile_terraform(resolved)["legacy-dms"]["callers"] == [
         "ai-coe-mortgage-specialist", "test-vm", "cx-mortgage-orchestrator"
     ]
-    # Agent callers first (principal, then service account), then the shared identity, then the rest.
+    # Agent callers first (their Agent Identity principal), then the rest.
     assert catalog.compile_iap_egress(resolved)["mcp_servers"]["legacy-dms"] == [
         "agents/ai-coe-mortgage-specialist:agent_identity_principal",
-        "layer-3-security:ai_coe_mortgage_specialist_sa_email",
         "agents/cx-mortgage-orchestrator:agent_identity_principal",
-        "layer-3-security:cx_mortgage_orchestrator_sa_email",
-        "layer-3-security:mcp_invoker_sa_email",
         "layer-3-security:test_vm_sa_email",
     ]
     # Other targets are untouched.
     assert catalog.compile_iap_egress(resolved)["mcp_servers"]["corporate-email"] == _SPECIALIST_ON_MCP
 
 
+_SHARED_POLICY = """  agent_gateway:
+    shared_workload_identity:
+      ref: "layer-3-security:mcp_invoker_sa_email"
+      kinds: [mcp]
+"""
+
+
+def _with_shared_identity(repo: Path, kinds: str = "[mcp]") -> None:
+    """The (deprecated) policy block that lists one shared outbound identity on agent-called targets."""
+    path = repo / "catalog/policy.yaml"
+    path.write_text(path.read_text() + _SHARED_POLICY.replace("[mcp]", kinds))
+
+
+def test_repo_policy_has_no_shared_workload_identity():
+    """Agents mint their own tokens (#134): nothing adds a shared identity to the gateway lists."""
+    resolved = catalog.resolve(REPO, "dev")
+    assert "shared_workload_identity" not in ((resolved.policy.get("agent_gateway") or {}))
+    for env in ("dev", "prd"):
+        data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
+        assert "mcp_invoker" not in json.dumps(data)
+        assert data["attribution"]["shared_principals"] == []
+
+
 def test_shared_workload_identity_comes_from_the_policy(repo):
-    _write(repo, "environments/prd.yaml",
-           "environment: prd\noverrides:\n  policy:\n    agent_gateway: null\n")
-    iap = catalog.compile_iap_egress(catalog.resolve(repo, "prd"))
-    assert iap["mcp_servers"]["legacy-dms"] == [m for m in _SPECIALIST_ON_MCP if "mcp_invoker" not in m]
+    _with_shared_identity(repo)
+    iap = catalog.compile_iap_egress(catalog.resolve(repo, "dev"))
+    assert iap["mcp_servers"]["legacy-dms"] == [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "layer-3-security:mcp_invoker_sa_email",
+        "layer-3-security:test_vm_sa_email",
+    ]
     # Only added where an agent calls: a target with only non-agent callers never gets it.
     _write(repo, "environments/dev.yaml",
            "environment: dev\noverrides:\n  targets:\n    legacy-dms:\n"
@@ -213,12 +233,10 @@ def test_shared_workload_identity_comes_from_the_policy(repo):
 
 
 def test_shared_workload_identity_kinds_are_honoured(repo):
-    path = repo / "catalog/policy.yaml"
-    path.write_text(path.read_text().replace("kinds: [mcp]", "kinds: [mcp, a2a]"))
+    _with_shared_identity(repo, "[mcp, a2a]")
     iap = catalog.compile_iap_egress(catalog.resolve(repo, "dev"))
     assert iap["agents"]["ai-coe-mortgage-specialist"] == [
         "agents/cx-mortgage-orchestrator:agent_identity_principal",
-        "layer-3-security:cx_mortgage_orchestrator_sa_email",
         "layer-3-security:mcp_invoker_sa_email",
         "layer-3-security:test_vm_sa_email",
     ]
@@ -484,14 +502,16 @@ def test_principal_teams_maps_every_verified_identity_to_its_team():
         "principal": "agents/cx-mortgage-orchestrator:agent_identity_principal", "principal_type": "agent_runtime",
         "caller": "cx-mortgage-orchestrator", "team": "cx", "cost_centers": ["cc-cx-br", "cc-cx-mx"],
     }
-    assert rows["layer-3-security:ai_coe_mortgage_specialist_sa_email"]["team"] == "ai-coe"
+    assert rows["agents/ai-coe-mortgage-specialist:agent_identity_principal"]["team"] == "ai-coe"
     assert rows["layer-3-security:test_vm_sa_email"]["principal_type"] == "service_account"
     assert rows["group:platform-ops@example.com"] == {
         "principal": "group:platform-ops@example.com", "principal_type": "group", "caller": "platform-ops",
         "team": "platform", "cost_centers": ["cc-platform"],
     }
-    # The shared invoker identity names no single team (several agents present it).
+    # Agents call out with their own Agent Identity: no shared invoker, no agent service account rows.
     assert "layer-3-security:mcp_invoker_sa_email" not in rows
+    assert "layer-3-security:ai_coe_mortgage_specialist_sa_email" not in rows
+    assert "layer-3-security:cx_mortgage_orchestrator_sa_email" not in rows
     # Examples never become attribution rows.
     assert not any(r["caller"] == "aws-underwriter" for r in rows.values())
     # A unit-output identity no target of the environment lists is left out (it may not exist there).
@@ -506,7 +526,7 @@ def test_attribution_block_is_in_the_committed_resolved_files():
         data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
         resolved = catalog.resolve(REPO, env)
         assert data["attribution"] == catalog.compile_attribution(resolved)
-        assert data["attribution"]["shared_principals"] == ["layer-3-security:mcp_invoker_sa_email"]
+        assert data["attribution"]["shared_principals"] == []
     dev = json.loads((REPO / "catalog/.resolved/dev.json").read_text())["attribution"]
     prd = json.loads((REPO / "catalog/.resolved/prd.json").read_text())["attribution"]
     # Rollout done: dev flagged unknown callers first and now denies, like prd.
@@ -520,19 +540,21 @@ def test_caller_allowlists_follow_the_iam_callers():
     assert set(allowlists) == {"legacy-dms", "income-verification", "corporate-email", "ai-coe-mortgage-specialist"}
     by_principal = {e["principal"]: e for e in allowlists["corporate-email"]}
     assert by_principal["layer-5-workloads/apigee/platform:proxy_runtime_sa_email"]["caller"] == "apigee-partner-mcp"
-    # Shared invoker on MCP targets: every agent caller is in ai-coe, so the team resolves.
-    shared = by_principal["layer-3-security:mcp_invoker_sa_email"]
-    assert shared == {"principal": "layer-3-security:mcp_invoker_sa_email", "caller": "ai-coe-mortgage-specialist",
-                      "team": "ai-coe", "cost_centers": ["cc-ai-coe"], "shared": True}
-    # The specialist (a2a) is not of a shared kind: the orchestrator's grant limits its cost centres.
+    # Agent callers are allowlisted by their Agent Identity principal (the guard maps spiffe:// to it).
+    assert by_principal["agents/ai-coe-mortgage-specialist:agent_identity_principal"] == {
+        "principal": "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "caller": "ai-coe-mortgage-specialist", "team": "ai-coe", "cost_centers": ["cc-ai-coe"],
+    }
+    assert not any(e.get("shared") for entries in allowlists.values() for e in entries)
+    # The orchestrator's grant limits the cost centres it may declare on the specialist.
     spec = {e["principal"]: e for e in allowlists["ai-coe-mortgage-specialist"]}
-    assert "layer-3-security:mcp_invoker_sa_email" not in spec
-    assert spec["layer-3-security:cx_mortgage_orchestrator_sa_email"]["cost_centers"] == ["cc-cx-br", "cc-cx-mx"]
+    assert spec["agents/cx-mortgage-orchestrator:agent_identity_principal"]["cost_centers"] == ["cc-cx-br", "cc-cx-mx"]
     # Groups get no IAM grant, so no allowlist entry; the ADK orchestrator has no guard.
     assert "cx-mortgage-orchestrator" not in allowlists
 
 
 def test_shared_identity_across_teams_is_verified_without_a_team(repo):
+    _with_shared_identity(repo)
     path = repo / "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
     path.write_text(path.read_text().replace("  test-vm: {}\n", "  test-vm: {}\n  cx-mortgage-orchestrator: {}\n"))
     allowlists = catalog.compile_caller_allowlists(catalog.resolve(repo, "dev"))
@@ -643,9 +665,9 @@ def test_each_kind_maps_to_its_registry_entry(repo, kind, registry, group, bindi
     assert (entry["registry"], entry["protocol_binding"], entry["url"]) == (
         registry, binding, "https://brownfield.example.com/api")
     members = catalog.compile_iap_egress(resolved)[group]["brownfield"]
-    assert members[:2] == _SPECIALIST and members[-1] == "layer-3-security:test_vm_sa_email"
-    # The shared MCP invoker identity follows policy kinds (mcp), never endpoints.
-    assert ("layer-3-security:mcp_invoker_sa_email" in members) is (kind == "mcp")
+    assert members == [*_SPECIALIST, "layer-3-security:test_vm_sa_email"]
+    # No shared identity: agents call out as their own Agent Identity, whatever the kind.
+    assert "layer-3-security:mcp_invoker_sa_email" not in members
 
 
 def test_external_target_with_no_callers_grants_nothing(repo):
@@ -748,5 +770,4 @@ def test_model_gateway_declaration_compiles(repo):
     assert catalog.compile_iap_egress(resolved)["endpoints"]["llm-gateway"] == [
         *_SPECIALIST,
         "agents/cx-mortgage-orchestrator:agent_identity_principal",
-        "layer-3-security:cx_mortgage_orchestrator_sa_email",
     ]

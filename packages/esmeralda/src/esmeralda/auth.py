@@ -22,7 +22,20 @@ URL's origin, or to Agent Runtime, which checks an OAuth2 **access token** (it r
 ``*.googleapis.com``, ``id`` otherwise; ``bearer_token(url)`` mints it.
 
 With ``SERVICE_ACCOUNT_EMAIL`` set, tokens are minted for that service account through IAM
-impersonation; otherwise for the runtime identity (metadata server or ADC).
+impersonation (deprecated opt-in); otherwise for the runtime identity: on Agent Runtime that is the
+agent's own Agent Identity (metadata server), elsewhere ADC.
+
+Agent Identity ID tokens and the Agent Gateway: since google-auth 2.61, ID tokens minted on a
+runtime with a workload certificate (Agent Runtime) are certificate-bound by default
+(``cnf.x5t#S256``). Cloud Run checks that binding against the TLS client certificate it sees, and a
+bound token only works over a direct mTLS connection (``*.mtls.run.app``). Calls to private hosts
+cross the Agent Gateway and the internal load balancer, which terminate TLS, so Cloud Run rejects a
+bound token (401). ID tokens are therefore requested unbound, per call, with the documented opt-out
+``fetch_id_token_credentials(audience, bind_id_token=False)``. Access tokens keep the library
+default (bound), so calls to Google APIs keep their binding protection; the container-wide
+``GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN=false`` is never used, because it unbinds those too.
+Unbound Agent Identity ID tokens are bearer tokens (valid for hours): they only ever travel to
+private hosts behind the gateway, which also authorizes the caller's mTLS identity on every hop.
 
 Tokens are cached (ID tokens per audience) and refreshed shortly before they expire (google-auth
 credentials handle the expiry), so a tool call or an A2A request doesn't pay one or two IAM round
@@ -73,11 +86,25 @@ def is_local(url: str) -> bool:
     return address.is_loopback or address.is_unspecified
 
 
+def _unbound_id_token_credentials(audience: str, request: Any) -> Any:
+    """ID token credentials for the runtime identity, never certificate-bound (see the module docstring).
+
+    ``bind_id_token`` exists since google-auth 2.61, the release that started binding ID tokens;
+    older releases don't take it and never bind.
+    """
+    import inspect
+
+    from google.oauth2 import id_token
+
+    if "bind_id_token" in inspect.signature(id_token.fetch_id_token_credentials).parameters:
+        return id_token.fetch_id_token_credentials(audience, request=request, bind_id_token=False)
+    return id_token.fetch_id_token_credentials(audience, request=request)
+
+
 def _new_credentials(audience: str, service_account: str) -> Any:
     import google.auth
     from google.auth import impersonated_credentials
     from google.auth.transport.requests import Request
-    from google.oauth2 import id_token
 
     if service_account:
         source, _ = google.auth.default(scopes=[CLOUD_SCOPE])
@@ -87,7 +114,7 @@ def _new_credentials(audience: str, service_account: str) -> Any:
         return impersonated_credentials.IDTokenCredentials(
             target_credentials=target, target_audience=audience, include_email=True
         )
-    return id_token.fetch_id_token_credentials(audience, request=Request())
+    return _unbound_id_token_credentials(audience, Request())
 
 
 def id_token(audience: str) -> str:

@@ -7,8 +7,7 @@ kind: a2a
 description: A2A mortgage underwriting specialist on Agent Runtime; calls the three MCP servers.
 owner_team: ai-coe
 deploy: { unit: agents/ai-coe-mortgage-specialist }
-# The identity it calls out as (layer-3-security output), when it is itself a caller.
-identity: { type: service_account, ref: "layer-3-security:ai_coe_mortgage_specialist_sa_email" }
+# No `identity`: it calls out with its own Agent Identity (the unit's agent_identity_principal).
 serving: { token: access, probe: a2a }
 models: [gemini-flash]
 

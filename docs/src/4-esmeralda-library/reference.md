@@ -184,9 +184,9 @@ A frozen dataclass.
 
 | Name | Description |
 |---|---|
-| `id_token(audience) -> str` | A Google-signed ID token for `audience`. With `SERVICE_ACCOUNT_EMAIL`, minted through impersonation of that service account (falls back to the runtime identity, with a warning, if impersonation fails); otherwise for the runtime identity. Cached per audience and service account; refreshed before expiry. Raises if no token can be minted |
+| `id_token(audience) -> str` | A Google-signed ID token for `audience`, for the runtime identity (on Agent Runtime, the agent's own Agent Identity). Always requested unbound (`google.oauth2.id_token.fetch_id_token_credentials(audience, bind_id_token=False)`; google-auth before 2.61 takes no such argument and never binds), so it survives the Agent Gateway and the entry point. With the deprecated `SERVICE_ACCOUNT_EMAIL` opt-in, minted through impersonation of that service account instead (falls back to the runtime identity, with a warning, if impersonation fails). Cached per audience and service account; refreshed before expiry. Raises if no token can be minted |
 | `id_token_async(audience)` | `id_token` in a worker thread |
-| `access_token() -> str` | An OAuth2 access token (scope `cloud-platform`), for `SERVICE_ACCOUNT_EMAIL` through impersonation when set (same fallback as `id_token`). Cached; refreshed before expiry |
+| `access_token() -> str` | An OAuth2 access token (scope `cloud-platform`) for the runtime identity; for `SERVICE_ACCOUNT_EMAIL` through impersonation when that deprecated opt-in is set (same fallback as `id_token`). Cached; refreshed before expiry |
 | `access_token_async()` | `access_token` in a worker thread |
 | `token_kind(url) -> "id" \| "access"` | `"access"` for hosts listed in `ACCESS_TOKEN_HOSTS` and for `*.googleapis.com`; `"id"` otherwise |
 | `bearer_token(url, kind=None) -> str` | `access_token()` or `id_token(audience_for(url))`; `kind` (`"id"` or `"access"`) overrides `token_kind(url)` |
@@ -489,7 +489,7 @@ The functions behind the operational CLI subcommands and `esmeralda mcp`, usable
 | `MODEL_LOCATION` | `genai_client_defaults` | Location for every genai client (for example `global`) |
 | `MODEL_NAME` | Plugin | Fallback model in token events and usage records, when neither the request nor the response names one |
 | `*_PROXY` | `log_egress_proxy` | Logged at startup |
-| `SERVICE_ACCOUNT_EMAIL` | `auth.id_token`, `auth.access_token` | Service account to impersonate for ID and access tokens (set by Terraform) |
+| `SERVICE_ACCOUNT_EMAIL` | `auth.id_token`, `auth.access_token` | Deprecated opt-in: service account to impersonate for ID and access tokens. Unset by default (agents use their own Agent Identity); Terraform sets it only with `legacy_shared_invoker = true` |
 | `ACCESS_TOKEN_HOSTS` | `auth.token_kind` | Comma-separated hostnames that take an access token instead of an ID token (agent hosts served by `direct`; set by Terraform from the service catalog) |
 | `ESMERALDA_REPO` | `esmeralda mcp`, `esmeralda.ops` | Repository root (default: the checkout containing the working directory) |
 | `USER_AUTH_ID` | `context.user_token`, `usage.redact` | Gemini Enterprise authorization id of the user token (default `user_auth_token`); that key is never emitted in telemetry |

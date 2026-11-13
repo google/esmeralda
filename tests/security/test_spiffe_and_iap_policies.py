@@ -71,9 +71,10 @@ def test_agent_modules_export_spiffe_and_principal_outputs(agent_dir: pathlib.Pa
     assert 'resource "google_storage_bucket_iam_member" "agent_identity_storage_user"' in main_tf
     assert "member     = local.agent_identity_principal" in main_tf or "member = local.agent_identity_principal" in main_tf
 
-    # Native SPIFFE auth toggle omits SERVICE_ACCOUNT_EMAIL when enabled
-    assert 'variable "enable_native_spiffe_auth"' in variables_tf
-    assert "var.enable_native_spiffe_auth ? null" in main_tf
+    # Agents call out with their own Agent Identity; SERVICE_ACCOUNT_EMAIL only with the deprecated fallback
+    assert 'variable "legacy_shared_invoker"' in variables_tf
+    assert 'variable "enable_native_spiffe_auth"' not in variables_tf
+    assert "SERVICE_ACCOUNT_EMAIL           = var.legacy_shared_invoker &&" in main_tf
 
 
 def test_layer_3_security_restricts_orchestrator_from_mcp_project_egress():
@@ -125,13 +126,14 @@ def test_compiled_iap_lists_enforce_least_privilege_per_target_callers(env: str)
 
     spec = iap["agents"]["ai-coe-mortgage-specialist"]
     assert "agents/cx-mortgage-orchestrator:agent_identity_principal" in spec
-    assert "layer-3-security:cx_mortgage_orchestrator_sa_email" in spec
+    # Agents call out with their own Agent Identity: no agent service account, no shared invoker.
+    assert not any("_sa_email" in m and "test_vm" not in m for m in spec)
     assert not any("ai_coe_mortgage_specialist" in m or "ai-coe-mortgage-specialist" in m for m in spec)
 
     assert set(iap["mcp_servers"]) == {"corporate-email", "income-verification", "legacy-dms"}
     for mcp_id, members in iap["mcp_servers"].items():
         assert "agents/ai-coe-mortgage-specialist:agent_identity_principal" in members, mcp_id
-        assert "layer-3-security:ai_coe_mortgage_specialist_sa_email" in members, mcp_id
+        assert not any("mcp_invoker" in m or "ai_coe_mortgage_specialist_sa_email" in m for m in members), mcp_id
         assert not any("cx_mortgage_orchestrator" in m or "cx-mortgage-orchestrator" in m for m in members), mcp_id
 
 
