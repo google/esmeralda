@@ -292,6 +292,19 @@ async def verify_a2a_context(
     return result
 
 
+def verify_registry_egress(root: Path, env: str) -> dict[str, Any]:
+    """Policy-level Agent Gateway egress probe (``esmeralda.ops.registry_egress``), never raising."""
+    from esmeralda.ops import registry_egress
+
+    started = time.monotonic()
+    try:
+        result = registry_egress.check(root, env)
+    except (OpsError, ValueError) as exc:
+        result = {"env": env, "passed": False, "ok": 0, "failed": 0, "checks": [], "error": repo.short(str(exc), 300)}
+    result["seconds"] = round(time.monotonic() - started, 1)
+    return result
+
+
 async def verify(
     root: Path,
     env: str,
@@ -349,6 +362,19 @@ async def verify(
             "detail": gw_detail,
         }
     ]
+    registry: dict[str, Any] | None = None
+    if not probe:
+        registry = verify_registry_egress(root, env)
+        steps.append(
+            {
+                "step": "registry-egress",
+                "passed": bool(registry.get("passed")),
+                "seconds": registry.get("seconds", 0.0),
+                "detail": registry.get("error")
+                or f"{registry.get('ok', 0)} ok, {registry.get('failed', 0)} failed"
+                + "".join(f"; {c['check']}: {c['detail']}" for c in (registry.get("checks") or []) if not c["ok"])[:300],
+            }
+        )
     queries: dict[str, dict[str, Any]] = {}
     if not skip_query:
         for agent_name in DEFAULT_VERIFY_AGENTS:
@@ -396,6 +422,7 @@ async def verify(
         "probe": probe,
         "steps": steps,
         "gateway": gw,
+        **({"registry_egress": registry} if registry is not None else {}),
         "queries": queries,
         "seconds": round(time.monotonic() - started, 1),
     }

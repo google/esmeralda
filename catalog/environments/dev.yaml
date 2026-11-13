@@ -22,6 +22,21 @@ overrides:
       callers: { apigee-partner-mcp: {} }
     income-verification:
       callers: { apigee-partner-mcp: {} }
+    # Synthetic external (managed: false) target that proves per-target Agent Gateway egress for
+    # targets Esmeralda doesn't deploy: it gets its own Agent Registry entry and a roles/iap.egressor
+    # list with the specialist only. Nothing serves the host, so an allowed call reaches the entry
+    # point and gets its no-route 404, while the Agent Gateway answers a denied call (any other agent)
+    # with 403. `esmeralda verify` checks the entry URL and its IAP policy.
+    external-probe:
+      kind: http
+      description: Synthetic external HTTP target (no backend) proving per-target egress for managed false targets.
+      owner_team: platform
+      deploy: { managed: false, endpoint: "https://external-probe.{domain}" }
+      gateway: agent_gateway
+      callers:
+        ai-coe-mortgage-specialist: {}
+      observability:
+        usage_sources: [gateway]
 # Examples:
 # overrides:
 #   targets:

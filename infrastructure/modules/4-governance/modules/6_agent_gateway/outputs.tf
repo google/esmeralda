@@ -27,5 +27,10 @@ output "agw_root_ca_bundle" {
 
 output "iap_egress_members" {
   value       = local.iap_egress_members
-  description = "IAM members of the registry-root roles/iap.egressor binding, conditioned to system endpoint entries only."
+  description = "IAM members of the roles/iap.egressor policy on each system endpoint entry (Google APIs); the registry root holds no binding."
+}
+
+output "system_endpoint_ids" {
+  value       = sort(keys(local.system_endpoints))
+  description = "Agent Registry service ids of the system endpoint entries (Google APIs) that list iap_egress_members."
 }

@@ -1,15 +1,18 @@
 # infrastructure/modules/5-workloads/iap-egress/main.tf
 # ====================================================================
-# Final layer-5 step: grant per-target roles/iap.egressor on Agent Registry entries.
+# Final layer-5 step: register the catalog's external targets and grant per-target
+# roles/iap.egressor on Agent Registry entries.
 # --------------------------------------------------------------------
-# Layer 4 governance grants roles/iap.egressor on the registry root, conditioned to system Google
-# API endpoint entries only. This unit re-runs the same script with the same root inputs (so both
-# writers produce the identical conditional root policy) and, once MCP servers and A2A agents have
-# registered themselves, applies least-privilege per-target policies on their entries. The per-target
-# lists come from the service catalog (target callers, compiled into catalog/.resolved/<env>.json
-# `iap_egress`), the same callers that drive Cloud Run run.invoker and Agent Runtime IAM:
+# Layer 4 governance grants the agent projects roles/iap.egressor on each system Google API endpoint
+# entry, and the registry root holds no binding (a root binding is inherited by every entry). This
+# unit registers the catalog's managed: false targets (external_targets.tf) and, once MCP servers and
+# A2A agents have registered themselves, writes the least-privilege policy of every agent, external
+# endpoint and MCP server entry. The per-target lists come from the service catalog (target callers,
+# compiled into catalog/.resolved/<env>.json `iap_egress`), the same callers that drive Cloud Run
+# run.invoker and Agent Runtime IAM:
 #   - cx-mortgage-orchestrator is listed only on ai-coe-mortgage-specialist (not on MCP tools)
-#   - ai-coe-mortgage-specialist is listed only on the registered MCP servers
+#   - ai-coe-mortgage-specialist is listed only on the registered MCP servers (and, in dev, on the
+#     external-probe endpoint)
 # ====================================================================
 
 terraform {
@@ -18,6 +21,10 @@ terraform {
     google = {
       source  = "hashicorp/google"
       version = ">= 5.0.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = ">= 8.4.0, < 9.0.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -30,23 +37,18 @@ terraform {
   }
 }
 
-# IAP evaluates Agent Registry resource names by project number; the root condition uses it.
 data "google_project" "governance" {
   project_id = var.governance_project_id
 }
 
 locals {
-  normalized_registry_members = distinct([
-    for m in var.iap_egress_members :
-    startswith(m, "serviceAccount:") || startswith(m, "principalSet:") || startswith(m, "principal:") ? m : "serviceAccount:${m}"
-    if m != "" && m != null
-  ])
+  iap_groups = ["agents", "endpoints", "mcp_servers"]
 
   # Catalog-compiled lists name identities by `<unit>:<output>` reference; the unit passes their
   # values in identity_refs. Anything that still looks like a reference afterwards is an error.
   ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
   resolved_target_iap_members = {
-    for group in ["mcp_servers", "agents"] : group => {
+    for group in local.iap_groups : group => {
       for target_id, members in coalesce(var.target_iap_members[group], {}) :
       target_id => [for m in members : lookup(var.identity_refs, m, m) if m != "" && m != null]
     }
@@ -58,16 +60,8 @@ locals {
   ]))
 
   normalized_target_iap_members = {
-    mcp_servers = {
-      for target_id, members in local.resolved_target_iap_members.mcp_servers :
-      target_id => distinct([
-        for m in members :
-        startswith(m, "serviceAccount:") || startswith(m, "principalSet:") || startswith(m, "principal:") ? m : "serviceAccount:${m}"
-        if m != "" && m != null
-      ])
-    }
-    agents = {
-      for target_id, members in local.resolved_target_iap_members.agents :
+    for group, targets in local.resolved_target_iap_members : group => {
+      for target_id, members in targets :
       target_id => distinct([
         for m in members :
         startswith(m, "serviceAccount:") || startswith(m, "principalSet:") || startswith(m, "principal:") ? m : "serviceAccount:${m}"
@@ -76,19 +70,23 @@ locals {
     }
   }
 
-  has_target_policies = (
-    length(local.normalized_target_iap_members.mcp_servers) > 0 ||
-    length(local.normalized_target_iap_members.agents) > 0
-  )
+  # Every external target must have a list (possibly empty): an entry without one would keep
+  # whatever policy it had.
+  external_without_list = [
+    for name, t in var.external_targets : name
+    if !contains(keys(local.normalized_target_iap_members[lookup({ endpoint = "endpoints", mcp_server = "mcp_servers", agent = "agents" }, t.registry, "endpoints")]), name)
+  ]
 }
 
 resource "null_resource" "grant_iap_egress" {
+  depends_on = [google_agent_registry_service.external]
+
   triggers = {
     registry_entries          = md5(jsonencode(sort(var.registry_service_ids)))
-    members                   = md5(jsonencode(sort(local.normalized_registry_members)))
+    external_entries          = md5(jsonencode({ for k, v in google_agent_registry_service.external : k => v.id }))
     target_policies           = md5(jsonencode(local.normalized_target_iap_members))
     governance_project_number = data.google_project.governance.number
-    version                   = "2"
+    version                   = "3"
   }
 
   lifecycle {
@@ -96,16 +94,19 @@ resource "null_resource" "grant_iap_egress" {
       condition     = length(local.unresolved_refs) == 0
       error_message = "target_iap_members references without a value in identity_refs: ${join(", ", local.unresolved_refs)}. Map them to unit outputs in the iap-egress terragrunt unit."
     }
+    precondition {
+      condition     = length(local.external_without_list) == 0
+      error_message = "external targets without a target_iap_members list: ${join(", ", local.external_without_list)} (regenerate catalog/.resolved/<env>.json)."
+    }
   }
 
   provisioner "local-exec" {
     command = "bash ${path.module}/../../_shared/scripts/grant_iap_egress.sh"
     environment = {
-      GOVERNANCE_PROJECT_ID     = var.governance_project_id
-      GOVERNANCE_PROJECT_NUMBER = data.google_project.governance.number
-      REGION                    = var.region
-      IAP_MEMBERS_JSON          = jsonencode(local.normalized_registry_members)
-      IAP_TARGET_POLICIES_JSON  = local.has_target_policies ? jsonencode(local.normalized_target_iap_members) : ""
+      IAP_MODE                 = "targets"
+      GOVERNANCE_PROJECT_ID    = var.governance_project_id
+      REGION                   = var.region
+      IAP_TARGET_POLICIES_JSON = jsonencode(local.normalized_target_iap_members)
     }
   }
 }

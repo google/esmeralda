@@ -33,7 +33,7 @@ Both business executives evaluating risk and infrastructure engineers reviewing 
 | Architectural Choice | Alternative Considered | Why Esmeralda Chose This Design |
 | :--- | :--- | :--- |
 | **Agent Gateway in `AGENT_TO_ANYWHERE` Egress Mode** | Standard Cloud NAT + VPC Firewall Rules, or a self-managed Squid/Envoy egress VM fleet | IP-based firewalls cannot distinguish which agent identity is calling or what hostname an LLM selected at runtime, and self-managed proxy VMs add patching and high-availability toil. `AGENT_TO_ANYWHERE` is serverless, intercepts Agent Runtime traffic transparently without `HTTP_PROXY` env vars, and integrates natively with Agent Registry and IAP. |
-| **Per-Target SPIFFE `principal://` IAP Egress (`roles/iap.egressor`)** | Shared IAM Service Accounts, org-wide `principalSet://` wildcards, or one unconditioned registry-wide grant | Granting a broad wildcard lets any agent in the organization call any registered tool, and a grant on the registry itself is inherited by every entry. Esmeralda lists the engine `principal://` identities that may call each agent or MCP server on that entry (`cx-mortgage-orchestrator` on `ai-coe-mortgage-specialist`, the specialist on the underwriting MCP tools), and limits the registry-wide grant for the project `principalSet`s to system Google API endpoints with an IAM condition. A2A calls through the generic Vertex AI endpoint still bypass the agent entry (see [3.4](#34-iap-authorization-authz-extension-authz-policy-and-rolesiapegressor)). |
+| **Per-Target SPIFFE `principal://` IAP Egress (`roles/iap.egressor`)** | Shared IAM Service Accounts, org-wide `principalSet://` wildcards, or one unconditioned registry-wide grant | Granting a broad wildcard lets any agent in the organization call any registered tool, and a grant on the registry itself is inherited by every entry. Esmeralda lists the engine `principal://` identities that may call each agent, MCP server or external target on that entry (`cx-mortgage-orchestrator` on `ai-coe-mortgage-specialist`, the specialist on the underwriting MCP tools), and grants the project `principalSet`s on each system Google API endpoint entry, never on the registry itself. A2A calls through the generic Vertex AI endpoint still bypass the agent entry (see [3.4](#34-iap-authorization-authz-extension-authz-policy-and-rolesiapegressor)). |
 | **Internal Root CA + Certificate Manager `TrustConfig` on Leg 2** | Skipping TLS verification (`verify=False`) on internal VPC calls, or exposing internal tools on public domains just to get Let's Encrypt certs | Exposing banking MCP servers to the public internet to obtain public ACME certificates violates zero-trust networking, and disabling TLS verification inside the VPC violates enterprise compliance. Running an internal Root CA in Layer 3 and loading it into the Agent Connectivity Template's `TrustConfig` gives us end-to-end verified TLS across `*.esmeralda.internal` while keeping all traffic 100% private. |
 | **Deploy-Time Trust Bundle Injection (`esmeralda run`) for BYOC Containers** | Baking CA `.pem` files into Docker images during `docker build` | Baking certificates into images couples a container to a single environment (`dev`) and puts PKI artifacts in Git or layers. Injecting `AGENT_GATEWAY_ROOT_CERTIFICATES` via Terraform at deploy time and installing it via `esmeralda run` at PID 1 startup lets the exact same immutable `sha256` container digest run in both `dev` and `prd`. |
 
@@ -180,13 +180,14 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 - `us-central1-aiplatform.googleapis.com`, `aiplatform.googleapis.com` and `aiplatform.mtls.googleapis.com` are three separate entries;
 - wildcards such as `*.googleapis.com` are not allowed.
 
-**Esmeralda:** the gateway points at the governance project's registry (`registries = [...]`). Three sets of entries are registered:
+**Esmeralda:** the gateway points at the governance project's registry (`registries = [...]`). Four sets of entries are registered:
 
 | Entries | Where | Created by |
 | :--- | :--- | :--- |
 | Google APIs: 13 services × 7 hostname variants (global, mTLS, regional, regional mTLS, REP, US multi-region) | governance | `google_agent_registry_service.system_endpoints` in [6_agent_gateway/main.tf](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf) |
 | MCP servers (`https://legacy-dms.esmeralda.internal/mcp`, ...) | governance | each service module, e.g. [legacy-dms/main.tf](../../../infrastructure/modules/5-workloads/services/legacy-dms/main.tf) |
 | A2A agent card (`ai-coe-mortgage-specialist`) | governance | `google_agent_registry_service.agent_card` in [a2a-agent/main.tf](../../../infrastructure/modules/5-workloads/agents/a2a-agent/main.tf) |
+| External targets: the service catalog's `managed: false` targets (legacy APIs, agents on other clouds, external gateways; in dev, `external-probe.<domain>`) | governance | `google_agent_registry_service.external` in [iap-egress/external_targets.tf](../../../infrastructure/modules/5-workloads/iap-egress/external_targets.tf), from `external_targets` in `catalog/.resolved/<env>.json` ([service catalog](06-service-catalog.md)) |
 
 ### 3.4 IAP authorization: authz extension, authz policy and `roles/iap.egressor`
 
@@ -201,12 +202,31 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 
 **Esmeralda:**
 - The extension `agw-iap-authz-<env>` and the policy `agw-iap-policy-<env>` are in [6_agent_gateway/main.tf](../../../infrastructure/modules/4-governance/modules/6_agent_gateway/main.tf).
-- `roles/iap.egressor` is granted with `gcloud iap web set-iam-policy --resource-type=agent-registry` by [grant_iap_egress.sh](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh):
-  - **On each MCP server or agent entry** (`--mcp-server` / `--agent`): the callers allowed to reach that target. These lists come from the [service catalog](06-service-catalog.md): each target's `callers` compile into `iap_egress` in `catalog/.resolved/<env>.json` (each agent caller's Agent Identity `principal://` and service account, the test VM service account, and the shared MCP invoker service account on MCP servers while agents still mint tokens as it), and the `iap-egress` unit maps those references to unit outputs. The same `callers` entry grants `run.invoker` / `aiplatform.user`, so adding or removing a caller in `catalog/` updates both, and nobody edits the gateway lists by hand.
-  - **On the registry itself:** the agent projects' `principalSet`s, for the system Google API endpoints. A registry-level grant is inherited by every entry (agents and MCP servers too), and IAM allow policies only add, so this binding carries an IAM condition (`resource.name.startsWith(".../iap_web/agentRegistry/endpoints/")`, policy version 3) that limits it to system endpoints. The script refuses to write it without the condition.
-  - Layer 4 runs it once the gateway exists.
-  - Layer 5 runs it again (unit `iap-egress`) after the MCP servers and agents have registered, with the same registry-wide inputs.
+- `roles/iap.egressor` is granted with `gcloud iap web set-iam-policy --resource-type=agent-registry` by [grant_iap_egress.sh](../../../infrastructure/modules/_shared/scripts/grant_iap_egress.sh), **always on one registry entry at a time**:
+  - **On each MCP server, agent or external endpoint entry** (`--mcp-server` / `--agent` / `--endpoint`, layer 5 unit `iap-egress`, `IAP_MODE=targets`): the callers allowed to reach that target. These lists come from the [service catalog](06-service-catalog.md): each target's `callers` compile into `iap_egress` in `catalog/.resolved/<env>.json` (each agent caller's Agent Identity `principal://` and service account, the test VM service account, and the shared MCP invoker service account on MCP servers while agents still mint tokens as it), and the `iap-egress` unit maps those references to unit outputs. The same `callers` entry grants `run.invoker` / `aiplatform.user` on deployed targets, so adding or removing a caller in `catalog/` updates both, and nobody edits the gateway lists by hand. A target with no enforced caller gets an empty policy.
+  - **On each system Google API endpoint entry** (`--endpoint`, layer 4, `IAP_MODE=system-endpoints`): the agent projects' `principalSet`s and the Vertex AI service agents. The script writes every entry, reads them all back, and only then clears the registry-root binding that earlier versions held. Re-runs skip entries whose policy already matches, retry with backoff and pace their writes.
+  - **Never on the registry itself.** A registry-level grant is inherited by every entry, and IAM allow policies only add. Earlier versions scoped the root grant with an IAM condition on `.../iap_web/agentRegistry/endpoints/`, but every endpoint-type entry matches that prefix, so any external endpoint registered later (a legacy API, a model gateway) would have been open to every agent project. The script has no code path that writes a root binding; it refuses one, and layer 5 refuses to register or grant endpoint entries while a root binding is still in place.
+  - `esmeralda verify` checks the result entry by entry (see [service catalog §3](06-service-catalog.md#3-resolve-compile-inspect)).
 - **Known gap:** an agent with access to the generic Vertex AI (`aiplatform`) endpoint can call an Agent Runtime engine's A2A API directly through that endpoint, which skips the agent entry and its per-target policy. Restricting callers end to end also needs per-agent outbound identities (instead of a shared invoker service account) and per-engine `aiplatform` IAM on the callee (follow-up).
+
+#### Rolling out and rolling back the per-entry system endpoint grants
+
+Rollout order is the layer order: apply layer 4 governance first (it writes the policy of every system endpoint entry, verifies all of them, then clears the registry-root binding), then the layer 5 `iap-egress` unit (which refuses endpoint entries while the root still holds a binding). Agents keep their Google API egress throughout, because the per-entry grants exist before the root binding goes away. The script processes the entries with a bounded pool of workers (`IAP_CONCURRENCY`, default 8) and retries quota errors with backoff; if a slow API still makes the apply take longer than the CLI's default 900 s, raise it with `uv run esmeralda apply layer-4-governance --env <env> --timeout 2400`. Check it with `uv run esmeralda verify --env <env>` (step `registry-egress`) and a real orchestrator query.
+
+If agents lose Google API egress after the layer 4 apply (for example `HTTP 403` from the gateway on `*.googleapis.com` while every system endpoint entry lists the agent projects), put the earlier conditional root binding back by hand while you investigate. It reopens every endpoint entry, external ones included, to the agent projects, so remove external targets from the catalog (or accept that exposure) for the duration:
+
+```bash
+GOV=<governance project id>; REGION=<region>; GOV_NUMBER=<governance project number>
+cat > /tmp/root-policy.json <<EOF
+{"version": 3, "bindings": [{"role": "roles/iap.egressor",
+  "members": [<the layer-4 output iap_egress_members, as JSON strings>],
+  "condition": {"title": "system-endpoints-only",
+                "expression": "resource.name.startsWith(\"projects/${GOV_NUMBER}/locations/${REGION}/iap_web/agentRegistry/endpoints/\")"}}]}
+EOF
+gcloud iap web set-iam-policy /tmp/root-policy.json --resource-type=agent-registry --region=$REGION --project=$GOV
+```
+
+While that binding is in place, the layer 5 `iap-egress` unit refuses to register or grant external endpoints, and the next layer 4 apply removes it again (after re-verifying every system endpoint entry).
 
 ### 3.5 Model Armor (model calls and optional `CONTENT_AUTHZ`)
 
@@ -552,13 +572,13 @@ The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **o
 | 12 | L4 governance | IAP authz extension + `REQUEST_AUTHZ` authz policy | Allow/deny decisions |
 | 13 | L4 governance | Model Armor grants (+ `CONTENT_AUTHZ` extension/policy when `governance.model_armor.gateway = "on"`; Vertex AI floor settings on the agent projects when `model_calls` is on) | Payload inspection |
 | 14 | L4 governance | Agent Registry entries for Google APIs (every hostname variant) | "Where" allowlist for platform and SDK traffic |
-| 15 | L4 governance | `roles/iap.egressor` on the registry, conditioned to system endpoints (`grant_iap_egress.sh`) | Authorizes the agents on the system Google API endpoints |
+| 15 | L4 governance | `roles/iap.egressor` on each system endpoint entry, then the registry-root binding cleared (`grant_iap_egress.sh`, `IAP_MODE=system-endpoints`) | Authorizes the agents on the system Google API endpoints, and nothing else |
 | 16 | L4 governance | Trust bundle `agw_root_ca_bundle` + secret `agw-root-ca-cert-<env>` | What the agents must trust on leg 1 |
 | 17 | L5 workloads | MCP services on Cloud Run (internal-LB ingress) + registry entries `https://<svc>.esmeralda.internal/mcp` | Private tools, registered exactly |
 | 18 | L5 workloads | `gateways/direct` (serverless NEGs + backend services per MCP service, PSC NEG to Agent Runtime) and any enabled adapter, then the `entrypoint` unit (URL map + HTTPS proxy with the L3 leaf + forwarding rule on the L2 IP) | The TLS endpoint behind `*.esmeralda.internal` and the routing to each backend |
 | 19 | L5 workloads | A2A specialist engine + its registry agent card | Reusable agent, callable through the gateway |
 | 20 | L5 workloads | Engines with `agent_gateway_config` + `AGENT_GATEWAY_ROOT_CERTIFICATES` env | Binds BYOC agents to the gateway with the right trust |
-| 21 | L5 workloads | `iap-egress` unit (runs `grant_iap_egress.sh` again) | Per-target grants on the MCP server and agent entries registered in L5 |
+| 21 | L5 workloads | `iap-egress` unit: registry entries of the catalog's external targets, then `grant_iap_egress.sh` (`IAP_MODE=targets`) | Per-target grants on the MCP server, agent and external endpoint entries |
 | 22 | — | `make test-e2e ENV=<env>` | Specialist, then orchestrator → specialist through gateway and entry point |
 
 ---
@@ -597,11 +617,16 @@ GOV=<governance-project-id>; REGION=us-central1; ENV=dev
 gcloud network-services agent-gateways describe esmeralda-agent-egress-gateway-$ENV \
   --location=$REGION --project=$GOV
 
-# Registered destinations (Google APIs, MCP servers, agents)
+# Registered destinations (Google APIs, MCP servers, agents, external targets)
 gcloud agent-registry services list --location=$REGION --project=$GOV
 
-# IAP egress policy on the registry
+# IAP egress policy on the registry root (expected: no binding) and on one entry
 gcloud iap web get-iam-policy --resource-type=agent-registry --region=$REGION --project=$GOV
+gcloud iap web get-iam-policy --resource-type=agent-registry --region=$REGION --project=$GOV \
+  --endpoint=<registry uid>   # or --agent= / --mcp-server=; the uid is the last part of registryResource
+
+# Every entry against the compiled lists (read-only)
+uv run esmeralda verify --env $ENV   # step registry-egress
 
 # TrustConfig used on leg 2
 gcloud certificate-manager trust-configs describe esmeralda-internal-trust-$ENV \

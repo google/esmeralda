@@ -74,6 +74,14 @@ LEGACY_IAP_EGRESS = {
         "income-verification": _SPECIALIST_ON_MCP,
         "legacy-dms": _SPECIALIST_ON_MCP,
     },
+    "endpoints": {},
+}
+# dev also declares the synthetic external target external-probe (catalog/environments/dev.yaml).
+_SPECIALIST = ["agents/ai-coe-mortgage-specialist:agent_identity_principal",
+               "layer-3-security:ai_coe_mortgage_specialist_sa_email"]
+ENV_IAP_EGRESS = {
+    "prd": LEGACY_IAP_EGRESS,
+    "dev": {**LEGACY_IAP_EGRESS, "endpoints": {"external-probe": _SPECIALIST}},
 }
 
 HEADER = "schema: esmeralda.catalog\nschema_version: 1\n"
@@ -158,9 +166,9 @@ def test_render_hcl_matches_the_former_inline_form():
 def test_repo_catalog_compiles_the_former_hand_written_iap_lists(env):
     """Same members, same order as the lists the iap-egress units used to hand-write."""
     resolved = catalog.resolve(REPO, env)
-    assert catalog.compile_iap_egress(resolved) == LEGACY_IAP_EGRESS
+    assert catalog.compile_iap_egress(resolved) == ENV_IAP_EGRESS[env]
     data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
-    assert data["iap_egress"] == LEGACY_IAP_EGRESS
+    assert data["iap_egress"] == ENV_IAP_EGRESS[env]
 
 
 def test_iap_lists_keep_least_privilege():
@@ -255,10 +263,12 @@ def test_gateway_caller_with_a_ref_the_iap_unit_cannot_map_fails(repo):
 
 def test_iap_lists_cover_only_registry_targets():
     iap = catalog.compile_iap_egress(catalog.resolve(REPO, "dev"))
-    assert set(iap) == {"agents", "mcp_servers"}
-    # adk agents (the orchestrator), examples and models have no Agent Registry entry of their own.
+    assert set(iap) == {"agents", "endpoints", "mcp_servers"}
+    # adk agents (the orchestrator), examples and models on Google APIs have no Agent Registry entry
+    # of their own.
     assert "cx-mortgage-orchestrator" not in iap["agents"]
-    assert "example-core-banking" not in iap["mcp_servers"] and "gemini-flash" not in iap["mcp_servers"]
+    for group in iap.values():
+        assert "example-core-banking" not in group and "gemini-flash" not in group
 
 
 def test_show_answers_who_calls_via_which_gateway_and_who_pays():
@@ -562,3 +572,181 @@ def test_unregistered_probe_identity_is_never_compiled():
         assert "probe_unregistered" not in text and "probe-unregistered" not in text
     for path in (REPO / "catalog").rglob("*.yaml"):
         assert "probe_unregistered" not in path.read_text(), path
+
+
+# ------------------------------------------------------------------------------------------
+# managed: false targets: Agent Registry entries and per-target gateway lists
+# ------------------------------------------------------------------------------------------
+
+def _external(root: Path, name: str, body: str) -> None:
+    _write(root, f"external/legacy/{name}.yaml", f"name: {name}\n" + body)
+
+
+_HTTP = ("kind: http\nowner_team: platform\n"
+         "deploy: {{ managed: false, endpoint: \"{endpoint}\" }}\n")
+
+
+def test_dev_external_probe_is_registered_with_the_specialist_only():
+    resolved = catalog.resolve(REPO, "dev")
+    assert catalog.compile_external_targets(resolved) == {
+        "external-probe": {
+            "kind": "http",
+            "registry": "endpoint",
+            "url": "https://external-probe.{domain}",
+            "protocol_binding": "HTTP_JSON",
+            "description": resolved.targets["external-probe"]["description"],
+            "owner_team": "platform",
+        }
+    }
+    assert catalog.compile_iap_egress(resolved)["endpoints"] == {"external-probe": _SPECIALIST}
+    # Not deployed by a unit: no entry point route, no IAM grant, no in-process allowlist.
+    assert "external-probe" not in catalog.compile_terraform(resolved)
+    assert "external-probe" not in catalog.compile_caller_allowlists(resolved)
+    # prd has none.
+    prd = catalog.resolve(REPO, "prd")
+    assert catalog.compile_external_targets(prd) == {} and catalog.compile_iap_egress(prd)["endpoints"] == {}
+
+
+def test_external_targets_are_in_the_committed_resolved_files():
+    for env in ("dev", "prd"):
+        data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
+        assert data["external_targets"] == catalog.compile_external_targets(catalog.resolve(REPO, env))
+
+
+def test_examples_and_google_api_hosts_are_never_registered():
+    resolved = catalog.resolve(REPO, "dev")
+    external = catalog.compile_external_targets(resolved)
+    assert "example-core-banking" not in external  # example: true wins
+    assert "gemini-flash" not in external  # aiplatform.googleapis.com: a layer-4 system endpoint
+    rows = {r["target"]: r for r in catalog.show(resolved)["targets"]}
+    assert rows["gemini-flash"]["registry"].startswith("system endpoint")
+    assert not any(c["enforced"] for c in rows["gemini-flash"]["callers"])
+    assert rows["external-probe"]["registry"] == "endpoints (per-target caller list)"
+    assert all(c["enforced"] for c in rows["external-probe"]["callers"])
+
+
+@pytest.mark.parametrize(
+    ("kind", "registry", "group", "binding"),
+    [
+        ("http", "endpoint", "endpoints", "HTTP_JSON"),
+        ("model", "endpoint", "endpoints", "HTTP_JSON"),
+        ("mcp", "mcp_server", "mcp_servers", "JSONRPC"),
+        ("a2a", "agent", "agents", "HTTP+JSON"),
+    ],
+)
+def test_each_kind_maps_to_its_registry_entry(repo, kind, registry, group, binding):
+    _external(repo, "brownfield", f"kind: {kind}\nowner_team: platform\n"
+              "deploy: { managed: false, endpoint: \"https://brownfield.example.com/api\" }\n"
+              "callers:\n  ai-coe-mortgage-specialist: {}\n  test-vm: {}\n")
+    resolved = catalog.resolve(repo, "prd")
+    entry = catalog.compile_external_targets(resolved)["brownfield"]
+    assert (entry["registry"], entry["protocol_binding"], entry["url"]) == (
+        registry, binding, "https://brownfield.example.com/api")
+    members = catalog.compile_iap_egress(resolved)[group]["brownfield"]
+    assert members[:2] == _SPECIALIST and members[-1] == "layer-3-security:test_vm_sa_email"
+    # The shared MCP invoker identity follows policy kinds (mcp), never endpoints.
+    assert ("layer-3-security:mcp_invoker_sa_email" in members) is (kind == "mcp")
+
+
+def test_external_target_with_no_callers_grants_nothing(repo):
+    """Guard: a managed: false target with no (enforced) callers is listed with an empty list."""
+    _external(repo, "lonely-api", _HTTP.format(endpoint="https://lonely.example.com"))
+    _external(repo, "groups-only", _HTTP.format(endpoint="https://groups.example.com")
+              + "callers:\n  platform-ops: {}\n")
+    resolved = catalog.resolve(repo, "prd")
+    endpoints = catalog.compile_iap_egress(resolved)["endpoints"]
+    assert endpoints == {"groups-only": [], "lonely-api": []}
+    assert set(catalog.compile_external_targets(resolved)) == {"groups-only", "lonely-api"}
+    # And nothing about them reaches the IAM / allowlist side.
+    assert not {"groups-only", "lonely-api"} & set(catalog.compile_terraform(resolved))
+
+
+def test_removing_an_external_target_revokes_its_entry_and_list(repo):
+    _external(repo, "legacy-crm", _HTTP.format(endpoint="https://crm.example.com")
+              + "callers:\n  ai-coe-mortgage-specialist: {}\n")
+    assert "legacy-crm" in catalog.compile_iap_egress(catalog.resolve(repo, "prd"))["endpoints"]
+    (repo / "catalog/external/legacy/legacy-crm.yaml").unlink()
+    resolved = catalog.resolve(repo, "prd")
+    assert "legacy-crm" not in catalog.compile_external_targets(resolved)
+    assert "legacy-crm" not in catalog.compile_iap_egress(resolved)["endpoints"]
+
+
+def test_only_listed_callers_are_on_an_external_list(repo):
+    _external(repo, "legacy-crm", _HTTP.format(endpoint="https://crm.example.com")
+              + "callers:\n  ai-coe-mortgage-specialist: {}\n")
+    members = catalog.compile_iap_egress(catalog.resolve(repo, "prd"))["endpoints"]["legacy-crm"]
+    assert not any("cx-mortgage-orchestrator" in m or "cx_mortgage_orchestrator" in m for m in members)
+
+
+def test_external_callers_are_attributable(repo):
+    """allowed => attributable covers the external lists (#186): every member has a principal_teams row."""
+    _write(repo, "teams/platform/batch.yaml",
+           "callers:\n  batch-job:\n    team: platform\n"
+           "    identity: { type: service_account, id: batch-job@example.iam.gserviceaccount.com }\n")
+    _external(repo, "legacy-crm", _HTTP.format(endpoint="https://crm.example.com")
+              + "callers:\n  batch-job: {}\n  ai-coe-mortgage-specialist: {}\n")
+    resolved = catalog.resolve(repo, "prd")
+    rows = {r["principal"]: r for r in catalog.compile_attribution(resolved)["principal_teams"]}
+    for member in catalog.compile_iap_egress(resolved)["endpoints"]["legacy-crm"]:
+        assert member in rows, member
+    assert rows["batch-job@example.iam.gserviceaccount.com"]["team"] == "platform"
+
+
+def test_direct_callers_are_never_on_an_external_list(repo):
+    _external(repo, "legacy-crm", _HTTP.format(endpoint="https://crm.example.com")
+              + "callers:\n  apigee-partner-mcp: {}\n")
+    assert catalog.compile_iap_egress(catalog.resolve(repo, "prd"))["endpoints"]["legacy-crm"] == []
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (_HTTP.format(endpoint="https://x.{tenant}.example.com"), "unknown endpoint placeholder(s) {tenant}"),
+        (_HTTP.format(endpoint="https://a.b.{domain}"), "must be one label under {domain}"),
+        (_HTTP.format(endpoint="https://*.example.com"), "must be an exact hostname"),
+        (_HTTP.format(endpoint="https://Upper.example.com"), "must be an exact hostname"),
+        (_HTTP.format(endpoint="https://example.com?x=1"), "is not https://<host>[:port][/path]"),
+        ("kind: adk\nowner_team: platform\ndeploy: { managed: false, endpoint: \"https://a.example.com\" }\n",
+         "declare an agent running elsewhere as kind a2a"),
+    ],
+    ids=["unknown-placeholder", "nested-domain", "wildcard", "uppercase", "query", "adk"],
+)
+def test_bad_external_endpoints_fail(repo, body, message):
+    _external(repo, "bad-target", body)
+    assert message in _problems(repo, "prd")
+
+
+def test_external_hosts_must_be_unique_and_not_shadow_entry_point_hosts(repo):
+    _external(repo, "crm-a", _HTTP.format(endpoint="https://crm.example.com/a"))
+    _external(repo, "crm-b", _HTTP.format(endpoint="https://crm.example.com/b"))
+    _external(repo, "fake-dms", _HTTP.format(endpoint="https://legacy-dms.{domain}"))
+    problems = _problems(repo, "prd")
+    assert "endpoint host 'crm.example.com' is also the host of target 'crm-a'" in problems
+    assert "is the entry point host of deployed target 'legacy-dms'" in problems
+
+
+def test_external_gateway_caller_with_an_unmapped_ref_fails(repo):
+    path = repo / "catalog/teams/platform/callers.yaml"
+    path.write_text(path.read_text().replace("    agent_gateway: false\n", ""))
+    _write(repo, "environments/prd.yaml", "environment: prd\n")
+    _external(repo, "legacy-crm", _HTTP.format(endpoint="https://crm.example.com")
+              + "callers:\n  apigee-partner-mcp: {}\n")
+    assert "caller 'apigee-partner-mcp' would go on the Agent Gateway list" in _problems(repo, "prd")
+
+
+def test_model_gateway_declaration_compiles(repo):
+    """The shape the Apigee model gateway will use: kind http on apigee.{domain}, agents as callers."""
+    _write(repo, "teams/platform/gateways/llm-gateway.yaml",
+           "name: llm-gateway\nkind: http\nowner_team: platform\n"
+           "description: Model gateway proxy (agent -> model).\n"
+           "deploy: { managed: false, endpoint: \"https://apigee.{domain}/llm\" }\n"
+           "serving: { token: id }\ngateway: apigee\n"
+           "callers:\n  ai-coe-mortgage-specialist: { cost_centers: [cc-ai-coe] }\n"
+           "  cx-mortgage-orchestrator: { cost_centers: [cc-cx-br, cc-cx-mx] }\n")
+    resolved = catalog.resolve(repo, "prd")
+    assert catalog.compile_external_targets(resolved)["llm-gateway"]["url"] == "https://apigee.{domain}/llm"
+    assert catalog.compile_iap_egress(resolved)["endpoints"]["llm-gateway"] == [
+        *_SPECIALIST,
+        "agents/cx-mortgage-orchestrator:agent_identity_principal",
+        "layer-3-security:cx_mortgage_orchestrator_sa_email",
+    ]

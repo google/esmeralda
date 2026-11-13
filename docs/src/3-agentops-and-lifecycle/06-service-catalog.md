@@ -106,6 +106,7 @@ flowchart LR
   V --> R[".resolved/&lt;env&gt;.json"]
   R --> T["env.yaml catalog: entry point, direct backends, invokers, verify"]
   R --> G["env.yaml catalog_iap_egress: Agent Gateway per-target lists"]
+  R --> X["env.yaml catalog_external_targets: registry entries of managed: false targets"]
 ```
 
 1. **Merge.** Sources are merged in the order `sources.yaml` lists them. In the `files` source, an
@@ -169,7 +170,60 @@ flowchart LR
     `layer-3-security:mcp_invoker_sa_email`. Delete the block (or set it to `null` in one
     environment's overrides) once every agent authenticates with its native Agent Identity.
 
-6. **Compile verified attribution.** The same callers compile into an `attribution` block: the
+6. **Register the targets Esmeralda doesn't deploy.** A non-example target with `deploy.managed:
+    false` (a legacy API, an agent on another cloud, an external gateway such as an Apigee model
+    gateway) compiles into `external_targets`: one Agent Registry entry per target, which the
+    Layer 5 `iap-egress` unit creates (`env.yaml` decodes it as `catalog_external_targets`). Its
+    callers compile into `iap_egress` like any other target, so only they can reach it through the
+    Agent Gateway:
+
+    | `kind` | Registry entry | `iap_egress` group |
+    | --- | --- | --- |
+    | `http` | endpoint (`HTTP_JSON`, no spec) | `endpoints` |
+    | `model` on a non-Google host | endpoint | `endpoints` |
+    | `mcp` | MCP server (`JSONRPC`, no tool spec) | `mcp_servers` |
+    | `a2a` | agent, with an A2A card generated from the catalog entry | `agents` |
+
+    ```yaml
+    # catalog/environments/dev.yaml (overrides.targets): the synthetic target dev verifies with
+    external-probe:
+      kind: http
+      owner_team: platform
+      deploy: { managed: false, endpoint: "https://external-probe.{domain}" }
+      callers:
+        ai-coe-mortgage-specialist: {}
+    ```
+
+    - **Hostnames.** The Agent Registry matches exact hostnames (no wildcards), so `endpoint` is an
+      exact `https://` URL. Environment-specific parts are placeholders the `iap-egress` unit
+      substitutes from layer outputs instead of literals: `{domain}` (the entry point domain, only
+      as `<label>.{domain}`) and `{region}`. Two targets can't share a host, and a host can't be the
+      `<name>.{domain}` of a deployed target. Hosts under a private domain other than the entry point
+      domain also need DNS peering and CA trust in the Agent Connectivity Template (not compiled).
+    - **Google APIs.** A target on `*.googleapis.com` (such as `gemini-flash` on Vertex AI) is a
+      layer-4 system endpoint, open to every agent project: it gets no entry of its own, and
+      `esmeralda catalog show` marks its callers as not enforced at the gateway.
+    - **No callers, no access.** A target whose callers are all unenforced (groups, federated or
+      Apigee app identities) or absent is still registered, with an empty policy. Removing the
+      target deletes its entry, so the gateway denies the host again; removing a caller rewrites the
+      entry's policy without it.
+    - **Callee authentication** is the target's business: the Agent Gateway neither adds nor swaps
+      credentials. `serving.token` records what agents send (`id`: a Google ID token for the
+      endpoint, as the Apigee model gateway, Cloud Run or API Gateway expect; `access`; or omitted).
+    - **Examples** (`example: true`, such as `external/legacy/example-core-banking.yaml`) stay
+      illustrative: they are never registered.
+    - **Verification.** `esmeralda verify` (step `registry-egress`) reads every registry entry and
+      its IAP policy and fails unless the registry root holds no binding, each system endpoint entry
+      lists exactly the layer-4 members, each catalog entry lists exactly its compiled callers, each
+      external target is registered with its exact URL, and any other entry has no policy. In dev,
+      an allowed call from the specialist to `external-probe.<domain>` reaches the entry point and
+      gets its no-route `404`; any other agent gets the gateway's `403`.
+
+    The registry root never holds a `roles/iap.egressor` binding: a root binding would be inherited
+    by every external entry (see
+    [2.1 §3.4](01-central-agent-gateway.md#34-iap-authorization-authz-extension-authz-policy-and-rolesiapegressor)).
+
+7. **Compile verified attribution.** The same callers compile into an `attribution` block: the
     `principal_teams` rows (each verified principal, its catalog caller and the team that pays), the
     shared identities, and per-target allowlists for the in-process caller guard on MCP servers
     (`ESMERALDA_CALLER_ALLOWLIST`). `policy.attribution.unmapped_caller` (`deny`, or `flag` in the

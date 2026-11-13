@@ -279,6 +279,16 @@
   },
   "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
   "environment": "dev",
+  "external_targets": {
+    "external-probe": {
+      "description": "Synthetic external HTTP target (no backend) proving per-target egress for managed false targets.",
+      "kind": "http",
+      "owner_team": "platform",
+      "protocol_binding": "HTTP_JSON",
+      "registry": "endpoint",
+      "url": "https://external-probe.{domain}"
+    }
+  },
   "generated_by": "esmeralda catalog resolve --env dev --write",
   "iap_egress": {
     "agents": {
@@ -286,6 +296,12 @@
         "agents/cx-mortgage-orchestrator:agent_identity_principal",
         "layer-3-security:cx_mortgage_orchestrator_sa_email",
         "layer-3-security:test_vm_sa_email"
+      ]
+    },
+    "endpoints": {
+      "external-probe": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "layer-3-security:ai_coe_mortgage_specialist_sa_email"
       ]
     },
     "mcp_servers": {

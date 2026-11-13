@@ -81,7 +81,7 @@ When you deploy Layer 5 (`make deploy-workloads ENV=dev` or unit-by-unit via `uv
 2. **AI Reasoning Engines** (`agents/ai-coe-mortgage-specialist`, then `agents/cx-mortgage-orchestrator`) — Deploys the BYOC containers on Vertex AI Agent Runtime, binds them to the Layer 4 Central Agent Gateway, and registers the specialist's `A2A_AGENT_CARD`.
 3. **Gateway Backends** (`gateways/direct` always, plus any enabled adapter in `gateways.enabled` such as `gateways/envoy`) — Creates the serverless NEGs and Private Service Connect NEGs pointing at the deployed services and agent engine IDs.
 4. **Private Entry Point** (`entrypoint`) — Configures the internal HTTPS load balancer (`*.esmeralda.internal`) using the reserved IP and DNS zone from Layer 2 and the internal Root CA leaf certificate from Layer 3.
-5. **IAP Egress Grants** (`services/iap-egress`) — Grants `roles/iap.egressor` on the Agent Registry entries so the agents' SPIFFE identities are authorized to egress through the Central Agent Gateway.
+5. **IAP Egress Grants** (`services/iap-egress`) — Registers the catalog's external (`managed: false`) targets in the Agent Registry and grants `roles/iap.egressor` on each Agent Registry entry to the callers the catalog lists, so the agents' SPIFFE identities are authorized to egress through the Central Agent Gateway to exactly those destinations.
 6. **Verification Test VM** (`services/test-vm`) — Provisions the private IAP-tunneled runner VM used by `uv run esmeralda verify` (`make test-gateway`) to probe every catalog route from inside the Shared VPC.
 
 ### Operating Layer 5 with the `esmeralda` CLI

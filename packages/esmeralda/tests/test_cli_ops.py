@@ -360,6 +360,30 @@ def test_cli_apply_succeeds_on_safe_plan_without_flag(ops_checkout, monkeypatch,
     assert any("apply" in cmd for cmd in calls)
 
 
+def test_cli_apply_timeout_defaults_to_900s_and_is_configurable(ops_checkout, monkeypatch, capsys):
+    """Long provisioners (per-entry IAP grants) need more than the default; the flag reaches plan and apply."""
+    _mock_terragrunt(monkeypatch, SAFE_PLAN)
+    seen: dict[str, float] = {}
+    real_run = repo.run
+
+    def recording_run(cmd, **kwargs):
+        for verb in ("plan", "apply"):
+            if verb in cmd:
+                seen[verb] = kwargs.get("timeout")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(repo, "run", recording_run)
+    assert cli.main(["apply", "entrypoint", "--env", "dev"]) == 0
+    assert seen == {"plan": 900.0, "apply": 900.0}
+    seen.clear()
+    assert cli.main(["apply", "entrypoint", "--env", "dev", "--timeout", "2400"]) == 0
+    assert seen == {"plan": 2400.0, "apply": 2400.0}
+    capsys.readouterr()
+    for bad in ("0", "-5", "soon"):
+        assert cli.main(["apply", "entrypoint", "--env", "dev", "--timeout", bad]) != 0
+        assert "--timeout" in capsys.readouterr().err
+
+
 # ------------------------------------------------------------------------------------------
 # 4. doctor
 # ------------------------------------------------------------------------------------------

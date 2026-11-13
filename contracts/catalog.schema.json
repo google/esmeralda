@@ -140,9 +140,14 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["managed", "endpoint"],
+          "description": "A target Esmeralda does not deploy (brownfield API, agent on another cloud, external gateway). Non-example ones get their own Agent Registry entry (http and non-Google model: endpoint; mcp: MCP server; a2a: agent card) and a per-target roles/iap.egressor list compiled from callers; Google API hosts (*.googleapis.com) are layer-4 system endpoints instead.",
           "properties": {
             "managed": {"const": false},
-            "endpoint": {"type": "string", "format": "uri", "pattern": "^https://"}
+            "endpoint": {
+              "type": "string",
+              "pattern": "^https://",
+              "description": "Exact https URL. Environment-specific parts are placeholders the registering unit substitutes from layer outputs: {domain} (the entry point domain, as <label>.{domain}) and {region}."
+            }
           }
         }
       ]
