@@ -167,25 +167,35 @@ resource "google_network_security_authz_policy" "iap_policy" {
   }
 }
 
-# 5. Model Armor Authorization Extension (CONTENT_AUTHZ) - Optional
+# 5. Model Armor Authorization Extension (CONTENT_AUTHZ), env.yaml governance.model_armor.gateway
+# The callout sends the matched request/response payloads to the regional Model Armor endpoint
+# with the prompt (request) and response templates of submodule 5_model_armor.
 resource "google_network_services_authz_extension" "model_armor_content_authz" {
-  count     = 0
+  count     = var.enable_agent_gateway && var.subnet_self_link != "" && var.model_armor_gateway ? 1 : 0
   provider  = google-beta
   project   = var.governance_project_id
   location  = var.region
   name      = "model-armor-authz-ext-${var.environment}"
   service   = "modelarmor.${var.region}.rep.googleapis.com"
-  fail_open = true
-  timeout   = "2s"
+  fail_open = var.model_armor_fail_open
+  # Per message; Model Armor can take several seconds. With fail_open = true a timeout skips the
+  # check silently, with fail_open = false it rejects the call.
+  timeout = format("%gs", var.model_armor_timeout_ms / 1000)
 
   metadata = {
-    templateName = var.model_armor_template_name
+    model_armor_settings = jsonencode([{
+      request_template_id  = var.model_armor_template_name
+      response_template_id = var.model_armor_response_tpl
+    }])
   }
 }
 
-# 4. Model Armor Network Security Authorization Policy (CONTENT_AUTHZ)
+# 6. Model Armor Network Security Authorization Policy (CONTENT_AUTHZ)
+# Scoped to unary payloads Model Armor inspects: MCP tools/call and prompts/get (our MCP servers
+# answer with JSON, not SSE) and A2A agent cards. Every other request (A2A messages, which can run
+# for minutes, Gemini calls, streams) never matches, so it never opens a Model Armor callout.
 resource "google_network_security_authz_policy" "model_armor_policy" {
-  count    = 0
+  count    = length(google_network_services_authz_extension.model_armor_content_authz)
   provider = google-beta
   project  = var.governance_project_id
   location = var.region
@@ -197,6 +207,39 @@ resource "google_network_security_authz_policy" "model_armor_policy" {
 
   policy_profile = "CONTENT_AUTHZ"
   action         = "CUSTOM"
+
+  # MCP (streamable HTTP, JSON responses): tool calls and prompt fetches only.
+  http_rules {
+    to {
+      operations {
+        methods = ["POST"]
+        paths {
+          exact = "/mcp"
+        }
+        mcp {
+          base_protocol_methods_option = "SKIP_BASE_PROTOCOL_METHODS"
+          methods {
+            name = "tools/call"
+          }
+          methods {
+            name = "prompts/get"
+          }
+        }
+      }
+    }
+  }
+
+  # A2A agent cards.
+  http_rules {
+    to {
+      operations {
+        methods = ["GET"]
+        paths {
+          exact = "/v1/card"
+        }
+      }
+    }
+  }
 
   custom_provider {
     authz_extension {

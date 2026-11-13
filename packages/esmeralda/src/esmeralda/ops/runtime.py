@@ -299,11 +299,16 @@ async def verify(
     probe: str | None = None,
     skip_query: bool = False,
     partner: bool = False,
+    model_armor: bool = False,
     message: str = DEFAULT_VERIFY_MESSAGE,
     timeout: float = 300.0,
 ) -> dict[str, Any]:
     """End-to-end verification: gateway conformance probes + remote queries, or partner conformance (--partner)."""
     started = time.monotonic()
+    if model_armor:
+        from esmeralda.ops.model_armor import verify_model_armor
+
+        return await verify_model_armor(root, env, timeout=timeout)
     if partner:
         pt = test_partner(root, env, timeout=timeout)
         p_steps = [
