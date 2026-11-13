@@ -133,7 +133,10 @@ resource "google_cloud_run_v2_service_iam_binding" "invokers" {
   location = var.region
   name     = google_cloud_run_v2_service.gateway.name
   role     = "roles/run.invoker"
-  members  = [for sa in var.invoker_service_accounts : "serviceAccount:${sa}"]
+  members = [
+    for m in var.invoker_service_accounts :
+    startswith(m, "serviceAccount:") || startswith(m, "principal://") || startswith(m, "principalSet://") ? m : "serviceAccount:${m}"
+  ]
 }
 
 # ====================================================================

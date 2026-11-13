@@ -23,6 +23,8 @@ locals {
     for name, entry in local.catalog : try(entry.callers, [])
     if lookup(local.gateways.host_rules, name, local.gateways.default) == "envoy"
   ]))
+  envoy_agent_callers   = [for caller in local.envoy_callers : caller if contains(["a2a", "adk"], try(local.catalog[caller].kind, ""))]
+  legacy_shared_invoker = try(local.env_vars.locals.legacy_shared_invoker, false)
 
   # Image: pinned by digest when the env lists it in image_digests (prd: release/prd.yaml,
   # written by `make promote`), otherwise <image>:<container_tag> (resolved to a digest by the module).
@@ -89,8 +91,9 @@ dependency "apigee" {
 dependency "ai_coe_mortgage_specialist" {
   config_path = "../../agents/ai-coe-mortgage-specialist"
   mock_outputs = {
-    engine_id    = "mock-engine-id"
-    endpoint_url = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/mock/locations/us-central1/reasoningEngines/0"
+    engine_id                = "mock-engine-id"
+    endpoint_url             = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/mock/locations/us-central1/reasoningEngines/0"
+    agent_identity_principal = "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000/locations/us-central1/reasoningEngines/0"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
@@ -98,8 +101,9 @@ dependency "ai_coe_mortgage_specialist" {
 dependency "cx_mortgage_orchestrator" {
   config_path = "../../agents/cx-mortgage-orchestrator"
   mock_outputs = {
-    engine_id    = "mock-engine-id"
-    endpoint_url = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/mock/locations/us-central1/reasoningEngines/0"
+    engine_id                = "mock-engine-id"
+    endpoint_url             = "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/mock/locations/us-central1/reasoningEngines/0"
+    agent_identity_principal = "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000/locations/us-central1/reasoningEngines/0"
   }
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 }
@@ -143,17 +147,23 @@ inputs = {
   # Identity upstreams see (layer 3): invoker on the MCP services, aiplatform.user on the agents.
   gateway_sa_email = dependency.security.outputs.envoy_sa_email
 
-  # roles/run.invoker on Envoy: the service accounts of the catalog callers of the hosts routed to it
-  # (apigee-partner-mcp: the Apigee proxy runtime service account, only with partner_access = "apigee");
-  # when an agent is among them, also the identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared
-  # MCP invoker service account). Nothing when no host is routed to Envoy.
+  # roles/run.invoker on Envoy: the catalog callers of the hosts routed to it. Agent callers call with
+  # their own Agent Identity (principal://); the others with their service account (apigee-partner-mcp:
+  # the Apigee proxy runtime service account, only with partner_access = "apigee"). With the deprecated
+  # legacy_shared_invoker fallback, agents call as the shared MCP invoker service account instead.
+  # Nothing when no host is routed to Envoy.
   invoker_service_accounts = distinct(compact(concat(
     [for caller in local.envoy_callers : (
-      caller == "apigee-partner-mcp"
+      contains(local.envoy_agent_callers, caller)
+      ? (local.legacy_shared_invoker ? "" : {
+        "cx-mortgage-orchestrator"   = dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal
+        "ai-coe-mortgage-specialist" = dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal
+      }[caller])
+      : caller == "apigee-partner-mcp"
       ? (local.apigee_partner ? dependency.apigee.outputs.proxy_runtime_sa_email : "")
       : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]
     )],
-    length([for caller in local.envoy_callers : caller if !contains(["test-vm", "apigee-partner-mcp"], caller)]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    local.legacy_shared_invoker && length(local.envoy_agent_callers) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
   )))
 
   # Every catalog entry (env.yaml catalog), built from its unit's outputs (catalog unit => dependency

@@ -119,8 +119,9 @@ flowchart LR
    doesn't own all fail the resolve.
 4. **Compile.** Deployed targets (kind `mcp`, `a2a` or `adk` with a `deploy.unit`) become the
    `catalog` map in `catalog/.resolved/<env>.json`: `kind`, `unit`, `token`, `probe`, an optional
-   `timeout`, and optional `callers` (agents and `service_account` callers, whose service accounts get
-   `run.invoker` / `aiplatform.user`). Each `infrastructure/live/<env>/env.yaml` decodes it:
+   `timeout`, and optional `callers` (agents, which get `run.invoker` / `aiplatform.user` as their
+   Agent Identity principal, and `service_account` callers, which get them as their service account).
+   Each `infrastructure/live/<env>/env.yaml` decodes it:
 
     ```hcl
     catalog_sources = "catalog/sources.yaml"
@@ -134,8 +135,8 @@ flowchart LR
    the per-target `roles/iap.egressor` member lists the Layer 5 `iap-egress` unit writes on each
    Agent Registry entry (`agents` for `a2a` targets, `mcp_servers` for `mcp` targets). Members are
    references, never pasted values: an agent caller contributes its Agent Identity principal
-   (`agents/<name>:agent_identity_principal`) and its service account
-   (`layer-3-security:<name>_sa_email`), and a `service_account` caller contributes its `ref`.
+   (`agents/<name>:agent_identity_principal`), which is also the identity it calls out as, and a
+   `service_account` caller contributes its `ref`.
    `env.yaml` decodes the lists as `catalog_iap_egress`, and the `iap-egress` unit maps each
    reference to the matching unit output (`identity_refs`). A reference with no mapping fails the
    plan.
@@ -143,18 +144,16 @@ flowchart LR
     ```json
     "iap_egress": {
       "agents":      { "ai-coe-mortgage-specialist": ["agents/cx-mortgage-orchestrator:agent_identity_principal",
-                                                      "layer-3-security:cx_mortgage_orchestrator_sa_email",
                                                       "layer-3-security:test_vm_sa_email"] },
       "mcp_servers": { "legacy-dms": ["agents/ai-coe-mortgage-specialist:agent_identity_principal",
-                                      "layer-3-security:ai_coe_mortgage_specialist_sa_email",
-                                      "layer-3-security:mcp_invoker_sa_email",
                                       "layer-3-security:test_vm_sa_email"] }
     }
     ```
 
     One `callers` entry therefore drives both the Cloud Run / Agent Runtime IAM grants and the
     gateway list, so the two can't disagree. A new agent caller also needs its `dependency` block and
-    its `identity_refs` entry in the `iap-egress` unit; `make test-guards` checks that every
+    its `identity_refs` entry in the `iap-egress` unit (and in each MCP service unit, which grants it
+    `run.invoker` as its principal); `make test-guards` checks that every
     reference has one and that each list names exactly the target's callers.
 
     A caller that reaches its targets directly, not through the Agent Gateway, is declared with
@@ -164,11 +163,10 @@ flowchart LR
     caller whose service account comes from a unit the `iap-egress` unit doesn't map (anything other
     than `layer-3-security`) fails the resolve with a hint to set the flag.
 
-    `policy.agent_gateway.shared_workload_identity` adds one more member. While agents run with
-    `enable_native_spiffe_auth = false`, they mint their tokens as the shared MCP invoker service
-    account, so every `mcp` target with at least one agent caller also lists
-    `layer-3-security:mcp_invoker_sa_email`. Delete the block (or set it to `null` in one
-    environment's overrides) once every agent authenticates with its native Agent Identity.
+    No shared identity is added: agents call out with their own Agent Identity, so each list names
+    only the target's callers. (The resolver still accepts a generic
+    `policy.agent_gateway.shared_workload_identity` block, which adds one shared member to targets
+    with an agent caller; this repository doesn't use it.)
 
 6. **Register the targets Esmeralda doesn't deploy.** A non-example target with `deploy.managed:
     false` (a legacy API, an agent on another cloud, an external gateway such as an Apigee model

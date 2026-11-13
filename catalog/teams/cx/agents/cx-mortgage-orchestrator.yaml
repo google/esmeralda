@@ -7,7 +7,7 @@ kind: adk
 description: Customer-facing ADK mortgage orchestrator on Agent Runtime; delegates to the AI CoE specialist.
 owner_team: cx
 deploy: { unit: agents/cx-mortgage-orchestrator }
-identity: { type: service_account, ref: "layer-3-security:cx_mortgage_orchestrator_sa_email" }
+# No `identity`: it calls out with its own Agent Identity (the unit's agent_identity_principal).
 serving: { token: access, probe: query, timeout: 600 }
 models: [gemini-flash]
 

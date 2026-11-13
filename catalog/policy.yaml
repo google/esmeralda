@@ -32,14 +32,6 @@ policy:
       values: [fixed-30, fixed-15, arm-5-1]
 
   # Agent Gateway per-target roles/iap.egressor lists (compiled into catalog/.resolved/<env>.json
-  # `iap_egress`). Each caller of an mcp/a2a target is listed by its identity: an agent caller by
-  # its Agent Identity principal (unit output agent_identity_principal) and its service account.
-  agent_gateway:
-    # While agents run with enable_native_spiffe_auth = false they mint ID tokens as the shared
-    # MCP invoker service account, so MCP targets with at least one agent caller also list it.
-    # Delete this block once every agent authenticates with its native Agent Identity (#134). Until
-    # then the shared identity has no principal_teams row: several agents present it, so it can't
-    # name one team (verified attribution falls back to the Agent Gateway record).
-    shared_workload_identity:
-      ref: "layer-3-security:mcp_invoker_sa_email"
-      kinds: [mcp]
+  # `iap_egress`). Each caller of an mcp/a2a target is listed by its identity: an agent caller by its
+  # Agent Identity principal (unit output agent_identity_principal), which is also the identity it
+  # calls out as (no shared workload identity: agents mint their own tokens).

@@ -47,7 +47,7 @@ variable "container_image" {
 }
 
 variable "invoker_service_accounts" {
-  description = "The list of service account emails authorized to invoke this MCP server"
+  description = "Identities granted roles/run.invoker on this MCP server: service account emails, full members (serviceAccount:, principal://, principalSet://) or <unit>:<output> references resolved through identity_refs (a calling agent's Agent Identity principal)"
   type        = list(string)
 }
 

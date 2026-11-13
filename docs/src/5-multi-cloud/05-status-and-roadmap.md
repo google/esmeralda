@@ -20,7 +20,7 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | Catalog callers compiled into the Agent Gateway per-target egress lists | ✅ | One `callers` entry drives both the callee's IAM and the gateway list; callers that don't egress through the gateway (such as the Apigee proxy) use `agent_gateway: false`. See [2.6 Service Catalog](../3-agentops-and-lifecycle/06-service-catalog.md). |
 | Delegated end-user credential, forwarded only to opted-in targets | ✅ | Kept out of logs, traces, usage records and stored sessions. See [Delegated user credential](../4-esmeralda-library/guide.md#delegated-user-credential). |
 | End-user authorization enforced by the MCP tool servers (per-tool modes) | 🗺️ | The claims guard (`esmeralda.mcp_authz`) exists; the sample servers don't enforce it yet. |
-| Per-agent outbound identity (no shared invoker identity across agents) | 🗺️ | Prerequisite for verified per-agent attribution on every path. |
+| Per-agent outbound identity (no shared invoker identity across agents) | ✅ | Agents call out with their own Agent Identity; each callee grants the calling agent's principal. See [Outbound tokens and the Agent Gateway](../1-platform-foundations/03-security-iam-and-telemetry.md#outbound-tokens-and-the-agent-gateway). |
 | Compile catalog callers into Apigee products, apps and `owner_identity` | 🗺️ | Today configured directly in Terraform ([5.4 Steps 3–4](./04-bringing-an-agent-from-another-cloud.md#step-3-trust-the-issuer-platform-security)). |
 | Envoy cross-cloud path (JWT verification against an external issuer) | 🗺️ | The non-Apigee inbound alternative. |
 | SPIFFE federation and mTLS callers, end to end | 🗺️ | The catalog shape exists; enforcement planned. |

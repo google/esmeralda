@@ -194,22 +194,35 @@ image_digests    = try(yamldecode(file("${get_repo_root()}/release/prd.yaml")).i
 
 Terragrunt constructs each workload's container URI from the Layer 0 repository outputs plus either the immutable digest in `image_digests` (`<repo>/<image>@sha256:...`) or the tag (`<repo>/<image>:<container_tag>`):
 
-#### 1. Tool Container Image (`live/<env>/layer-5-workloads/services/corporate-email/terragrunt.hcl`)
+#### 1. Tool Container Image (`live/<env>/layer-5-workloads/services/legacy-dms/terragrunt.hcl`)
 ```hcl
 locals {
-  name    = basename(get_terragrunt_dir())                                      # catalog key: corporate-email
+  name    = basename(get_terragrunt_dir())                                      # catalog key: legacy-dms
   callers = try(local.env_vars.locals.catalog[local.name].callers, [])
+  # Callers that are catalog agents (they call with their own Agent Identity), and the rest.
+  agent_callers = [
+    for caller in local.callers : caller
+    if contains(["a2a", "adk"], try(local.env_vars.locals.catalog[caller].kind, ""))
+  ]
+  # Deprecated fallback (env.yaml legacy_shared_invoker): agents impersonate the shared invoker again.
+  legacy_shared_invoker = try(local.env_vars.locals.legacy_shared_invoker, false)
 }
 
 inputs = {
-  container_image   = "${<dev or release repository_url from layer-0-cicd>}/${local.image_ref}" # corporate-email@sha256:... or corporate-email:<tag>
+  container_image   = "${<dev or release repository_url from layer-0-cicd>}/${local.image_ref}" # legacy-dms@sha256:... or legacy-dms:<tag>
   internal_hostname = "${local.name}.${dependency.networking.outputs.entrypoint_domain}"        # Agent Registry URL
 
-  # run.invoker: the catalog callers' service accounts, the shared MCP invoker SA when an agent calls,
-  # and the SA of each enabled adapter.
+  # run.invoker: each agent caller's Agent Identity principal (resolved through identity_refs), the
+  # service accounts of the other callers (apigee-partner-mcp: the Apigee proxy runtime SA), and the
+  # SA of each enabled adapter. legacy_shared_invoker adds the shared MCP invoker SA instead.
   invoker_service_accounts = distinct(compact(concat(
-    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
-    length([for caller in local.callers : caller if caller != "test-vm"]) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
+    [for caller in local.agent_callers : "${local.env_vars.locals.catalog[caller].unit}:agent_identity_principal"],
+    [for caller in local.callers : (
+      caller == "apigee-partner-mcp"
+      ? (local.apigee_partner ? dependency.apigee.outputs.proxy_runtime_sa_email : "")
+      : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]
+    ) if !contains(local.agent_callers, caller)],
+    local.legacy_shared_invoker && length(local.agent_callers) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
     contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
   )))
 }

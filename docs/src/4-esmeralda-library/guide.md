@@ -199,7 +199,11 @@ The entry point's targets take different credentials: Cloud Run MCP servers (and
 
 ### ID tokens and access tokens
 
-ID tokens and access tokens come from `esmeralda.auth`. With `SERVICE_ACCOUNT_EMAIL` set, they are minted for that service account through impersonation; otherwise for the runtime identity. Each is cached (ID tokens per audience) and refreshed shortly before it expires, so tool calls don't pay for IAM round trips. If impersonation fails, the library logs a warning and falls back to the runtime identity.
+ID tokens and access tokens come from `esmeralda.auth`. By default they are minted for the runtime identity: on Agent Runtime that is the agent's own Agent Identity (from the metadata server), elsewhere Application Default Credentials. Each is cached (ID tokens per audience) and refreshed shortly before it expires, so tool calls don't pay for IAM round trips.
+
+On Agent Runtime, google-auth (2.61 and later) mints certificate-bound ID tokens by default, and Cloud Run rejects them once the call has crossed the Agent Gateway and the entry point (both terminate TLS). The library therefore requests every runtime-identity ID token unbound, with the documented per-call opt-out `fetch_id_token_credentials(audience, bind_id_token=False)`. Access tokens keep the library default (bound); the container-wide `GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN=false` is never set. Unbound tokens are bearer tokens valid for hours; see [Outbound tokens and the Agent Gateway](../1-platform-foundations/03-security-iam-and-telemetry.md#outbound-tokens-and-the-agent-gateway) for the trade-off.
+
+`SERVICE_ACCOUNT_EMAIL` is a deprecated opt-in: when set, tokens are minted for that service account through impersonation instead. If impersonation fails, the library logs a warning and falls back to the runtime identity.
 
 ### The user's token
 

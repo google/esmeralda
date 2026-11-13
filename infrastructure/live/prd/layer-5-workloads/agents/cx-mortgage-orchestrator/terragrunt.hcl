@@ -37,6 +37,10 @@ locals {
   # This agent's catalog entry (env.yaml catalog), keyed by the unit's directory name.
   name    = basename(get_terragrunt_dir())
   callers = try(local.catalog[local.name].callers, [])
+  # Callers that are catalog agents (they call with their own Agent Identity).
+  agent_callers = [for caller in local.callers : caller if contains(["a2a", "adk"], try(local.catalog[caller].kind, ""))]
+  # Deprecated fallback (env.yaml legacy_shared_invoker): this agent impersonates the shared invoker again.
+  legacy_shared_invoker = try(local.env_vars.locals.legacy_shared_invoker, false)
   # Catalog hosts served by the built-in direct backend that take an access token (Agent Runtime):
   # this agent calls them with an access token instead of an ID token (ACCESS_TOKEN_HOSTS).
   access_token_names = [
@@ -58,13 +62,17 @@ inputs = {
   environment               = local.env_vars.locals.environment
   region                = local.env_vars.locals.region
   agent_service_account = dependency.security.outputs.cx_mortgage_orchestrator_sa_email
+  # Outbound identity: its own Agent Identity; the shared invoker only with legacy_shared_invoker.
+  legacy_shared_invoker = local.legacy_shared_invoker
   mcp_invoker_sa_email  = dependency.security.outputs.mcp_invoker_sa_email
 
   # roles/aiplatform.user on this agent's project: the service accounts of the catalog callers, and the
   # Envoy adapter, which queries this engine for cx-mortgage-orchestrator.<domain>
   # (/api/stream_reasoning_engine) when envoy is in gateways.enabled (env.yaml).
+  # Agent callers call with their own Agent Identity: the iap-egress unit grants their principal://.
   invoker_service_accounts = distinct(compact(concat(
-    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"]],
+    [for caller in local.callers : dependency.security.outputs["${replace(caller, "-", "_")}_sa_email"] if !contains(local.agent_callers, caller)],
+    local.legacy_shared_invoker && length(local.agent_callers) > 0 ? [dependency.security.outputs.mcp_invoker_sa_email] : [],
     contains(local.gateways.enabled, "envoy") ? [try(dependency.security.outputs.envoy_sa_email, "")] : [],
   )))
 

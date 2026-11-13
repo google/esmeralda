@@ -76,6 +76,34 @@ locals {
     for name, t in var.external_targets : name
     if !contains(keys(local.normalized_target_iap_members[lookup({ endpoint = "endpoints", mcp_server = "mcp_servers", agent = "agents" }, t.registry, "endpoints")]), name)
   ]
+
+  # Agent callers of agent targets (catalog): roles/aiplatform.user for the caller's Agent Identity
+  # principal on the callee agent's project. Granted here (after every agent) so agents never depend
+  # on each other's units. Members are `<unit>:agent_identity_principal` references.
+  resolved_agent_caller_grants = {
+    for g in var.agent_caller_grants :
+    "${g.project_id}|${lookup(var.identity_refs, g.member, g.member)}" => {
+      project_id = g.project_id
+      member     = lookup(var.identity_refs, g.member, g.member)
+    }
+  }
+  unresolved_agent_caller_refs = distinct([
+    for g in local.resolved_agent_caller_grants : g.member if can(regex(local.ref_pattern, g.member))
+  ])
+}
+
+resource "google_project_iam_member" "agent_callers_aiplatform_user" {
+  for_each = { for k, g in local.resolved_agent_caller_grants : k => g if !can(regex(local.ref_pattern, g.member)) }
+  project  = each.value.project_id
+  role     = "roles/aiplatform.user"
+  member   = each.value.member
+
+  lifecycle {
+    precondition {
+      condition     = length(local.unresolved_agent_caller_refs) == 0
+      error_message = "agent_caller_grants references without a value in identity_refs: ${join(", ", local.unresolved_agent_caller_refs)}. Map them to unit outputs in the iap-egress terragrunt unit."
+    }
+  }
 }
 
 resource "null_resource" "grant_iap_egress" {

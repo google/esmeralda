@@ -59,6 +59,15 @@ variable "identity_refs" {
   default     = {}
 }
 
+variable "agent_caller_grants" {
+  description = "roles/aiplatform.user grants for agents that call other agents (catalog callers of a2a/adk targets): the callee agent's project and the caller's Agent Identity principal, usually as an `agents/<name>:agent_identity_principal` reference resolved through identity_refs"
+  type = list(object({
+    project_id = string
+    member     = string
+  }))
+  default = []
+}
+
 # Verified attribution (attribution.tf)
 
 variable "environment" {

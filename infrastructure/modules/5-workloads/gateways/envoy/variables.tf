@@ -65,7 +65,7 @@ variable "gateway_sa_email" {
 }
 
 variable "invoker_service_accounts" {
-  description = "Service accounts allowed to call the gateway (roles/run.invoker)"
+  description = "Identities allowed to call the gateway (roles/run.invoker): service account emails or full members (serviceAccount:, principal://, principalSet://), e.g. a calling agent's Agent Identity principal"
   type        = list(string)
   default     = []
 }

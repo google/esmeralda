@@ -116,6 +116,60 @@ def test_id_token_async(minted):
     assert asyncio.run(auth.id_token_async("https://a")) == "https://a|runtime-token-1"
 
 
+# ---- runtime identity ID tokens: never certificate-bound (bind_id_token=False per call) ----
+
+
+def test_runtime_id_tokens_are_requested_unbound(monkeypatch):
+    """Agent Gateway + the load balancer terminate TLS, so a cert-bound ID token fails at Cloud Run."""
+    from google.oauth2 import id_token
+
+    calls = []
+
+    def fetch(audience, request=None, bind_id_token=None):
+        calls.append((audience, bind_id_token))
+        return "unbound-credentials"
+
+    monkeypatch.setattr(id_token, "fetch_id_token_credentials", fetch)
+    assert auth._new_credentials("https://legacy-dms.esmeralda.internal", "") == "unbound-credentials"
+    assert calls == [("https://legacy-dms.esmeralda.internal", False)]
+
+
+def test_runtime_id_tokens_with_a_google_auth_without_binding(monkeypatch):
+    """google-auth < 2.61 has no bind_id_token (and never binds): called without it."""
+    from google.oauth2 import id_token
+
+    calls = []
+
+    def fetch(audience, request=None):
+        calls.append(audience)
+        return "creds"
+
+    monkeypatch.setattr(id_token, "fetch_id_token_credentials", fetch)
+    assert auth._new_credentials("https://a", "") == "creds" and calls == ["https://a"]
+
+
+def test_runtime_id_tokens_never_touch_the_container_wide_binding_switch(monkeypatch):
+    """Access tokens stay bound: the library never sets GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN."""
+    from google.oauth2 import id_token
+
+    monkeypatch.delenv("GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN", raising=False)
+    monkeypatch.setattr(id_token, "fetch_id_token_credentials", lambda audience, request=None, bind_id_token=None: "c")
+    auth._new_credentials("https://a", "")
+    import os
+
+    assert "GOOGLE_API_ENABLE_RUNTIME_BOUND_TOKEN" not in os.environ
+
+
+def test_impersonation_still_uses_iam_when_opted_in(monkeypatch):
+    import google.auth
+    from google.auth import impersonated_credentials
+
+    monkeypatch.setattr(google.auth, "default", lambda scopes: (object(), "p"))
+    monkeypatch.setattr(impersonated_credentials, "Credentials", lambda **kw: ("target", kw["target_principal"]))
+    monkeypatch.setattr(impersonated_credentials, "IDTokenCredentials", lambda **kw: ("id", kw["target_credentials"]))
+    assert auth._new_credentials("https://a", "sa@x") == ("id", ("target", "sa@x"))
+
+
 @pytest.fixture
 def minted_access(monkeypatch):
     created = []

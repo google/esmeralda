@@ -43,7 +43,9 @@ catalog/
 | Environment | `environments/<env>.yaml` | `environment`, `overrides` |
 
 **Callers.** Agents call as themselves: a target of kind `a2a` or `adk` can be listed under
-another target's `callers` directly. Every other identity (VM, human group, partner Apigee app,
+another target's `callers` directly. Agent targets don't declare an `identity`: an agent calls out
+with its own Agent Identity, referenced as its unit's `agent_identity_principal` output. Every other
+identity (VM, human group, partner Apigee app,
 workload on another cloud, SPIFFE ID) is declared under `callers` with its `team` and `identity`
 (`service_account`, `group`, `apigee_app`, `federated`, `spiffe`). Identities the platform creates are
 referenced from unit outputs (`ref: layer-3-security:<output>`), never pasted by hand.
@@ -79,8 +81,9 @@ The resolver:
 
 **Compile.** Deployed targets (`kind` `mcp`/`a2a`/`adk` with a `deploy.unit`, not examples) become
 the `catalog` map in `.resolved/<env>.json`: `kind`, `unit`, `token`, `probe`, optional `timeout` and
-optional `callers` (agents with a unit, and `service_account` callers; their service accounts become
-`run.invoker` / `aiplatform.user`). `infrastructure/live/<env>/env.yaml` decodes it:
+optional `callers` (agents with a unit, granted as their Agent Identity principal, and
+`service_account` callers, granted as their service account; they become `run.invoker` /
+`aiplatform.user`). `infrastructure/live/<env>/env.yaml` decodes it:
 
 ```hcl
 catalog_sources = "catalog/sources.yaml"
@@ -94,9 +97,11 @@ catalog_external_targets = lookup(jsondecode(file("${get_repo_root()}/catalog/.r
 The same callers also compile into `iap_egress`: the Agent Gateway per-target `roles/iap.egressor`
 lists (`agents` for `a2a` targets, `mcp_servers` for `mcp` targets, `endpoints` for external
 endpoints) the `iap-egress` unit writes.
-Members are `<unit>:<output>` references (an agent caller's `agent_identity_principal` and its
-service account, `service_account` callers' `ref`), plus `policy.agent_gateway.shared_workload_identity`
-on targets with an agent caller. The unit maps each reference to a unit output, so one `callers`
+Members are `<unit>:<output>` references (an agent caller's `agent_identity_principal`,
+`service_account` callers' `ref`). The resolver also supports an optional
+`policy.agent_gateway.shared_workload_identity` block that adds one shared identity to targets with an
+agent caller; this repository doesn't use it, since agents call out as their own Agent Identity.
+The unit maps each reference to a unit output, so one `callers`
 entry drives both the invoker grants and the gateway list. Callers with `agent_gateway: false`
 (such as the Apigee proxy, which calls the services directly) keep their invoker grant but are left
 out of `iap_egress`.
@@ -116,12 +121,14 @@ are layer-4 system endpoints and get no entry of their own. dev declares the syn
 
 - `policy`: `unmapped_caller` (`deny`, or `flag` only in `policy.attribution.flag_environments`,
   default `[dev]`) and `declared_mismatch` (`reject` or `bill_own_team`);
-- `principal_teams`: one row per verified principal (agent principals and service accounts, caller
-  identities, `group:<email>`), with its `principal_type` (`agent_runtime`, `service_account`,
+- `principal_teams`: one row per verified principal (agent principals, service accounts and other
+  caller identities, `group:<email>`), with its `principal_type` (`agent_runtime`, `service_account`,
   `group`, ...), caller, team and cost centres. Callers with a unit-output identity are included
   only when a target of the environment lists them. These are
   the rows of the attribution table the usage views join;
-- `shared_principals`: the shared workload identity, which several agents present, so it has no row;
+- `shared_principals`: a shared workload identity several agents present (from
+  `shared_workload_identity`), which has no row; empty in this repository, since each agent is
+  attributed by its own principal;
 - `allowlists`: per MCP / A2A target, the principals the in-process caller guard accepts and the
   cost centres each one may declare there. The service units write them into
   `ESMERALDA_CALLER_ALLOWLIST`.

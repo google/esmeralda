@@ -102,6 +102,17 @@ locals {
   # Verified attribution (env.yaml attribution.principal_teams): load the catalog principal_teams
   # rows and count gateway decisions for principals without one.
   attribution_enabled = try(local.env_vars.locals.attribution.principal_teams, false)
+
+  # Agents that call other agents (catalog callers of a2a/adk targets) call with their own Agent
+  # Identity: each gets roles/aiplatform.user on the callee agent's project (agent_caller_grants).
+  catalog       = local.env_vars.locals.catalog
+  agent_targets = { for name, entry in local.catalog : name => entry if contains(["a2a", "adk"], try(entry.kind, "")) }
+  agent_caller_pairs = flatten([
+    for target, entry in local.agent_targets : [
+      for caller in try(entry.callers, []) : { target = target, member = "${local.agent_targets[caller].unit}:agent_identity_principal" }
+      if contains(keys(local.agent_targets), caller)
+    ]
+  ])
 }
 
 inputs = {
@@ -137,6 +148,20 @@ inputs = {
       k => v if local.apigee_partner && v != null
     },
   )
+
+  # roles/aiplatform.user for each agent caller's principal:// on the callee agent's project (the
+  # project of each catalog agent below; a new catalog agent needs its entry here). Granted with the
+  # deprecated legacy_shared_invoker fallback too, so that mode is purely additive (a zero-downtime
+  # switch: grant the principals first, then move the agents off the shared invoker).
+  agent_caller_grants = [
+    for pair in local.agent_caller_pairs : {
+      project_id = {
+        "ai-coe-mortgage-specialist" = dependency.projects.outputs.ai_coe_agents_project_id
+        "cx-mortgage-orchestrator"   = dependency.projects.outputs.cx_agents_project_id
+      }[pair.target]
+      member = pair.member
+    }
+  ]
 
   # Verified attribution (attribution.tf): the catalog's principal -> team rows (refs resolved through
   # identity_refs) replace the `source = catalog` rows of the layer-4 principal_teams table, and the

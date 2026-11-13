@@ -192,7 +192,9 @@ locals {
     EVENTS_PROJECT_ID               = var.governance_project_id != "" ? var.governance_project_id : var.project_id
     EVENTS_DATASET_ID               = var.central_events_dataset_id != "" ? var.central_events_dataset_id : google_bigquery_dataset.analytics.dataset_id
     EVENTS_TABLE_ID                 = "${replace(local.yaml_name, "-", "_")}_events"
-    SERVICE_ACCOUNT_EMAIL           = var.enable_native_spiffe_auth ? null : (var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : var.agent_service_account)
+    # Outbound identity: the agent's own Agent Identity (no SERVICE_ACCOUNT_EMAIL). The deprecated
+    # legacy_shared_invoker fallback makes it impersonate the shared MCP invoker service account.
+    SERVICE_ACCOUNT_EMAIL           = var.legacy_shared_invoker && var.mcp_invoker_sa_email != "" ? var.mcp_invoker_sa_email : null
     AGENT_GATEWAY_ROOT_CERTIFICATES = var.agent_gateway_root_certificates
     # Hosts the agent calls with an OAuth2 access token instead of an ID token (esmeralda.auth.token_kind)
     ACCESS_TOKEN_HOSTS = join(",", var.access_token_hosts)
