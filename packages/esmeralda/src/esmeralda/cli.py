@@ -339,11 +339,12 @@ def _format_catalog_show(data: dict[str, Any]) -> str:
     ]
     for t in data.get("targets") or []:
         flags = " [example]" if t.get("example") else ""
-        flags += "" if t.get("compiled") else " [not compiled]"
+        flags += "" if t.get("compiled") or t.get("registry") else " [not compiled]"
         ingress = f" ingress={t['ingress_backend']}" if t.get("ingress_backend") else ""
+        registry = f" registry={t['registry']}" if t.get("registry") and not t.get("compiled") else ""
         lines.append(
             f"🎯 {t['target']} ({t['kind']}, owner {t['owner_team']}) {t.get('deploy')} "
-            f"gateway={t.get('gateway') or '-'}{ingress}{flags}"
+            f"gateway={t.get('gateway') or '-'}{ingress}{registry}{flags}"
         )
         if not t.get("callers"):
             lines.append("   (no callers)")
@@ -443,7 +444,9 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
             return 0
 
         if args.cmd == "apply":
-            data = infra.apply_unit(root, args.env, args.unit, allow_destroy=args.allow_destroy)
+            data = infra.apply_unit(
+                root, args.env, args.unit, allow_destroy=args.allow_destroy, timeout=args.timeout
+            )
             print(json.dumps(data, indent=2) if args.json else _format_apply(data))
             return int(data.get("exit_code", 2 if data.get("refused") else 0))
 
@@ -496,6 +499,16 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
             print(f"❌ {exc}", file=sys.stderr)
         return 2
     return 0
+
+
+def _positive_seconds(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number of seconds: {value!r}") from None
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("must be a positive number of seconds")
+    return seconds
 
 
 def _add_common_ops_flags(subparser: argparse.ArgumentParser, *, with_env: bool = True) -> None:
@@ -582,6 +595,12 @@ def _parser() -> argparse.ArgumentParser:
         "--allow-destroy",
         action="store_true",
         help="permit plans that destroy or replace resources (otherwise exits 2)",
+    )
+    apply_p.add_argument(
+        "--timeout",
+        type=_positive_seconds,
+        default=900.0,
+        help="seconds allowed for the plan and for the apply (default: 900); raise it for long provisioners",
     )
     _add_common_ops_flags(apply_p, with_env=True)
 

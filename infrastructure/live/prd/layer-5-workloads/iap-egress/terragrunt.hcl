@@ -7,6 +7,11 @@
 # references; identity_refs below maps them to unit outputs. Adding a caller in catalog/ updates both
 # the run.invoker / aiplatform.user grants and these gateway lists. A new agent caller also needs its
 # dependency block and its identity_refs entry here (the plan fails on an unmapped reference).
+#
+# The catalog's managed: false targets (external_targets) are registered here too, as the last
+# layer-5 step, so hosts known only in layer 5 never create a cycle; {domain} in their URLs is the
+# layer-2 entry point domain. The registry root holds no binding (layer 4 grants the Google API
+# system endpoints entry by entry), so each new entry is closed until its catalog callers are granted.
 include "root" {
   path = find_in_parent_folders("root.hcl")
 }
@@ -17,6 +22,15 @@ terraform {
 
 dependency "projects" {
   config_path = "../../layer-1-projects"
+}
+
+dependency "networking" {
+  config_path = "../../layer-2-networking"
+  mock_outputs = {
+    entrypoint_domain = "esmeralda.internal"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
 dependency "security" {
@@ -93,9 +107,6 @@ locals {
 inputs = {
   governance_project_id = dependency.projects.outputs.governance_project_id
   region                = local.env_vars.locals.region
-  # Same registry-root members as layer 4, so both writers produce the identical root policy
-  # (conditioned to system endpoint entries by grant_iap_egress.sh).
-  iap_egress_members = dependency.governance.outputs.iap_egress_members
   registry_service_ids = [
     dependency.ai_coe_mortgage_specialist.outputs.registry_service_id,
     dependency.corporate_email.outputs.registry_service_id,
@@ -106,6 +117,10 @@ inputs = {
   # Per-target callers, compiled from the catalog ({agents = {...}, mcp_servers = {...}} of refs):
   # never hand-written here. The orchestrator is a caller of the specialist only, never of an MCP server.
   target_iap_members = local.env_vars.locals.catalog_iap_egress
+
+  # Agent Registry entries of the catalog's managed: false targets (compiled, never hand-written).
+  external_targets = local.env_vars.locals.catalog_external_targets
+  domain           = dependency.networking.outputs.entrypoint_domain
 
   # Values of the references the compiled lists use.
   identity_refs = merge(

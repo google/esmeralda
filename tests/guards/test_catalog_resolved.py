@@ -67,6 +67,7 @@ def test_resolved_catalog_keeps_the_unit_contract(env):
 # ------------------------------------------------------------------------------------------
 
 IAP_GROUP_KIND = {"agents": "a2a", "mcp_servers": "mcp"}
+EXTERNAL_GROUP = {"endpoint": "endpoints", "mcp_server": "mcp_servers", "agent": "agents"}
 SECURITY_OUTPUTS_TF = REPO_ROOT / "infrastructure/modules/3-security/outputs.tf"
 
 
@@ -104,17 +105,34 @@ def test_compiled_iap_lists_match_catalog_callers(env):
             if identity.get("type") == "service_account":
                 by_member[identity.get("ref") or identity["id"]] = name
 
+    # Deployed a2a / mcp targets, plus every managed: false target with its own registry entry.
     expected_targets = {
         group: {n for n, e in data["catalog"].items() if e["kind"] == kind} for group, kind in IAP_GROUP_KIND.items()
     }
+    expected_targets["endpoints"] = set()
+    for name, entry in data["external_targets"].items():
+        expected_targets[EXTERNAL_GROUP[entry["registry"]]].add(name)
     assert {group: set(lists) for group, lists in data["iap_egress"].items()} == expected_targets
+
+    def enforced_callers(name: str) -> list[str]:
+        """The callers a target's grants name: agents with a unit, service-account callers."""
+        if name in data["catalog"]:
+            return data["catalog"][name].get("callers", [])
+        out = []
+        for caller in resolved.targets[name].get("callers") or {}:
+            if caller in resolved.targets:
+                if "unit" in resolved.targets[caller]["deploy"]:
+                    out.append(caller)
+            elif resolved.callers[caller]["identity"]["type"] == "service_account":
+                out.append(caller)
+        return out
 
     for group, lists in data["iap_egress"].items():
         for name, members in lists.items():
             # Callers marked agent_gateway: false (e.g. the Apigee proxy) keep their IAM grant but
             # call the target directly, so they are never on its gateway list.
             direct = {c for c, entry in resolved.callers.items() if entry.get("agent_gateway") is False}
-            callers = [c for c in data["catalog"][name].get("callers", []) if c not in direct]
+            callers = [c for c in enforced_callers(name) if c not in direct]
             agents = [c for c in callers if c in resolved.targets]
             others = [m for m in members if m != shared.get("ref")]
             unknown = [m for m in others if m not in by_member]
@@ -123,7 +141,8 @@ def test_compiled_iap_lists_match_catalog_callers(env):
             for agent in agents:
                 unit = resolved.targets[agent]["deploy"]["unit"]
                 assert f"{unit}:agent_identity_principal" in members, f"{env} {group}.{name}: {agent} principal"
-            uses_shared = bool(shared) and IAP_GROUP_KIND[group] in shared.get("kinds", []) and bool(agents)
+            kind = resolved.targets[name]["kind"]
+            uses_shared = bool(shared) and group != "endpoints" and kind in shared.get("kinds", []) and bool(agents)
             assert (shared.get("ref") in members) == uses_shared, f"{env} {group}.{name}: shared identity"
 
 
@@ -137,8 +156,11 @@ def test_iap_egress_unit_can_resolve_every_compiled_ref(env):
 
     for group, lists in data["iap_egress"].items():
         for name, members in lists.items():
-            unit = data["catalog"][name]["unit"]
-            assert f'config_path = "../{unit}"' in code, f"{env}: iap-egress needs a dependency on {unit}"
+            if name in data["catalog"]:  # deployed targets register themselves in their own unit
+                unit = data["catalog"][name]["unit"]
+                assert f'config_path = "../{unit}"' in code, f"{env}: iap-egress needs a dependency on {unit}"
+            else:  # external targets are registered by the iap-egress unit itself
+                assert name in data["external_targets"], f"{env}: {group}.{name} is neither deployed nor external"
             for member in members:
                 if not re.fullmatch(r"[a-z0-9_./-]+:[a-z0-9_]+", member):
                     continue  # literal identity, passed through as is
@@ -150,3 +172,31 @@ def test_iap_egress_unit_can_resolve_every_compiled_ref(env):
                     assert f'"{member}"' in refs_block, f"{env}: identity_refs has no entry for {member}"
                     dep = source.rsplit("/", 1)[-1].replace("-", "_")
                     assert f'dependency "{dep}"' in code and f'config_path = "../{source}"' in code, member
+
+
+# ------------------------------------------------------------------------------------------
+# managed: false targets (external_targets): registered by the iap-egress unit
+# ------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", LIVE_ENVS)
+def test_env_yaml_reads_the_compiled_external_targets(env):
+    text = (LIVE / env / "env.yaml").read_text()
+    code = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+    expected = f'lookup(jsondecode(file("${{get_repo_root()}}/catalog/.resolved/{env}.json")), "external_targets")'
+    assert re.search(r"^\s*catalog_external_targets\s*=\s*" + re.escape(expected) + r"\s*$", code, re.MULTILINE)
+
+
+@pytest.mark.parametrize("env", LIVE_ENVS)
+def test_external_targets_keep_the_unit_contract(env):
+    """Every external entry has the shape the iap-egress unit reads, placeholders it can substitute,
+    and a (possibly empty) caller list, never an IAM grant or an entry point route."""
+    data = json.loads((REPO_ROOT / "catalog/.resolved" / f"{env}.json").read_text())
+    for name, entry in data["external_targets"].items():
+        assert set(entry) == {"kind", "registry", "url", "protocol_binding", "description", "owner_team"}, name
+        assert entry["registry"] in EXTERNAL_GROUP, name
+        assert entry["url"].startswith("https://"), name
+        assert set(re.findall(r"\{([^}]*)\}", entry["url"])) <= {"domain", "region"}, name
+        assert name in data["iap_egress"][EXTERNAL_GROUP[entry["registry"]]], name
+        assert name not in data["catalog"], name
+        assert "googleapis.com" not in entry["url"], f"{name}: Google APIs are layer-4 system endpoints"

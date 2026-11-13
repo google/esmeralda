@@ -30,7 +30,7 @@ catalog/
 │   ├── partners/…               # Apigee apps -> partner teams (example)
 │   ├── clouds/…                 # federated (issuer, subject) callers (example)
 │   └── legacy/…                 # managed: false endpoints, brownfield (example)
-├── environments/{dev.yaml, prd.yaml}   # overrides only
+├── environments/{dev.yaml, prd.yaml}   # overrides only (dev adds the synthetic external-probe)
 └── .resolved/{dev.json, prd.json}      # GENERATED, committed: what Terraform reads
 ```
 
@@ -87,16 +87,29 @@ catalog_sources = "catalog/sources.yaml"
 catalog         = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "catalog")
 
 catalog_iap_egress = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "iap_egress")
+
+catalog_external_targets = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "external_targets")
 ```
 
 The same callers also compile into `iap_egress`: the Agent Gateway per-target `roles/iap.egressor`
-lists (`agents` for `a2a` targets, `mcp_servers` for `mcp` targets) the `iap-egress` unit writes.
+lists (`agents` for `a2a` targets, `mcp_servers` for `mcp` targets, `endpoints` for external
+endpoints) the `iap-egress` unit writes.
 Members are `<unit>:<output>` references (an agent caller's `agent_identity_principal` and its
 service account, `service_account` callers' `ref`), plus `policy.agent_gateway.shared_workload_identity`
 on targets with an agent caller. The unit maps each reference to a unit output, so one `callers`
 entry drives both the invoker grants and the gateway list. Callers with `agent_gateway: false`
 (such as the Apigee proxy, which calls the services directly) keep their invoker grant but are left
 out of `iap_egress`.
+
+**External targets.** A non-example target with `deploy: { managed: false, endpoint: ... }` (a
+legacy API, an agent on another cloud, an external gateway) compiles into `external_targets`: the
+`iap-egress` unit registers it in the Agent Registry (`http` and non-Google `model`: endpoint;
+`mcp`: MCP server; `a2a`: agent card) and writes its callers' list on that entry, so only they reach
+it through the Agent Gateway. A target with no enforced caller gets an empty policy, and removing it
+deletes the entry. `endpoint` is an exact `https://` URL; use `{domain}` (as `<label>.{domain}`) and
+`{region}` instead of environment literals. Targets on `*.googleapis.com` (such as `gemini-flash`)
+are layer-4 system endpoints and get no entry of their own. dev declares the synthetic
+`external-probe` in `environments/dev.yaml` to prove it.
 
 **Verified attribution.** The same callers also compile into `attribution` (env.yaml
 `catalog_attribution`):

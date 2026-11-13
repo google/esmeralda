@@ -42,7 +42,7 @@ terraform {
 1. Write or reuse the module under `modules/`; declare typed variables with descriptions and expose the outputs other units need.
 2. Add the unit under `live/dev/...` and the same unit under `live/prd/...`.
 3. Workloads with an image resolve the tag to a digest at plan time (`services/*/image.tf` → `local.image_by_digest`; the `google_artifact_registry_docker_image` data source in `agents/*`). Never `image = var.…`.
-4. Anything agents must reach needs an Agent Registry entry and must be listed in `layer-5-workloads/services/iap-egress` (`registry_service_ids`).
+4. Anything agents must reach needs an Agent Registry entry and must be listed in `layer-5-workloads/iap-egress` (`registry_service_ids`). Destinations Esmeralda doesn't deploy are catalog targets with `deploy.managed: false`: the `iap-egress` unit registers them (`external_targets`), never a hand-written registry resource. Never grant `roles/iap.egressor` on the registry root (it is inherited by every entry); grants are per entry (`grant_iap_egress.sh`).
 5. If it needs a Make target, add it to the root `Makefile` with a `## help` comment.
 6. `make test-terraform`, then `terragrunt plan` in the unit directory.
 

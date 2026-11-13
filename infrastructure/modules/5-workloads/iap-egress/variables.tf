@@ -10,23 +10,47 @@ variable "region" {
   type        = string
 }
 
-variable "iap_egress_members" {
-  description = "IAM members of the registry-root roles/iap.egressor binding, conditioned to system endpoint entries only (same list as layer 4)"
-  type        = list(string)
-}
-
 variable "registry_service_ids" {
   description = "Agent Registry services registered by layer 5 (MCP servers, A2A agents); changes re-trigger the grant"
   type        = list(string)
 }
 
 variable "target_iap_members" {
-  description = "Per-target IAM members granted roles/iap.egressor on specific Agent Registry MCP servers and A2A agents. Members may be `<unit>:<output>` references (the catalog-compiled lists in catalog/.resolved/<env>.json `iap_egress`), resolved through identity_refs"
+  description = "Per-target IAM members granted roles/iap.egressor on specific Agent Registry agents, external endpoints and MCP servers. Members may be `<unit>:<output>` references (the catalog-compiled lists in catalog/.resolved/<env>.json `iap_egress`), resolved through identity_refs. An empty list writes an empty policy (nobody)"
   type = object({
     mcp_servers = optional(map(list(string)), {})
     agents      = optional(map(list(string)), {})
+    endpoints   = optional(map(list(string)), {})
   })
   default = {}
+}
+
+variable "external_targets" {
+  description = "Agent Registry entries of the catalog's managed: false targets (catalog/.resolved/<env>.json `external_targets`), keyed by target name (the entry's service_id). `url` may hold the {domain} and {region} placeholders, substituted here"
+  type = map(object({
+    kind             = string
+    registry         = string
+    url              = string
+    protocol_binding = string
+    description      = string
+    owner_team       = optional(string, "")
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for t in values(var.external_targets) : contains(["endpoint", "mcp_server", "agent"], t.registry)])
+    error_message = "external_targets[*].registry must be endpoint, mcp_server or agent."
+  }
+  validation {
+    condition     = alltrue([for t in values(var.external_targets) : startswith(t.url, "https://")])
+    error_message = "external_targets[*].url must be an https URL."
+  }
+}
+
+variable "domain" {
+  description = "Private domain served by the entry point (layer 2 entrypoint_domain), substituted for {domain} in external_targets URLs"
+  type        = string
+  default     = ""
 }
 
 variable "identity_refs" {

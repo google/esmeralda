@@ -389,12 +389,12 @@ data "google_project" "agent_projects" {
 }
 
 locals {
-  # Members of the registry-root roles/iap.egressor binding, which grant_iap_egress.sh scopes to
-  # system endpoint entries (Google APIs) with an IAM condition. IAP egress authorizes the
-  # caller's Agent Identity, so the agent principals are what matter here. The agent and test VM
-  # service accounts in var.agent_invoker_sa_emails are not on this list (they only read the CA
-  # secret above). The Vertex AI / Agent Runtime service agents stay for platform-initiated
-  # egress; with the condition they can only reach system endpoints.
+  # Members of the roles/iap.egressor policy grant_iap_egress.sh writes on each system endpoint
+  # entry (Google APIs). IAP egress authorizes the caller's Agent Identity, so the agent principals
+  # are what matter here. The agent and test VM service accounts in var.agent_invoker_sa_emails are
+  # not on this list (they only read the CA secret above). The Vertex AI / Agent Runtime service
+  # agents stay for platform-initiated egress; like the principalSets they can only reach the system
+  # endpoint entries, which are the only entries that list them.
   dynamic_agent_members = flatten([
     for proj_id, p in data.google_project.agent_projects : [
       "serviceAccount:service-${p.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
@@ -407,10 +407,12 @@ locals {
   iap_egress_members = distinct([for m in local.dynamic_agent_members : m if m != ""])
 }
 
-# 8. Grant roles/iap.egressor on the registry root, conditioned to system endpoint entries only
-#    (a root grant is inherited by every agent and MCP server entry otherwise). Layer 5 re-runs the
-#    same script with the same root inputs, plus the per-target policies on the MCP servers and
-#    agents once they have registered themselves (unit iap-egress).
+# 8. Grant roles/iap.egressor on each system endpoint entry (never on the registry root: a root grant
+#    is inherited by every entry, including external endpoints, agents and MCP servers, and IAM allow
+#    policies only add). The script writes and verifies every per-entry policy first, then clears the
+#    registry-root binding earlier versions wrote, so agents keep their Google API egress throughout.
+#    Layer 5 (unit iap-egress) writes the per-target policies of agents, MCP servers and external
+#    endpoints from the service catalog.
 resource "null_resource" "grant_iap_egress" {
   count      = var.enable_agent_gateway ? 1 : 0
   depends_on = [google_agent_registry_service.system_endpoints]
@@ -420,16 +422,17 @@ resource "null_resource" "grant_iap_egress" {
     members_hash              = md5(jsonencode(local.iap_egress_members))
     gateway_id                = try(google_network_services_agent_gateway.egress_gateway[0].id, "")
     governance_project_number = data.google_project.governance.number
-    version                   = "2"
+    version                   = "3"
   }
 
   provisioner "local-exec" {
     command = "bash ${path.module}/../../../_shared/scripts/grant_iap_egress.sh"
     environment = {
-      GOVERNANCE_PROJECT_ID     = var.governance_project_id
-      GOVERNANCE_PROJECT_NUMBER = data.google_project.governance.number
-      REGION                    = var.region
-      IAP_MEMBERS_JSON          = jsonencode(local.iap_egress_members)
+      IAP_MODE                 = "system-endpoints"
+      GOVERNANCE_PROJECT_ID    = var.governance_project_id
+      REGION                   = var.region
+      IAP_MEMBERS_JSON         = jsonencode(local.iap_egress_members)
+      SYSTEM_ENDPOINT_IDS_JSON = jsonencode(sort(keys(local.system_endpoints)))
     }
   }
 }

@@ -37,8 +37,6 @@ PRD_IAP_TG = REPO_ROOT / "infrastructure/live/prd/layer-5-workloads/iap-egress/t
 
 GOVERNANCE_PROJECT_NUMBER = "000000000000"
 REGION = "us-central1"
-ENDPOINTS_PREFIX = f"projects/{GOVERNANCE_PROJECT_NUMBER}/locations/{REGION}/iap_web/agentRegistry/endpoints/"
-ROOT_CONDITION_EXPRESSION = f'resource.name.startsWith("{ENDPOINTS_PREFIX}")'
 
 
 def test_agent_gateway_eliminates_org_wide_wildcard_principal_set():
@@ -100,9 +98,11 @@ def test_iap_egress_terragrunt_reads_per_target_callers_from_the_catalog(tg_path
     content = tg_path.read_text()
     code = "\n".join(line.split("#", 1)[0] for line in content.splitlines())
 
-    # Root members are the same list layer 4 writes, so both writers produce the same root policy.
-    assert "iap_egress_members = dependency.governance.outputs.iap_egress_members" in code
+    # The registry root is layer 4's alone (and it only ever clears it): no root members here.
+    assert "iap_egress_members" not in code
     assert re.search(r"^\s*target_iap_members\s*=\s*local\.env_vars\.locals\.catalog_iap_egress\s*$", code, re.M)
+    assert re.search(r"^\s*external_targets\s*=\s*local\.env_vars\.locals\.catalog_external_targets\s*$", code, re.M)
+    assert re.search(r"^\s*domain\s*=\s*dependency\.networking\.outputs\.entrypoint_domain\s*$", code, re.M)
     # No hand-written per-target member list left in the unit.
     for target in ("ai-coe-mortgage-specialist", "corporate-email", "income-verification", "legacy-dms"):
         assert f'"{target}" = [' not in code, f"{tg_path}: hand-written IAP list for {target}"
@@ -144,226 +144,372 @@ def test_iap_egress_module_resolves_refs_and_fails_closed_on_unmapped_ones():
 
 
 @pytest.mark.parametrize(
-    "tf_path",
-    [AGW_MAIN_TF, IAP_EGRESS_MOD_DIR / "main.tf"],
+    ("tf_path", "mode"),
+    [(AGW_MAIN_TF, "system-endpoints"), (IAP_EGRESS_MOD_DIR / "main.tf", "targets")],
     ids=["layer4-agent-gateway", "layer5-iap-egress"],
 )
-def test_both_root_policy_writers_pass_governance_project_number(tf_path: pathlib.Path):
-    """Layer 4 and layer 5 both run grant_iap_egress.sh and must pass the inputs of the conditional root policy."""
+def test_grant_script_callers_pass_their_mode(tf_path: pathlib.Path, mode: str):
+    """Layer 4 writes the system endpoint entries, layer 5 the per-target entries, through the same script."""
     content = tf_path.read_text()
     assert "grant_iap_egress.sh" in content
-    assert "GOVERNANCE_PROJECT_NUMBER = data.google_project.governance.number" in content
-    assert "IAP_MEMBERS_JSON" in content
+    assert f'IAP_MODE                 = "{mode}"' in content
+    assert "GOVERNANCE_PROJECT_ID" in content and "REGION" in content
     # The script path must resolve from the module directory to modules/_shared/scripts.
     rel = content.split('command = "bash ${path.module}/', 1)[1].split('"', 1)[0]
     assert (tf_path.parent / rel).resolve() == GRANT_IAP_SCRIPT.resolve()
 
 
+def test_layer4_passes_every_system_endpoint_to_the_script():
+    content = AGW_MAIN_TF.read_text()
+    assert "IAP_MEMBERS_JSON         = jsonencode(local.iap_egress_members)" in content
+    assert "SYSTEM_ENDPOINT_IDS_JSON = jsonencode(sort(keys(local.system_endpoints)))" in content
+    assert "depends_on = [google_agent_registry_service.system_endpoints]" in content
+
+
 def test_layer4_root_iap_members_exclude_service_account_emails():
-    """The registry-root IAP members are agent principals, not the agent/test VM SA emails (CA secret readers)."""
+    """The system endpoint IAP members are agent principals, not the agent/test VM SA emails (CA secret readers)."""
     content = AGW_MAIN_TF.read_text()
     locals_block = content.split("dynamic_agent_members = flatten([", 1)[1].split("\n}", 1)[0]
     assert "var.agent_invoker_sa_emails" not in locals_block
 
 
-def _run_grant_script_with_mock_gcloud(
-    tmp_path: pathlib.Path,
-    *,
-    iap_members: list[str],
-    target_policies: dict | None = None,
-    extra_env: dict[str, str] | None = None,
-    check: bool = True,
-) -> tuple[subprocess.CompletedProcess, list[dict]]:
-    """Run grant_iap_egress.sh with a fake gcloud that records each set-iam-policy call."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    calls_log = tmp_path / "gcloud_calls.jsonl"
+def test_no_root_level_iap_egress_binding_is_ever_written_again():
+    """The script has no code path that writes a registry-root binding, and no root condition is left."""
+    script = GRANT_IAP_SCRIPT.read_text()
+    assert "startsWith" not in script and "condition: {" not in script
+    assert "set_root_policy" not in script
+    # The only root write clears the policy, and is guarded.
+    assert '\'{"bindings": []}\'' in script
+    assert "Refusing to write a registry-root IAP binding" in script
+    for tf in (AGW_MAIN_TF, IAP_EGRESS_MOD_DIR / "main.tf", IAP_EGRESS_MOD_DIR / "external_targets.tf"):
+        text = tf.read_text()
+        assert "GOVERNANCE_PROJECT_NUMBER" not in text, tf
+        assert "iap_web/agentRegistry/endpoints/" not in text, tf
 
-    fake_gcloud = bin_dir / "gcloud"
-    fake_gcloud.write_text(
-        f"""#!/usr/bin/env python3
-import json, pathlib, sys
+
+def test_external_entries_wait_for_a_closed_registry_root():
+    text = (IAP_EGRESS_MOD_DIR / "external_targets.tf").read_text()
+    assert 'IAP_MODE              = "check-root"' in text
+    assert "depends_on = [null_resource.require_closed_registry_root]" in text
+    main_tf = (IAP_EGRESS_MOD_DIR / "main.tf").read_text()
+    assert "depends_on = [google_agent_registry_service.external]" in main_tf
+
+
+# ------------------------------------------------------------------------------------------
+# grant_iap_egress.sh against a fake gcloud / curl
+# ------------------------------------------------------------------------------------------
+
+AGENT_SET = "principalSet://agents.global.org-123456.system.id.goog/attribute.platformContainer/aiplatform/projects/111"
+CONTAINER_SET = "principalSet://agents.global.org-123456.system.id.goog/attribute.container/projects/111"
+ORCH = "principal://agents.global.org-123456.system.id.goog/resources/aiplatform/projects/111/locations/us-central1/reasoningEngines/orch-1"
+SPEC = "principal://agents.global.org-123456.system.id.goog/resources/aiplatform/projects/222/locations/us-central1/reasoningEngines/spec-1"
+OLD_ROOT = {
+    "version": 3,
+    "bindings": [{
+        "role": "roles/iap.egressor",
+        "members": [AGENT_SET],
+        "condition": {"title": "system-endpoints-only", "expression": 'resource.name.startsWith("x")'},
+    }],
+}
+
+# service_id -> (collection, uid)
+REGISTRY = {
+    "telemetry": ("endpoints", "agentregistry-0001"),
+    "aiplatform": ("endpoints", "agentregistry-0002"),
+    "external-probe": ("endpoints", "agentregistry-0003"),
+    "legacy-dms": ("mcpServers", "agentregistry-0004"),
+    "ai-coe-mortgage-specialist": ("agents", "agentregistry-0005"),
+}
+
+
+class FakeCloud:
+    """A fake gcloud + curl on PATH: a registry listing and IAP policies kept in a state directory."""
+
+    def __init__(self, tmp_path: pathlib.Path, *, root_policy: dict | None = None,
+                 registry: dict | None = None, fail_set_on: str | None = None,
+                 quota_errors: int = 0):
+        self.dir = tmp_path
+        self.bin = tmp_path / "bin"
+        self.bin.mkdir(parents=True, exist_ok=True)
+        self.state = tmp_path / "policies.json"
+        self.calls = tmp_path / "calls.jsonl"
+        self.state.write_text(json.dumps({"root": root_policy or {"etag": "ACAB"}}))
+        services = [
+            {"name": f"projects/esm-dev-governance/locations/{REGION}/services/{sid}",
+             "registryResource": f"projects/{GOVERNANCE_PROJECT_NUMBER}/locations/{REGION}/{coll}/{uid}"}
+            for sid, (coll, uid) in (registry or REGISTRY).items()
+        ]
+        (tmp_path / "services.json").write_text(json.dumps({"services": services}))
+        gcloud = self.bin / "gcloud"
+        (tmp_path / "quota.json").write_text(json.dumps({"left": quota_errors}))
+        gcloud.write_text(f"""#!/usr/bin/env python3
+import fcntl, json, pathlib, sys
+state_path = pathlib.Path({str(self.state)!r})
+quota_path = pathlib.Path({str(tmp_path / "quota.json")!r})
 args = sys.argv[1:]
+if args[:2] == ["auth", "print-access-token"]:
+    print("fake-token"); sys.exit(0)
+def key():
+    flags = [a for a in args if a.startswith(("--agent=", "--endpoint=", "--mcp-server="))]
+    return flags[0] if flags else "root"
+lock = open({str(tmp_path / "gcloud.lock")!r}, "w")
+fcntl.flock(lock, fcntl.LOCK_EX)  # parallel workers: one fake call at a time
+state = json.loads(state_path.read_text())
+if args[:3] == ["iap", "web", "get-iam-policy"]:
+    print(json.dumps(state.get(key(), {{"etag": "ACAB"}}))); sys.exit(0)
 if args[:3] == ["iap", "web", "set-iam-policy"]:
-    policy_path = args[3]
-    policy = json.loads(pathlib.Path(policy_path).read_text())
-    entry = {{"args": args[4:], "policy": policy}}
-    with open({str(calls_log)!r}, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\\n")
-sys.exit(0)
-"""
-    )
-    fake_gcloud.chmod(fake_gcloud.stat().st_mode | stat.S_IEXEC)
+    policy = json.loads(pathlib.Path(args[3]).read_text())
+    if {fail_set_on!r} and key() == {fail_set_on!r}:
+        sys.exit(1)
+    quota = json.loads(quota_path.read_text())
+    if quota["left"] > 0:
+        quota["left"] -= 1
+        quota_path.write_text(json.dumps(quota))
+        print("ERROR: (gcloud.iap.web.set-iam-policy) RESOURCE_EXHAUSTED: Quota exceeded", file=sys.stderr)
+        sys.exit(1)
+    with open({str(self.calls)!r}, "a") as f:
+        f.write(json.dumps({{"key": key(), "policy": policy}}) + "\\n")
+    state[key()] = policy
+    state_path.write_text(json.dumps(state)); sys.exit(0)
+sys.exit(2)
+""")
+        curl = self.bin / "curl"
+        curl.write_text(f"""#!/usr/bin/env python3
+import shutil, sys
+args = sys.argv[1:]
+out = args[args.index("-o") + 1]
+shutil.copy({str(tmp_path / "services.json")!r}, out)
+""")
+        for exe in (gcloud, curl):
+            exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
 
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
-        "GOVERNANCE_PROJECT_ID": "esm-dev-governance",
-        "GOVERNANCE_PROJECT_NUMBER": GOVERNANCE_PROJECT_NUMBER,
-        "REGION": REGION,
-        "IAP_MEMBERS_JSON": json.dumps(iap_members),
-    }
-    if target_policies is not None:
-        env["IAP_TARGET_POLICIES_JSON"] = json.dumps(target_policies)
-    else:
-        env.pop("IAP_TARGET_POLICIES_JSON", None)
-    for key, value in (extra_env or {}).items():
-        if value is None:
-            env.pop(key, None)
-        else:
-            env[key] = value
-
-    res = subprocess.run(
-        ["bash", str(GRANT_IAP_SCRIPT)],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=check,
-    )
-    calls = (
-        [json.loads(line) for line in calls_log.read_text().splitlines() if line.strip()]
-        if calls_log.exists()
-        else []
-    )
-    return res, calls
-
-
-def _is_root_call(call: dict) -> bool:
-    return not any(a.startswith("--mcp-server=") or a.startswith("--agent=") for a in call["args"])
-
-
-def _assert_conditional_root_policy(policy: dict, members: list[str]) -> None:
-    assert policy["version"] == 3
-    assert policy["bindings"] == [
-        {
-            "role": "roles/iap.egressor",
-            "members": members,
-            "condition": {
-                "title": "system-endpoints-only",
-                "description": policy["bindings"][0]["condition"]["description"],
-                "expression": ROOT_CONDITION_EXPRESSION,
-            },
+    def run(self, env: dict[str, str | None], *, check: bool = True) -> subprocess.CompletedProcess:
+        full = {
+            **os.environ,
+            "PATH": f"{self.bin}:{os.environ.get('PATH', '')}",
+            "GOVERNANCE_PROJECT_ID": "esm-dev-governance",
+            "REGION": REGION,
+            "IAP_RETRY_DELAY_SECONDS": "0",
+            "IAP_MAX_ATTEMPTS": "2",
+            "IAP_WRITE_PAUSE_SECONDS": "0",
         }
-    ]
-    assert policy["bindings"][0]["condition"]["description"]
+        for k, v in env.items():
+            if v is None:
+                full.pop(k, None)
+            else:
+                full[k] = v
+        res = subprocess.run(["bash", str(GRANT_IAP_SCRIPT)], env=full, capture_output=True, text=True)
+        if check:
+            assert res.returncode == 0, res.stderr + res.stdout
+        return res
+
+    @property
+    def writes(self) -> list[dict]:
+        if not self.calls.exists():
+            return []
+        return [json.loads(line) for line in self.calls.read_text().splitlines() if line.strip()]
+
+    @property
+    def policies(self) -> dict:
+        return json.loads(self.state.read_text())
 
 
-def test_grant_iap_egress_script_per_target_policies(tmp_path: pathlib.Path):
-    """When IAP_TARGET_POLICIES_JSON is set, grant_iap_egress.sh applies distinct per-MCP and per-agent policies."""
-    orch_principal = (
-        "principal://agents.global.org-123456.system.id.goog/"
-        "resources/aiplatform/projects/111/locations/us-central1/reasoningEngines/orch-1"
-    )
-    spec_principal = (
-        "principal://agents.global.org-123456.system.id.goog/"
-        "resources/aiplatform/projects/222/locations/us-central1/reasoningEngines/spec-1"
-    )
-    registry_members = [orch_principal, spec_principal]
-    target_policies = {
-        "mcp_servers": {
-            "corporate-email": [spec_principal],
-            "income-verification": [spec_principal],
-            "legacy-dms-mcp-dev": [spec_principal],
-        },
-        "agents": {
-            "ai-coe-mortgage-specialist-agent-dev": [orch_principal],
-        },
+def _binding(*members: str) -> dict:
+    return {"bindings": [{"role": "roles/iap.egressor", "members": list(members)}]}
+
+
+def test_system_endpoints_are_granted_and_verified_before_the_root_binding_is_cleared(tmp_path):
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT)
+    cloud.run({
+        "IAP_MODE": "system-endpoints",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET, CONTAINER_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(["telemetry", "aiplatform"]),
+    })
+    keys = [w["key"] for w in cloud.writes]
+    # Every system endpoint first (in any order: parallel workers), the root last (no gap: the old
+    # root grant stays until then).
+    assert sorted(keys[:-1]) == ["--endpoint=agentregistry-0001", "--endpoint=agentregistry-0002"]
+    assert keys[-1] == "root"
+    assert all(w["policy"] == _binding(AGENT_SET, CONTAINER_SET) for w in cloud.writes[:-1])
+    assert cloud.writes[-1]["policy"] == {"bindings": []}
+    # Only the system endpoints: the external endpoint, agents and MCP servers are untouched.
+    assert "--endpoint=agentregistry-0003" not in cloud.policies
+
+
+def test_system_endpoint_grants_are_idempotent(tmp_path):
+    cloud = FakeCloud(tmp_path)
+    env = {
+        "IAP_MODE": "system-endpoints",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(["telemetry", "aiplatform"]),
     }
-
-    _, calls = _run_grant_script_with_mock_gcloud(
-        tmp_path,
-        iap_members=registry_members,
-        target_policies=target_policies,
-    )
-
-    # 1 registry-root call + 3 mcp-server calls + 1 agent call = 5 calls
-    assert len(calls) == 5
-
-    # First call is the registry root (no --mcp-server or --agent flag), scoped to system endpoints
-    root_call = calls[0]
-    assert _is_root_call(root_call)
-    _assert_conditional_root_policy(root_call["policy"], registry_members)
-
-    # Map remaining calls by target flag; per-target policies stay unconditioned
-    by_flag = {}
-    for c in calls[1:]:
-        target_flags = [a for a in c["args"] if a.startswith("--mcp-server=") or a.startswith("--agent=")]
-        assert len(target_flags) == 1
-        assert c["policy"] == {"bindings": [{"role": "roles/iap.egressor", "members": c["policy"]["bindings"][0]["members"]}]}
-        by_flag[target_flags[0]] = c["policy"]["bindings"][0]["members"]
-
-    assert by_flag["--mcp-server=corporate-email"] == [spec_principal]
-    assert by_flag["--mcp-server=income-verification"] == [spec_principal]
-    assert by_flag["--mcp-server=legacy-dms-mcp-dev"] == [spec_principal]
-    assert by_flag["--agent=ai-coe-mortgage-specialist-agent-dev"] == [orch_principal]
-
-    # Verify orchestrator is never granted egress to any MCP server
-    for flag, members in by_flag.items():
-        if flag.startswith("--mcp-server="):
-            assert orch_principal not in members
+    cloud.run(env)
+    first = len(cloud.writes)
+    res = cloud.run(env)
+    assert len(cloud.writes) == first  # nothing rewritten, root already clear
+    assert "unchanged" in res.stdout
 
 
-def test_grant_iap_egress_script_layer4_bootstrap_without_target_policies(tmp_path: pathlib.Path):
-    """When IAP_TARGET_POLICIES_JSON is omitted, grant_iap_egress.sh only sets the conditional registry root policy."""
-    registry_members = [
-        "principalSet://agents.global.org-123456.system.id.goog/attribute.platformContainer/aiplatform/projects/111"
-    ]
-    _, calls = _run_grant_script_with_mock_gcloud(
-        tmp_path,
-        iap_members=registry_members,
-        target_policies=None,
-    )
-    assert len(calls) == 1
-    assert _is_root_call(calls[0])
-    _assert_conditional_root_policy(calls[0]["policy"], registry_members)
+def test_root_is_left_alone_when_a_system_endpoint_grant_fails(tmp_path):
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT, fail_set_on="--endpoint=agentregistry-0002")
+    res = cloud.run({
+        "IAP_MODE": "system-endpoints",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(["telemetry", "aiplatform"]),
+    }, check=False)
+    assert res.returncode != 0
+    assert cloud.policies["root"] == OLD_ROOT
+    assert all(w["key"] != "root" for w in cloud.writes)
 
 
-def test_grant_iap_egress_script_never_writes_unconditioned_root_binding(tmp_path: pathlib.Path):
-    """No registry-root binding may reach a principalSet (or anyone) without the system-endpoints condition."""
-    registry_members = [
-        "principalSet://agents.global.org-123456.system.id.goog/attribute.platformContainer/aiplatform/projects/111",
-        "principalSet://agents.global.org-123456.system.id.goog/attribute.container/projects/111",
-        "serviceAccount:service-111@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
-    ]
-    spec_principal = (
-        "principal://agents.global.org-123456.system.id.goog/"
-        "resources/aiplatform/projects/222/locations/us-central1/reasoningEngines/spec-1"
-    )
-    _, calls = _run_grant_script_with_mock_gcloud(
-        tmp_path,
-        iap_members=registry_members,
-        target_policies={"mcp_servers": {"legacy-dms": [spec_principal]}},
-    )
-    root_calls = [c for c in calls if _is_root_call(c)]
-    assert len(root_calls) == 1
-    for call in root_calls:
-        assert call["policy"]["version"] == 3
-        for binding in call["policy"]["bindings"]:
-            assert binding.get("condition", {}).get("expression") == ROOT_CONDITION_EXPRESSION, binding
-    # principalSets appear only in the conditional root binding, never in a per-target policy
-    for call in calls:
-        if not _is_root_call(call):
-            for binding in call["policy"]["bindings"]:
-                assert not any(m.startswith("principalSet://") for m in binding["members"])
+def test_system_endpoint_mode_fails_closed_on_an_unregistered_entry(tmp_path):
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT)
+    res = cloud.run({
+        "IAP_MODE": "system-endpoints",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(["telemetry", "not-registered"]),
+    }, check=False)
+    assert res.returncode != 0 and "not-registered is not registered" in res.stderr
+    assert cloud.writes == [] and cloud.policies["root"] == OLD_ROOT
+
+
+def test_per_target_policies_cover_agents_endpoints_and_mcp_servers(tmp_path):
+    cloud = FakeCloud(tmp_path)
+    cloud.run({
+        "IAP_MODE": "targets",
+        "IAP_TARGET_POLICIES_JSON": json.dumps({
+            "agents": {"ai-coe-mortgage-specialist": [ORCH]},
+            "endpoints": {"external-probe": [SPEC]},
+            "mcp_servers": {"legacy-dms": [SPEC]},
+        }),
+    })
+    by_key = {w["key"]: w["policy"] for w in cloud.writes}
+    assert by_key == {
+        "--agent=agentregistry-0005": _binding(ORCH),
+        "--endpoint=agentregistry-0003": _binding(SPEC),
+        "--mcp-server=agentregistry-0004": _binding(SPEC),
+    }
+    # Per-target mode never touches the registry root or the system endpoints.
+    assert "root" not in by_key and "--endpoint=agentregistry-0001" not in by_key
+
+
+def test_target_with_no_callers_gets_an_empty_policy(tmp_path):
+    """A managed: false target with no enforced callers grants nothing: an explicit empty policy."""
+    cloud = FakeCloud(tmp_path)
+    cloud.run({
+        "IAP_MODE": "targets",
+        "IAP_TARGET_POLICIES_JSON": json.dumps({"endpoints": {"external-probe": [SPEC]}}),
+    })
+    cloud.run({
+        "IAP_MODE": "targets",
+        "IAP_TARGET_POLICIES_JSON": json.dumps({"endpoints": {"external-probe": []}}),
+    })
+    assert cloud.policies["--endpoint=agentregistry-0003"] == {"bindings": []}
+
+
+def test_endpoint_grants_refuse_while_the_root_still_has_a_binding(tmp_path):
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT)
+    res = cloud.run({
+        "IAP_MODE": "targets",
+        "IAP_TARGET_POLICIES_JSON": json.dumps({"endpoints": {"external-probe": [SPEC]}}),
+    }, check=False)
+    assert res.returncode != 0 and "Apply layer 4 governance first" in res.stderr
+    assert cloud.writes == []
+    # Agents and MCP servers aren't covered by the old endpoints-only root condition: still granted.
+    cloud.run({
+        "IAP_MODE": "targets",
+        "IAP_TARGET_POLICIES_JSON": json.dumps({"mcp_servers": {"legacy-dms": [SPEC]}}),
+    })
+    assert [w["key"] for w in cloud.writes] == ["--mcp-server=agentregistry-0004"]
+
+
+def test_target_of_the_wrong_entry_type_fails(tmp_path):
+    cloud = FakeCloud(tmp_path)
+    res = cloud.run({
+        "IAP_MODE": "targets",
+        "IAP_TARGET_POLICIES_JSON": json.dumps({"endpoints": {"legacy-dms": [SPEC]}}),
+    }, check=False)
+    assert res.returncode != 0 and "expected endpoints" in res.stderr
+    assert cloud.writes == []
+
+
+@pytest.mark.parametrize(("root_policy", "ok"), [(None, True), (OLD_ROOT, False)], ids=["closed", "open"])
+def test_check_root_mode(tmp_path, root_policy, ok):
+    cloud = FakeCloud(tmp_path, root_policy=root_policy)
+    res = cloud.run({"IAP_MODE": "check-root"}, check=False)
+    assert (res.returncode == 0) is ok
+    assert cloud.writes == []
 
 
 @pytest.mark.parametrize(
     ("override", "message"),
     [
-        ({"GOVERNANCE_PROJECT_NUMBER": None}, "GOVERNANCE_PROJECT_NUMBER"),
-        ({"GOVERNANCE_PROJECT_NUMBER": "esm-dev-governance"}, "numeric project number"),
+        ({"IAP_MODE": None}, "IAP_MODE"),
+        ({"IAP_MODE": "root"}, "IAP_MODE must be"),
+        ({"GOVERNANCE_PROJECT_ID": "bad id; rm -rf /"}, "GOVERNANCE_PROJECT_ID must be a project id"),
         ({"REGION": 'us-central1") || true || ("'}, "REGION"),
     ],
-    ids=["missing-number", "project-id-instead-of-number", "region-injection"],
+    ids=["missing-mode", "unknown-mode", "project-injection", "region-injection"],
 )
-def test_grant_iap_egress_script_rejects_bad_root_scope_inputs(tmp_path: pathlib.Path, override: dict, message: str):
-    """Without a valid project number and region the script writes nothing (no unscoped root fallback)."""
-    res, calls = _run_grant_script_with_mock_gcloud(
-        tmp_path,
-        iap_members=["principalSet://agents.global.org-123456.system.id.goog/attribute.container/projects/111"],
-        extra_env=override,
-        check=False,
-    )
+def test_grant_script_rejects_bad_inputs(tmp_path, override, message):
+    cloud = FakeCloud(tmp_path)
+    res = cloud.run({"IAP_MODE": "check-root", **override}, check=False)
     assert res.returncode != 0
     assert message in res.stderr
-    assert calls == []
+    assert cloud.writes == []
+
+
+def _many_endpoints(n: int) -> dict:
+    return {f"google-api-{i:03d}": ("endpoints", f"agentregistry-{i:04d}") for i in range(n)}
+
+
+def test_many_system_endpoints_run_in_parallel_and_all_verify_before_the_root_clear(tmp_path):
+    registry = _many_endpoints(30)
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT, registry=registry)
+    res = cloud.run({
+        "IAP_MODE": "system-endpoints",
+        "IAP_CONCURRENCY": "6",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(sorted(registry)),
+    })
+    keys = [w["key"] for w in cloud.writes]
+    assert len(keys) == 31 and keys[-1] == "root" and len(set(keys[:-1])) == 30
+    assert "30 entries written (where needed) and verified" in res.stdout
+    assert all(cloud.policies[f"--endpoint={uid}"] == _binding(AGENT_SET) for _, uid in registry.values())
+
+
+def test_quota_errors_are_retried_with_backoff(tmp_path):
+    """RESOURCE_EXHAUSTED (429) answers are retried; the run still completes and verifies."""
+    registry = _many_endpoints(5)
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT, registry=registry, quota_errors=3)
+    res = cloud.run({
+        "IAP_MODE": "system-endpoints",
+        "IAP_CONCURRENCY": "3",
+        "IAP_MAX_ATTEMPTS": "6",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(sorted(registry)),
+    })
+    assert "retrying" in res.stderr
+    assert cloud.policies["root"] == {"bindings": []}
+    assert all(cloud.policies[f"--endpoint={uid}"] == _binding(AGENT_SET) for _, uid in registry.values())
+
+
+def test_one_failed_entry_among_many_leaves_the_root_untouched(tmp_path):
+    registry = _many_endpoints(12)
+    cloud = FakeCloud(tmp_path, root_policy=OLD_ROOT, registry=registry, fail_set_on="--endpoint=agentregistry-0007")
+    res = cloud.run({
+        "IAP_MODE": "system-endpoints",
+        "IAP_CONCURRENCY": "4",
+        "IAP_MEMBERS_JSON": json.dumps([AGENT_SET]),
+        "SYSTEM_ENDPOINT_IDS_JSON": json.dumps(sorted(registry)),
+    }, check=False)
+    assert res.returncode != 0 and "1 of 12 entries could not be written and verified" in res.stderr
+    assert cloud.policies["root"] == OLD_ROOT
+    assert all(w["key"] != "root" for w in cloud.writes)
+
+
+@pytest.mark.parametrize("value", ["0", "abc", "100"])
+def test_bad_concurrency_is_rejected(tmp_path, value):
+    cloud = FakeCloud(tmp_path)
+    res = cloud.run({"IAP_MODE": "check-root", "IAP_CONCURRENCY": value}, check=False)
+    assert res.returncode != 0 and "IAP_CONCURRENCY" in res.stderr

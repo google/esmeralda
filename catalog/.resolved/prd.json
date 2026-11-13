@@ -252,6 +252,7 @@
   },
   "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
   "environment": "prd",
+  "external_targets": {},
   "generated_by": "esmeralda catalog resolve --env prd --write",
   "iap_egress": {
     "agents": {
@@ -261,6 +262,7 @@
         "layer-3-security:test_vm_sa_email"
       ]
     },
+    "endpoints": {},
     "mcp_servers": {
       "corporate-email": [
         "agents/ai-coe-mortgage-specialist:agent_identity_principal",

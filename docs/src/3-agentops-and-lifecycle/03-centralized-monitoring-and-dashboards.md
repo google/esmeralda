@@ -264,7 +264,7 @@ Filters audit logs for security-critical methods:
 | `usage/tool_calls` | Usage records with `event = "tool.call"` | `tool`, `server`, `status`, `workload`, `caller_team` |
 | `usage/unattributed_records` | Usage records without `caller.verified = true` (every runtime, for reference) | `workload`, `source`, `event`, `caller_team` |
 | `usage/unattributed_guarded_records` | The same, from guarded workloads only (`workload.runtime` other than `agent_engine`); read by the alert and the dashboard tile | `workload`, `source`, `event`, `caller_team` |
-| `attribution/gateway_unattributed_decisions` (governance project, created by the Layer 5 `iap-egress` unit) | Agent Gateway (IAP egress) decisions on agents and MCP servers that granted a principal missing from the catalog's `principal_teams` rows | `target` |
+| `attribution/gateway_unattributed_decisions` (governance project, created by the Layer 5 `iap-egress` unit) | Agent Gateway (IAP egress) decisions on agents and MCP servers that granted a principal missing from the catalog's `principal_teams` rows (decisions on external endpoint entries are not counted yet; the catalog compile already refuses an external caller list with a member that has no row) | `target` |
 | `security/iam_privilege_changes`, `security/secret_access_operations`, `security/reasoning_engine_deployments` | Cloud Audit Logs (`SetIamPolicy`, `AccessSecretVersion`, `ReasoningEngine`) | |
 
 In PromQL a log-based metric is `logging_googleapis_com:user_<name>` with `/` replaced by `_`, and a distribution's total is its `_sum` series, e.g. `sum by (caller_team) (increase(logging_googleapis_com:user_usage_input_tokens_sum[1h]))`.

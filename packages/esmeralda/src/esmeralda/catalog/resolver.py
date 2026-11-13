@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,22 @@ COMPILED_KINDS = frozenset({"mcp", "a2a", "adk"})
 EXPECTED_TOKEN = {"mcp": "id", "a2a": "access", "adk": "access"}
 # Agent Registry entries that get a per-target Agent Gateway policy, by IAP_TARGET_POLICIES_JSON group.
 IAP_GROUPS = {"mcp": "mcp_servers", "a2a": "agents"}
+# `managed: false` targets compiled into Agent Registry entries: kind -> (entry type, protocol binding).
+EXTERNAL_REGISTRY = {
+    "http": ("endpoint", "HTTP_JSON"),
+    "model": ("endpoint", "HTTP_JSON"),
+    "mcp": ("mcp_server", "JSONRPC"),
+    "a2a": ("agent", "HTTP+JSON"),
+}
+# IAP_TARGET_POLICIES_JSON group of each Agent Registry entry type.
+REGISTRY_GROUPS = {"endpoint": "endpoints", "mcp_server": "mcp_servers", "agent": "agents"}
+# Every group of the compiled iap_egress lists, always present (possibly empty).
+IAP_EGRESS_GROUPS = ("agents", "endpoints", "mcp_servers")
+# Placeholders an external endpoint may use instead of environment-specific literals; the registering
+# unit substitutes them from layer outputs ({domain}: layer 2 entrypoint_domain, {region}: env.yaml).
+ENDPOINT_PLACEHOLDERS = frozenset({"domain", "region"})
+# Hosts layer 4 registers for every agent (system endpoints): never a per-target catalog entry.
+SYSTEM_HOST_SUFFIX = "googleapis.com"
 # Agent unit output holding the agent's Agent Identity principal (principal://...).
 WORKLOAD_PRINCIPAL_OUTPUT = "agent_identity_principal"
 # Units whose service-account outputs the iap-egress unit maps (identity_refs); agent principals aside.
@@ -170,6 +187,65 @@ def _is_compiled(target: dict[str, Any]) -> bool:
     return not target.get("example") and target["kind"] in COMPILED_KINDS and "unit" in target["deploy"]
 
 
+_ENDPOINT = re.compile(r"^https://(?P<host>[^/:?#]+)(?::(?P<port>[0-9]{1,5}))?(?P<path>/[^?#]*)?$")
+_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
+
+
+def endpoint_host(endpoint: str) -> str:
+    """Host of an external endpoint, placeholders kept (``apigee.{domain}``); empty if malformed."""
+    match = _ENDPOINT.match(endpoint)
+    return match["host"] if match else ""
+
+
+def _is_system_endpoint(target: dict[str, Any]) -> bool:
+    """A ``managed: false`` target on a Google API host: layer 4 registers it for every agent."""
+    host = endpoint_host(target["deploy"].get("endpoint", ""))
+    return host == SYSTEM_HOST_SUFFIX or host.endswith("." + SYSTEM_HOST_SUFFIX)
+
+
+def _is_external(target: dict[str, Any]) -> bool:
+    """A non-example ``managed: false`` target that gets its own Agent Registry entry and caller list."""
+    return (
+        not target.get("example")
+        and target["deploy"].get("managed") is False
+        and target["kind"] in EXTERNAL_REGISTRY
+        and not _is_system_endpoint(target)
+    )
+
+
+def _registry_group(target: dict[str, Any]) -> str | None:
+    """The iap_egress group of a target with its own Agent Registry entry (``None``: no entry)."""
+    if _is_compiled(target):
+        return IAP_GROUPS.get(target["kind"])
+    if _is_external(target):
+        return REGISTRY_GROUPS[EXTERNAL_REGISTRY[target["kind"]][0]]
+    return None
+
+
+def _external_problems(label: str, name: str, target: dict[str, Any]) -> list[str]:
+    """Endpoint shape of a non-example ``managed: false`` target (placeholders, ``{domain}`` hosts)."""
+    endpoint = target["deploy"]["endpoint"]
+    if target["kind"] == "adk":
+        return [f"{label}: kind adk means an agent deployed on Agent Runtime (deploy.unit); declare an agent "
+                "running elsewhere as kind a2a with managed: false"]
+    problems = []
+    unknown = sorted({p for p in _PLACEHOLDER.findall(endpoint) if p not in ENDPOINT_PLACEHOLDERS})
+    if unknown:
+        problems.append(f"{label}: unknown endpoint placeholder(s) {', '.join('{' + p + '}' for p in unknown)} "
+                        f"(known: {', '.join('{' + p + '}' for p in sorted(ENDPOINT_PLACEHOLDERS))})")
+    host = endpoint_host(endpoint)
+    if not host:
+        problems.append(f"{label}: deploy.endpoint '{endpoint}' is not https://<host>[:port][/path]")
+        return problems
+    if not re.fullmatch(r"[a-z0-9.{}-]+", host):
+        problems.append(f"{label}: deploy.endpoint host '{host}' must be an exact hostname (letters, digits, dots, "
+                        "hyphens, placeholders): the Agent Registry matches exact hostnames, no wildcards")
+    if "{domain}" in host and not re.fullmatch(r"[a-z0-9-]+\.\{domain\}", host):
+        problems.append(f"{label}: deploy.endpoint host '{host}' must be one label under {{domain}} "
+                        "(<label>.{domain}: the entry point certificate covers *.{domain} only)")
+    return problems
+
+
 def caller_team(resolved_doc: dict[str, Any], caller: str) -> str | None:
     if caller in resolved_doc["callers"]:
         return resolved_doc["callers"][caller]["team"]
@@ -245,7 +321,7 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
             if caller == name:
                 problems.append(f"{label}: lists itself as a caller")
                 continue
-            if _is_compiled(target) and target["kind"] in IAP_GROUPS:
+            if _registry_group(target):
                 problems += _iap_ref_problems(label, caller, doc)
             if caller in targets:
                 if targets[caller]["kind"] not in WORKLOAD_KINDS:
@@ -275,6 +351,32 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
     for dim in ((policy.get("defaults") or {}).get("observability") or {}).get("dimensions") or []:
         if dim not in dimensions:
             problems.append(f"policy.defaults.observability: unknown dimension '{dim}'")
+    return problems + _check_external_hosts(doc, where)
+
+
+def _check_external_hosts(doc: dict[str, Any], where: Any) -> list[str]:
+    """External endpoints: valid shape, one target per host, no clash with an entry point host."""
+    problems: list[str] = []
+    targets = doc["targets"]
+    served = {f"{name}.{{domain}}": name for name, t in targets.items() if _is_compiled(t)}
+    hosts: dict[str, str] = {}
+    for name in sorted(targets):
+        target = targets[name]
+        if target.get("example") or target["deploy"].get("managed") is not False:
+            continue
+        label = where("targets", name)
+        found = _external_problems(label, name, target)
+        problems += found
+        if found or not _is_external(target):
+            continue
+        host = endpoint_host(target["deploy"]["endpoint"])
+        if host in hosts:
+            problems.append(f"{label}: endpoint host '{host}' is also the host of target '{hosts[host]}' (one "
+                            "Agent Registry entry, so one caller list, per host)")
+        hosts.setdefault(host, name)
+        if host in served:
+            problems.append(f"{label}: endpoint host '{host}' is the entry point host of deployed target "
+                            f"'{served[host]}'")
     return problems
 
 
@@ -441,23 +543,29 @@ def _identity_member(identity: dict[str, Any] | None) -> str | None:
 def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
     """The Agent Gateway per-target ``roles/iap.egressor`` member lists, derived from target callers.
 
-    Shape: ``{"agents": {<a2a target>: [...]}, "mcp_servers": {<mcp target>: [...]}}`` (the
-    ``IAP_TARGET_POLICIES_JSON`` layout of ``grant_iap_egress.sh``). Members are unresolved
+    Shape: ``{"agents": {...}, "endpoints": {...}, "mcp_servers": {...}}`` (the
+    ``IAP_TARGET_POLICIES_JSON`` layout of ``grant_iap_egress.sh``): deployed ``a2a`` / ``mcp``
+    targets, and non-example ``managed: false`` targets by their Agent Registry entry type (``http``
+    and non-Google ``model`` endpoints under ``endpoints``, ``mcp`` under ``mcp_servers``, ``a2a``
+    under ``agents``). Every such target is listed, with an empty list when no caller is enforced:
+    the script then writes an empty policy (nobody), never skips the entry. Members are unresolved
     references the ``iap-egress`` unit maps to unit outputs: ``<unit>:agent_identity_principal``
     (an agent caller's Agent Identity principal) and ``<unit>:<output>`` service-account refs
     (``layer-3-security:<x>_sa_email``); a literal service-account id passes through unchanged.
     Per target, in order: each agent caller's principal then service account, the policy
-    ``agent_gateway.shared_workload_identity`` when the target has an agent caller, then the other
-    service-account callers. Callers that are not enforced (groups, examples, ...) are skipped, the
-    same set ``compile_terraform`` leaves out of ``callers``, and so are callers marked
-    ``agent_gateway: false``: they reach the target directly (an Apigee proxy runtime, say), so they
-    keep the target's IAM grant but never hold ``roles/iap.egressor`` on its registry entry.
+    ``agent_gateway.shared_workload_identity`` when the target has an agent caller (``mcp`` / ``a2a``
+    kinds it lists, never endpoints), then the other service-account callers. Callers that are not
+    enforced (groups, examples, ...) are skipped, the same set ``compile_terraform`` leaves out of
+    ``callers``, and so are callers marked ``agent_gateway: false``: they reach the target directly
+    (an Apigee proxy runtime, say), so they keep the target's IAM grant but never hold
+    ``roles/iap.egressor`` on its registry entry.
     """
     shared = (resolved.policy.get("agent_gateway") or {}).get("shared_workload_identity") or {}
-    out: dict[str, dict[str, list[str]]] = {group: {} for group in IAP_GROUPS.values()}
+    out: dict[str, dict[str, list[str]]] = {group: {} for group in IAP_EGRESS_GROUPS}
     for name in sorted(resolved.targets):
         target = resolved.targets[name]
-        if not _is_compiled(target) or target["kind"] not in IAP_GROUPS:
+        group = _registry_group(target)
+        if not group:
             continue
         callers, _ = _compiled_callers(resolved, target)
         workload: list[str] = []
@@ -476,10 +584,37 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
                 if member:
                     others.append(member)
         members = list(workload)
-        if workload and shared and target["kind"] in shared.get("kinds", []):
+        if workload and shared and group != "endpoints" and target["kind"] in shared.get("kinds", []):
             members.append(shared["ref"])
         members += others
-        out[IAP_GROUPS[target["kind"]]][name] = list(dict.fromkeys(members))
+        out[group][name] = list(dict.fromkeys(members))
+    return out
+
+
+def compile_external_targets(resolved: Resolved) -> dict[str, dict[str, Any]]:
+    """The Agent Registry entries of non-example ``managed: false`` targets (``external_targets``).
+
+    One entry per target, keyed by target name (the entry's ``service_id``): ``kind``, ``registry``
+    (``endpoint`` | ``mcp_server`` | ``agent``), ``url`` (the catalog endpoint, placeholders such as
+    ``{domain}`` kept for the ``iap-egress`` unit to substitute from layer outputs),
+    ``protocol_binding``, ``description`` and ``owner_team``. Targets on Google API hosts are left
+    out: layer 4 registers those for every agent (system endpoints). Their caller lists are in
+    ``iap_egress`` under the matching group.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for name in sorted(resolved.targets):
+        target = resolved.targets[name]
+        if not _is_external(target):
+            continue
+        registry, binding = EXTERNAL_REGISTRY[target["kind"]]
+        out[name] = {
+            "kind": target["kind"],
+            "registry": registry,
+            "url": target["deploy"]["endpoint"],
+            "protocol_binding": binding,
+            "description": target.get("description") or name,
+            "owner_team": target["owner_team"],
+        }
     return out
 
 
@@ -682,6 +817,7 @@ def render_resolved_file(resolved: Resolved) -> str:
         "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
         "environment": resolved.env,
         "catalog": compile_terraform(resolved),
+        "external_targets": compile_external_targets(resolved),
         "iap_egress": compile_iap_egress(resolved),
         "attribution": compile_attribution(resolved),
     }
@@ -737,6 +873,16 @@ def render_hcl(resolved: Resolved) -> str:
 # ------------------------------------------------------------------------------------------
 
 
+def _registry_entry(target: dict[str, Any]) -> str | None:
+    """Where the Agent Gateway finds this target, for ``show``."""
+    group = _registry_group(target)
+    if group:
+        return f"{group} (per-target caller list)"
+    if not target.get("example") and target["deploy"].get("managed") is False and _is_system_endpoint(target):
+        return "system endpoint (layer 4, every agent; callers not enforced at the gateway)"
+    return None
+
+
 def show(
     resolved: Resolved,
     *,
@@ -781,7 +927,7 @@ def show(
                         "cost_centers": grant.get("cost_centers")
                         or (resolved.teams.get(team) or {}).get("cost_centers", []),
                     },
-                    "enforced": c in compiled_callers,
+                    "enforced": c in compiled_callers and (_is_compiled(t) or _is_external(t)),
                     **({"tools": grant["tools"]} if grant.get("tools") else {}),
                     **({"quota": grant["quota"]} if grant.get("quota") else {}),
                     **({"product": grant["product"]} if grant.get("product") else {}),
@@ -801,6 +947,7 @@ def show(
                 "example": bool(t.get("example")),
                 "deploy": deploy.get("unit") or deploy.get("endpoint"),
                 "compiled": _is_compiled(t),
+                "registry": _registry_entry(t),
                 "gateway": t.get("gateway"),
                 "ingress_backend": host_backend,
                 "callers": entry_callers,

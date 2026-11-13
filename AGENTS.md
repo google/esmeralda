@@ -67,7 +67,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for day-to-day status, pl
 | `uv run esmeralda units [--layer 0..5] --env <env>` | `make units ENV=<env>` | Lists Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence |
 | `uv run esmeralda plan <unit\|--all> --env <env>` | `make plan [UNIT=<unit>] ENV=<env>` | Read-only `terragrunt plan -lock=false` summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `uv run esmeralda apply <unit> --env <env>` | `make apply UNIT=<unit> ENV=<env>` | Plans to a saved planfile, **enforces the destroy guard** (refuses `destroy > 0` without `--allow-destroy`), and applies |
-| `uv run esmeralda verify --env <env>` | `make verify ENV=<env>` | Gateway conformance probes (`scripts/test_gateway.sh`) + remote specialist and orchestrator queries |
+| `uv run esmeralda verify --env <env>` | `make verify ENV=<env>` | Gateway conformance probes (`scripts/test_gateway.sh`) + Agent Registry egress policies (every entry lists exactly its compiled callers, none on the registry root) + remote specialist and orchestrator queries |
 | `uv run esmeralda verify --partner --env <env>` | `make test-partner ENV=<env>` | Apigee partner front-door conformance probes (`scripts/test_partner.sh`, offline or live) |
 | `uv run esmeralda verify --model-armor --env <env>` | — | Model Armor checks for `governance.model_armor`: injection through model calls, gateway `tools/call` inspection, long-call regression |
 | `uv run esmeralda query --agent-dir apps/agents/<agent> "..."` | `make query AGENT=<agent> [TARGET=local\|remote]` | Queries an ADK or A2A agent in-process, over `--url`, or on Agent Runtime (`--engine`), with `--user-token` support |

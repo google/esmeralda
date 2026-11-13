@@ -121,7 +121,12 @@ output "agw_root_ca_bundle" {
 
 output "iap_egress_members" {
   value       = module.agent_gateway.iap_egress_members
-  description = "IAM members of the registry-root roles/iap.egressor binding, conditioned to system endpoint entries only (reused by layer 5 iap-egress)."
+  description = "IAM members of the roles/iap.egressor policy on each system endpoint entry (Google APIs); the registry root holds no binding. `esmeralda verify` compares the live policies with it."
+}
+
+output "system_endpoint_ids" {
+  value       = module.agent_gateway.system_endpoint_ids
+  description = "Agent Registry service ids of the system endpoint entries (Google APIs) that list iap_egress_members."
 }
 
 output "semantic_governance_manifest" {
