@@ -18,9 +18,10 @@ Reads the effective switches from the layer-4 ``model_armor`` output
 (env.yaml ``governance.model_armor``) and runs:
 
 * ``model-calls``: a prompt-injection string sent straight to Gemini (``generateContent`` and
-  ``streamGenerateContent``) in each agent project, on the regional endpoint, as the agents do when
-  Vertex AI built-in Model Armor is on. ``enforce`` passes when both calls are blocked; ``inspect``
-  passes when both go through (findings are only logged).
+  ``streamGenerateContent``) in each agent project, with the agents' model and location
+  (``agent.yaml``). ``enforce`` passes when ``generateContent`` is blocked; ``inspect`` passes when
+  it goes through and a prompt-injection finding is logged in every agent project. The stream
+  result is only reported (``streamGenerateContent_screened``): Vertex AI does not screen streams.
 * ``gateway``: when Agent Gateway CONTENT_AUTHZ is on, a real specialist query (MCP ``tools/call``
   through the gateway), then Model Armor sanitize log entries in the governance project since the
   query started. A blocking probe is not possible here: with model calls inspected, the same text
@@ -80,11 +81,11 @@ def blocked_reason(response: Any = None, error: BaseException | None = None) -> 
     return None
 
 
-def _gemini_calls(project: str, region: str, model: str) -> dict[str, Any]:
-    """One generateContent and one streamGenerateContent with the injection prompt, regional endpoint."""
+def _gemini_calls(project: str, location: str, model: str) -> dict[str, Any]:
+    """One generateContent and one streamGenerateContent with the injection prompt."""
     from google import genai
 
-    client = genai.Client(vertexai=True, project=project, location=region)
+    client = genai.Client(vertexai=True, project=project, location=location)
     results: dict[str, Any] = {}
     try:
         response = client.models.generate_content(model=model, contents=INJECTION_PROMPT)
@@ -107,24 +108,41 @@ def _gemini_calls(project: str, region: str, model: str) -> dict[str, Any]:
     return results
 
 
-def model_name(root: Path, agent: str = MODEL_AGENT) -> str:
+def model_target(root: Path, agent: str = MODEL_AGENT) -> tuple[str, str]:
+    """The agent's model and the location it calls it in (agent.yaml MODEL_NAME / MODEL_LOCATION)."""
     import yaml
 
     config = yaml.safe_load((root / "apps" / "agents" / agent / "agent.yaml").read_text())
-    name = (config.get("env") or {}).get("MODEL_NAME")
+    env = config.get("env") or {}
+    name = env.get("MODEL_NAME")
     if not name:
         raise OpsError(f"apps/agents/{agent}/agent.yaml has no env.MODEL_NAME")
-    return str(name)
+    return str(name), str(env.get("MODEL_LOCATION") or "global")
 
 
-def check_model_calls(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
+def _prompt_matches(entries: list[dict[str, Any]]) -> int:
+    """Vertex AI sanitize entries for a user prompt where a filter matched."""
+    count = 0
+    for entry in entries:
+        payload = entry.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        result = payload.get("sanitizationResult") or payload.get("sanitization_result") or {}
+        op = payload.get("operationType") or payload.get("operation_type")
+        state = result.get("filterMatchState") or result.get("filter_match_state")
+        if op == "SANITIZE_USER_PROMPT" and state == "MATCH_FOUND":
+            count += 1
+    return count
+
+
+def check_model_calls(root: Path, cfg: dict[str, Any], *, log_wait: float = 60.0) -> dict[str, Any]:
     mode = cfg.get("model_calls", "off")
     step: dict[str, Any] = {"step": "model-armor:model-calls", "seconds": 0.0}
     if mode == "off":
         return {**step, "passed": True, "skipped": True, "detail": "model_calls is off: nothing to check"}
     started = time.monotonic()
-    region = cfg.get("region") or "us-central1"
-    model = model_name(root)
+    started_at = datetime.now(timezone.utc)
+    model, location = model_target(root)
     projects = cfg.get("agent_project_ids") or []
     if not projects:
         return {**step, "passed": False, "detail": "no agent projects in the layer-4 model_armor output"}
@@ -132,20 +150,38 @@ def check_model_calls(root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
     passed = True
     for project in projects:
         try:
-            calls = _gemini_calls(project, region, model)
+            calls = _gemini_calls(project, location, model)
         except Exception as exc:
             per_project[project] = {"error": repo.short(f"{type(exc).__name__}: {exc}", 300)}
             passed = False
             continue
         per_project[project] = calls
-        blocked = [bool(v) for v in calls.values()]
-        passed = passed and (all(blocked) if mode == "enforce" else not any(blocked))
-    want = "both calls blocked" if mode == "enforce" else "both calls allowed (findings are only logged)"
+        # Only generateContent is screened: streamGenerateContent is reported, never required.
+        blocked = bool(calls.get("generateContent"))
+        calls["streamGenerateContent_screened"] = bool(calls.get("streamGenerateContent"))
+        passed = passed and (blocked if mode == "enforce" else not blocked)
+    if mode == "inspect" and passed:
+        # Inspect never blocks: the proof is a logged prompt-injection finding in every project.
+        deadline = time.monotonic() + log_wait
+        pending = set(projects)
+        while pending:
+            for project in sorted(pending):
+                found = _prompt_matches(_sanitize_entries(root, project, started_at, 60.0))
+                if found:
+                    per_project[project]["prompt_findings"] = found
+                    pending.discard(project)
+            if not pending or time.monotonic() >= deadline:
+                break
+            time.sleep(10)
+        for project in pending:
+            per_project[project]["prompt_findings"] = 0
+        passed = not pending
+    want = "generateContent blocked" if mode == "enforce" else "generateContent allowed and the finding logged"
     return {
         **step,
         "passed": passed,
         "seconds": round(time.monotonic() - started, 1),
-        "detail": f"{mode}: expected {want}; model {model} in {region}",
+        "detail": f"{mode}: expected {want}; model {model} ({location})",
         "projects": per_project,
     }
 
@@ -174,6 +210,11 @@ async def check_gateway(root: Path, env: str, cfg: dict[str, Any], *, timeout: f
     if not query.get("passed"):
         return {**step, "passed": False, "seconds": query.get("seconds", 0.0),
                 "detail": repo.short((query.get("errors") or ["specialist query failed"])[0], 200)}
+    if query.get("tool_errors"):
+        # A blocked tool response (for example SDP on the response template) surfaces as a tool error.
+        return {**step, "passed": False, "seconds": query.get("seconds", 0.0), "tool_calls": query.get("tool_calls"),
+                "detail": f"{query['tool_errors']} tool error(s) through the gateway: Model Armor may be "
+                "blocking legitimate tool calls or responses (check the sanitize logs)"}
     governance = repo.output(root, env, PROJECTS_UNIT, "governance_project_id")
     entries: list[dict[str, Any]] = []
     for _ in range(6):  # sanitize logs land with a short delay
@@ -214,6 +255,7 @@ async def check_long_call(root: Path, env: str, *, timeout: float) -> dict[str, 
         "seconds": seconds,
         "detail": detail,
         "exceeded_60s": exercised,
+        "tool_errors": query.get("tool_errors", 0),
     }
 
 

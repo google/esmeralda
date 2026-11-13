@@ -67,9 +67,6 @@ inputs = {
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle
 
-  # Regional Gemini endpoint when Vertex AI built-in Model Armor is on (governance.model_armor.model_calls)
-  model_location = try(dependency.governance.outputs.model_armor_model_location, "")
-
   # roles/aiplatform.user on this agent's project: the service accounts of the catalog callers; when an
   # agent calls, also the identity agents call out as (SERVICE_ACCOUNT_EMAIL, the shared MCP invoker
   # service account, whose access token reaches Agent Runtime through direct); and each enabled adapter.

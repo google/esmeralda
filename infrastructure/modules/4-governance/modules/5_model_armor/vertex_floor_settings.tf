@@ -3,16 +3,15 @@
 # VERTEX AI BUILT-IN MODEL ARMOR (agent -> Gemini calls)
 # ==============================================================================
 # A project-level Model Armor floor setting with the Vertex AI integration screens every Gemini
-# generateContent / streamGenerateContent call made in that project: the prompt before the model
-# runs and the response after it. Set on each agent project, because the agents call Gemini with
-# their own project.
+# generateContent call made in that project: the prompt before the model runs and the response
+# after it. Set on each agent project, because the agents call Gemini with their own project.
 #
 # Limits (see docs: Central Agent Gateway, Model Armor coverage):
-#   * regional model endpoints only: the agents get MODEL_LOCATION = region (layer-4 output
-#     model_armor_model_location), the global endpoint is not screened;
+#   * streamGenerateContent is not screened (verified live: no result, no block, even in enforce);
 #   * no de-identification: an SDP match blocks the call, it is never masked (hence
 #     model_calls_sdp, off by default);
 #   * the integration fails open: when Model Armor is unavailable the call goes through unscreened.
+# Verified live: calls to the global endpoint (the agents' MODEL_LOCATION) are screened.
 
 locals {
   floor_projects = var.model_calls == "off" ? toset([]) : toset(var.agent_project_ids)
@@ -49,16 +48,17 @@ resource "google_model_armor_floorsetting" "vertex_ai" {
   enable_floor_setting_enforcement = true
   integrated_services              = ["AI_PLATFORM"]
 
+  # Exactly one of inspect_only / inspect_and_block may be set (false still counts as set).
   ai_platform_floor_setting {
-    inspect_only         = var.model_calls == "inspect"
-    inspect_and_block    = var.model_calls == "enforce"
+    inspect_only         = var.model_calls == "inspect" ? true : null
+    inspect_and_block    = var.model_calls == "enforce" ? true : null
     enable_cloud_logging = var.enable_cloud_logging
   }
 
   filter_config {
     pi_and_jailbreak_filter_settings {
       filter_enforcement = "ENABLED"
-      confidence_level   = "MEDIUM_AND_ABOVE"
+      confidence_level   = var.pi_confidence # HIGH by default: avoids false positives on agent system prompts
     }
 
     malicious_uri_filter_settings {

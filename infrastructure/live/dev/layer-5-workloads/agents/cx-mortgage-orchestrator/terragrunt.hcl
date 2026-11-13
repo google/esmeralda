@@ -75,9 +75,6 @@ inputs = {
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle
 
-  # Regional Gemini endpoint when Vertex AI built-in Model Armor is on (governance.model_armor.model_calls)
-  model_location = try(dependency.governance.outputs.model_armor_model_location, "")
-
   # BYOC image from the shared layer-0 CI/CD project (resolved to a digest by the module)
   agent_image_uri = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"
 

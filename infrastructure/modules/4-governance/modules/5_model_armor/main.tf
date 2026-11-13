@@ -46,6 +46,12 @@ variable "model_calls_sdp" {
   description = "Also run the Sensitive Data Protection basic filter on model calls (blocks on a match, never masks)."
 }
 
+variable "pi_confidence" {
+  type        = string
+  default     = "HIGH"
+  description = "Minimum confidence for the prompt injection and jailbreak filter on model calls."
+}
+
 variable "enable_cloud_logging" {
   type        = bool
   default     = true
@@ -58,6 +64,12 @@ variable "agent_project_ids" {
   description = "Projects whose Gemini calls get the Vertex AI floor setting (one per agent team project)."
 }
 
+variable "template_sdp" {
+  type        = bool
+  default     = false
+  description = "Sensitive Data Protection basic filter in the gateway prompt/response templates (blocks on a match, never masks)."
+}
+
 # Enable Model Armor API in Governance Project
 resource "google_project_service" "model_armor_api" {
   project            = var.governance_project_id
@@ -65,7 +77,7 @@ resource "google_project_service" "model_armor_api" {
   disable_on_destroy = false
 }
 
-# 1. Request / Prompt Guardrails Template (Inbound: Prompt Injection + Jailbreaks + Malicious URIs + SDP + RAI + Multi-Language)
+# 1. Request / Prompt Guardrails Template (Inbound: Prompt Injection + Jailbreaks + Malicious URIs + optional SDP + RAI + Multi-Language)
 resource "google_model_armor_template" "prompt_guardrails" {
   provider    = google-beta
   depends_on  = [google_project_service.model_armor_api]
@@ -83,9 +95,13 @@ resource "google_model_armor_template" "prompt_guardrails" {
       filter_enforcement = "ENABLED"
     }
 
-    sdp_settings {
-      basic_config {
-        filter_enforcement = "ENABLED"
+    # SDP blocks on a match (the gateway never masks): off unless template_sdp (governance.model_armor.gateway_sdp).
+    dynamic "sdp_settings" {
+      for_each = var.template_sdp ? [1] : []
+      content {
+        basic_config {
+          filter_enforcement = "ENABLED"
+        }
       }
     }
 
@@ -119,7 +135,7 @@ resource "google_model_armor_template" "prompt_guardrails" {
   }
 }
 
-# 2. Response / Output Guardrails Template (Outbound: Malicious URIs + SDP + RAI + Multi-Language; Omits Prompt Injection)
+# 2. Response / Output Guardrails Template (Outbound: Malicious URIs + optional SDP + RAI + Multi-Language; Omits Prompt Injection)
 resource "google_model_armor_template" "response_guardrails" {
   provider    = google-beta
   depends_on  = [google_project_service.model_armor_api]
@@ -132,9 +148,13 @@ resource "google_model_armor_template" "response_guardrails" {
       filter_enforcement = "ENABLED"
     }
 
-    sdp_settings {
-      basic_config {
-        filter_enforcement = "ENABLED"
+    # SDP blocks on a match (the gateway never masks): off unless template_sdp (governance.model_armor.gateway_sdp).
+    dynamic "sdp_settings" {
+      for_each = var.template_sdp ? [1] : []
+      content {
+        basic_config {
+          filter_enforcement = "ENABLED"
+        }
       }
     }
 

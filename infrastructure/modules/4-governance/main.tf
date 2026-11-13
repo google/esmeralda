@@ -84,6 +84,8 @@ module "model_armor" {
   region                = var.region
   model_calls           = local.model_armor_model_calls
   model_calls_sdp       = var.model_armor_config.model_calls_sdp
+  pi_confidence         = var.model_armor_config.model_calls_pi_confidence
+  template_sdp          = var.model_armor_config.gateway_sdp
   enable_cloud_logging  = var.model_armor_config.enable_cloud_logging
   agent_project_ids     = var.agent_project_ids
 }

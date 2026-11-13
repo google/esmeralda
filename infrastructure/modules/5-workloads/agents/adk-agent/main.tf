@@ -187,8 +187,6 @@ locals {
     AGENT_GATEWAY_ROOT_CERTIFICATES = var.agent_gateway_root_certificates
     # Hosts the agent calls with an OAuth2 access token instead of an ID token (esmeralda.auth.token_kind)
     ACCESS_TOKEN_HOSTS = join(",", var.access_token_hosts)
-    # Regional Gemini endpoint when Vertex AI built-in Model Armor is on (layer 4); empty keeps agent.yaml
-    MODEL_LOCATION = var.model_location
   }
 
   final_env_vars = merge(

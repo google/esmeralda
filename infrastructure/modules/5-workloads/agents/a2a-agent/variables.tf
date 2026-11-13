@@ -138,9 +138,3 @@ variable "access_token_hosts" {
   type        = list(string)
   default     = []
 }
-
-variable "model_location" {
-  description = "Gemini location for the agent (MODEL_LOCATION). Layer 4 sets the region when Vertex AI built-in Model Armor is on (it only screens regional endpoints); empty keeps the agent.yaml value"
-  type        = string
-  default     = ""
-}

@@ -3,11 +3,10 @@
 # ==============================================================================
 # Two independent inspection points, each behind its own switch:
 #
-#   model_calls: Vertex AI built-in Model Armor on the agents' Gemini calls
-#                (generateContent and streamGenerateContent). A Model Armor floor setting
-#                with the Vertex AI integration is set on every agent project. It needs a
-#                regional model endpoint, so the agents get MODEL_LOCATION = region
-#                (output model_armor_model_location, read by the layer-5 agent units).
+#   model_calls: Vertex AI built-in Model Armor on the agents' Gemini generateContent calls
+#                (streamGenerateContent is not screened). A Model Armor floor setting
+#                with the Vertex AI integration is set on every agent project; it screens the
+#                calls the agents already make (global endpoint included), no agent change.
 #   gateway:     Agent Gateway CONTENT_AUTHZ: the gateway sends unary MCP tools/call and
 #                prompts/get payloads and agent cards to Model Armor. A2A messages, model
 #                calls and streams are not matched (see docs: Central Agent Gateway, Model
@@ -21,30 +20,43 @@ variable "model_armor_config" {
     Model Armor switches (env.yaml governance.model_armor):
       model_calls:             "off" | "inspect" | "enforce". Vertex AI built-in Model Armor on the
                                agents' Gemini calls (floor setting on every agent project). "inspect"
-                               only logs findings; "enforce" blocks. Requires a regional model
-                               endpoint (agents get MODEL_LOCATION = region).
+                               only logs findings; "enforce" blocks.
       gateway:                 "off" | "on". Agent Gateway CONTENT_AUTHZ on unary MCP tools/call and
                                prompts/get and on agent cards. Needs capabilities.content_safety =
                                "agent_gateway".
       gateway_fail_open:       Let traffic through when Model Armor errors or times out (true) or
                                reject it (false). false is the recommended production value.
+      gateway_sdp:             Sensitive Data Protection in the gateway templates. A match blocks the
+                               tool call or response (the gateway never masks), so it is off by
+                               default: the demo tool responses carry (synthetic) SSNs.
       gateway_timeout_ms:      Per-message timeout of the gateway callout, 10-10000 ms.
       model_calls_sdp:         Also run the Sensitive Data Protection basic filter on model calls. The
                                Vertex AI integration blocks on an SDP match (it never masks), so
                                this is off by default: data such as account or tax numbers would
                                block legitimate turns.
       enable_cloud_logging:    Log the Vertex AI integration's findings to Cloud Logging.
+      model_calls_pi_confidence: Minimum confidence for the prompt injection and jailbreak filter on
+                               model calls (LOW_AND_ABOVE | MEDIUM_AND_ABOVE | HIGH). HIGH by
+                               default: agent system prompts are long instruction text, and
+                               MEDIUM_AND_ABOVE flagged a legitimate turn in dev.
   EOT
   type = object({
-    model_calls          = optional(string, "off")
-    model_calls_sdp      = optional(bool, false)
-    gateway              = optional(string, "off")
-    gateway_fail_open    = optional(bool, false)
-    gateway_timeout_ms   = optional(number, 10000)
-    enable_cloud_logging = optional(bool, true)
+    model_calls               = optional(string, "off")
+    model_calls_sdp           = optional(bool, false)
+    model_calls_pi_confidence = optional(string, "HIGH")
+    gateway                   = optional(string, "off")
+    gateway_sdp               = optional(bool, false)
+    gateway_fail_open         = optional(bool, false)
+    gateway_timeout_ms        = optional(number, 10000)
+    enable_cloud_logging      = optional(bool, true)
   })
   default  = {}
   nullable = false
+
+  validation {
+    condition     = contains(["LOW_AND_ABOVE", "MEDIUM_AND_ABOVE", "HIGH"], var.model_armor_config.model_calls_pi_confidence)
+    error_message = "model_armor_config.model_calls_pi_confidence must be LOW_AND_ABOVE, MEDIUM_AND_ABOVE or HIGH."
+  }
 
   validation {
     condition     = contains(["off", "inspect", "enforce"], var.model_armor_config.model_calls)
@@ -69,11 +81,6 @@ locals {
     var.model_armor_config.gateway == "on" &&
     try(var.governance_config.capabilities.content_safety, "agent_gateway") == "agent_gateway"
   )
-}
-
-output "model_armor_model_location" {
-  value       = local.model_armor_model_calls != "off" ? var.region : ""
-  description = "Location the agents must call Gemini in (MODEL_LOCATION) for Vertex AI built-in Model Armor; empty when model_calls is off (agents keep their agent.yaml value)."
 }
 
 output "model_armor" {

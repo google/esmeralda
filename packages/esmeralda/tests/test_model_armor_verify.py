@@ -104,17 +104,31 @@ def test_missing_layer4_output_fails(monkeypatch, tmp_path: Path):
     ],
 )
 def test_model_calls_expectation_follows_the_mode(monkeypatch, tmp_path: Path, mode, blocked, expected):
-    monkeypatch.setattr(ma, "model_name", lambda root, agent=ma.MODEL_AGENT: "gemini-mock")
+    monkeypatch.setattr(ma, "model_target", lambda root, agent=ma.MODEL_AGENT: ("gemini-mock", "global"))
+    finding = {"payload": {"operationType": "SANITIZE_USER_PROMPT",
+                           "sanitizationResult": {"filterMatchState": "MATCH_FOUND"}}}
+    monkeypatch.setattr(ma, "_sanitize_entries", lambda root, project, start, timeout: [finding])
     seen = []
 
-    def fake_calls(project, region, model):
-        seen.append((project, region, model))
+    def fake_calls(project, location, model):
+        seen.append((project, location, model))
         return {"generateContent": blocked, "streamGenerateContent": blocked}
 
     monkeypatch.setattr(ma, "_gemini_calls", fake_calls)
     step = ma.check_model_calls(tmp_path, _cfg(model_calls=mode))
     assert step["passed"] is expected
-    assert seen == [("esm-dev-cx-agents-mock", "us-central1", "gemini-mock")]
+    assert seen == [("esm-dev-cx-agents-mock", "global", "gemini-mock")]
+
+
+def test_inspect_needs_a_logged_prompt_finding(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(ma, "model_target", lambda root, agent=ma.MODEL_AGENT: ("gemini-mock", "global"))
+    monkeypatch.setattr(ma, "_gemini_calls", lambda p, loc, m: {"generateContent": None, "streamGenerateContent": None})
+    clean = {"payload": {"operationType": "SANITIZE_USER_PROMPT",
+                         "sanitizationResult": {"filterMatchState": "NO_MATCH_FOUND"}}}
+    monkeypatch.setattr(ma, "_sanitize_entries", lambda root, project, start, timeout: [clean])
+    step = ma.check_model_calls(tmp_path, _cfg(model_calls="inspect"), log_wait=0)
+    assert step["passed"] is False
+    assert step["projects"]["esm-dev-cx-agents-mock"]["prompt_findings"] == 0
 
 
 def test_gateway_on_needs_sanitize_log_entries(monkeypatch, tmp_path: Path):
@@ -123,6 +137,15 @@ def test_gateway_on_needs_sanitize_log_entries(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(ma, "_sanitize_entries", lambda root, project, start, timeout: [{"payload": {}}])
     step = asyncio.run(ma.check_gateway(tmp_path, "dev", _cfg(gateway="on"), timeout=10))
     assert step["passed"] is True and "1 Model Armor sanitize" in step["detail"]
+
+
+def test_gateway_on_fails_on_blocked_tool_calls(monkeypatch, tmp_path: Path):
+    async def fake_query(root, env, agent, message, *, timeout=300.0, session=None):
+        return {"agent": agent, "passed": True, "seconds": 5.0, "tool_calls": ["dms_get_document"], "tool_errors": 2}
+
+    monkeypatch.setattr(runtime, "query_agent", fake_query)
+    step = asyncio.run(ma.check_gateway(tmp_path, "dev", _cfg(gateway="on"), timeout=10))
+    assert step["passed"] is False and "2 tool error(s)" in step["detail"]
 
 
 def test_short_long_call_passes_but_says_it_was_not_exercised(monkeypatch, tmp_path: Path):

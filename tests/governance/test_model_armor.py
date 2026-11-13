@@ -45,7 +45,9 @@ ENV_PATHS = {env: REPO_ROOT / f"infrastructure/live/{env}/env.yaml" for env in (
 AGENT_UNITS = sorted(REPO_ROOT.glob("infrastructure/live/*/layer-5-workloads/agents/*/terragrunt.hcl"))
 AGENT_MODULES = [REPO_ROOT / f"infrastructure/modules/5-workloads/agents/{m}" for m in ("adk-agent", "a2a-agent")]
 
-MODEL_ARMOR_KEYS = {"model_calls", "model_calls_sdp", "gateway", "gateway_fail_open", "gateway_timeout_ms"}
+MODEL_ARMOR_KEYS = {
+    "model_calls", "model_calls_sdp", "gateway", "gateway_sdp", "gateway_fail_open", "gateway_timeout_ms",
+}
 
 
 def _load_env_locals(path: pathlib.Path) -> dict[str, Any]:
@@ -150,26 +152,29 @@ def test_content_authz_policy_is_scoped_to_unary_routes():
 
 
 def test_floor_setting_follows_model_calls():
+    templates = (GOVERNANCE_MODULE / "modules/5_model_armor/main.tf").read_text()
+    assert templates.count('for_each = var.template_sdp ? [1] : []') == 2, "SDP in both gateway templates is opt-in"
     text = FLOOR_TF.read_text()
     floor = _code(_resource_block(text, "google_model_armor_floorsetting", "vertex_ai"))
     assert 'integrated_services              = ["AI_PLATFORM"]' in floor
-    assert 'inspect_only         = var.model_calls == "inspect"' in floor
-    assert 'inspect_and_block    = var.model_calls == "enforce"' in floor
+    assert 'inspect_only         = var.model_calls == "inspect" ? true : null' in floor
+    assert 'inspect_and_block    = var.model_calls == "enforce" ? true : null' in floor
     assert "var.model_calls_sdp" in floor
+    assert "confidence_level   = var.pi_confidence" in floor
+    assert 'model_calls_pi_confidence = optional(string, "HIGH")' in MODEL_ARMOR_TF.read_text()
     assert 'var.model_calls == "off" ? toset([])' in text
     off = _code(_resource_block(text, "terraform_data", "vertex_ai_floor_off"))
     assert "when    = destroy" in off and "model_armor_floor_off.sh" in off
     assert FLOOR_OFF_SCRIPT.is_file()
 
 
-def test_agents_get_the_regional_model_location_from_layer_4():
+def test_model_calls_need_no_agent_change():
+    """Vertex AI screens the agents' existing (global) Gemini calls: no location override is wired."""
     assert len(AGENT_UNITS) == 4, AGENT_UNITS
-    wanted = 'model_location = try(dependency.governance.outputs.model_armor_model_location, "")'
     for unit in AGENT_UNITS:
-        assert wanted in unit.read_text(), unit
+        assert "model_armor" not in unit.read_text(), unit
     for module in AGENT_MODULES:
-        assert "MODEL_LOCATION = var.model_location" in (module / "main.tf").read_text(), module
-        assert 'variable "model_location"' in (module / "variables.tf").read_text(), module
+        assert "MODEL_LOCATION" not in (module / "main.tf").read_text(), module
 
 
 def test_l4_units_pass_the_model_armor_block():
@@ -233,18 +238,18 @@ def test_defaults_are_off(tmp_path: pathlib.Path):
     res = _evaluate(tmp_path, {})
     assert res.returncode == 0, res.stdout + res.stderr
     out = _outputs(tmp_path)
-    assert out["model_armor_model_location"] == ""
+    assert "model_armor_model_location" not in out
     assert out["model_armor"]["model_calls"] == "off"
     assert out["model_armor"]["gateway"] == "off"
     assert out["model_armor"]["gateway_fail_open"] is False
     assert out["model_armor"]["gateway_timeout_ms"] == 10000
 
 
-def test_model_calls_on_moves_agents_to_the_regional_endpoint(tmp_path: pathlib.Path):
+def test_switches_reach_the_output(tmp_path: pathlib.Path):
     res = _evaluate(tmp_path, {"model_armor_config": {"model_calls": "inspect", "gateway": "on"}})
     assert res.returncode == 0, res.stdout + res.stderr
     out = _outputs(tmp_path)
-    assert out["model_armor_model_location"] == "us-central1"
+    assert out["model_armor"]["model_calls"] == "inspect"
     assert out["model_armor"]["gateway"] == "on"
 
 
@@ -263,6 +268,7 @@ def test_gateway_needs_content_safety_on_agent_gateway(tmp_path: pathlib.Path):
         ({"model_calls": "block"}, "model_calls must be one of"),
         ({"gateway": "true"}, "gateway must be"),
         ({"gateway_timeout_ms": 20000}, "between 10 and 10000"),
+        ({"model_calls_pi_confidence": "MEDIUM"}, "model_calls_pi_confidence must be"),
     ],
 )
 def test_invalid_values_are_rejected(tmp_path: pathlib.Path, config: dict[str, Any], message: str):
