@@ -33,7 +33,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent.agent import _max_output_tokens, _thinking_config_kwargs
+from agent.agent import _max_output_tokens, _thinking_config_kwargs, _validate_model_settings
 from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
 
 SERVICES_DIR = Path(__file__).resolve().parents[3] / "services"
@@ -253,6 +253,22 @@ class TestMaxOutputTokens:
     def test_empty_or_zero_keeps_model_default(self):
         assert _max_output_tokens("") is None
         assert _max_output_tokens("0") is None
+
+
+@pytest.mark.parametrize(("setting", "value"), [
+    ("MODEL_THINKING", "minimal"),
+    ("MODEL_THINKING", "1024"),
+    ("MODEL_MAX_OUTPUT_TOKENS", "65537"),
+    ("MODEL_LOCATION", "us-central1"),
+])
+def test_invalid_model_settings(monkeypatch, setting, value):
+    monkeypatch.setenv("MODEL_NAME", "gemini-3.7-flash")
+    monkeypatch.setenv("MODEL_THINKING", "low")
+    monkeypatch.setenv("MODEL_MAX_OUTPUT_TOKENS", "2048")
+    monkeypatch.setenv("MODEL_LOCATION", "global")
+    monkeypatch.setenv(setting, value)
+    with pytest.raises(ValueError):
+        _validate_model_settings()
 
 
 # An answer in the instruction's format for the borrower-ID prompt, built from the synthetic tool
