@@ -741,7 +741,7 @@ requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.3.26,<1.0.0" },
     { name = "certifi", specifier = ">=2026.10.23" },
     { name = "google-adk", specifier = ">=2.4.0" },
-    { name = "google-auth" },
+    { name = "google-auth", specifier = ">=2.61" },
     { name = "httpx" },
     { name = "opentelemetry-api", specifier = ">=1.45.2,<1.46.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2,<1.46.0" },

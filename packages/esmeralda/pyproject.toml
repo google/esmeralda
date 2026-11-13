@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "google-adk>=2.4.0",
-    "google-auth",
+    "google-auth>=2.61",
     "certifi>=2026.10.23",
     "opentelemetry-api>=1.45.2,<1.46.0",
     "opentelemetry-sdk>=1.45.2,<1.46.0",
