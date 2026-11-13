@@ -41,17 +41,17 @@ resource "google_project_iam_member" "mcp_invoker_run_role" {
   member  = "serviceAccount:${google_service_account.mcp_invoker_sa.email}"
 }
 
-# 2b. Grant Cloud Run Invoker role on the MCPs Project directly to the AI CoE Specialist Agent Identity
-# (CX orchestrator is deliberately excluded: it delegates tool work to the AI CoE specialist over A2A)
-resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_mcp_run_invoker" {
-  project = var.mcps_project_id
-  role    = "roles/run.invoker"
-  member  = local.ai_coe_mortgage_specialist_identity_principal
-}
+# 2b. No agent identity holds project-level roles/run.invoker on the MCPs project (it used to be granted
+# to the AI CoE agents principalSet, so any engine in that project could invoke every MCP service).
+# Agents call the MCP services with tokens of the identity they call out as (SERVICE_ACCOUNT_EMAIL),
+# which gets run.invoker per service from the catalog callers.
 
 # 3a. Allow CX mortgage orchestrator identity PrincipalSet to Impersonate the Invoker SA
 # (Required when enable_native_spiffe_auth = false so cx-mortgage-orchestrator can mint an OAuth2 access token
 # as sa-mcp-invoker to invoke ai-coe-mortgage-specialist; per-target IAP egress still blocks MCP servers.)
+# This SA-scoped grant is the only token-minting right agent identities hold: they have no project-level
+# roles/iam.serviceAccountTokenCreator, which would let them impersonate every service account of their
+# project (in the CX agents project that includes the test VM SA, which can invoke the MCP services).
 resource "google_service_account_iam_member" "cx_mortgage_orchestrator_identity_impersonates_mcp_invoker" {
   service_account_id = google_service_account.mcp_invoker_sa.name
   role               = "roles/iam.serviceAccountTokenCreator"
@@ -77,7 +77,6 @@ resource "google_project_iam_member" "cx_mortgage_orchestrator_identity_roles" {
     "roles/telemetry.writer",
     "roles/browser",
     "roles/cloudapiregistry.viewer",
-    "roles/iam.serviceAccountTokenCreator",
     "roles/bigquery.jobUser"
   ])
   project = var.cx_agents_project_id
@@ -98,7 +97,6 @@ resource "google_project_iam_member" "ai_coe_mortgage_specialist_identity_roles"
     "roles/serviceusage.serviceUsageConsumer",
     "roles/browser",
     "roles/cloudapiregistry.viewer",
-    "roles/iam.serviceAccountTokenCreator",
     "roles/bigquery.jobUser"
   ])
   project = var.ai_coe_agents_project_id
