@@ -107,6 +107,7 @@ flowchart LR
   R --> T["env.yaml catalog: entry point, direct backends, invokers, verify"]
   R --> G["env.yaml catalog_iap_egress: Agent Gateway per-target lists"]
   R --> X["env.yaml catalog_external_targets: registry entries of managed: false targets"]
+  R --> A["env.yaml catalog_google_apis: layer-4 Google API entries"]
 ```
 
 1. **Merge.** Sources are merged in the order `sources.yaml` lists them. In the `files` source, an
@@ -198,9 +199,10 @@ flowchart LR
       as `<label>.{domain}`) and `{region}`. Two targets can't share a host, and a host can't be the
       `<name>.{domain}` of a deployed target. Hosts under a private domain other than the entry point
       domain also need DNS peering and CA trust in the Agent Connectivity Template (not compiled).
-    - **Google APIs.** A target on `*.googleapis.com` (such as `gemini-flash` on Vertex AI) is a
-      layer-4 system endpoint, open to every agent project: it gets no entry of its own, and
-      `esmeralda catalog show` marks its callers as not enforced at the gateway.
+    - **Google APIs.** A target on `*.googleapis.com` (such as `gemini-flash` on Vertex AI) gets no
+      entry of its own: its host is a layer-4 Google API entry, reachable only by the agents that
+      declare that API in `google_apis` (see step 6b). An agent that lists such a model must
+      declare its API, or the resolve fails; an unknown Google host fails too.
     - **No callers, no access.** A target whose callers are all unenforced (groups, federated or
       Apigee app identities) or absent is still registered, with an empty policy. Removing the
       target deletes its entry, so the gateway denies the host again; removing a caller rewrites the
@@ -211,15 +213,54 @@ flowchart LR
     - **Examples** (`example: true`, such as `external/legacy/example-core-banking.yaml`) stay
       illustrative: they are never registered.
     - **Verification.** `esmeralda verify` (step `registry-egress`) reads every registry entry and
-      its IAP policy and fails unless the registry root holds no binding, each system endpoint entry
-      lists exactly the layer-4 members, each catalog entry lists exactly its compiled callers, each
-      external target is registered with its exact URL, and any other entry has no policy. In dev,
+      its IAP policy and fails unless the registry root holds no binding, each baseline Google API
+      entry lists exactly the layer-4 members, each catalog entry lists exactly its compiled callers,
+      each external target is registered with its exact URL, the registered Google API entries are
+      exactly the declared ones, and any other entry has no policy. In dev,
       an allowed call from the specialist to `external-probe.<domain>` reaches the entry point and
       gets its no-route `404`; any other agent gets the gateway's `403`.
 
     The registry root never holds a `roles/iap.egressor` binding: a root binding would be inherited
     by every external entry (see
     [2.1 §3.4](01-central-agent-gateway.md#34-iap-authorization-authz-extension-authz-policy-and-rolesiapegressor)).
+
+    <a id="google-apis"></a>
+    **6b. Declare the Google APIs each agent calls.** Agents reach Google APIs through the Agent
+    Gateway too, and the gateway only lets a caller reach registered hosts it's granted on. The
+    catalog declares them, and layer 4 registers nothing else:
+
+    ```yaml
+    # catalog/policy.yaml: every agent runtime
+    policy:
+      agent_gateway:
+        google_apis:
+          baseline: [telemetry, aiplatform_runtime_region, cloudresourcemanager, iamcredentials]
+
+    # catalog/teams/ai-coe/agents/ai-coe-mortgage-specialist.yaml: this agent only
+    google_apis: [aiplatform, bigquery, bigquerystorage, storage]
+    ```
+
+    They compile into `google_apis` in `.resolved/<env>.json` (`env.yaml` decodes it as
+    `catalog_google_apis`): one Agent Registry entry per API at least one deployed agent may reach,
+    keyed by its service id, with `url`, `protocol_binding`, `grant` and `callers`.
+
+    - **Names** come from the resolver's known-hosts table (`esmeralda.catalog.GOOGLE_APIS`): real,
+      serving hostnames only, such as `aiplatform` (`aiplatform.googleapis.com`, the global model
+      endpoint), `aiplatform_runtime_region` (`<region>-aiplatform.googleapis.com`, Agent Runtime
+      sessions), `bigquerystorage` (gRPC). An unknown name fails the resolve. There are no mTLS,
+      multi-region or REP variants: agents pin `GOOGLE_API_USE_MTLS_ENDPOINT=never`.
+    - **Baseline entries** (`grant: baseline`) are granted by layer 4 to the agent projects'
+      `principalSet`s, so a replaced engine can start before its new identity is granted.
+    - **Per-agent entries** (`grant: callers`) are granted by the `iap-egress` unit to each declaring
+      agent's Agent Identity; they're in `iap_egress.endpoints` under the same key. No other agent can
+      reach them.
+    - **Registration:** layer 4 registers each entry as `https://<host>` and `https://<host>:443`
+      (gRPC clients send `host:443`). An API nobody declares isn't registered, and removing the last
+      declaration removes the entry.
+    - **Guards** (`make test-guards`): every compiled host is in the known-hosts table, each
+      per-agent entry lists exactly the declaring agents (never a service agent or a project-wide
+      set), and the code signals of each agent (model location, sessions, `--otel-to-cloud`, the
+      BigQuery analytics plugin, literal `*.googleapis.com` hosts) are covered by its declarations.
 
 7. **Compile verified attribution.** The same callers compile into an `attribution` block: the
     `principal_teams` rows (each verified principal, its catalog caller and the team that pays), the

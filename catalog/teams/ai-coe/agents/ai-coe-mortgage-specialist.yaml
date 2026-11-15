@@ -10,6 +10,12 @@ deploy: { unit: agents/ai-coe-mortgage-specialist }
 # No `identity`: it calls out with its own Agent Identity (the unit's agent_identity_principal).
 serving: { token: access, probe: a2a }
 models: [gemini-flash]
+# Google APIs beyond policy.agent_gateway.google_apis.baseline (the Agent Gateway denies the rest).
+google_apis:
+  - aiplatform       # Gemini generateContent (MODEL_LOCATION=global)
+  - bigquery         # BigQuery Agent Analytics plugin: table checks and jobs
+  - bigquerystorage  # the same plugin's AppendRows writes (gRPC)
+  - storage          # the same plugin's offload of large or multimodal content (GCS_BUCKET)
 
 # Who may call it. Workload callers are other targets; the rest are declared under callers.
 # The calling team pays: cost_centers limits what a caller may declare.

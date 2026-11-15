@@ -60,6 +60,16 @@ _SPECIALIST_ON_MCP = [
     "agents/ai-coe-mortgage-specialist:agent_identity_principal",
     "layer-3-security:test_vm_sa_email",
 ]
+_SPECIALIST = ["agents/ai-coe-mortgage-specialist:agent_identity_principal"]
+_BOTH_AGENTS = [*_SPECIALIST, "agents/cx-mortgage-orchestrator:agent_identity_principal"]
+# The Google APIs single agents declare (catalog google_apis, beyond the policy baseline): each
+# entry lists only the agents that declare it.
+GOOGLE_API_IAP = {
+    "aiplatform": _BOTH_AGENTS,
+    "bigquery": _SPECIALIST,
+    "bigquerystorage": _SPECIALIST,
+    "storage": _SPECIALIST,
+}
 LEGACY_IAP_EGRESS = {
     "agents": {
         "ai-coe-mortgage-specialist": [
@@ -72,13 +82,24 @@ LEGACY_IAP_EGRESS = {
         "income-verification": _SPECIALIST_ON_MCP,
         "legacy-dms": _SPECIALIST_ON_MCP,
     },
-    "endpoints": {},
+    "endpoints": GOOGLE_API_IAP,
 }
 # dev also declares the synthetic external target external-probe (catalog/environments/dev.yaml).
-_SPECIALIST = ["agents/ai-coe-mortgage-specialist:agent_identity_principal"]
 ENV_IAP_EGRESS = {
     "prd": LEGACY_IAP_EGRESS,
-    "dev": {**LEGACY_IAP_EGRESS, "endpoints": {"external-probe": _SPECIALIST}},
+    "dev": {**LEGACY_IAP_EGRESS, "endpoints": {**GOOGLE_API_IAP, "external-probe": _SPECIALIST}},
+}
+# The Google API entries layer 4 registers (8, from 91 hostname variants before): the baseline
+# (every agent runtime) and the per-agent ones.
+GOOGLE_API_ENTRIES = {
+    "{region}-aiplatform": ("baseline", "https://{region}-aiplatform.googleapis.com", "HTTP_JSON"),
+    "telemetry": ("baseline", "https://telemetry.googleapis.com", "HTTP_JSON"),
+    "cloudresourcemanager": ("baseline", "https://cloudresourcemanager.googleapis.com", "HTTP_JSON"),
+    "iamcredentials": ("baseline", "https://iamcredentials.googleapis.com", "HTTP_JSON"),
+    "aiplatform": ("callers", "https://aiplatform.googleapis.com", "HTTP_JSON"),
+    "bigquery": ("callers", "https://bigquery.googleapis.com", "HTTP_JSON"),
+    "bigquerystorage": ("callers", "https://bigquerystorage.googleapis.com", "GRPC"),
+    "storage": ("callers", "https://storage.googleapis.com", "HTTP_JSON"),
 }
 
 HEADER = "schema: esmeralda.catalog\nschema_version: 1\n"
@@ -203,7 +224,9 @@ _SHARED_POLICY = """  agent_gateway:
 def _with_shared_identity(repo: Path, kinds: str = "[mcp]") -> None:
     """The (deprecated) policy block that lists one shared outbound identity on agent-called targets."""
     path = repo / "catalog/policy.yaml"
-    path.write_text(path.read_text() + _SHARED_POLICY.replace("[mcp]", kinds))
+    text = path.read_text()
+    assert "  agent_gateway:\n" in text
+    path.write_text(text.replace("  agent_gateway:\n", _SHARED_POLICY.replace("[mcp]", kinds), 1))
 
 
 def test_repo_policy_has_no_shared_workload_identity():
@@ -287,6 +310,119 @@ def test_iap_lists_cover_only_registry_targets():
     assert "cx-mortgage-orchestrator" not in iap["agents"]
     for group in iap.values():
         assert "example-core-banking" not in group and "gemini-flash" not in group
+
+
+# ------------------------------------------------------------------------------------------
+# Google API egress (google_apis): declared in the catalog, least privilege per agent
+# ------------------------------------------------------------------------------------------
+
+_ORCH_FILE = "catalog/teams/cx/agents/cx-mortgage-orchestrator.yaml"
+_SPEC_FILE = "catalog/teams/ai-coe/agents/ai-coe-mortgage-specialist.yaml"
+
+
+def _edit(repo: Path, rel: str, old: str, new: str) -> None:
+    path = repo / rel
+    text = path.read_text()
+    assert old in text, (rel, old)
+    path.write_text(text.replace(old, new))
+
+
+@pytest.mark.parametrize("env", ["dev", "prd"])
+def test_repo_catalog_compiles_the_least_privilege_google_apis(env):
+    google = catalog.compile_google_apis(catalog.resolve(REPO, env))
+    assert {sid: (e["grant"], e["url"], e["protocol_binding"]) for sid, e in google.items()} == GOOGLE_API_ENTRIES
+    both = ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator"]
+    for sid, entry in google.items():
+        expected = both if entry["grant"] == "baseline" or sid == "aiplatform" else ["ai-coe-mortgage-specialist"]
+        assert entry["callers"] == expected, sid
+    data = json.loads((REPO / "catalog/.resolved" / f"{env}.json").read_text())
+    assert data["google_apis"] == google
+
+
+def test_no_agent_reaches_a_google_api_it_doesnt_declare():
+    """Per-agent Google API entries list exactly the declaring agents; baseline ones are layer 4's."""
+    resolved = catalog.resolve(REPO, "dev")
+    google = catalog.compile_google_apis(resolved)
+    endpoints = catalog.compile_iap_egress(resolved)["endpoints"]
+    baseline = set(catalog.resolver.google_api_baseline(resolved.policy))
+    for name in ("cx-mortgage-orchestrator", "ai-coe-mortgage-specialist"):
+        principal = f"agents/{name}:agent_identity_principal"
+        declared = set(resolved.targets[name].get("google_apis") or []) - baseline
+        reachable = {google[sid]["api"] for sid, members in endpoints.items() if sid in google and principal in members}
+        assert reachable == declared, name
+    for sid, entry in google.items():
+        assert (sid in endpoints) == (entry["grant"] == "callers"), sid
+    # The orchestrator never reaches BigQuery or Cloud Storage.
+    for sid in ("bigquery", "bigquerystorage", "storage"):
+        assert endpoints[sid] == _SPECIALIST
+
+
+def test_an_unknown_google_api_fails(repo):
+    _edit(repo, _ORCH_FILE, "  - aiplatform  #", "  - pubsub\n  - aiplatform  #")
+    assert "unknown Google API 'pubsub' in google_apis" in _problems(repo)
+
+
+def test_an_unknown_baseline_api_fails(repo):
+    _edit(repo, "catalog/policy.yaml", "        - telemetry ", "        - modelarmor_rep\n        - telemetry ")
+    assert "policy.agent_gateway.google_apis.baseline: unknown Google API 'modelarmor_rep'" in _problems(repo)
+
+
+def test_google_apis_are_for_agents_only(repo):
+    _edit(repo, "catalog/teams/ai-coe/mcp/legacy-dms.yaml", "\ncallers:", "\ngoogle_apis: [storage]\ncallers:")
+    assert "google_apis is only for agents" in _problems(repo)
+
+
+def test_an_agent_must_declare_the_google_api_of_its_model(repo):
+    _edit(repo, _ORCH_FILE, "google_apis:\n  - aiplatform  # Gemini generateContent (MODEL_LOCATION=global)\n", "")
+    problems = _problems(repo)
+    assert "calls model 'gemini-flash' on the Google API 'aiplatform' but doesn't declare it" in problems
+
+
+def test_a_model_on_an_unknown_google_host_fails(repo):
+    _edit(repo, "catalog/teams/platform/models/gemini-flash.yaml", "https://aiplatform.googleapis.com",
+          "https://us-aiplatform.googleapis.com")
+    assert "deploy.endpoint host 'us-aiplatform.googleapis.com' is not a known Google API host" in _problems(repo)
+
+
+def test_a_baseline_api_an_agent_also_declares_stays_a_baseline_entry(repo):
+    _edit(repo, _SPEC_FILE, "  - storage ", "  - telemetry\n  - storage ")
+    resolved = catalog.resolve(repo, "dev")
+    assert catalog.compile_google_apis(resolved)["telemetry"]["grant"] == "baseline"
+    assert "telemetry" not in catalog.compile_iap_egress(resolved)["endpoints"]
+
+
+def test_an_api_no_agent_declares_is_not_registered(repo):
+    _edit(repo, _SPEC_FILE, "  - storage          # the same plugin's offload of large or multimodal content "
+                            "(GCS_BUCKET)\n", "")
+    resolved = catalog.resolve(repo, "dev")
+    assert "storage" not in catalog.compile_google_apis(resolved)
+    assert "storage" not in catalog.compile_iap_egress(resolved)["endpoints"]
+
+
+def test_a_target_may_not_take_a_google_api_entry_name(repo):
+    _write(repo, "external/legacy/storage.yaml",
+           "name: storage\nkind: http\nowner_team: platform\n"
+           "deploy: { managed: false, endpoint: \"https://storage.example.com\" }\n")
+    assert "the name 'storage' is the Agent Registry entry of the Google API 'storage'" in _problems(repo)
+
+
+def test_every_known_google_api_is_a_plain_googleapis_host():
+    for name, api in catalog.GOOGLE_APIS.items():
+        host = api.host.replace("{region}", "us-central1")
+        assert host.endswith(".googleapis.com") and ".mtls." not in host and ".rep." not in host, name
+        assert not host.startswith("us-") or name == "aiplatform_runtime_region", name
+        assert api.protocol_binding in ("HTTP_JSON", "GRPC"), name
+    assert catalog.GOOGLE_APIS["bigquerystorage"].protocol_binding == "GRPC"
+
+
+def test_show_lists_the_google_apis_of_each_agent():
+    resolved = catalog.resolve(REPO, "dev")
+    (row,) = catalog.show(resolved, target="cx-mortgage-orchestrator")["targets"]
+    assert row["google_apis"] == [
+        "telemetry", "aiplatform_runtime_region", "cloudresourcemanager", "iamcredentials", "aiplatform",
+    ]
+    (model,) = catalog.show(resolved, target="gemini-flash")["targets"]
+    assert model["registry"].startswith("Google API entry")
 
 
 def test_show_answers_who_calls_via_which_gateway_and_who_pays():
@@ -620,13 +756,13 @@ def test_dev_external_probe_is_registered_with_the_specialist_only():
             "owner_team": "platform",
         }
     }
-    assert catalog.compile_iap_egress(resolved)["endpoints"] == {"external-probe": _SPECIALIST}
+    assert catalog.compile_iap_egress(resolved)["endpoints"] == {**GOOGLE_API_IAP, "external-probe": _SPECIALIST}
     # Not deployed by a unit: no entry point route, no IAM grant, no in-process allowlist.
     assert "external-probe" not in catalog.compile_terraform(resolved)
     assert "external-probe" not in catalog.compile_caller_allowlists(resolved)
-    # prd has none.
+    # prd has none (its endpoints are the per-agent Google API entries only).
     prd = catalog.resolve(REPO, "prd")
-    assert catalog.compile_external_targets(prd) == {} and catalog.compile_iap_egress(prd)["endpoints"] == {}
+    assert catalog.compile_external_targets(prd) == {} and catalog.compile_iap_egress(prd)["endpoints"] == GOOGLE_API_IAP
 
 
 def test_external_targets_are_in_the_committed_resolved_files():
@@ -639,10 +775,11 @@ def test_examples_and_google_api_hosts_are_never_registered():
     resolved = catalog.resolve(REPO, "dev")
     external = catalog.compile_external_targets(resolved)
     assert "example-core-banking" not in external  # example: true wins
-    assert "gemini-flash" not in external  # aiplatform.googleapis.com: a layer-4 system endpoint
+    assert "gemini-flash" not in external  # aiplatform.googleapis.com: a layer-4 Google API entry
     rows = {r["target"]: r for r in catalog.show(resolved)["targets"]}
-    assert rows["gemini-flash"]["registry"].startswith("system endpoint")
-    assert not any(c["enforced"] for c in rows["gemini-flash"]["callers"])
+    assert rows["gemini-flash"]["registry"].startswith("Google API entry")
+    # Enforced: both callers are deployed agents that declare aiplatform (google_apis).
+    assert all(c["enforced"] for c in rows["gemini-flash"]["callers"])
     assert rows["external-probe"]["registry"] == "endpoints (per-target caller list)"
     assert all(c["enforced"] for c in rows["external-probe"]["callers"])
 
@@ -677,7 +814,7 @@ def test_external_target_with_no_callers_grants_nothing(repo):
               + "callers:\n  platform-ops: {}\n")
     resolved = catalog.resolve(repo, "prd")
     endpoints = catalog.compile_iap_egress(resolved)["endpoints"]
-    assert endpoints == {"groups-only": [], "lonely-api": []}
+    assert endpoints == {**GOOGLE_API_IAP, "groups-only": [], "lonely-api": []}
     assert set(catalog.compile_external_targets(resolved)) == {"groups-only", "lonely-api"}
     # And nothing about them reaches the IAM / allowlist side.
     assert not {"groups-only", "lonely-api"} & set(catalog.compile_terraform(resolved))

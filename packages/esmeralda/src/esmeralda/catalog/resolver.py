@@ -71,8 +71,49 @@ IAP_EGRESS_GROUPS = ("agents", "endpoints", "mcp_servers")
 # Placeholders an external endpoint may use instead of environment-specific literals; the registering
 # unit substitutes them from layer outputs ({domain}: layer 2 entrypoint_domain, {region}: env.yaml).
 ENDPOINT_PLACEHOLDERS = frozenset({"domain", "region"})
-# Hosts layer 4 registers for every agent (system endpoints): never a per-target catalog entry.
+# Google API hosts: registered by layer 4 from the catalog `google_apis` declarations, never as a
+# per-target external entry.
 SYSTEM_HOST_SUFFIX = "googleapis.com"
+
+
+@dataclass(frozen=True)
+class GoogleApi:
+    """A Google API an agent may reach through the Agent Gateway (one Agent Registry entry)."""
+
+    service_id: str  # Agent Registry service id; {region} is the environment's region
+    host: str  # exact hostname the clients call; {region} as above
+    display_name: str
+    protocol_binding: str = "HTTP_JSON"
+
+
+# The Google APIs the catalog may declare (policy.agent_gateway.google_apis.baseline and each agent's
+# google_apis), by catalog name. Only hostnames that exist and serve the API: no mTLS, multi-region
+# or REP variants (agents pin GOOGLE_API_USE_MTLS_ENDPOINT=never, so they never call *.mtls hosts).
+# Layer 4 registers each declared API with both https://<host> and https://<host>:443 interfaces
+# (gRPC clients send host:443 as the authority). Keep the service ids stable: renaming one
+# replaces a live registry entry and its policy.
+GOOGLE_APIS: dict[str, GoogleApi] = {
+    "aiplatform": GoogleApi("aiplatform", "aiplatform.googleapis.com", "Vertex AI Platform"),
+    "aiplatform_runtime_region": GoogleApi(
+        "{region}-aiplatform", "{region}-aiplatform.googleapis.com", "Vertex AI Platform Regional"
+    ),
+    "bigquery": GoogleApi("bigquery", "bigquery.googleapis.com", "BigQuery"),
+    "bigquerystorage": GoogleApi("bigquerystorage", "bigquerystorage.googleapis.com", "BigQuery Storage", "GRPC"),
+    "cloudresourcemanager": GoogleApi(
+        "cloudresourcemanager", "cloudresourcemanager.googleapis.com", "Cloud Resource Manager"
+    ),
+    "cloudtrace": GoogleApi("cloudtrace", "cloudtrace.googleapis.com", "Cloud Trace"),
+    "iamcredentials": GoogleApi("iamcredentials", "iamcredentials.googleapis.com", "IAM Credentials"),
+    "logging": GoogleApi("logging", "logging.googleapis.com", "Logging"),
+    "monitoring": GoogleApi("monitoring", "monitoring.googleapis.com", "Monitoring"),
+    "secretmanager": GoogleApi("secretmanager", "secretmanager.googleapis.com", "Secret Manager"),
+    "storage": GoogleApi("storage", "storage.googleapis.com", "Cloud Storage"),
+    "telemetry": GoogleApi("telemetry", "telemetry.googleapis.com", "Telemetry"),
+}
+# Who holds roles/iap.egressor on a compiled Google API entry: `baseline` (every agent runtime: layer
+# 4 grants the agent projects, so a replaced engine can start before its new identity is granted) or
+# `callers` (only the agents that declare it: the iap-egress unit grants their Agent Identity).
+GOOGLE_API_GRANTS = ("baseline", "callers")
 # Agent unit output holding the agent's Agent Identity principal (principal://...).
 WORKLOAD_PRINCIPAL_OUTPUT = "agent_identity_principal"
 # Units whose service-account outputs the iap-egress unit maps (identity_refs); agent principals aside.
@@ -198,9 +239,69 @@ def endpoint_host(endpoint: str) -> str:
 
 
 def _is_system_endpoint(target: dict[str, Any]) -> bool:
-    """A ``managed: false`` target on a Google API host: layer 4 registers it for every agent."""
+    """A ``managed: false`` target on a Google API host: a layer-4 Google API entry, granted to the
+    agents that declare the API (``google_apis``), never an external entry of its own."""
     host = endpoint_host(target["deploy"].get("endpoint", ""))
     return host == SYSTEM_HOST_SUFFIX or host.endswith("." + SYSTEM_HOST_SUFFIX)
+
+
+def google_api_for_host(host: str) -> str | None:
+    """Catalog name of the Google API served on ``host`` (``{region}`` placeholder kept), if known."""
+    return next((name for name, api in GOOGLE_APIS.items() if api.host == host), None)
+
+
+def google_api_baseline(policy: dict[str, Any]) -> list[str]:
+    """``policy.agent_gateway.google_apis.baseline``: the Google APIs every agent runtime may reach."""
+    return list((((policy.get("agent_gateway") or {}).get("google_apis") or {}).get("baseline")) or [])
+
+
+def google_apis_of(target: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+    """Every Google API an agent may reach: the policy baseline, then its own ``google_apis``."""
+    return list(dict.fromkeys(google_api_baseline(policy) + list(target.get("google_apis") or [])))
+
+
+def _check_google_apis(doc: dict[str, Any], where: Any) -> list[str]:
+    """Google API declarations: known APIs, on agents only, and covering the agents' model hosts."""
+    problems: list[str] = []
+    targets, policy = doc["targets"], doc["policy"]
+    known = ", ".join(sorted(GOOGLE_APIS))
+    for api in google_api_baseline(policy):
+        if api not in GOOGLE_APIS:
+            problems.append(f"policy.agent_gateway.google_apis.baseline: unknown Google API '{api}' (known: {known})")
+    reserved = {api.service_id: name for name, api in GOOGLE_APIS.items()}
+    for name in sorted(targets):
+        target = targets[name]
+        label = where("targets", name)
+        if name in reserved:
+            problems.append(f"{label}: the name '{name}' is the Agent Registry entry of the Google API "
+                            f"'{reserved[name]}'; pick another target name")
+        declared = list(target.get("google_apis") or [])
+        if declared and target["kind"] not in WORKLOAD_KINDS:
+            problems.append(f"{label}: google_apis is only for agents (kinds {', '.join(sorted(WORKLOAD_KINDS))}): "
+                            "they are the workloads that call Google APIs through the Agent Gateway")
+        for api in declared:
+            if api not in GOOGLE_APIS:
+                problems.append(f"{label}: unknown Google API '{api}' in google_apis (known: {known})")
+        if target["kind"] == "model" and not target.get("example") and _is_system_endpoint(target):
+            host = endpoint_host(target["deploy"]["endpoint"])
+            if not google_api_for_host(host):
+                hosts = ", ".join(sorted(api.host for api in GOOGLE_APIS.values()))
+                problems.append(f"{label}: deploy.endpoint host '{host}' is not a known Google API host ({hosts})")
+    for name in sorted(targets):
+        target = targets[name]
+        if target.get("example") or target["kind"] not in WORKLOAD_KINDS:
+            continue
+        reachable = set(google_apis_of(target, policy))
+        for model in target.get("models") or []:
+            model_target = targets.get(model)
+            if not model_target or model_target.get("example") or not _is_system_endpoint(model_target):
+                continue
+            api = google_api_for_host(endpoint_host(model_target["deploy"]["endpoint"]))
+            if api and api not in reachable:
+                problems.append(f"{where('targets', name)}: calls model '{model}' on the Google API '{api}' but "
+                                f"doesn't declare it: add '{api}' to its google_apis (the Agent Gateway only lets "
+                                "an agent reach the Google APIs it declares)")
+    return problems
 
 
 def _is_external(target: dict[str, Any]) -> bool:
@@ -351,7 +452,7 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
     for dim in ((policy.get("defaults") or {}).get("observability") or {}).get("dimensions") or []:
         if dim not in dimensions:
             problems.append(f"policy.defaults.observability: unknown dimension '{dim}'")
-    return problems + _check_external_hosts(doc, where)
+    return problems + _check_external_hosts(doc, where) + _check_google_apis(doc, where)
 
 
 def _check_external_hosts(doc: dict[str, Any], where: Any) -> list[str]:
@@ -540,6 +641,60 @@ def _identity_member(identity: dict[str, Any] | None) -> str | None:
     return identity.get("ref") or identity.get("id")
 
 
+def _agent_members(agent: dict[str, Any]) -> list[str]:
+    """An agent caller on an Agent Gateway list: its Agent Identity principal, then its service account."""
+    members = [f"{agent['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}"]
+    member = _identity_member(agent.get("identity"))
+    if member:
+        members.append(member)
+    return members
+
+
+def _gateway_agents(resolved: Resolved) -> list[str]:
+    """Deployed agents (Agent Runtime units): the workloads that egress through the Agent Gateway."""
+    return [n for n in sorted(resolved.targets)
+            if resolved.targets[n]["kind"] in WORKLOAD_KINDS and _is_compiled(resolved.targets[n])]
+
+
+def compile_google_apis(resolved: Resolved) -> dict[str, dict[str, Any]]:
+    """The Google API entries of the Agent Registry (``google_apis``), registered by layer 4.
+
+    One entry per Google API that at least one deployed agent may reach, keyed by its registry
+    ``service_id`` (``{region}`` kept for layer 4 to substitute): ``api`` (catalog name), ``url``
+    (``https://<host>``; layer 4 also registers ``<url>:443``), ``protocol_binding``,
+    ``display_name``, ``grant`` and ``callers`` (the agents that may reach it). ``grant`` says who
+    writes the entry's ``roles/iap.egressor`` policy:
+
+    * ``baseline`` (``policy.agent_gateway.google_apis.baseline``): layer 4, for the agent projects,
+      so a replaced engine can start (sessions, telemetry) before its new identity is granted;
+    * ``callers`` (an agent's own ``google_apis``): the ``iap-egress`` unit, for each declaring
+      agent's Agent Identity (listed in ``iap_egress.endpoints`` under the same key).
+
+    No deployed agent, no entry: an API nobody declares is not registered, so the gateway denies it.
+    """
+    agents = _gateway_agents(resolved)
+    if not agents:
+        return {}
+    baseline = google_api_baseline(resolved.policy)
+    callers: dict[str, list[str]] = {api: list(agents) for api in baseline}
+    for name in agents:
+        for api in resolved.targets[name].get("google_apis") or []:
+            if api not in baseline:
+                callers.setdefault(api, []).append(name)
+    out: dict[str, dict[str, Any]] = {}
+    for api_name in sorted(callers):
+        api = GOOGLE_APIS[api_name]
+        out[api.service_id] = {
+            "api": api_name,
+            "url": f"https://{api.host}",
+            "protocol_binding": api.protocol_binding,
+            "display_name": api.display_name,
+            "grant": "baseline" if api_name in baseline else "callers",
+            "callers": callers[api_name],
+        }
+    return out
+
+
 def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
     """The Agent Gateway per-target ``roles/iap.egressor`` member lists, derived from target callers.
 
@@ -548,8 +703,11 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
     targets, and non-example ``managed: false`` targets by their Agent Registry entry type (``http``
     and non-Google ``model`` endpoints under ``endpoints``, ``mcp`` under ``mcp_servers``, ``a2a``
     under ``agents``). Every such target is listed, with an empty list when no caller is enforced:
-    the script then writes an empty policy (nobody), never skips the entry. Members are unresolved
-    references the ``iap-egress`` unit maps to unit outputs: ``<unit>:agent_identity_principal``
+    the script then writes an empty policy (nobody), never skips the entry. ``endpoints`` also
+    lists the Google API entries agents declare in their own ``google_apis`` (``grant: callers`` in
+    :func:`compile_google_apis`, keyed by registry service id) with the declaring agents; layer 4
+    grants the baseline Google APIs. Members are unresolved references the ``iap-egress`` unit maps
+    to unit outputs: ``<unit>:agent_identity_principal``
     (an agent caller's Agent Identity principal) and ``<unit>:<output>`` service-account refs
     (``layer-3-security:<x>_sa_email``); a literal service-account id passes through unchanged.
     Per target, in order: each agent caller's principal then service account, the policy
@@ -572,11 +730,7 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
         others: list[str] = []
         for caller in callers:
             if caller in resolved.targets:
-                agent = resolved.targets[caller]
-                workload.append(f"{agent['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}")
-                member = _identity_member(agent.get("identity"))
-                if member:
-                    workload.append(member)
+                workload += _agent_members(resolved.targets[caller])
             else:
                 if resolved.callers[caller].get("agent_gateway") is False:
                     continue  # reaches the target directly (e.g. Apigee): IAM only, no gateway grant
@@ -588,6 +742,11 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
             members.append(shared["ref"])
         members += others
         out[group][name] = list(dict.fromkeys(members))
+    for service_id, entry in compile_google_apis(resolved).items():
+        if entry["grant"] != "callers":
+            continue
+        members = [m for agent in entry["callers"] for m in _agent_members(resolved.targets[agent])]
+        out["endpoints"][service_id] = list(dict.fromkeys(members))
     return out
 
 
@@ -598,8 +757,8 @@ def compile_external_targets(resolved: Resolved) -> dict[str, dict[str, Any]]:
     (``endpoint`` | ``mcp_server`` | ``agent``), ``url`` (the catalog endpoint, placeholders such as
     ``{domain}`` kept for the ``iap-egress`` unit to substitute from layer outputs),
     ``protocol_binding``, ``description`` and ``owner_team``. Targets on Google API hosts are left
-    out: layer 4 registers those for every agent (system endpoints). Their caller lists are in
-    ``iap_egress`` under the matching group.
+    out: they are Google API entries (:func:`compile_google_apis`), registered by layer 4. Their
+    caller lists are in ``iap_egress`` under the matching group.
     """
     out: dict[str, dict[str, Any]] = {}
     for name in sorted(resolved.targets):
@@ -818,6 +977,7 @@ def render_resolved_file(resolved: Resolved) -> str:
         "environment": resolved.env,
         "catalog": compile_terraform(resolved),
         "external_targets": compile_external_targets(resolved),
+        "google_apis": compile_google_apis(resolved),
         "iap_egress": compile_iap_egress(resolved),
         "attribution": compile_attribution(resolved),
     }
@@ -879,7 +1039,7 @@ def _registry_entry(target: dict[str, Any]) -> str | None:
     if group:
         return f"{group} (per-target caller list)"
     if not target.get("example") and target["deploy"].get("managed") is False and _is_system_endpoint(target):
-        return "system endpoint (layer 4, every agent; callers not enforced at the gateway)"
+        return "Google API entry (layer 4; only agents that declare the API in google_apis)"
     return None
 
 
@@ -906,6 +1066,10 @@ def show(
             continue
         t = resolved.targets[name]
         compiled_callers, _ = _compiled_callers(resolved, t)
+        # A model on a Google API host: the gateway enforces it through each agent's google_apis.
+        google_api = None
+        if not t.get("example") and t["deploy"].get("managed") is False and _is_system_endpoint(t):
+            google_api = google_api_for_host(endpoint_host(t["deploy"]["endpoint"]))
         entry_callers = []
         for c, grant in (t.get("callers") or {}).items():
             if caller and c != caller:
@@ -927,7 +1091,12 @@ def show(
                         "cost_centers": grant.get("cost_centers")
                         or (resolved.teams.get(team) or {}).get("cost_centers", []),
                     },
-                    "enforced": c in compiled_callers and (_is_compiled(t) or _is_external(t)),
+                    "enforced": c in compiled_callers and (
+                        _is_compiled(t) or _is_external(t) or (
+                            google_api is not None and c in resolved.targets
+                            and google_api in google_apis_of(resolved.targets[c], resolved.policy)
+                        )
+                    ),
                     **({"tools": grant["tools"]} if grant.get("tools") else {}),
                     **({"quota": grant["quota"]} if grant.get("quota") else {}),
                     **({"product": grant["product"]} if grant.get("product") else {}),
@@ -950,6 +1119,7 @@ def show(
                 "registry": _registry_entry(t),
                 "gateway": t.get("gateway"),
                 "ingress_backend": host_backend,
+                **({"google_apis": google_apis_of(t, resolved.policy)} if t["kind"] in WORKLOAD_KINDS else {}),
                 "callers": entry_callers,
             }
         )

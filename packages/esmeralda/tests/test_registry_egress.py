@@ -125,6 +125,35 @@ def test_system_endpoint_drift_fails():
     assert not _evaluate(policies={**GOOD, "telemetry": _policy(AGENT_SET, SPEC)})["entry telemetry"]["ok"]
 
 
+def test_google_api_entries_match_the_catalog_declarations():
+    """Only the Google APIs the catalog declares are registered: a stray or missing one fails."""
+    assert _evaluate(google_api_ids=["telemetry"])["google api entries"]["ok"]
+    assert "google api entries" not in _evaluate()  # older layer 4 without the output: no check
+    stray = [*SERVICES, _service("logging-mtls", "endpoints", "u8", "https://logging.mtls.googleapis.com:443")]
+    checks = _evaluate(services=stray, policies={**GOOD, "logging-mtls": _policy()}, google_api_ids=["telemetry"])
+    assert not checks["google api entries"]["ok"] and "logging-mtls" in checks["google api entries"]["detail"]
+    missing = _evaluate(google_api_ids=["telemetry", "storage"])["google api entries"]
+    assert not missing["ok"] and "storage" in missing["detail"]
+
+
+def test_a_per_agent_google_api_entry_lists_only_its_declaring_agents():
+    services = [*SERVICES, _service("bigquery", "endpoints", "u7", "https://bigquery.googleapis.com")]
+    targets = {**TARGETS, "endpoints": {**TARGETS["endpoints"], "bigquery": [SPEC]}}
+    ok = _evaluate(services=services, target_members=targets, policies={**GOOD, "bigquery": _policy(SPEC)},
+                   google_api_ids=["telemetry", "bigquery"])
+    assert ok["entry bigquery"]["ok"] and ok["google api entries"]["ok"]
+    # The old blanket grant (agent projects) on a per-agent entry is drift.
+    drift = _evaluate(services=services, target_members=targets, policies={**GOOD, "bigquery": _policy(AGENT_SET)})
+    assert not drift["entry bigquery"]["ok"]
+
+
+def test_google_api_urls_are_recognised():
+    assert registry_egress.is_google_api_url("https://us-central1-aiplatform.googleapis.com")
+    assert registry_egress.is_google_api_url("https://bigquerystorage.googleapis.com:443")
+    assert not registry_egress.is_google_api_url("https://external-probe.example.internal")
+    assert not registry_egress.is_google_api_url("https://googleapis.com.example.com")
+
+
 def test_agent_card_urls_are_read():
     assert registry_egress.entry_urls(
         {"agentSpec": {"content": json.dumps({"supportedInterfaces": [{"url": "https://a.example"}]})}}
@@ -136,6 +165,7 @@ def test_check_reads_outputs_and_queries_each_entry(monkeypatch, tmp_path):
         ("layer-1-projects", "governance_project_id"): "example-governance",
         ("layer-4-governance", "system_endpoint_ids"): ["telemetry"],
         ("layer-4-governance", "iap_egress_members"): [AGENT_SET],
+        ("layer-4-governance", "google_api_endpoint_ids"): ["telemetry"],
         ("layer-5-workloads/iap-egress", "target_iap_members"): TARGETS,
         ("layer-5-workloads/iap-egress", "external_registry_entries"): EXTERNAL,
     }
@@ -155,6 +185,7 @@ def test_check_reads_outputs_and_queries_each_entry(monkeypatch, tmp_path):
 
     result = registry_egress.check(tmp_path, "dev", gcloud=fake)
     assert result["passed"] and result["failed"] == 0
+    assert "google api entries" in {c["check"] for c in result["checks"]}
     assert all("--project=example-governance" in a for a in calls)
     assert sum(1 for a in calls if any(x.startswith("--endpoint=") for x in a)) == 2
 

@@ -3,16 +3,19 @@
 # Final layer-5 step: register the catalog's external targets and grant per-target
 # roles/iap.egressor on Agent Registry entries.
 # --------------------------------------------------------------------
-# Layer 4 governance grants the agent projects roles/iap.egressor on each system Google API endpoint
-# entry, and the registry root holds no binding (a root binding is inherited by every entry). This
-# unit registers the catalog's managed: false targets (external_targets.tf) and, once MCP servers and
-# A2A agents have registered themselves, writes the least-privilege policy of every agent, external
-# endpoint and MCP server entry. The per-target lists come from the service catalog (target callers,
-# compiled into catalog/.resolved/<env>.json `iap_egress`), the same callers that drive Cloud Run
-# run.invoker and Agent Runtime IAM:
-#   - cx-mortgage-orchestrator is listed only on ai-coe-mortgage-specialist (not on MCP tools)
+# Layer 4 governance registers the Google API entries the catalog declares (`google_apis`) and
+# grants the agent projects roles/iap.egressor on the baseline ones; the registry root holds no
+# binding (a root binding is inherited by every entry). This unit registers the catalog's
+# managed: false targets (external_targets.tf) and, once MCP servers and A2A agents have registered
+# themselves, writes the least-privilege policy of every agent, external endpoint, MCP server and
+# per-agent Google API entry. The per-target lists come from the service catalog (target callers
+# and agent google_apis, compiled into catalog/.resolved/<env>.json `iap_egress`), the same callers
+# that drive Cloud Run run.invoker and Agent Runtime IAM:
+#   - cx-mortgage-orchestrator is listed only on ai-coe-mortgage-specialist (not on MCP tools) and on
+#     the Google APIs it declares (aiplatform)
 #   - ai-coe-mortgage-specialist is listed only on the registered MCP servers (and, in dev, on the
-#     external-probe endpoint)
+#     external-probe endpoint) and on the Google APIs it declares (aiplatform, bigquery,
+#     bigquerystorage, storage)
 # ====================================================================
 
 terraform {
@@ -46,11 +49,12 @@ locals {
 
   # Catalog-compiled lists name identities by `<unit>:<output>` reference; the unit passes their
   # values in identity_refs. Anything that still looks like a reference afterwards is an error.
+  # Google API entry ids may hold {region} (e.g. {region}-aiplatform), substituted here.
   ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
   resolved_target_iap_members = {
     for group in local.iap_groups : group => {
       for target_id, members in coalesce(var.target_iap_members[group], {}) :
-      target_id => [for m in members : lookup(var.identity_refs, m, m) if m != "" && m != null]
+      replace(target_id, "{region}", var.region) => [for m in members : lookup(var.identity_refs, m, m) if m != "" && m != null]
     }
   }
   unresolved_refs = distinct(flatten([

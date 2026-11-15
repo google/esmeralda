@@ -10,8 +10,10 @@
 #
 # The catalog's managed: false targets (external_targets) are registered here too, as the last
 # layer-5 step, so hosts known only in layer 5 never create a cycle; {domain} in their URLs is the
-# layer-2 entry point domain. The registry root holds no binding (layer 4 grants the Google API
-# system endpoints entry by entry), so each new entry is closed until its catalog callers are granted.
+# layer-2 entry point domain. The registry root holds no binding (layer 4 grants the baseline Google
+# API entries entry by entry), so each new entry is closed until its catalog callers are granted.
+# The Google APIs single agents declare (catalog google_apis) are layer-4 entries granted here, to
+# the declaring agents only (iap_egress endpoints keyed by service id).
 include "root" {
   path = find_in_parent_folders("root.hcl")
 }
