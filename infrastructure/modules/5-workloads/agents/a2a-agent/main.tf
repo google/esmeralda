@@ -344,6 +344,18 @@ resource "google_vertex_ai_reasoning_engine" "agent" {
       }
     }
   }
+
+  lifecycle {
+    # spec.agent_card is output-only in practice: for A2A agents Agent Runtime derives it from the
+    # a2a_agent_card in class_methods and rewrites its url to the engine's own A2A endpoint, which
+    # embeds the engine ID, so this resource can't set it without referencing itself. The provider
+    # marks it optional but not computed, so leaving it unset plans an in-place update to null on
+    # every run (#204). The card content is still managed: it reaches the API through class_methods
+    # above, so a card change in agent.yaml still plans an update. Only this one attribute is
+    # ignored; image, env, class_methods and the rest of spec stay tracked. Guarded by
+    # tests/guards/test_terraform_drift_guards.py.
+    ignore_changes = [spec[0].agent_card]
+  }
 }
 
 # -----------------------------------------------------------------------------
