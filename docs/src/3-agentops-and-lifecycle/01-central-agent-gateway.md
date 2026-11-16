@@ -343,9 +343,12 @@ The model calls carry the conversation, including tool results that are sent bac
 
 **Esmeralda:**
 - `google_compute_network_attachment.agent_gateway` (`agw-egress-na-<env>`) is in the governance project and references a Shared VPC subnet.
-- The Agent Gateway service agent (`service-<GOV_PROJECT_NUMBER>@gcp-sa-agentgateway.iam.gserviceaccount.com`) needs two roles on the net-host project:
-  - `roles/compute.networkUser`, to attach to the subnet;
-  - `roles/dns.peer`, for DNS peering (section 3.7).
+- The Agent Gateway service agent (`service-<GOV_PROJECT_NUMBER>@gcp-sa-agentgateway.iam.gserviceaccount.com`) needs these grants, all made in layer 4:
+  - `roles/compute.networkUser` on the net-host project, to attach to the subnet;
+  - `roles/dns.peer` on the net-host project, for DNS peering (section 3.7);
+  - `roles/dns.reader` on the project of the DNS peering target network (the net-host project), so the ACT validation can list its Cloud DNS managed zones;
+  - `compute.networkAttachments.get` on the network attachment, through the one-permission custom role `esmeraldaAgwNetworkAttachmentReader` on the governance project. Its built-in role `roles/agentgateway.serviceAgent` holds no `compute.*` permission, and the custom role is narrower than `roles/compute.networkViewer`.
+- Without the last two, creating the ACT fails with `Config validation failed`; the field violations appear only in the long-running operation. New grants took up to about 2.5 minutes to reach that validation, so layer 4 waits 150 seconds after creating them, before it creates the ACT.
 
 ### 3.7 Agent Connectivity Template (ACT)
 
@@ -522,7 +525,7 @@ The gateway decrypts traffic in order to inspect and authorize it, so every conn
 | ACT needs no `tls_config`; public roots suffice | ACT `tls_config` → **TrustConfig** with the internal Root CA, plus `additional_roots = PUBLICLY_TRUSTED_ROOTS` |
 | No PSC attachment and no DNS peering needed | **Network attachment** + `vpc_egress = PRIVATE_RANGES_ONLY` + **DNS peering** for `esmeralda.internal.` |
 | — | **Root CA** and **leaf cert** (layer 3), a reserved IP with A records in the private zone (layer 2), and the entry point internal LB that presents the leaf (layer 5) |
-| — | The Agent Gateway service agent needs `compute.networkUser` and `dns.peer` on the net-host project |
+| — | The Agent Gateway service agent needs `compute.networkUser`, `dns.peer` and `dns.reader` on the net-host project, and `compute.networkAttachments.get` on the network attachment |
 | — | Every private host is registered **exactly** in Agent Registry and granted `iap.egressor` |
 | Agents trust the AGW inspection root (always required) | Same. The bundle also carries the internal Root CA, so operators, the test VM and local tests can verify the entry point with one file |
 
@@ -604,7 +607,7 @@ The layers deploy in order (`uv run esmeralda deploy --all --env <env>`, or `mak
 | 5 | L3 security | Agent Identity grants + `roles/iap.egressor` per team `principalSet` | "Who" may egress |
 | 6 | L3 security | Internal Root CA (`tls_self_signed_cert`) + public cert in Secret Manager | Signs the entry point leaf (also in L3, regional SSL cert `cert-esmeralda-ilb-*`); anchor for the TrustConfig |
 | 7 | L4 governance | PSC network attachment `agw-egress-na-<env>` | Gateway → Shared VPC |
-| 8 | L4 governance | Agent Gateway service agent: `compute.networkUser` + `dns.peer` on net-host | Allows the attachment and DNS peering |
+| 8 | L4 governance | Agent Gateway service agent: `compute.networkUser` + `dns.peer` + `dns.reader` on net-host, `compute.networkAttachments.get` (custom role) on governance | Allows the attachment and DNS peering, and lets the ACT validation read both |
 | 9 | L4 governance | TrustConfig `esmeralda-internal-trust-<env>` | Gateway trusts our Root CA on leg 2 |
 | 10 | L4 governance | ACT `esmeralda-egress-act-<env>` (network attachment, DNS peering, `tls_config`) | Connectivity + TLS trust; must exist **before** the gateway |
 | 11 | L4 governance | Agent Gateway `esmeralda-agent-egress-gateway-<env>` (with ACT + registry) | The proxy |
@@ -644,6 +647,7 @@ The layers deploy in order (`uv run esmeralda deploy --all --env <env>`, or `mak
 | `5xx` / connection errors for `*.esmeralda.internal` only (Google APIs work) | Leg 2: gateway can't validate the entry point's cert, can't resolve the name or can't route | Check the ACT `tls_config` TrustConfig contains the **same** root that signed the entry point leaf; DNS peering for `esmeralda.internal.`; service agent `dns.peer`/`networkUser`; A records → entry point IP |
 | `Network is unreachable` | Code overrides DNS or sockets, or uses a proxy variable | Remove the override; let normal DNS and the runtime redirection work |
 | `HTTP 498` / session or token errors at start-up, or `Egress request is not authorized ... unregistered in the Agent Registry` | A Google API the agent calls isn't declared (so not registered or not granted to it) | Add the API to the agent's catalog `google_apis` (or the policy baseline), regenerate `catalog/.resolved/<env>.json`, apply layer 4 then the `iap-egress` unit |
+| Layer 4: `Error waiting for Creating AgentConnectivityTemplate ... Config validation failed` | The Agent Gateway service agent can't read the network attachment or list the DNS zones of the peering target network (the field violations are in the operation: `GET https://networkservices.googleapis.com/v1beta1/projects/<GOV>/locations/<REGION>/operations`) | Layer 4 grants both (section 3.6). If a grant was made outside Terraform or just now, wait a few minutes for IAM propagation and apply again |
 | Layer 3, 4 or 5: `Identity Pool does not exist (.../workloadIdentityPools/agents.global.proj-<n>.system.id.goog)` | A trust domain was built from the project's `org_id`, which is empty for a project under a folder | Fixed in the shared trust domain module (section 3.2), which takes the organization from the parent folder |
 
 ---

@@ -128,7 +128,7 @@ To permit serverless runtimes in spoke projects to consume host subnets, Layer 2
 * `service-{cx_agents_number}@gcp-sa-aiplatform.iam.gserviceaccount.com`
 * `service-{cx_agents_number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com`
 
-When `enable_psc_interface = true` (the default), the same identities also get `roles/compute.networkUser`, `roles/compute.networkAdmin` and `roles/dns.peer` at the **host project** level. The Agent Gateway's own service agent receives `compute.networkUser` and `dns.peer` on the host project in Layer 4.
+When `enable_psc_interface = true` (the default), the same identities also get `roles/compute.networkUser`, `roles/compute.networkAdmin` and `roles/dns.peer` at the **host project** level. The Agent Gateway's own service agent receives `compute.networkUser`, `dns.peer` and `dns.reader` on the host project in Layer 4 (see [Central Agent Gateway, section 3.6](../3-agentops-and-lifecycle/01-central-agent-gateway.md#36-private-service-connect-psc-network-attachment)).
 
 ---
 

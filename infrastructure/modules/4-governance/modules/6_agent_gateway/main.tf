@@ -14,6 +14,10 @@ terraform {
       # >= 8.4.0 required for google_network_services_agent_connectivity_template
       version = ">= 8.4.0, < 9.0.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = ">= 0.9"
+    }
   }
 }
 
@@ -65,6 +69,56 @@ resource "google_project_iam_member" "agent_gateway_network_user" {
   member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
 }
 
+# The Agent Connectivity Template validation runs as the Agent Gateway service agent and checks two
+# more permissions; without them the create fails with "Config validation failed" (the field
+# violations are only in the long-running operation):
+#   - compute.networkAttachments.get on the network attachment, which lives in the governance
+#     project (roles/agentgateway.serviceAgent holds no compute.* permission). A one-permission
+#     custom role instead of roles/compute.networkViewer, which reads every network resource of the
+#     project. (Network attachments have no resource-level IAM in Terraform.)
+#   - dns.managedZones.list in the project of the DNS peering target network: roles/dns.reader.
+locals {
+  agent_gateway_act_enabled = var.enable_agent_gateway && var.subnet_self_link != ""
+  agent_gateway_dns_project = startswith(var.vpc_name, "projects/") ? split("/", var.vpc_name)[1] : var.net_host_project_id
+}
+
+resource "google_project_iam_custom_role" "agent_gateway_network_attachment_reader" {
+  count       = local.agent_gateway_act_enabled ? 1 : 0
+  project     = var.governance_project_id
+  role_id     = "esmeraldaAgwNetworkAttachmentReader"
+  title       = "Esmeralda Agent Gateway network attachment reader (${var.environment})"
+  description = "Lets the Agent Gateway service agent read the PSC network attachment of the Agent Connectivity Template."
+  permissions = ["compute.networkAttachments.get"]
+}
+
+resource "google_project_iam_member" "agent_gateway_network_attachment_reader" {
+  count   = local.agent_gateway_act_enabled ? 1 : 0
+  project = var.governance_project_id
+  role    = google_project_iam_custom_role.agent_gateway_network_attachment_reader[0].name
+  member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "agent_gateway_dns_reader" {
+  count   = local.agent_gateway_act_enabled && local.agent_gateway_dns_project != "" ? 1 : 0
+  project = local.agent_gateway_dns_project
+  role    = "roles/dns.reader"
+  member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
+}
+
+# New grants to the service agent took up to ~2.5 minutes to reach the ACT validation. Wait once
+# after they are created (again only if one of them is recreated).
+resource "time_sleep" "agent_gateway_iam_propagation" {
+  count           = local.agent_gateway_act_enabled ? 1 : 0
+  create_duration = "150s"
+
+  triggers = {
+    network_attachment_reader = google_project_iam_member.agent_gateway_network_attachment_reader[0].id
+    dns_reader                = join(",", google_project_iam_member.agent_gateway_dns_reader[*].id)
+    dns_peer                  = join(",", google_project_iam_member.agent_gateway_dns_peer[*].id)
+    network_user              = join(",", google_project_iam_member.agent_gateway_network_user[*].id)
+  }
+}
+
 # 2a. Agent Connectivity Template (egress networking + private CA trust)
 # - Private ranges (esmeralda.internal -> internal entry point ILB) egress through the PSC network attachment.
 # - Public Google APIs use Private Google Access automatically (never peer googleapis.com).
@@ -101,6 +155,9 @@ resource "google_network_services_agent_connectivity_template" "egress" {
   depends_on = [
     google_project_iam_member.agent_gateway_dns_peer,
     google_project_iam_member.agent_gateway_network_user,
+    google_project_iam_member.agent_gateway_network_attachment_reader,
+    google_project_iam_member.agent_gateway_dns_reader,
+    time_sleep.agent_gateway_iam_propagation,
   ]
 }
 
