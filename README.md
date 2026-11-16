@@ -124,7 +124,7 @@ flowchart LR
 | **Partner Monetization** | **Removable Apigee X Capability Modules** | Optional Layer 5 capability bundles (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`, `cross-cloud`) and tiered API Products (`bronze`, `silver`, `gold`) toggled declaratively via `governance.capabilities` in `env.yaml`. |
 | **Multi-Agent & MCP Ecosystem** | **A2A Protocol & Serverless FastMCP** | The CX orchestrator (Google ADK) delegates underwriting over **A2A** to the AI CoE specialist, which invokes private Cloud Run **FastMCP** servers (`legacy-dms`, `income-verification`, `corporate-email`) at `https://<svc>.esmeralda.internal/mcp`. |
 | **Observability & FinOps** | **OpenTelemetry Baggage & BigQuery Chargeback** | Cross-project W3C baggage propagation (`BaggageSpanProcessor`), structured token telemetry, hub-and-spoke log sinks, automated BigQuery chargeback SQL views (`vw_monthly_agent_chargeback`), and Cloud Monitoring Golden Signals. |
-| **Unified Developer CLI** | **`esmeralda` CLI & MCP Server** | First-class CLI (`uv run esmeralda ...`, published as `esmeralda-platform`) and read-only MCP server (`uv run esmeralda mcp`) for local development, guarded Terraform plans/applies, live partner & internal verification (`esmeralda verify --partner`), and AI-assisted operations. |
+| **Unified Developer CLI** | **`esmeralda` CLI & MCP Server** | First-class CLI (`uv run esmeralda ...` from a checkout of this repository; not published on PyPI) and read-only MCP server (`uv run esmeralda mcp`) for local development, guarded Terraform plans/applies, live partner & internal verification (`esmeralda verify --partner`), and AI-assisted operations. |
 
 ---
 

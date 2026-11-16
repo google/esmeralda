@@ -1,4 +1,4 @@
-# 4.1 Developer Usage Guide (`esmeralda-platform`)
+# 4.1 Developer Usage Guide (`esmeralda`)
 
 ## From Local Workstation to Zero-Trust Production Without Changing a Line of Code
 
@@ -6,7 +6,7 @@ When a developer on the CX or AI CoE team builds a mortgage underwriting agent f
 1. **Frictionless local inner-loop speed:** Running `esmeralda query` or `esmeralda serve --local` on a laptop against local MCP servers (`http://localhost:8001/mcp`) with zero certificates, proxies, or load balancers in the way.
 2. **Zero-trust enterprise production rigor:** Running the exact same code inside Vertex AI Agent Runtime behind the Central Agent Gateway, authenticating to `https://legacy-dms.esmeralda.internal/mcp` with internal Root CAs, SPIFFE identities (`X-Agent-Spiffe-Id`), 3LO user tokens (`User-Auth-Token`), and structured FinOps telemetry.
 
-This guide shows how `esmeralda` (`esmeralda-platform`) bridges both worlds cleanly, and which building block to reach for in every scenario. For the complete module-by-module specification, see the [package reference](reference.md).
+This guide shows how `esmeralda` bridges both worlds cleanly, and which building block to reach for in every scenario. For the complete module-by-module specification, see the [package reference](reference.md).
 
 ---
 
