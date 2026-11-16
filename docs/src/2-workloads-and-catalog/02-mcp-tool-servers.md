@@ -128,18 +128,20 @@ Once the registry entries exist, the `services/iap-egress` unit (`make deploy-ia
 
 ### Running & Verifying MCP Tools in Practice
 
-#### 1. Local Full-Stack Execution (`uv run esmeralda query`)
+#### 1. Local Full-Stack Execution (`make query` / `uv run esmeralda query`)
 
-Developers never need a cloud deployment just to test tool interactions. Running `esmeralda query` against an agent directory spins up the local FastMCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`) automatically and wires their local URLs into the agent:
+Developers never need a cloud deployment just to test tool interactions. `make query AGENT=<agent>` spins up the local FastMCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`) with `scripts/with_local_mcp.sh` and then runs `esmeralda query` against the agent directory, which uses their local URLs. `esmeralda query` alone does not start the servers:
 
 ```bash
 # Run the specialist locally against local FastMCP servers
-uv run esmeralda query apps/agents/ai-coe-mortgage-specialist \
-  -q "Verify Julian Sterling's income and list his tax documents."
+make query AGENT=ai-coe-mortgage-specialist QUERY="Verify Julian Sterling's income and list his tax documents."
 
 # Or run the full CX orchestrator -> AI CoE specialist -> MCP chain locally
-uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
-  -q "Can you verify Julian Sterling's income?"
+make query AGENT=cx-mortgage-orchestrator QUERY="Can you verify Julian Sterling's income?"
+
+# Same query without the wrapper (the MCP servers must already be running)
+uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator \
+  "Can you verify Julian Sterling's income?"
 
 # Plan or apply an individual MCP service in GCP
 uv run esmeralda plan layer-5-workloads/services/legacy-dms --env dev

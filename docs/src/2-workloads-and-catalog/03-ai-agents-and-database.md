@@ -120,16 +120,14 @@ In many organizations, deploying a multi-agent workflow requires coordinating ac
 
 #### 1. Local Iteration & Live Queries (`uv run esmeralda`)
 
-Use the `esmeralda` CLI to test either agent locally (automatically launching local FastMCP servers) or to inspect logs and verify deployed engines:
+Use `make query` to test either agent locally (it launches the local FastMCP servers, then runs `esmeralda query`) and the `esmeralda` CLI to inspect logs and verify deployed engines:
 
 ```bash
 # Query the CX orchestrator locally (delegates to the specialist & local MCP tools)
-uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
-  -q "Can you verify Julian Sterling's income?"
+make query AGENT=cx-mortgage-orchestrator QUERY="Can you verify Julian Sterling's income?"
 
 # Query the AI CoE specialist directly during prompt development
-uv run esmeralda query apps/agents/ai-coe-mortgage-specialist \
-  -q "Check Julian Sterling's income and tax documents."
+make query AGENT=ai-coe-mortgage-specialist QUERY="Check Julian Sterling's income and tax documents."
 
 # Plan or apply an agent unit in dev
 uv run esmeralda plan layer-5-workloads/agents/cx-mortgage-orchestrator --env dev
@@ -147,8 +145,8 @@ uv run esmeralda verify --env dev
 make test-e2e ENV=dev
 
 # Or test each remote engine individually
-make test-ai-coe-mortgage-specialist-remote ENV=dev
-make test-cx-mortgage-orchestrator-remote ENV=dev   # TEST_VERBOSE=1 dumps raw A2A/ADK events
+make query AGENT=ai-coe-mortgage-specialist TARGET=remote ENV=dev
+make query AGENT=cx-mortgage-orchestrator TARGET=remote ENV=dev
 
 # Probe every catalog host through the entry point, including a live orchestrator query
 make test-gateway ENV=dev

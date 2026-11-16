@@ -431,7 +431,7 @@ esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json]
 | Subcommand | Backed by | Description |
 |---|---|---|
 | `status` | `esmeralda.ops.repo.status` / `infra.status` | Git branch, HEAD SHA, dirty/clean state, active worktrees, local state units, image tags/digests vs HEAD, and deployed environment outputs |
-| `doctor` | `esmeralda.ops.repo.doctor` | Preflight check: required tools (`git`, `uv`, `terraform`, `terragrunt`, `gcloud`), `ESMERALDA_BILLING_ACCOUNT` (warns if unset), ADC token, `uv.lock` frozen check, and local state readability. Exits non-zero if required checks fail |
+| `doctor` | `esmeralda.ops.repo.doctor` | Preflight check: required tools (`git`, `uv`, `terraform`, `terragrunt`, `gcloud`, `jq`), `ESMERALDA_BILLING_ACCOUNT` (warns if unset), ADC token, `uv.lock` frozen check, and local state readability. Exits non-zero if required checks fail |
 | `units` | `esmeralda.ops.infra.list_units` | Lists Terragrunt units for `<env>`, their layer (`0..5`), dependencies, whether enabled/excluded in `env.yaml`, and whether local state exists |
 | `plan` | `esmeralda.ops.infra.plan_unit` | Runs read-only `terragrunt plan -lock=false` on a unit (full path or short name such as `entrypoint`) or `--all` enabled units, and prints the resource change summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `apply` | `esmeralda.ops.infra.apply_unit` | Plans `<unit>` to a planfile first, inspects the plan for `destroy` or `replace` actions, **refuses to apply with exit code `2` if `destroy > 0` unless `--allow-destroy` is passed**, and otherwise applies the saved planfile |

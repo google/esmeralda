@@ -99,8 +99,7 @@ uv run esmeralda units --env dev
 uv run esmeralda status --env dev
 
 # Run Julian Sterling's underwriting query locally (starts local MCP servers automatically)
-uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
-  -q "Can you verify Julian Sterling's income?"
+make query AGENT=cx-mortgage-orchestrator QUERY="Can you verify Julian Sterling's income?"
 
 # Plan or apply a specific Layer 5 workload unit (with destroy-guard protection)
 uv run esmeralda plan layer-5-workloads/services/income-verification --env dev

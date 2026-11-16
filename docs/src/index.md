@@ -252,9 +252,8 @@ Every operation in Esmeralda is available through the `esmeralda` CLI (`uv run e
 uv run esmeralda doctor --env dev
 uv run esmeralda status --env dev
 
-# 2. Run Julian Sterling's mortgage query locally (auto-starts local MCP servers)
-uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
-  -q "Can you verify Julian Sterling's income?"
+# 2. Run Julian Sterling's mortgage query locally (make query auto-starts local MCP servers)
+make query AGENT=cx-mortgage-orchestrator QUERY="Can you verify Julian Sterling's income?"
 
 # 3. Verify a deployed environment end-to-end (all catalog probes + live orchestrator query)
 uv run esmeralda verify --env dev
