@@ -22,6 +22,9 @@ htmlcov/
 dist/
 build/
 
+# --- Node (console web, apps/frontends/esmeralda-ui/web) ---
+node_modules/
+
 # --- Local Credentials & Environment Variables ---
 .env
 .env.*

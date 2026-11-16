@@ -1,8 +1,8 @@
 version: 2
 updates:
-  # Whole uv workspace (packages/esmeralda, both agents in apps/agents/*, and the 3 MCP services in
-  # apps/services/*) from the committed root uv.lock. Covers direct and transitive dependencies, so
-  # security updates can be proposed for both.
+  # Whole uv workspace (packages/esmeralda, both agents in apps/agents/*, the 3 MCP services in
+  # apps/services/* and the console BFF in apps/frontends/esmeralda-ui/api) from the committed root
+  # uv.lock. Covers direct and transitive dependencies, so security updates can be proposed for both.
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
@@ -33,6 +33,35 @@ updates:
   # runs the harness on every bump; the sandbox reads the same pin.
   - package-ecosystem: "docker"
     directory: "/apps/services/envoy"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # Console web (apps/frontends/esmeralda-ui/web/package-lock.json, exact versions). The Console
+  # workflow typechecks, tests and builds every bump.
+  - package-ecosystem: "npm"
+    directory: "/apps/frontends/esmeralda-ui/web"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      vite:
+        patterns:
+          - "vite"
+          - "vitest"
+          - "@vitejs/*"
+
+  # Console image base images (Node build stage, Python runtime, uv), pinned by digest.
+  - package-ecosystem: "docker"
+    directory: "/apps/frontends/esmeralda-ui"
     schedule:
       interval: "weekly"
     cooldown:

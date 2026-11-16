@@ -90,7 +90,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	verify test-release promote test-governance-chaos load-test load-test-partner docs-serve docs-build clean preflight \
-	status doctor units plan apply logs guard hooks build-package
+	status doctor units plan apply logs guard hooks build-package ui test-ui test-ui-api
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -157,6 +157,7 @@ test: ## Run unit tests across all workspace members
 	@uv run --package income-verification-api --extra dev pytest apps/services/income-verification/test_main.py
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
+	@$(MAKE) --no-print-directory test-ui-api
 	@$(MAKE) test-agents
 	@$(MAKE) --no-print-directory test-release
 	@echo "✅ All unit tests passed!"
@@ -332,6 +333,28 @@ logs: ## Fetch recent Cloud Logging entries for an agent or MCP service: TARGET_
 
 guard: ## Scan all tracked files in the repository for secrets and forbidden internal strings
 	@uv run esmeralda guard --all
+
+# ==============================================================================
+# Console (apps/frontends/esmeralda-ui): read-only BFF (Python) + React web (Node at build time only)
+# ==============================================================================
+
+UI_WEB = apps/frontends/esmeralda-ui/web
+
+ui: ## Run the read-only console locally on http://127.0.0.1:8090: [DEMO=1 synthetic data | BQ=1 the ENV's BigQuery views] ENV=<env>
+	@$(ESM) ui --local --env $(ENV) $(if $(filter 1 true,$(DEMO)),--demo,) $(if $(filter 1 true,$(BQ)),--bigquery,)
+
+test-ui: ## Console tests: BFF pytest + OpenAPI drift, then web typecheck, Vitest (+ TS types drift) and build (needs Node 24 + npm)
+	@$(MAKE) --no-print-directory test-ui-api
+	@echo "🧪 Running the console web checks..."
+	@npm ci --prefix $(UI_WEB)
+	@npm run typecheck --prefix $(UI_WEB)
+	@npm test --prefix $(UI_WEB)
+	@npm run build --prefix $(UI_WEB)
+	@echo "✅ Console tests passed!"
+
+test-ui-api: ## Console BFF tests only (pytest, incl. the openapi.json drift check; no Node needed)
+	@echo "🧪 Running the console BFF tests..."
+	@uv run --package esmeralda-ui --extra dev pytest apps/frontends/esmeralda-ui/api/tests -q
 
 build-package: ## Build a standalone wheel and sdist of the esmeralda package (as esmeralda-platform; not published on PyPI) into dist/ and verify contents
 	@$(ESM) build package

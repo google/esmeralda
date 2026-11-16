@@ -25,6 +25,8 @@ Container & agent runtime commands:
   ``--local-mcp`` starts the agent's local MCP servers for an in-process run (``esmeralda.local_mcp``).
 * ``esmeralda mcp [--repo PATH]``: a read-only MCP server (stdio) to operate the checkout: status,
   plans, agent queries, gateway probes and agent logs (see ``esmeralda.ops``).
+* ``esmeralda ui --local [--demo | --bigquery] [--port 8090]``: the read-only console (catalog, FinOps
+  and audit, traces) on 127.0.0.1, served by the ``esmeralda-ui`` backend package.
 
 Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda status [--env dev|prd] [--unit <unit> [--output <name>]] [--json]``
@@ -61,7 +63,7 @@ from typing import Any
 from esmeralda import certs
 
 USAGE = (
-    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,deploy,destroy,build,release,verify,logs,"
+    "usage: esmeralda {run,serve,query,mcp,ui,status,doctor,units,plan,apply,deploy,destroy,build,release,verify,logs,"
     "contracts,guard,catalog} ...  "
     "(esmeralda run -- <command> [args...])"
 )
@@ -161,6 +163,83 @@ def _serve(args: argparse.Namespace) -> int:
     except (FileNotFoundError, ValueError) as exc:
         print(f"❌ {exc}", file=sys.stderr)
         return 2
+    return 0
+
+
+UI_APP_DIR = Path("apps/frontends/esmeralda-ui")
+
+
+def _ui(args: argparse.Namespace) -> int:
+    """``esmeralda ui --local``: the read-only console (BFF + built web) on 127.0.0.1.
+
+    The BFF lives in its own workspace package (``esmeralda-ui``, ``apps/frontends/esmeralda-ui/api``) so
+    its web dependencies never reach the runtime wheel; it is imported only here.
+    """
+    from esmeralda.ops import repo
+    from esmeralda.ops.repo import OpsError
+
+    if not args.local:
+        print(
+            "❌ Only `esmeralda ui --local` is available: the deployed console (IAP, internal ingress) comes with "
+            "its Terraform unit.",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        root = _resolve_root(getattr(args, "repo", None))
+        bq_project = bq_dataset = None
+        if args.bigquery:
+            bq_project = args.bq_project or repo.output(root, args.env, "layer-1-projects", "governance_project_id")
+            bq_dataset = args.bq_dataset or f"esmeralda_telemetry_logs_{args.env}"
+            if not bq_project:
+                raise OpsError(
+                    f"No governance project for {args.env} (layer-1-projects output governance_project_id): "
+                    "pass --bq-project"
+                )
+    except OpsError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 2
+    try:
+        from esmeralda_ui.server import LOOPBACK, serve
+        from esmeralda_ui.settings import Settings, SettingsError
+    except ImportError:
+        print(
+            "❌ The console backend (package esmeralda-ui) is not installed: run `make bootstrap` "
+            "(uv sync --all-packages).",
+            file=sys.stderr,
+        )
+        return 2
+
+    static_dir = root / UI_APP_DIR / "web" / "dist"
+    if not (static_dir / "index.html").is_file():
+        web = (UI_APP_DIR / "web").as_posix()
+        print(
+            f"ℹ️  No web bundle in {web}/dist: build it with `npm ci --prefix {web}` and "
+            f"`npm run build --prefix {web}`, or run the Vite dev server (`npm run dev --prefix {web}`, proxies "
+            "/api here). Serving the API only.",
+            file=sys.stderr,
+        )
+    try:
+        settings = Settings.from_env(
+            {"K_SERVICE": os.environ.get("K_SERVICE", "")},
+            mode="local",
+            demo=args.demo,
+            environment=args.env,
+            catalog_root=root,
+            bq_project=bq_project,
+            bq_dataset=bq_dataset,
+            static_dir=static_dir,
+        )
+    except SettingsError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 2
+    source = {"demo": "synthetic demo data", "bigquery": f"BigQuery {bq_project}.{bq_dataset} (read-only, your ADC)"}
+    print(
+        f"🖥️  Esmeralda console on http://{LOOPBACK}:{args.port} (env {args.env}, local dev identity, "
+        f"{source.get(settings.data_source, 'no usage data source: data views show an error')}). Ctrl+C to stop.",
+        flush=True,
+    )
+    serve(settings, host=LOOPBACK, port=args.port)
     return 0
 
 
@@ -867,6 +946,29 @@ def _parser() -> argparse.ArgumentParser:
     mcp = sub.add_parser("mcp", help="read-only MCP server (stdio) to operate this checkout")
     mcp.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO, else the checkout containing cwd)")
 
+    ui = sub.add_parser("ui", help="run the read-only Esmeralda console locally (--local): catalog, FinOps, traces")
+    ui.add_argument(
+        "--local",
+        action="store_true",
+        help="run the console backend and built web on 127.0.0.1 with a fixed, labelled local dev identity",
+    )
+    ui_data = ui.add_mutually_exclusive_group()
+    ui_data.add_argument(
+        "--demo", action="store_true", help="synthetic usage, audit and trace data (badged 'Demo data')"
+    )
+    ui_data.add_argument(
+        "--bigquery",
+        action="store_true",
+        help="read usage, audit and traces from the env's BigQuery views (read-only, with your ADC)",
+    )
+    ui.add_argument(
+        "--bq-project", help="with --bigquery: project of the views (default: the env's governance project)"
+    )
+    ui.add_argument("--bq-dataset", help="with --bigquery: dataset (default: esmeralda_telemetry_logs_<env>)")
+    ui.add_argument("--port", type=int, default=8090, help="port on 127.0.0.1 (default: 8090)")
+    ui.add_argument("--env", default="dev", help="catalog environment (default: dev)")
+    ui.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
+
     status = sub.add_parser(
         "status",
         help="show git branch/SHA, active worktrees, local state units, image tags/digests, and deployed outputs",
@@ -1132,6 +1234,8 @@ def main(argv: list[str] | None = None) -> int:
         return server.main(args.repo)
     if args.cmd == "catalog":
         return _catalog(args)
+    if args.cmd == "ui":
+        return _ui(args)
     return _ops_dispatch(args)
 
 

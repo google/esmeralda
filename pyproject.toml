@@ -25,6 +25,7 @@ members = [
   "apps/services/corporate-email",
   "apps/services/income-verification",
   "apps/services/legacy-dms",
+  "apps/frontends/esmeralda-ui/api",
 ]
 
 # Lint settings for every workspace member (`uv run ruff check .`).
@@ -32,7 +33,7 @@ members = [
 line-length = 120
 target-version = "py312"
 # First-party import roots, for import sorting.
-src = ["packages/*/src", "apps/agents/*", "apps/services/*"]
+src = ["packages/*/src", "apps/agents/*", "apps/services/*", "apps/frontends/*/api/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]

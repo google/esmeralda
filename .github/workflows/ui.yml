@@ -1,0 +1,82 @@
+# Tests the Esmeralda console (apps/frontends/esmeralda-ui): the read-only Python BFF (pytest, including
+# the openapi.json drift check) and the React web (strict typecheck, Vitest, TypeScript types drift
+# against openapi.json, production build). No GCP access needed; nothing is skipped.
+name: Console
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/frontends/esmeralda-ui/**"
+      - "packages/esmeralda/src/esmeralda/catalog/**"
+      - "catalog/**"
+      - "contracts/catalog.schema.json"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/ui.yml"
+  pull_request:
+    paths:
+      - "apps/frontends/esmeralda-ui/**"
+      - "packages/esmeralda/src/esmeralda/catalog/**"
+      - "catalog/**"
+      - "contracts/catalog.schema.json"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/ui.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: console-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: BFF (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.30" # keep in sync with the uv image in apps/services/*/Dockerfile
+          enable-cache: false
+
+      - name: pytest (auth, headers, queries, catalog, openapi.json drift)
+        run: uv run --frozen --package esmeralda-ui --extra dev pytest apps/frontends/esmeralda-ui/api/tests -q
+
+  web:
+    name: Web (typecheck, test, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/frontends/esmeralda-ui/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.14.0" # keep in sync with the node image in apps/frontends/esmeralda-ui/Dockerfile
+
+      - name: npm ci (package-lock.json, public registry, no install scripts)
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit, strict)
+        run: npm run typecheck
+
+      - name: Test (Vitest + TypeScript types drift against openapi.json)
+        run: npm test
+
+      - name: Build
+        run: npm run build
