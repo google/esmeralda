@@ -63,7 +63,7 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | :--- | :---: | :--- |
 | `catalog` map consumed by the Terraform units (targets, routes, probes, `callers` for agents and the test VM) | ✅ | Drives the entry point, IAM grants and `esmeralda verify`; `env.yaml` decodes it from `catalog/.resolved/<env>.json`. |
 | Team-owned `catalog/` folder, `contracts/catalog.schema.json`, `esmeralda catalog resolve` / `show` | ✅ | Compiles to the same Terraform input as the former inline `env.yaml` block. See [2.6 Service Catalog](../3-agentops-and-lifecycle/06-service-catalog.md). |
-| Additional catalog sources (Agent Registry inventory, project labels, enterprise adapters) | 🗺️ | Extension points are declared in `catalog/sources.yaml`. |
+| Additional catalog sources (Agent Registry inventory, project labels, enterprise adapters) | 🗺️ | Extension points are declared in `catalog/sources.yaml`; the snapshot format, `SnapshotSource` base class and `esmeralda catalog sources / fetch / diff` are in place, the built-in adapters are not yet. |
 
 ---
 

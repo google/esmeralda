@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/google/esmeralda/contracts/catalog-snapshot.schema.json",
+  "title": "Esmeralda catalog snapshot",
+  "description": "What `esmeralda catalog fetch` read from one external catalog source for one environment, normalized: catalog/snapshots/<source>/<env>.json (or the source's options.snapshot). `esmeralda catalog resolve` reads only snapshots, never the live system, so it needs no network and its output is reproducible; every external change reaches the catalog through a reviewed snapshot change. A snapshot carries no wall-clock value (Git history has the date) and no environment-specific literal: project ids and numbers, the organization id, the domain and the region are placeholders. Changes are additive only; only a breaking change bumps `schema_version`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "source", "type", "environment", "fetched_by", "entries"],
+  "properties": {
+    "schema": {"const": "esmeralda.catalog.snapshot"},
+    "schema_version": {"const": 1},
+    "source": {"type": "string", "minLength": 1, "description": "Name of the source in catalog/sources.yaml."},
+    "type": {"type": "string", "minLength": 1, "description": "Source type (agent_registry, project_labels, backstage, or a registered adapter)."},
+    "environment": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+    "fetched_by": {"type": "string", "description": "The command that writes this file: esmeralda catalog fetch --env <env> --source <source>."},
+    "entries": {
+      "description": "Normalized entries, sorted by id. Their other fields depend on the source type.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Stable id of the entry in its source (adoption pins match on it)."},
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$", "description": "Deterministic catalog name derived at fetch time."}
+      }
+    }
+  }
+}

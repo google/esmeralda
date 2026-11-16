@@ -49,7 +49,8 @@ from esmeralda.catalog.schema import (
     load_yaml,
     validate,
 )
-from esmeralda.catalog.sources import build_sources
+from esmeralda.catalog.snapshot import SnapshotSource, fetch_command
+from esmeralda.catalog.sources import Layer, Source, build_sources
 
 CATALOG_DIR = Path("catalog")
 SOURCES_FILE = "sources.yaml"
@@ -194,13 +195,15 @@ class Resolved:
     """A resolved catalog: the document (``esmeralda.catalog`` ``resolved`` shape) plus provenance.
 
     ``origins`` maps ``(section, name)`` to where the entry came from (a repo path for files);
-    ``adopted`` maps each target adopted through a ``deploy.registry`` pin to its source.
+    ``adopted`` maps each target adopted through a ``deploy.registry`` pin to its source;
+    ``warnings`` are non-fatal notes (an optional source resolved without its snapshot).
     """
 
     env: str
     document: dict[str, Any]
     origins: dict[tuple[str, str], str] = field(default_factory=dict)
     adopted: dict[str, str] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def teams(self) -> dict[str, Any]:
@@ -633,14 +636,51 @@ def _environment_doc(root: Path, schema: dict[str, Any], sources_doc: dict[str, 
     return doc
 
 
+def _source_entry(source: Source) -> str | dict[str, Any]:
+    """A source in the resolved ``sources`` list: its name, or ``{name, type, snapshot, sha256}``
+    for a snapshot source (so a changed snapshot shows up in the resolved catalog)."""
+    if not isinstance(source, SnapshotSource):
+        return source.name
+    return {"name": source.name, "type": source.type_name, "snapshot": source.snapshot_label(),
+            "sha256": source.snapshot_sha256}
+
+
+def _check_optional_snapshots(loaded: list[tuple[Source, Layer]]) -> list[str]:
+    """An optional source with no snapshot is fine only while no catalog file adopts one of its entries."""
+    problems = []
+    missing = {s.name: s for s, _ in loaded if isinstance(s, SnapshotSource) and s.snapshot_missing}
+    if not missing:
+        return problems
+    for source, layer in loaded:
+        if isinstance(source, SnapshotSource):
+            continue
+        for name in sorted(layer.targets):
+            pin = ((layer.targets[name] or {}).get("deploy") or {}).get("registry") or {}
+            src = missing.get(pin.get("source"))
+            if src:
+                problems.append(f"targets.{name} ({layer.origins.get(('targets', name), source.name)}) adopts "
+                                f"'{pin.get('id')}' from '{src.name}', whose snapshot {src.snapshot_label()} is "
+                                f"missing: run `{fetch_command(src.env or '<env>', src.name)}` (an optional source "
+                                "becomes mandatory once a catalog file adopts one of its entries)")
+    return problems
+
+
 def resolve(root: Path, env: str) -> Resolved:
-    """Merge the sources, apply the environment overrides and defaults, and validate."""
+    """Merge the sources, apply the environment overrides and defaults, and validate.
+
+    Offline by construction: external sources are read from their committed snapshots only.
+    """
     schema = load_schema(root)
     sources_doc = _sources_doc(root, schema)
     env_doc = _environment_doc(root, schema, sources_doc, env)
-    sources = build_sources(root, catalog_dir(root), schema, sources_doc)
+    sources = build_sources(root, catalog_dir(root), schema, sources_doc, env)
 
-    merged = merge_layers([(source, source.load()) for source in sources])
+    loaded = [(source, source.load()) for source in sources]
+    problems = _check_optional_snapshots(loaded)
+    if problems:
+        raise CatalogError(problems)
+    warnings = [w for _, layer in loaded for w in layer.warnings]
+    merged = merge_layers(loaded)
     acc = merged.layer
     origins = {
         (section, name): record["origin"]
@@ -654,7 +694,7 @@ def resolve(root: Path, env: str) -> Resolved:
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
         "environment": env,
-        "sources": [s.name for s in sources] + [env_label],
+        "sources": [_source_entry(s) for s in sources] + [env_label],
         "teams": acc.teams,
         "profiles": acc.profiles,
         "callers": acc.callers,
@@ -680,7 +720,7 @@ def resolve(root: Path, env: str) -> Resolved:
     if problems:
         raise CatalogError(problems)
     adopted = {name: src for name, src in merged.adopted.items() if name in doc["targets"]}
-    return Resolved(env=env, document=doc, origins=origins, adopted=adopted)
+    return Resolved(env=env, document=doc, origins=origins, adopted=adopted, warnings=warnings)
 
 
 # ------------------------------------------------------------------------------------------
@@ -1173,17 +1213,51 @@ def _registry_entry(target: dict[str, Any]) -> str | None:
     return None
 
 
+def entry_provenance(resolved: Resolved, section: str, name: str) -> dict[str, Any]:
+    """Where an entry and each of its externally contributed (or shadowed / overridden) fields came from."""
+    key = f"{section}.{name}"
+    prefix = key + "."
+    provenance = resolved.provenance
+    return {
+        "entry": provenance.get(key),
+        "fields": {k[len(prefix):]: provenance[k] for k in sorted(provenance) if k.startswith(prefix)},
+    }
+
+
+def inventory_rows(resolved: Resolved) -> list[dict[str, Any]]:
+    """Discovered (unadopted) inventory entries: what an external source reports, never compiled."""
+    rows = []
+    for name in sorted(resolved.inventory):
+        entry = resolved.inventory[name]
+        record = resolved.provenance.get(f"inventory.{name}") or {}
+        rows.append({
+            "name": name,
+            "kind": entry["kind"],
+            "source": record.get("source"),
+            "origin": record.get("origin"),
+            "id": (entry.get("registry") or {}).get("id"),
+            "owner_team": entry.get("owner_team"),
+            "description": entry.get("description"),
+            "endpoint": (entry.get("deploy") or {}).get("endpoint"),
+            "runtime": entry.get("runtime"),
+            "compiled": False,
+        })
+    return rows
+
+
 def show(
     resolved: Resolved,
     *,
     target: str | None = None,
     caller: str | None = None,
     ingress: dict[str, Any] | None = None,
+    provenance: bool = False,
 ) -> dict[str, Any]:
     """Who can call each target, through which gateway, and who pays.
 
     ``ingress`` is env.yaml's ``gateways`` block (default backend + host_rules): the entry-point
-    backend of each deployed host.
+    backend of each deployed host. ``provenance`` adds, per target, where the entry and each
+    externally contributed field came from.
     """
     if target and target not in resolved.targets:
         raise CatalogError(f"unknown target '{target}' (known: {', '.join(sorted(resolved.targets))})")
@@ -1250,7 +1324,9 @@ def show(
                 "gateway": t.get("gateway"),
                 "ingress_backend": host_backend,
                 **({"google_apis": google_apis_of(t, resolved.policy)} if t["kind"] in WORKLOAD_KINDS else {}),
+                **({"adopted_from": resolved.adopted[name]} if name in resolved.adopted else {}),
                 "callers": entry_callers,
+                **({"provenance": entry_provenance(resolved, "targets", name)} if provenance else {}),
             }
         )
     return {

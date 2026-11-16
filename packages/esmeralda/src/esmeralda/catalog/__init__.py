@@ -37,6 +37,11 @@ who may call them, through which gateway, and who pays. It is defined by
    the shared identities, and the per-target allowlists of the in-process caller guard
    (``esmeralda.attribution``).
 3. **Inspect** (:func:`show`): who can call each target, through which gateway, and who pays.
+
+External sources (Agent Registry, project labels, Backstage, custom adapters) are read from
+committed snapshots (:class:`SnapshotSource`, ``catalog/snapshots/<source>/<env>.json``) that
+``esmeralda catalog fetch`` writes; resolving never touches the network
+(:mod:`esmeralda.catalog.snapshot`, :mod:`esmeralda.catalog.commands`).
 """
 
 from esmeralda.catalog.resolver import (
@@ -59,6 +64,7 @@ from esmeralda.catalog.resolver import (
     show,
     write_resolved,
 )
+from esmeralda.catalog.snapshot import Placeholders, SnapshotSource, SourceUnreachable
 from esmeralda.catalog.sources import Layer, Source, register_source
 
 __all__ = [
@@ -66,8 +72,11 @@ __all__ = [
     "CatalogError",
     "GoogleApi",
     "Layer",
+    "Placeholders",
     "Resolved",
+    "SnapshotSource",
     "Source",
+    "SourceUnreachable",
     "check_resolved",
     "compile_attribution",
     "compile_caller_allowlists",

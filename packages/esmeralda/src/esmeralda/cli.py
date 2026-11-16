@@ -41,7 +41,10 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
 * ``esmeralda guard [--staged | --diff <range> | --all] [--json]``
 * ``esmeralda catalog resolve [--env <env>|all] [--format json|hcl|terraform] [--write | --check]``
-* ``esmeralda catalog show [--env <env>] [--target <name>] [--caller <name>] [--json]``
+* ``esmeralda catalog show [--env <env>] [--target <name>] [--caller <name>] [--provenance] [--inventory] [--json]``
+* ``esmeralda catalog sources [--env <env>] [--json]``
+* ``esmeralda catalog fetch --source <name>|all [--env <env>] [--dry-run] [--json]``
+* ``esmeralda catalog diff [--env <env>] [--live] [--json]``
 """
 
 from __future__ import annotations
@@ -445,10 +448,13 @@ def _format_catalog_show(data: dict[str, Any]) -> str:
         flags += "" if t.get("compiled") or t.get("registry") else " [not compiled]"
         ingress = f" ingress={t['ingress_backend']}" if t.get("ingress_backend") else ""
         registry = f" registry={t['registry']}" if t.get("registry") and not t.get("compiled") else ""
+        adopted = f" adopted from {t['adopted_from']}" if t.get("adopted_from") else ""
         lines.append(
             f"🎯 {t['target']} ({t['kind']}, owner {t['owner_team']}) {t.get('deploy')} "
-            f"gateway={t.get('gateway') or '-'}{ingress}{registry}{flags}"
+            f"gateway={t.get('gateway') or '-'}{ingress}{registry}{adopted}{flags}"
         )
+        if t.get("provenance"):
+            lines += _format_provenance(t["provenance"])
         if not t.get("callers"):
             lines.append("   (no callers)")
         for c in t.get("callers") or []:
@@ -462,6 +468,122 @@ def _format_catalog_show(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_provenance(prov: dict[str, Any]) -> list[str]:
+    lines = []
+    entry = prov.get("entry") or {}
+    if entry:
+        lines.append(f"   ↳ from {entry.get('source')} ({entry.get('origin')})")
+    for path, record in (prov.get("fields") or {}).items():
+        shadowed = record.get("shadowed") or []
+        losers = f"; shadows {', '.join(s['source'] for s in shadowed)}" if shadowed else ""
+        where = f"{record.get('origin')}, {record.get('strategy', '-')}{losers}"
+        lines.append(f"     {path}: {record.get('source')} ({where})")
+    return lines
+
+
+def _format_catalog_inventory(data: dict[str, Any]) -> str:
+    rows = data.get("inventory") or []
+    lines = [f"📦 Discovered inventory '{data.get('env')}' ({len(rows)} entr{'y' if len(rows) == 1 else 'ies'}; "
+             "never compiled, adopt with a deploy.registry pin):"]
+    if not rows:
+        lines.append("   (none)")
+    for r in rows:
+        extra = "".join(f" {k}={r[k]}" for k in ("owner_team", "runtime", "endpoint") if r.get(k))
+        lines.append(f"🔎 {r['name']} ({r['kind']}) id={r.get('id') or '-'} from {r.get('source')}{extra}")
+    return "\n".join(lines)
+
+
+def _format_catalog_sources(data: dict[str, Any]) -> str:
+    lines = [f"🧩 Catalog sources '{data.get('env')}' (merge order):"]
+    for s in data.get("sources") or []:
+        state = "enabled" if s.get("enabled") else "disabled"
+        lines.append(f"• {s['name']} ({s['type']}, {state})")
+        if s.get("error"):
+            lines.append(f"   ❌ {s['error']}")
+        if "paths" in s:
+            lines.append(f"   paths: {', '.join(s['paths'])}")
+        if s.get("snapshot"):
+            status = s.get("snapshot_status")
+            detail = {
+                "ok": f"{s.get('entries')} entries, sha256 {str(s.get('sha256'))[:12]}",
+                "missing": f"missing: run `{s.get('fetch')}`",
+                "invalid": "invalid: " + "; ".join(s.get("problems") or []),
+            }.get(status, status or "")
+            lines.append(f"   snapshot: {s['snapshot']} ({detail}){' [optional]' if s.get('optional') else ''}")
+        caps = s.get("capabilities")
+        if isinstance(caps, str):
+            lines.append(f"   may contribute: {caps}")
+        elif caps is not None:
+            shown = "; ".join(f"{sec}: {', '.join(paths)}" for sec, paths in caps.items()) or "nothing"
+            lines.append(f"   may contribute: {shown}")
+    return "\n".join(lines)
+
+
+def _format_catalog_fetch(data: dict[str, Any]) -> str:
+    rows = data.get("sources") or []
+    mode = " (dry run, nothing written)" if data.get("dry_run") else ""
+    if not rows:
+        return f"ℹ️  No enabled snapshot source to fetch for '{data.get('env')}'."
+    lines = [f"📥 Catalog fetch '{data.get('env')}'{mode}:"]
+    for r in rows:
+        verb = r["status"] if r.get("written") or r["status"] == "unchanged" else f"would be {r['status']}"
+        lines.append(f"• {r['name']}: {r['snapshot']} {verb} ({r['entries']} entries, sha256 {r['sha256'][:12]})")
+        for change in ("added", "removed", "changed"):
+            if r.get(change):
+                lines.append(f"   {change}: {', '.join(r[change])}")
+    return "\n".join(lines)
+
+
+def _format_catalog_diff(data: dict[str, Any]) -> str:
+    findings = data.get("findings") or []
+    scope = "live vs snapshot, snapshot vs files" if data.get("live") else "snapshot vs files"
+    if not findings:
+        return f"✅ No catalog drift for '{data.get('env')}' ({scope})."
+    lines = [f"⚠️  {len(findings)} catalog finding(s) for '{data.get('env')}' ({scope}):"]
+    for f in findings:
+        lines.append(f"• [{f['kind']}] {f['subject']} ({f.get('source') or '-'}): {f['detail']}")
+    return "\n".join(lines)
+
+
+def _catalog_error(args: argparse.Namespace, exc: Exception, code: int) -> int:
+    problems = getattr(exc, "problems", None) or [str(exc)]
+    if getattr(args, "json", False):
+        print(json.dumps({"ok": False, "errors": problems}, indent=2))
+    else:
+        print(f"❌ Catalog error ({len(problems)}):", file=sys.stderr)
+        for p in problems:
+            print(f"  • {p}", file=sys.stderr)
+    return code
+
+
+def _catalog_sources_cmd(args: argparse.Namespace, root: Path) -> int:
+    """``catalog sources | fetch | diff``: exit 1 on an error, 2 when a live source is unreachable,
+    3 when ``diff`` has findings."""
+    from esmeralda.catalog import commands
+
+    try:
+        if args.catalog_cmd == "sources":
+            data = commands.describe_sources(root, args.env)
+            print(json.dumps(data, indent=2) if args.json else _format_catalog_sources(data))
+            return 0
+        if args.catalog_cmd == "fetch":
+            data = commands.fetch_sources(root, args.env, args.source, dry_run=args.dry_run)
+            print(json.dumps(data, indent=2) if args.json else _format_catalog_fetch(data))
+            return 0
+        data = commands.diff_catalog(root, args.env, live=args.live)
+        print(json.dumps(data, indent=2) if args.json else _format_catalog_diff(data))
+        return 3 if data["findings"] else 0
+    except commands.SourceUnreachable as exc:
+        return _catalog_error(args, exc, 2)
+    except commands.CatalogError as exc:
+        return _catalog_error(args, exc, 1)
+
+
+def _print_warnings(resolved: Any) -> None:
+    for warning in getattr(resolved, "warnings", None) or []:
+        print(f"⚠️  {warning}", file=sys.stderr)
+
+
 def _catalog(args: argparse.Namespace) -> int:
     from esmeralda import catalog
     from esmeralda.ops import repo
@@ -469,6 +591,10 @@ def _catalog(args: argparse.Namespace) -> int:
 
     try:
         root = _resolve_root(getattr(args, "repo", None))
+        if args.catalog_cmd in ("sources", "fetch", "diff"):
+            if args.env == "all":
+                raise catalog.CatalogError(f"catalog {args.catalog_cmd} needs a single --env")
+            return _catalog_sources_cmd(args, root)
         envs = catalog.resolver.environments(root) if args.env == "all" else [args.env]
         if args.catalog_cmd == "resolve":
             if args.check or args.write:
@@ -485,6 +611,7 @@ def _catalog(args: argparse.Namespace) -> int:
             if len(envs) != 1:
                 raise catalog.CatalogError("--env all needs --write or --check")
             resolved = catalog.resolve(root, envs[0])
+            _print_warnings(resolved)
             if args.format == "hcl":
                 print(catalog.render_hcl(resolved), end="")
             elif args.format == "terraform":
@@ -497,22 +624,24 @@ def _catalog(args: argparse.Namespace) -> int:
             if len(envs) != 1:
                 raise catalog.CatalogError("catalog show needs a single --env")
             resolved = catalog.resolve(root, envs[0])
+            _print_warnings(resolved)
+            if args.inventory:
+                data = {"env": resolved.env, "inventory": catalog.resolver.inventory_rows(resolved)}
+                if args.provenance:
+                    for row in data["inventory"]:
+                        row["provenance"] = catalog.resolver.entry_provenance(resolved, "inventory", row["name"])
+                print(json.dumps(data, indent=2) if args.json else _format_catalog_inventory(data))
+                return 0
             try:
                 ingress = repo.gateways_block(root, envs[0])
             except (OpsError, OSError):
                 ingress = {}
-            data = catalog.show(resolved, target=args.target, caller=args.caller, ingress=ingress)
+            data = catalog.show(resolved, target=args.target, caller=args.caller, ingress=ingress,
+                                provenance=args.provenance)
             print(json.dumps(data, indent=2) if args.json else _format_catalog_show(data))
             return 0
     except (catalog.CatalogError, OpsError, NotImplementedError) as exc:
-        problems = getattr(exc, "problems", None) or [str(exc)]
-        if getattr(args, "json", False):
-            print(json.dumps({"ok": False, "errors": problems}, indent=2))
-        else:
-            print(f"❌ Catalog error ({len(problems)}):", file=sys.stderr)
-            for p in problems:
-                print(f"  • {p}", file=sys.stderr)
-        return 2
+        return _catalog_error(args, exc, 1 if args.catalog_cmd in ("sources", "fetch", "diff") else 2)
     return 0
 
 
@@ -958,7 +1087,29 @@ def _parser() -> argparse.ArgumentParser:
     show_p = catalog_sub.add_parser("show", help="who can call each target, through which gateway, and who pays")
     show_p.add_argument("--target", help="only this target")
     show_p.add_argument("--caller", help="only what this caller can call")
+    show_p.add_argument("--provenance", action="store_true",
+                        help="also show where each entry and external field came from")
+    show_p.add_argument("--inventory", action="store_true",
+                        help="show the discovered inventory (external entries no catalog file adopts; never compiled)")
     _add_common_ops_flags(show_p, with_env=True)
+    sources_p = catalog_sub.add_parser(
+        "sources", help="list catalog sources: type, enabled, capabilities, snapshot path, sha256 and entry count"
+    )
+    _add_common_ops_flags(sources_p, with_env=True)
+    fetch_p = catalog_sub.add_parser(
+        "fetch",
+        help="read live catalog sources (network, read-only) into normalized snapshots under catalog/snapshots/",
+    )
+    fetch_p.add_argument("--source", required=True, help="source name in catalog/sources.yaml, or 'all' (enabled ones)")
+    fetch_p.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
+    _add_common_ops_flags(fetch_p, with_env=True)
+    diff_p = catalog_sub.add_parser(
+        "diff",
+        help="drift findings: discovered entries, shadowed or overridden external values, missing snapshots "
+        "(exit 3 when there are findings)",
+    )
+    diff_p.add_argument("--live", action="store_true", help="also compare each live source with its snapshot (network)")
+    _add_common_ops_flags(diff_p, with_env=True)
 
     return parser
 

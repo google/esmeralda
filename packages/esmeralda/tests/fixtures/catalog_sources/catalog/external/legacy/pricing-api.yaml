@@ -1,0 +1,11 @@
+schema: esmeralda.catalog
+schema_version: 1
+# Synthetic test fixture: a catalog file that adopts the `endpoints/pricing` entry of the
+# `inventory` snapshot source by pin (never by name). Callers still come from catalog files.
+name: pricing-api
+kind: http
+owner_team: ai-coe
+deploy:
+  managed: false
+  endpoint: https://pricing.{domain}
+  registry: { source: inventory, id: endpoints/pricing }

@@ -1,0 +1,42 @@
+{
+  "entries": [
+    {
+      "id": "agents/loan-helper",
+      "inventory": {
+        "description": "Discovered loan helper agent (synthetic)",
+        "kind": "a2a",
+        "registry": {
+          "id": "agents/loan-helper"
+        },
+        "runtime": "cloud_run",
+        "runtime_resource": "//run.googleapis.com/projects/{project:sandbox}/locations/{region}/services/loan-helper"
+      },
+      "name": "loan-helper"
+    },
+    {
+      "id": "endpoints/pricing",
+      "inventory": {
+        "deploy": {
+          "endpoint": "https://pricing.{domain}"
+        },
+        "description": "Pricing API (synthetic)",
+        "kind": "http",
+        "registry": {
+          "id": "endpoints/pricing",
+          "skills": [
+            "quote"
+          ]
+        },
+        "runtime": "cloud_run",
+        "runtime_resource": "//run.googleapis.com/projects/{project:pricing}/locations/{region}/services/pricing"
+      },
+      "name": "pricing"
+    }
+  ],
+  "environment": "dev",
+  "fetched_by": "esmeralda catalog fetch --env dev --source inventory",
+  "schema": "esmeralda.catalog.snapshot",
+  "schema_version": 1,
+  "source": "inventory",
+  "type": "fixture_inventory"
+}

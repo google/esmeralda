@@ -22,7 +22,12 @@ Scans staged changes (``--staged``), a git diff range (``--diff <range>``), all 
 * built-in path rules: ``*.tfvars``, ``*.tfstate*``, ``*.tfplan``, ``.env*`` (except
   ``.env.example``), key files, local agent state directories, and ``.local_states``;
 * optional user-supplied regex patterns from ``$ESMERALDA_SENSITIVE_PATTERNS_FILE`` or
-  ``<git-common-dir>/info/sensitive-patterns`` (one case-insensitive regex per line).
+  ``<git-common-dir>/info/sensitive-patterns`` (one case-insensitive regex per line);
+* committed catalog snapshots (``*/snapshots/*.json`` or any JSON file with the
+  ``esmeralda.catalog.snapshot`` header) are also checked for environment literals and secrets:
+  raw 12-digit project numbers, organization or folder ids, emails and IAM members / LDAP-like
+  users, and token-like strings (:data:`esmeralda.catalog.snapshot.SNAPSHOT_RULES`). Snapshots must
+  use placeholders (``{org}``, ``{project:<alias>}``, ``{project_number:<alias>}``, ...) instead.
 """
 
 from __future__ import annotations
@@ -35,8 +40,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from esmeralda.catalog.snapshot import SNAPSHOT_RULES, is_snapshot_text
 from esmeralda.ops import repo
 from esmeralda.ops.repo import OpsError
+
+SNAPSHOT_GUARD_RULES: list[tuple[str, re.Pattern[str]]] = [
+    (f"catalog snapshot: {rule}", pattern) for rule, pattern in SNAPSHOT_RULES
+]
 
 # Constructed from fragments so this source file never matches its own rules or grep hooks.
 _SHORTLINK_RE = re.compile(
@@ -224,10 +234,18 @@ def parse_added_lines(diff: str) -> list[tuple[str, int, str]]:
     return out
 
 
+def is_snapshot(path: str, text: str = "") -> bool:
+    """A committed catalog snapshot: ``*/snapshots/*.json``, or any JSON file with the snapshot header."""
+    if not path.endswith(".json"):
+        return False
+    return fnmatch.fnmatch(path, "snapshots/*") or fnmatch.fnmatch(path, "*/snapshots/*") or is_snapshot_text(text)
+
+
 def scan_diff(
     diff: str,
     paths: list[str],
     rules: list[tuple[str, re.Pattern[str]]] | None = None,
+    root: Path | None = None,
 ) -> list[Finding]:
     active_rules = BUILTIN_CONTENT_RULES if rules is None else rules
     findings: list[Finding] = []
@@ -235,8 +253,17 @@ def scan_diff(
     for path in paths:
         findings.extend(check_path(path))
         findings.extend(scan_text(path, path, path_text_rules))
-    for path, lineno, text in parse_added_lines(diff):
-        findings.extend(scan_text(f"{path}:{lineno}", text, active_rules))
+    added = parse_added_lines(diff)
+    snapshots = set()
+    for path in {p for p, _, _ in added}:
+        text = "\n".join(t for p, _, t in added if p == path)
+        if root is not None and (root / path).is_file():
+            text = (root / path).read_text(errors="replace")
+        if is_snapshot(path, text):
+            snapshots.add(path)
+    for path, lineno, text in added:
+        line_rules = active_rules + SNAPSHOT_GUARD_RULES if path in snapshots else active_rules
+        findings.extend(scan_text(f"{path}:{lineno}", text, line_rules))
     return findings
 
 
@@ -261,7 +288,8 @@ def scan_files(
         if b"\x00" in raw[:8192]:
             continue
         text = raw.decode("utf-8", errors="replace")
-        matched_rules = [r for r in active_rules if r[1].search(text)]
+        file_rules = active_rules + SNAPSHOT_GUARD_RULES if is_snapshot(rel_path, text) else active_rules
+        matched_rules = [r for r in file_rules if r[1].search(text)]
         if not matched_rules:
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
@@ -319,7 +347,7 @@ def run_guard(
             raise repo.failure(f"git diff {diff_range}", diff_res)
         names_res = repo.run([*base_cmd, "--name-only"], cwd=root, timeout=30.0, what=f"git diff {diff_range}")
         paths = [p for p in names_res.stdout.splitlines() if p.strip()]
-        findings = scan_diff(diff_res.stdout, paths, rules)
+        findings = scan_diff(diff_res.stdout, paths, rules, root)
     else:
         base_cmd = ["git", "diff", "--cached", "--no-color", "--no-ext-diff", "--diff-filter=ACMR"]
         diff_res = repo.run([*base_cmd, "-U0"], cwd=root, timeout=30.0, what="git diff --cached")
@@ -327,7 +355,7 @@ def run_guard(
             raise repo.failure("git diff --cached", diff_res)
         names_res = repo.run([*base_cmd, "--name-only"], cwd=root, timeout=30.0, what="git diff --cached")
         paths = [p for p in names_res.stdout.splitlines() if p.strip()]
-        findings = scan_diff(diff_res.stdout, paths, rules)
+        findings = scan_diff(diff_res.stdout, paths, rules, root)
 
     return {
         "ok": not findings,

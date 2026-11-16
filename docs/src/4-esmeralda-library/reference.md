@@ -449,7 +449,25 @@ esmeralda guard [--staged | --diff RANGE | --all | --message-file FILE] [--json]
 | `verify` | `esmeralda.ops.runtime.verify` | Runs gateway conformance probes (`runtime.test_gateway`, optionally filtered by `--probe`) and, unless `--skip-query` is passed, runs remote queries against `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` (or with `--partner`, runs Apigee partner conformance checks via `runtime.test_partner`; with `--model-armor`, runs `esmeralda.ops.model_armor.verify_model_armor`). Exits non-zero if any check fails |
 | `logs` | `esmeralda.ops.logs.agent_logs` | Pulls recent Cloud Logging entries for an agent (Reasoning Engine) or MCP/gateway service (Cloud Run), collapsing tracebacks and deduplicating repeats |
 | `contracts` | `esmeralda.ops.contracts.describe_contracts` | Prints architectural contracts (`all`, `entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
-| `guard` | `esmeralda.ops.guard.run_guard` | Public-repository sensitive-content scanner across `--staged` changes, `--diff <range>`, `--all` tracked files, or `--message-file`. Exits non-zero if any secret, forbidden path, or internal/customer marker is detected |
+| `guard` | `esmeralda.ops.guard.run_guard` | Public-repository sensitive-content scanner across `--staged` changes, `--diff <range>`, `--all` tracked files, or `--message-file`. Exits non-zero if any secret, forbidden path, or internal/customer marker is detected. Committed catalog snapshots (`*/snapshots/*.json`, or any JSON file with the `esmeralda.catalog.snapshot` header) are also rejected when they hold a raw 12-digit project number, an organization or folder id, an email or IAM member, or a token-like string |
+
+### Catalog subcommands
+
+```text
+esmeralda catalog resolve [--env ENV|all] [--format json|hcl|terraform] [--write | --check] [--repo PATH]
+esmeralda catalog show [--env ENV] [--target NAME] [--caller NAME] [--provenance] [--inventory] [--json] [--repo PATH]
+esmeralda catalog sources [--env ENV] [--json] [--repo PATH]
+esmeralda catalog fetch --source NAME|all [--env ENV] [--dry-run] [--json] [--repo PATH]
+esmeralda catalog diff [--env ENV] [--live] [--json] [--repo PATH]
+```
+
+| Subcommand | Backed by | Description |
+|---|---|---|
+| `catalog resolve` | `esmeralda.catalog.resolve` / `write_resolved` / `check_resolved` | Merges the sources of `catalog/sources.yaml`, applies `environments/<env>.yaml`, validates, and prints the resolved catalog (`json`), the Terraform map (`hcl`) or the `.resolved/<env>.json` content (`terraform`). `--write` regenerates `catalog/.resolved/<env>.json`, `--check` exits `1` when it is stale. Offline: external sources are read from their snapshots only. Exit `2` on a catalog error |
+| `catalog show` | `esmeralda.catalog.show` | Who can call each target, through which gateway, and who pays. `--provenance` adds where each entry and each externally contributed field came from (source, origin, strategy, shadowed values); `--inventory` lists the discovered entries no catalog file adopts (never compiled) instead |
+| `catalog sources` | `esmeralda.catalog.commands.describe_sources` | Every source in merge order, enabled or not: type, capabilities and, for snapshot sources, the snapshot path, status (`ok`, `missing` with the fetch command, `invalid`), sha256 and entry count. Offline. Exit `1` on an error |
+| `catalog fetch` | `esmeralda.catalog.commands.fetch_sources` | Calls the adapter's `fetch()` of one source (enabled or not) or of every enabled snapshot source (`all`), normalizes the result (entries and keys sorted, volatile fields dropped, environment literals as placeholders, no timestamp) and writes `catalog/snapshots/<source>/<env>.json`, reporting added, removed and changed entry ids. Every source is fetched before anything is written. `--dry-run` writes nothing. Refuses a snapshot that still holds an environment literal or a secret-like string. Exit `2` when a live source is unreachable (nothing written), `1` on any other error |
+| `catalog diff` | `esmeralda.catalog.commands.diff_catalog` | Findings for review: `discovered` entries no catalog file adopts, `shadowed` / `overridden` external values, `missing_snapshot` for optional sources and, with `--live` (network, never written), `live_drift` per entry that changed since the snapshot. Exit `0` with no finding, `3` with findings, `2` when a live source is unreachable, `1` on an error |
 
 ## `esmeralda.ops`
 
