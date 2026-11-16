@@ -10,6 +10,9 @@ deploy: { unit: agents/cx-mortgage-orchestrator }
 # No `identity`: it calls out with its own Agent Identity (the unit's agent_identity_principal).
 serving: { token: access, probe: query, timeout: 600 }
 models: [gemini-flash]
+# Google APIs beyond policy.agent_gateway.google_apis.baseline (the Agent Gateway denies the rest).
+google_apis:
+  - aiplatform  # Gemini generateContent (MODEL_LOCATION=global)
 
 # No callers yet: it is the entry agent (reached by its own team's front ends and `esmeralda query`).
 

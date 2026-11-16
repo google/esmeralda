@@ -161,11 +161,43 @@ def test_grant_script_callers_pass_their_mode(tf_path: pathlib.Path, mode: str):
     assert (tf_path.parent / rel).resolve() == GRANT_IAP_SCRIPT.resolve()
 
 
-def test_layer4_passes_every_system_endpoint_to_the_script():
+def test_layer4_passes_every_baseline_google_api_to_the_script():
+    """Layer 4 grants only the baseline Google API entries; the per-agent ones are layer 5's."""
     content = AGW_MAIN_TF.read_text()
     assert "IAP_MEMBERS_JSON         = jsonencode(local.iap_egress_members)" in content
-    assert "SYSTEM_ENDPOINT_IDS_JSON = jsonencode(sort(keys(local.system_endpoints)))" in content
+    assert "SYSTEM_ENDPOINT_IDS_JSON = jsonencode(local.baseline_endpoint_ids)" in content
+    assert 'baseline_endpoint_ids = sort([for sid, e in local.google_api_endpoints : sid if e.grant == "baseline"])' in content
     assert "depends_on = [google_agent_registry_service.system_endpoints]" in content
+
+
+def test_layer4_registers_only_the_catalog_google_apis():
+    """No hard-coded API list or blanket hostname expansion: the entries are the catalog google_apis."""
+    content = AGW_MAIN_TF.read_text()
+    code = "\n".join(line.split("#", 1)[0] for line in content.splitlines())
+    assert "for_each     = local.google_api_endpoints" in code
+    assert "var.google_api_endpoints" in code
+    # The registry section (the Model Armor extension's own regional endpoint is not a registry entry).
+    registry = content.split("# 5. Google API entries", 1)[1].split("# 6. Agent Gateway root CA", 1)[0]
+    registry = "\n".join(line.split("#", 1)[0] for line in registry.splitlines())
+    for variant in (".mtls.googleapis.com", ".rep.googleapis.com", '"us-${'):
+        assert variant not in registry, f"layer 4 must not generate {variant} hostname variants"
+    assert "local.google_apis" not in code
+    # Both interfaces per entry: gRPC clients send host:443 as :authority.
+    assert 'url              = "${each.value.url}:443"' in code
+    for env in ("dev", "prd"):
+        unit = (REPO_ROOT / f"infrastructure/live/{env}/layer-4-governance/terragrunt.hcl").read_text()
+        assert re.search(r"^\s*google_api_endpoints\s*=\s*local\.env\.catalog_google_apis\s*$", unit, re.M), env
+
+
+def test_layer4_grants_no_vertex_ai_service_agent():
+    """With Agent Identity an engine egresses as itself: the service agents are on no egress list."""
+    content = AGW_MAIN_TF.read_text()
+    locals_block = content.split("dynamic_agent_members = flatten([", 1)[1].split("\n}", 1)[0]
+    assert "gcp-sa-aiplatform" not in locals_block
+    assert "serviceAccount:" not in locals_block
+    for env in ("dev", "prd"):
+        data = json.loads((REPO_ROOT / "catalog/.resolved" / f"{env}.json").read_text())
+        assert "gcp-sa-" not in json.dumps(data["iap_egress"]), env
 
 
 def test_layer4_root_iap_members_exclude_service_account_emails():

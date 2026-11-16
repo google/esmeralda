@@ -12,17 +12,18 @@
 #
 # Modes (IAP_MODE):
 #   system-endpoints  Layer 4 governance. Writes IAP_MEMBERS_JSON (the agent projects'
-#                     principalSets and platform service agents) on every system endpoint entry in
-#                     SYSTEM_ENDPOINT_IDS_JSON (Google APIs), reads each policy back and verifies it,
-#                     and only then clears the registry root policy. Agents keep their Google API
-#                     egress throughout: the per-entry grants exist before the root binding (written
-#                     by earlier versions) goes away, and nothing is cleared if any entry fails.
+#                     principalSets) on every baseline Google API entry in SYSTEM_ENDPOINT_IDS_JSON
+#                     (catalog policy.agent_gateway.google_apis.baseline), reads each policy back
+#                     and verifies it, and only then clears the registry root policy. Agents keep
+#                     their Google API egress throughout: the per-entry grants exist before the root
+#                     binding (written by earlier versions) goes away, and nothing is cleared if any
+#                     entry fails.
 #   targets           Layer 5 iap-egress unit. Writes the per-target lists of
 #                     IAP_TARGET_POLICIES_JSON {"agents": {...}, "endpoints": {...}, "mcp_servers": {...}}
-#                     (compiled from the service catalog) on each agent, external endpoint and MCP
-#                     server entry, then reads them back and verifies them. An empty list writes an
-#                     empty policy (nobody). Refuses to grant endpoint entries while the registry
-#                     root still holds a binding (apply layer 4 first).
+#                     (compiled from the service catalog) on each agent, external endpoint, MCP
+#                     server and per-agent Google API entry, then reads them back and verifies them.
+#                     An empty list writes an empty policy (nobody). Refuses to grant endpoint
+#                     entries while the registry root still holds a binding (apply layer 4 first).
 #   check-root        Exits non-zero if the registry root holds any binding. Run before new endpoint
 #                     entries are registered: a root binding left by an older layer 4 would open them.
 #

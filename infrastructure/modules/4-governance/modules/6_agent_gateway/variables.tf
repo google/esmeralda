@@ -82,6 +82,28 @@ variable "agent_project_ids" {
   default     = []
 }
 
+variable "google_api_endpoints" {
+  type = map(object({
+    api              = string
+    url              = string
+    protocol_binding = string
+    display_name     = string
+    grant            = string
+    callers          = optional(list(string), [])
+  }))
+  description = "Google API entries of the Agent Registry, compiled from the catalog (catalog/.resolved/<env>.json `google_apis`), keyed by service_id. Keys and URLs may hold {region}. grant = baseline: this module grants the agent projects; grant = callers: the layer 5 iap-egress unit grants the declaring agents."
+  default     = {}
+
+  validation {
+    condition     = alltrue([for e in values(var.google_api_endpoints) : contains(["baseline", "callers"], e.grant)])
+    error_message = "google_api_endpoints[*].grant must be baseline or callers."
+  }
+  validation {
+    condition     = alltrue([for e in values(var.google_api_endpoints) : contains(["HTTP_JSON", "GRPC"], e.protocol_binding)])
+    error_message = "google_api_endpoints[*].protocol_binding must be HTTP_JSON or GRPC."
+  }
+}
+
 variable "enable_agent_gateway" {
   type        = bool
   description = "Toggle to enable or disable the Central Agent Gateway."

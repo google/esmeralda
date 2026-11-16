@@ -173,6 +173,93 @@
   "environment": "prd",
   "external_targets": {},
   "generated_by": "esmeralda catalog resolve --env prd --write",
+  "google_apis": {
+    "aiplatform": {
+      "api": "aiplatform",
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator"
+      ],
+      "display_name": "Vertex AI Platform",
+      "grant": "callers",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://aiplatform.googleapis.com"
+    },
+    "bigquery": {
+      "api": "bigquery",
+      "callers": [
+        "ai-coe-mortgage-specialist"
+      ],
+      "display_name": "BigQuery",
+      "grant": "callers",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://bigquery.googleapis.com"
+    },
+    "bigquerystorage": {
+      "api": "bigquerystorage",
+      "callers": [
+        "ai-coe-mortgage-specialist"
+      ],
+      "display_name": "BigQuery Storage",
+      "grant": "callers",
+      "protocol_binding": "GRPC",
+      "url": "https://bigquerystorage.googleapis.com"
+    },
+    "cloudresourcemanager": {
+      "api": "cloudresourcemanager",
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator"
+      ],
+      "display_name": "Cloud Resource Manager",
+      "grant": "baseline",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://cloudresourcemanager.googleapis.com"
+    },
+    "iamcredentials": {
+      "api": "iamcredentials",
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator"
+      ],
+      "display_name": "IAM Credentials",
+      "grant": "baseline",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://iamcredentials.googleapis.com"
+    },
+    "storage": {
+      "api": "storage",
+      "callers": [
+        "ai-coe-mortgage-specialist"
+      ],
+      "display_name": "Cloud Storage",
+      "grant": "callers",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://storage.googleapis.com"
+    },
+    "telemetry": {
+      "api": "telemetry",
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator"
+      ],
+      "display_name": "Telemetry",
+      "grant": "baseline",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://telemetry.googleapis.com"
+    },
+    "{region}-aiplatform": {
+      "api": "aiplatform_runtime_region",
+      "callers": [
+        "ai-coe-mortgage-specialist",
+        "cx-mortgage-orchestrator"
+      ],
+      "display_name": "Vertex AI Platform Regional",
+      "grant": "baseline",
+      "protocol_binding": "HTTP_JSON",
+      "url": "https://{region}-aiplatform.googleapis.com"
+    }
+  },
   "iap_egress": {
     "agents": {
       "ai-coe-mortgage-specialist": [
@@ -180,7 +267,21 @@
         "layer-3-security:test_vm_sa_email"
       ]
     },
-    "endpoints": {},
+    "endpoints": {
+      "aiplatform": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal",
+        "agents/cx-mortgage-orchestrator:agent_identity_principal"
+      ],
+      "bigquery": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal"
+      ],
+      "bigquerystorage": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal"
+      ],
+      "storage": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal"
+      ]
+    },
     "mcp_servers": {
       "corporate-email": [
         "agents/ai-coe-mortgage-specialist:agent_identity_principal",

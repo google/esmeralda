@@ -18,10 +18,14 @@ Read-only (``gcloud ... list`` / ``get-iam-policy``). Compares the live central 
 what the layers compiled:
 
 * the registry root holds no binding (a root binding is inherited by every entry);
-* each system endpoint entry (layer 4 ``system_endpoint_ids``) lists exactly ``iap_egress_members``;
-* each agent, external endpoint and MCP server entry of the catalog (``iap-egress`` unit output
-  ``target_iap_members``) lists exactly its callers, an empty list meaning an empty policy;
+* each baseline Google API entry (layer 4 ``system_endpoint_ids``) lists exactly ``iap_egress_members``
+  (the agent projects);
+* each agent, external endpoint, MCP server and per-agent Google API entry of the catalog
+  (``iap-egress`` unit output ``target_iap_members``) lists exactly its callers, an empty list
+  meaning an empty policy;
 * each external target (``external_registry_entries``) is registered with its exact URL and type;
+* the Google API entries registered are exactly the ones the catalog declares (layer 4
+  ``google_api_endpoint_ids``): no stray ``*.googleapis.com`` entry, none missing;
 * any other entry holds no policy at all (nobody can reach it through the Agent Gateway).
 
 This is the policy-level egress probe: a listed caller is on the entry's policy and a caller
@@ -90,6 +94,12 @@ def index_services(services: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def is_google_api_url(url: str) -> bool:
+    """Whether an interface URL points at a Google API host (``*.googleapis.com``)."""
+    host = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    return host == "googleapis.com" or host.endswith(".googleapis.com")
+
+
 def evaluate(
     *,
     services: list[dict[str, Any]],
@@ -99,8 +109,13 @@ def evaluate(
     system_members: list[str],
     target_members: dict[str, dict[str, list[str]]],
     external_entries: dict[str, dict[str, str]],
+    google_api_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """The checks, from the live registry (``services``, ``policies`` by service id, root policy)."""
+    """The checks, from the live registry (``services``, ``policies`` by service id, root policy).
+
+    ``google_api_ids`` (layer 4 ``google_api_endpoint_ids``, ``None`` for an older layer 4) adds the
+    Google API registration check: the ``*.googleapis.com`` entries are exactly the declared ones.
+    """
     index = index_services(services)
     checks: list[dict[str, Any]] = []
 
@@ -110,6 +125,17 @@ def evaluate(
     root = egress_members(root_policy)
     add("registry root", root == [], "no binding" if root == [] else
         f"holds a binding ({json.dumps(root_policy.get('bindings'))}): every entry it matches inherits it")
+
+    if google_api_ids is not None:
+        declared = set(google_api_ids)
+        registered = {sid for sid, e in index.items() if any(is_google_api_url(u) for u in e["urls"])}
+        stray, missing = sorted(registered - declared), sorted(declared - set(index))
+        detail = f"{len(declared)} declared, {len(registered)} registered"
+        if stray:
+            detail += f"; not declared in the catalog: {', '.join(stray)}"
+        if missing:
+            detail += f"; declared but not registered: {', '.join(missing)}"
+        add("google api entries", not stray and not missing, detail)
 
     expected: dict[str, tuple[str, list[str]]] = {sid: ("endpoints", sorted(set(system_members))) for sid in system_ids}
     for group, targets in target_members.items():
@@ -165,6 +191,7 @@ def check(root: Path, env: str, *, workers: int = 8, gcloud: Callable[..., Any] 
     region = repo._hcl_string(repo.env_locals(root, env), "region")
     system_ids = repo.output(root, env, L4, "system_endpoint_ids")
     system_members = repo.output(root, env, L4, "iap_egress_members")
+    google_api_ids = repo.output(root, env, L4, "google_api_endpoint_ids")
     target_members = repo.output(root, env, IAP_UNIT, "target_iap_members")
     external = repo.output(root, env, IAP_UNIT, "external_registry_entries") or {}
     if not project or not region:
@@ -202,6 +229,7 @@ def check(root: Path, env: str, *, workers: int = 8, gcloud: Callable[..., Any] 
         system_members=system_members,
         target_members=target_members,
         external_entries=external,
+        google_api_ids=google_api_ids,
     )
     failed = [c for c in checks if not c["ok"]]
     return {

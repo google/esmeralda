@@ -271,61 +271,29 @@ resource "google_project_iam_member" "agentgateway_model_armor" {
   member  = "serviceAccount:service-${data.google_project.governance.number}@gcp-sa-agentgateway.iam.gserviceaccount.com"
 }
 
-# 5. Declarative System Google API Endpoints registered in Central Agent Registry
-# IAP egress requires every exact hostname the agents call through the gateway to be registered.
+# 5. Google API entries of the central Agent Registry, from the catalog (`google_apis` in
+#    catalog/.resolved/<env>.json): only the APIs the agents declare (the policy baseline plus each
+#    agent's own google_apis), with their real hostnames. The gateway denies any host that isn't
+#    registered, so an API no agent declares can't be reached at all. gRPC clients send host:443 as
+#    :authority, so each entry registers both https://<host> and https://<host>:443.
 locals {
-  google_apis = {
-    aiplatform           = "Vertex AI Platform"
-    modelarmor           = "Model Armor"
-    cloudresourcemanager = "Cloud Resource Manager"
-    logging              = "Logging"
-    monitoring           = "Monitoring"
-    telemetry            = "Telemetry"
-    cloudtrace           = "Cloud Trace"
-    secretmanager        = "Secret Manager"
-    agentregistry        = "Agent Registry"
-    iap                  = "Identity-Aware Proxy"
-    iamcredentials       = "IAM Credentials"
-    bigquery             = "BigQuery"
-    bigquerystorage      = "BigQuery Storage"
-  }
-
-  system_endpoints = var.enable_agent_gateway ? merge([
-    for id, name in local.google_apis : {
-      (length(id) >= 4 ? id : "${id}-endpoint") = {
-        display_name = name
-        url          = "https://${id}.googleapis.com"
-      }
-      "${id}-mtls" = {
-        display_name = "${name} mTLS"
-        url          = "https://${id}.mtls.googleapis.com"
-      }
-      "${var.region}-${id}" = {
-        display_name = "${name} Regional"
-        url          = "https://${var.region}-${id}.googleapis.com"
-      }
-      "${var.region}-${id}-mtls" = {
-        display_name = "${name} Regional mTLS"
-        url          = "https://${var.region}-${id}.mtls.googleapis.com"
-      }
-      "${id}-${var.region}-rep" = {
-        display_name = "${name} Regional REP"
-        url          = "https://${id}.${var.region}.rep.googleapis.com"
-      }
-      "us-${id}" = {
-        display_name = "${name} US Multi-Region"
-        url          = "https://us-${id}.googleapis.com"
-      }
-      "us-${id}-mtls" = {
-        display_name = "${name} US Multi-Region mTLS"
-        url          = "https://us-${id}.mtls.googleapis.com"
-      }
+  google_api_endpoints = var.enable_agent_gateway ? {
+    for sid, e in var.google_api_endpoints : replace(sid, "{region}", var.region) => {
+      display_name     = e.display_name
+      url              = replace(e.url, "{region}", var.region)
+      protocol_binding = e.protocol_binding
+      grant            = e.grant
     }
-  ]...) : {}
+  } : {}
+
+  # Entries layer 4 grants (grant = baseline): every agent runtime, so their policy lists the agent
+  # projects. The other entries (grant = callers) are granted per agent by the layer 5 iap-egress
+  # unit, from the catalog google_apis of each agent.
+  baseline_endpoint_ids = sort([for sid, e in local.google_api_endpoints : sid if e.grant == "baseline"])
 }
 
 resource "google_agent_registry_service" "system_endpoints" {
-  for_each     = local.system_endpoints
+  for_each     = local.google_api_endpoints
   provider     = google-beta
   project      = var.governance_project_id
   location     = var.region
@@ -334,17 +302,24 @@ resource "google_agent_registry_service" "system_endpoints" {
 
   interfaces {
     url              = each.value.url
-    protocol_binding = can(regex("bigquerystorage", each.key)) ? "GRPC" : "HTTP_JSON"
+    protocol_binding = each.value.protocol_binding
   }
 
   # gRPC clients send host:443 as :authority; register both forms.
   interfaces {
     url              = "${each.value.url}:443"
-    protocol_binding = can(regex("bigquerystorage", each.key)) ? "GRPC" : "HTTP_JSON"
+    protocol_binding = each.value.protocol_binding
   }
 
   endpoint_spec {
     type = "NO_SPEC"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = can(regex("^https://[a-z0-9.-]+\\.googleapis\\.com$", each.value.url))
+      error_message = "Google API entry ${each.key}: url ${each.value.url} must be https://<host>.googleapis.com (regenerate catalog/.resolved/<env>.json)."
+    }
   }
 }
 
@@ -389,16 +364,15 @@ data "google_project" "agent_projects" {
 }
 
 locals {
-  # Members of the roles/iap.egressor policy grant_iap_egress.sh writes on each system endpoint
-  # entry (Google APIs). IAP egress authorizes the caller's Agent Identity, so the agent principals
-  # are what matter here. The agent and test VM service accounts in var.agent_invoker_sa_emails are
-  # not on this list (they only read the CA secret above). The Vertex AI / Agent Runtime service
-  # agents stay for platform-initiated egress; like the principalSets they can only reach the system
-  # endpoint entries, which are the only entries that list them.
+  # Members of the roles/iap.egressor policy grant_iap_egress.sh writes on each baseline Google API
+  # entry. IAP egress authorizes the caller's Agent Identity, so the agent projects' principalSets
+  # are what matter here (per project, not per engine: a replaced engine calls the baseline APIs at
+  # start-up, before the iap-egress unit grants its new principal). No Vertex AI / Agent Runtime
+  # service agent: with Agent Identity an engine egresses as itself, and platform work never
+  # crosses this gateway. The agent and test VM service accounts in var.agent_invoker_sa_emails
+  # are not on this list either (they only read the CA secret above).
   dynamic_agent_members = flatten([
     for proj_id, p in data.google_project.agent_projects : [
-      "serviceAccount:service-${p.number}@gcp-sa-aiplatform.iam.gserviceaccount.com",
-      "serviceAccount:service-${p.number}@gcp-sa-aiplatform-re.iam.gserviceaccount.com",
       "principalSet://agents.global.${p.org_id != "" ? "org-${p.org_id}" : "proj-${p.number}"}.system.id.goog/attribute.platformContainer/aiplatform/projects/${p.number}",
       "principalSet://agents.global.${p.org_id != "" ? "org-${p.org_id}" : "proj-${p.number}"}.system.id.goog/attribute.container/projects/${p.number}"
     ]
@@ -407,22 +381,22 @@ locals {
   iap_egress_members = distinct([for m in local.dynamic_agent_members : m if m != ""])
 }
 
-# 8. Grant roles/iap.egressor on each system endpoint entry (never on the registry root: a root grant
-#    is inherited by every entry, including external endpoints, agents and MCP servers, and IAM allow
-#    policies only add). The script writes and verifies every per-entry policy first, then clears the
-#    registry-root binding earlier versions wrote, so agents keep their Google API egress throughout.
-#    Layer 5 (unit iap-egress) writes the per-target policies of agents, MCP servers and external
-#    endpoints from the service catalog.
+# 8. Grant roles/iap.egressor on each baseline Google API entry (never on the registry root: a root
+#    grant is inherited by every entry, including external endpoints, agents and MCP servers, and IAM
+#    allow policies only add). The script writes and verifies every per-entry policy first, then
+#    clears the registry-root binding earlier versions wrote. The Google APIs single agents declare
+#    (grant = callers), and the agents, MCP servers and external endpoints, are granted by layer 5
+#    (unit iap-egress) from the service catalog.
 resource "null_resource" "grant_iap_egress" {
-  count      = var.enable_agent_gateway ? 1 : 0
+  count      = var.enable_agent_gateway && length(local.baseline_endpoint_ids) > 0 && length(var.agent_project_ids) > 0 ? 1 : 0
   depends_on = [google_agent_registry_service.system_endpoints]
 
   triggers = {
-    services_hash             = md5(jsonencode(local.system_endpoints))
+    services_hash             = md5(jsonencode(local.baseline_endpoint_ids))
     members_hash              = md5(jsonencode(local.iap_egress_members))
     gateway_id                = try(google_network_services_agent_gateway.egress_gateway[0].id, "")
     governance_project_number = data.google_project.governance.number
-    version                   = "3"
+    version                   = "4"
   }
 
   provisioner "local-exec" {
@@ -432,7 +406,7 @@ resource "null_resource" "grant_iap_egress" {
       GOVERNANCE_PROJECT_ID    = var.governance_project_id
       REGION                   = var.region
       IAP_MEMBERS_JSON         = jsonencode(local.iap_egress_members)
-      SYSTEM_ENDPOINT_IDS_JSON = jsonencode(sort(keys(local.system_endpoints)))
+      SYSTEM_ENDPOINT_IDS_JSON = jsonencode(local.baseline_endpoint_ids)
     }
   }
 }

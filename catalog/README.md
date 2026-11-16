@@ -92,6 +92,8 @@ catalog         = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<
 catalog_iap_egress = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "iap_egress")
 
 catalog_external_targets = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "external_targets")
+
+catalog_google_apis = lookup(jsondecode(file("${get_repo_root()}/catalog/.resolved/<env>.json")), "google_apis")
 ```
 
 The same callers also compile into `iap_egress`: the Agent Gateway per-target `roles/iap.egressor`
@@ -113,8 +115,19 @@ legacy API, an agent on another cloud, an external gateway) compiles into `exter
 it through the Agent Gateway. A target with no enforced caller gets an empty policy, and removing it
 deletes the entry. `endpoint` is an exact `https://` URL; use `{domain}` (as `<label>.{domain}`) and
 `{region}` instead of environment literals. Targets on `*.googleapis.com` (such as `gemini-flash`)
-are layer-4 system endpoints and get no entry of their own. dev declares the synthetic
+get no entry of their own: their host is a Google API entry (below). dev declares the synthetic
 `external-probe` in `environments/dev.yaml` to prove it.
+
+**Google APIs.** Agents reach Google APIs through the Agent Gateway too, and only the ones the
+catalog declares: `policy.agent_gateway.google_apis.baseline` in `policy.yaml` (every agent runtime:
+telemetry, `<region>-aiplatform` sessions, project lookup, credential lookups) plus each agent's own
+`google_apis` (the orchestrator: `aiplatform`; the specialist: `aiplatform`, `bigquery`,
+`bigquerystorage`, `storage`). They compile into `google_apis` (env.yaml `catalog_google_apis`): layer
+4 registers one Agent Registry entry per declared API (`https://<host>` and `https://<host>:443`) and
+grants the baseline ones to the agent projects; the per-agent ones are in `iap_egress.endpoints`, so
+the `iap-egress` unit grants them to the declaring agents only. Names come from the resolver's
+known-hosts table (`esmeralda.catalog.GOOGLE_APIS`); an unknown name, or an agent whose model is on a
+Google API it doesn't declare, fails the resolve.
 
 **Verified attribution.** The same callers also compile into `attribution` (env.yaml
 `catalog_attribution`):

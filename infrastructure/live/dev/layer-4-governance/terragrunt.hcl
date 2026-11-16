@@ -69,4 +69,7 @@ inputs = {
     dependency.projects.outputs.ai_coe_agents_project_id,
     dependency.projects.outputs.cx_agents_project_id
   ]
+
+  # Google API entries of the Agent Registry: only the APIs the catalog declares (google_apis).
+  google_api_endpoints = local.env.catalog_google_apis
 }

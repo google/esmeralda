@@ -162,6 +162,19 @@ variable "agent_project_ids" {
   description = "List of agent project IDs (A2A and Root) that run AI agents and Reasoning Engines."
 }
 
+variable "google_api_endpoints" {
+  type = map(object({
+    api              = string
+    url              = string
+    protocol_binding = string
+    display_name     = string
+    grant            = string
+    callers          = optional(list(string), [])
+  }))
+  default     = {}
+  description = "Google API entries of the Agent Registry compiled from the catalog (catalog/.resolved/<env>.json `google_apis`, env.yaml catalog_google_apis): the only Google APIs agents can reach through the Agent Gateway."
+}
+
 variable "enable_agent_gateway" {
   type        = bool
   default     = false

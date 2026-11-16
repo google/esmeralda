@@ -16,7 +16,7 @@ variable "registry_service_ids" {
 }
 
 variable "target_iap_members" {
-  description = "Per-target IAM members granted roles/iap.egressor on specific Agent Registry agents, external endpoints and MCP servers. Members may be `<unit>:<output>` references (the catalog-compiled lists in catalog/.resolved/<env>.json `iap_egress`), resolved through identity_refs. An empty list writes an empty policy (nobody)"
+  description = "Per-target IAM members granted roles/iap.egressor on specific Agent Registry agents, external endpoints, MCP servers and per-agent Google API entries (under endpoints, keyed by service id, {region} substituted). Members may be `<unit>:<output>` references (the catalog-compiled lists in catalog/.resolved/<env>.json `iap_egress`), resolved through identity_refs. An empty list writes an empty policy (nobody)"
   type = object({
     mcp_servers = optional(map(list(string)), {})
     agents      = optional(map(list(string)), {})

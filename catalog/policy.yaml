@@ -35,3 +35,15 @@ policy:
   # `iap_egress`). Each caller of an mcp/a2a target is listed by its identity: an agent caller by its
   # Agent Identity principal (unit output agent_identity_principal), which is also the identity it
   # calls out as (no shared workload identity: agents mint their own tokens).
+  agent_gateway:
+    # Google APIs agents reach through the Agent Gateway (compiled into `google_apis`; layer 4
+    # registers only these). An agent reaches the baseline plus the APIs in its own google_apis,
+    # nothing else. Names come from the resolver's known-hosts table (esmeralda.catalog.GOOGLE_APIS).
+    google_apis:
+      # Every agent runtime, granted to the agent projects (not per engine) so a replaced engine can
+      # start before the iap-egress unit grants its new identity.
+      baseline:
+        - telemetry                  # OpenTelemetry export (traces, logs, metrics) from esmeralda serve --otel-to-cloud
+        - aiplatform_runtime_region  # <region>-aiplatform: Agent Runtime sessions and the Vertex AI SDK
+        - cloudresourcemanager       # project lookup at startup (telemetry resource detection, gRPC)
+        - iamcredentials             # google-auth credential lookups for the runtime identity

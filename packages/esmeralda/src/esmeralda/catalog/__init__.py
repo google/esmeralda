@@ -29,7 +29,10 @@ who may call them, through which gateway, and who pays. It is defined by
    same file, read by the ``iap-egress`` units), so one caller entry drives both Cloud Run /
    Agent Runtime IAM and the gateway. :func:`compile_external_targets` lists the Agent Registry
    entries of non-example ``managed: false`` targets (``external_targets``), whose caller lists are
-   in ``iap_egress`` too. :func:`compile_attribution` derives the verified attribution
+   in ``iap_egress`` too. :func:`compile_google_apis` lists the Google API entries of the Agent
+   Registry (``google_apis``): the policy baseline plus each agent's declared ``google_apis``,
+   registered by layer 4; an agent reaches only the Google APIs it declares (plus the baseline).
+   :func:`compile_attribution` derives the verified attribution
    block (``attribution``): the ``principal_teams`` rows (verified principal -> caller -> team),
    the shared identities, and the per-target allowlists of the in-process caller guard
    (``esmeralda.attribution``).
@@ -37,12 +40,15 @@ who may call them, through which gateway, and who pays. It is defined by
 """
 
 from esmeralda.catalog.resolver import (
+    GOOGLE_APIS,
     CatalogError,
+    GoogleApi,
     Resolved,
     check_resolved,
     compile_attribution,
     compile_caller_allowlists,
     compile_external_targets,
+    compile_google_apis,
     compile_iap_egress,
     compile_principal_teams,
     compile_terraform,
@@ -56,7 +62,9 @@ from esmeralda.catalog.resolver import (
 from esmeralda.catalog.sources import Layer, Source, register_source
 
 __all__ = [
+    "GOOGLE_APIS",
     "CatalogError",
+    "GoogleApi",
     "Layer",
     "Resolved",
     "Source",
@@ -64,6 +72,7 @@ __all__ = [
     "compile_attribution",
     "compile_caller_allowlists",
     "compile_external_targets",
+    "compile_google_apis",
     "compile_iap_egress",
     "compile_principal_teams",
     "compile_terraform",
