@@ -624,6 +624,16 @@ def _env_checks() -> list[dict[str, Any]]:
             "detail": where.get(origin, "unset (optional)"),
         }
     )
+    origin = envfile.source("ESMERALDA_ALERT_EMAIL", env_file=found)
+    checks.append(
+        {
+            "name": "env:ESMERALDA_ALERT_EMAIL",
+            "status": "ok",
+            "required": False,
+            "source": origin,
+            "detail": where.get(origin, "unset (optional: layer-4-governance creates no alert email channel)"),
+        }
+    )
     return checks
 
 

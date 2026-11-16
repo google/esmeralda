@@ -18,8 +18,8 @@ variable "spoke_project_ids" {
 
 variable "alert_email_address" {
   type        = string
-  default     = "esmeralda-secops@google.com"
-  description = "Email address for Security & SRE notification channel"
+  default     = ""
+  description = "Email address for the Security & SRE notification channel (empty: no email channel)"
 }
 
 variable "runaway_loop_token_threshold" {

@@ -37,7 +37,8 @@ inputs = {
     dependency.projects.outputs.ai_coe_agents_project_id,
     dependency.projects.outputs.cx_agents_project_id
   ]
-  alert_email_address          = "esmeralda.secops@google.com"
+  # From the operator's environment (or the user-local env file), never from the repo. Empty: no email channel.
+  alert_email_address          = get_env("ESMERALDA_ALERT_EMAIL", "")
   runaway_loop_token_threshold = 50000
   monitoring_config            = local.env_vars.locals.monitoring_config
   governance_config            = try(local.env.governance, {})

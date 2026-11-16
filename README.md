@@ -144,7 +144,7 @@ flowchart LR
 | [`jq`](https://jqlang.org/download/) | any | Parsing Terraform outputs in the `make` targets (`build-images`, `deploy-all`) and `scripts/` (`esmeralda verify`) |
 | `git`, `make`, `bash` | any | Checkout, `make` targets and helper scripts |
 
-`uv run esmeralda doctor --env dev` checks that these tools are on your `PATH`. Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID`) and review `infrastructure/live/<env>/env.yaml`.
+`uv run esmeralda doctor --env dev` checks that these tools are on your `PATH`. Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID` and `ESMERALDA_ALERT_EMAIL`, the address that receives the governance alerts) and review `infrastructure/live/<env>/env.yaml`.
 
 #### 1. Using the `esmeralda` CLI (Recommended)
 
