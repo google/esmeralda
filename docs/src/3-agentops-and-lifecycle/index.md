@@ -39,7 +39,7 @@ flowchart LR
     end
 
     subgraph Track2["Track 2: SecOps & Governance"]
-        T2["Central Agent Gateway,<br/>Agent Registry, IAP Egress,<br/>GEAP UAP/NLC & Model Armor"]
+        T2["Central Agent Gateway,<br/>Agent Registry, IAP Egress,<br/>GEAP UAP/NLC & Model Armor (optional)"]
     end
 
     subgraph Track3["Track 3: FinOps & Observability"]

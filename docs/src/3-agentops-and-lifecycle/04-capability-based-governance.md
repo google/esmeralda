@@ -41,7 +41,7 @@ flowchart LR
     P["External / Partner Consumers"] -->|"API keys, OAuth, quotas"| AX["Apigee Capability Modules (optional)"]
     AX --> EP["Entrypoint Internal HTTPS ALB (*.esmeralda.internal)"]
     EP --> W["MCP Tool Servers (Cloud Run) & Agents (Agent Runtime)"]
-    O["Esmeralda Agents (Agent Runtime)"] -->|"All outbound egress"| AGW["Central Agent Gateway + Registry + GEAP UAP/NLC + Model Armor"]
+    O["Esmeralda Agents (Agent Runtime)"] -->|"All outbound egress"| AGW["Central Agent Gateway + Registry + GEAP UAP/NLC + Model Armor (optional)"]
     AGW --> EP
     AGW -->|"Registered external endpoints"| EXT["Google APIs & External Endpoints"]
 ```
@@ -62,7 +62,7 @@ sequenceDiagram
     participant Partner as External Partner / B2B App
     participant Apigee as Apigee X (10.0.1.3)<br/>North-South Front Door
     participant Orch as cx-mortgage-orchestrator<br/>(SPIFFE Agent Identity #1)
-    participant AGW as Central Agent Gateway (10.200.0.2)<br/>UAP/IAP + Semantic Governance + Model Armor
+    participant AGW as Central Agent Gateway (10.200.0.2)<br/>UAP/IAP + Semantic Governance + Model Armor (optional)
     participant Spec as ai-coe-mortgage-specialist<br/>(SPIFFE Agent Identity #2)
     participant MCP as Internal MCP Servers<br/>(DMS, Income, Email)
 
@@ -125,7 +125,7 @@ Every capability in `governance.capabilities` accepts one of three provider valu
 | Capability | Purpose | `"agent_gateway"` | `"apigee"` | `"none"` |
 | :--- | :--- | :--- | :--- | :--- |
 | **`egress_allowlist`** | Controls which MCP servers, A2A agents, and external APIs an agent may call | Agent Registry catalog + IAP `roles/iap.egressor` + GEAP UAP authorization | Supported when `apigee.enabled = true` | **Not allowed** (agent egress must always be governed) |
-| **`content_safety`** | Screens prompts, tool calls, and responses for prompt injection, jailbreaks, Confused Deputy arguments, and sensitive data | GEAP Semantic Governance (NLC) + Model Armor templates attached to Agent Gateway | Supported when `apigee.enabled = true` | Disables inline content screening |
+| **`content_safety`** | Screens prompts, tool calls, and responses for prompt injection, jailbreaks, Confused Deputy arguments, and sensitive data | GEAP Semantic Governance (NLC) + Model Armor templates attached to Agent Gateway. When enabled, Model Armor screens unary MCP tool calls and agent cards; streamed traffic isn't inspected (see [coverage](./01-central-agent-gateway.md#35-model-armor-model-calls-and-optional-content_authz)) | Supported when `apigee.enabled = true` | Disables inline content screening |
 | **`partner_access`** | Exposes selected agents or MCP tools to external partner consumers with API products and credentials | Supported when configured on Agent Gateway ingress | Layer 5 Apigee capability units (`partner-agents`, `partner-mcp`), API products, and developer app credentials | No external partner front door (internal VPC callers only) |
 | **`token_quota`** | Enforces per-consumer LLM token rate limits and quotas | Supported when configured on Agent Gateway | Layer 5 Apigee `token-quota` unit (`LLMTokenQuota` shared flow; `INTERMEDIATE` or `COMPREHENSIVE` tier required) | No gateway-enforced token quota (BigQuery runaway-loop alerts remain active) |
 | **`usage_metering`** | Captures token consumption and request latency for FinOps chargeback | OpenTelemetry structured logs sunk to BigQuery (`vw_monthly_agent_chargeback`) | Layer 5 Apigee `usage-metering` unit (structured `PostClientFlow` `MessageLogging` + SSE token extraction into Cloud Logging / BigQuery) | Disables gateway-level usage metering |
