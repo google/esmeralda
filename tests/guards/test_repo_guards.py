@@ -152,6 +152,40 @@ def test_guard_regexes_catch_planted_violations():
         assert RESTRICTED_ADDRESS_RE.search(f"https:// host.{domain}/path")
 
 
+# Google email addresses in code and infrastructure: operator- or team-specific values (alert recipients,
+# owners, test users) come from the operator's environment or use example.com, never a real address.
+# Assembled from parts so the guard file itself never trips plain-text diff scanners.
+GOOGLE_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@(?:" + "google" + r"|" + "google" + r"plex)\.com\b", re.IGNORECASE)
+GOOGLE_EMAIL_DIRS = ("infrastructure/", "apps/", "packages/", "catalog/", "scripts/")
+# Clearly public addresses allowed in those directories, with the reason. Empty today.
+GOOGLE_EMAIL_ALLOWLIST: dict[str, str] = {}
+
+
+def test_no_google_email_addresses_in_code_or_infrastructure():
+    """No Google email address in tracked files under infrastructure/, apps/, packages/, catalog/, scripts/."""
+    violations: list[str] = []
+    for path in _tracked_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if not rel.startswith(GOOGLE_EMAIL_DIRS):
+            continue
+        for line_no, line in enumerate(path.read_text(errors="ignore").splitlines(), 1):
+            for match in GOOGLE_EMAIL_RE.finditer(line):
+                if match.group(0).lower() not in GOOGLE_EMAIL_ALLOWLIST:
+                    violations.append(f"{rel}:{line_no}: '{match.group(0)}'")
+    assert not violations, (
+        "Google email addresses in tracked code/infrastructure (read them from the operator's environment, "
+        "e.g. ESMERALDA_ALERT_EMAIL, or use example.com):\n" + "\n".join(violations)
+    )
+
+
+def test_google_email_regex_catches_planted_addresses():
+    for domain in ("google" + ".com", "google" + "plex.com", "Google" + ".COM"):
+        assert GOOGLE_EMAIL_RE.search(f'alert_email_address = "team-alerts@{domain}"')
+    assert not GOOGLE_EMAIL_RE.search("sa-agent@esm-dev-cx-agents.iam.gserviceaccount.com")
+    assert not GOOGLE_EMAIL_RE.search("tester@example.com")
+    assert not GOOGLE_EMAIL_RE.search("https://cloud.google.com/docs")
+
+
 # ── HCL `env.yaml` parser for manifest parity checks ─────────────────────────
 
 

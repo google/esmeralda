@@ -5,6 +5,9 @@ resource "google_pubsub_topic" "monitoring_alerts_topic" {
 }
 
 # 2. Notification Channels: Email & Pub/Sub
+# The email channel exists only when alert_email_address is set (the live configs read it from the
+# operator's ESMERALDA_ALERT_EMAIL, never from the repo). Without it, the alerts that only email have no
+# notification channel: they still open incidents in Cloud Monitoring.
 resource "google_monitoring_notification_channel" "email_alert" {
   count        = var.alert_email_address != "" ? 1 : 0
   project      = var.governance_project_id
@@ -22,6 +25,11 @@ resource "google_monitoring_notification_channel" "pubsub_alert" {
   labels = {
     topic = google_pubsub_topic.monitoring_alerts_topic.id
   }
+}
+
+locals {
+  email_channel_names = google_monitoring_notification_channel.email_alert[*].name
+  alert_channel_names = concat(local.email_channel_names, [google_monitoring_notification_channel.pubsub_alert.name])
 }
 
 # 3. Log-Based Metrics: esmeralda.usage records (the FinOps source of truth)
@@ -288,10 +296,7 @@ EOF
     }
   }
 
-  notification_channels = [
-    try(google_monitoring_notification_channel.email_alert[0].name, ""),
-    google_monitoring_notification_channel.pubsub_alert.name
-  ]
+  notification_channels = local.alert_channel_names
 
   depends_on = [google_logging_metric.usage_unattributed_guarded_records]
 }
@@ -329,10 +334,7 @@ EOF
     }
   }
 
-  notification_channels = [
-    try(google_monitoring_notification_channel.email_alert[0].name, ""),
-    google_monitoring_notification_channel.pubsub_alert.name
-  ]
+  notification_channels = local.alert_channel_names
 
   depends_on = [google_logging_metric.usage_tokens]
 }
@@ -372,10 +374,7 @@ EOF
     }
   }
 
-  notification_channels = [
-    try(google_monitoring_notification_channel.email_alert[0].name, ""),
-    google_monitoring_notification_channel.pubsub_alert.name
-  ]
+  notification_channels = local.alert_channel_names
 }
 
 # 7. Alert Policy: High P95 Latency (>10,000 ms) with Embedded SRE Runbook
@@ -414,7 +413,7 @@ EOF
     }
   }
 
-  notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
+  notification_channels = local.email_channel_names
 }
 
 # 8. Entry point health: no synthetic uptime check. A public uptime check can't reach the internal
@@ -485,7 +484,7 @@ EOF
     }
   }
 
-  notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
+  notification_channels = local.email_channel_names
 }
 
 # 8b. Log-Based Metric + Alert Policy: Ingress Gateway Token Fetch Failures (Envoy gateway only)
@@ -544,7 +543,7 @@ EOF
     }
   }
 
-  notification_channels = [try(google_monitoring_notification_channel.email_alert[0].name, "")]
+  notification_channels = local.email_channel_names
 
   depends_on = [google_logging_metric.gateway_token_fetch_failures]
 }
@@ -579,10 +578,7 @@ EOF
     }
   }
 
-  notification_channels = [
-    try(google_monitoring_notification_channel.email_alert[0].name, ""),
-    google_monitoring_notification_channel.pubsub_alert.name
-  ]
+  notification_channels = local.alert_channel_names
 
   depends_on = [google_logging_metric.usage_tokens]
 }
@@ -667,10 +663,7 @@ EOF
     }
   }
 
-  notification_channels = [
-    try(google_monitoring_notification_channel.email_alert[0].name, ""),
-    google_monitoring_notification_channel.pubsub_alert.name
-  ]
+  notification_channels = local.alert_channel_names
 
   depends_on = [google_logging_metric.iam_privilege_changes]
 }

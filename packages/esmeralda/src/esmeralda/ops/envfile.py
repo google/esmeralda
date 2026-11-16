@@ -15,12 +15,14 @@
 """User-local env file with the ``ESMERALDA_*`` variables Terragrunt reads.
 
 ``env.yaml`` reads ``ESMERALDA_BILLING_ACCOUNT`` (and optionally ``ESMERALDA_ORG_ID``) from the
-environment. Instead of exporting them in an interactive shell profile, put them in a file
+environment; the ``layer-4-governance`` units also read ``ESMERALDA_ALERT_EMAIL`` (optional). Instead
+of exporting them in an interactive shell profile, put them in a file
 **outside the repository**: ``$ESMERALDA_ENV_FILE`` if set, else ``~/.config/esmeralda/env``::
 
     # ~/.config/esmeralda/env  (chmod 600; never commit it; plain KEY=VALUE, no quotes)
     ESMERALDA_BILLING_ACCOUNT=<billing-account-id>
     ESMERALDA_ORG_ID=<org-id>
+    ESMERALDA_ALERT_EMAIL=<alerts-address>
 
 Only ``ESMERALDA_*`` keys are read, and only when the variable is not already set in the
 environment (the environment wins). Values are never printed.

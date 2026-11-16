@@ -396,13 +396,14 @@ Design rules:
 
 ### Terragrunt variables: user-local env file
 
-Every `env.yaml` reads `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional) from the environment. Instead of exporting them from an interactive shell profile, put them in a file **outside the repository**:
+Every `env.yaml` reads `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional) from the environment, and the `layer-4-governance` units read `ESMERALDA_ALERT_EMAIL` (optional: the address of the email notification channel for the governance alerts; when it's unset, no email channel is created, and the alerts only notify the Pub/Sub channel where they have one). Instead of exporting them from an interactive shell profile, put them in a file **outside the repository**:
 
 ```bash
 mkdir -p ~/.config/esmeralda
 cat > ~/.config/esmeralda/env <<'EOF'
 ESMERALDA_BILLING_ACCOUNT=<billing-account-id>
 ESMERALDA_ORG_ID=<org-id>
+ESMERALDA_ALERT_EMAIL=<alerts-address>
 EOF
 chmod 600 ~/.config/esmeralda/env
 ```
@@ -414,7 +415,7 @@ chmod 600 ~/.config/esmeralda/env
 - **Privacy:** values are never printed. `esmeralda doctor` reports where each variable comes from (`env`, `env-file` or `missing`) and warns if the file is accessible by group or others.
 
 > [!WARNING]
-> Never commit this file or copy it into the repository: billing account and organization ids are environment specifics.
+> Never commit this file or copy it into the repository: billing account and organization ids and the alert address are environment specifics.
 
 > [!NOTE]
 > The `make` targets for plan, status and environment checks cover similar ground for humans. `esmeralda mcp` is self-contained in the package and doesn't call them, so both can evolve independently; if they converge, the tools can call the shared code.
