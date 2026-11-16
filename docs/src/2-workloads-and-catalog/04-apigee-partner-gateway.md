@@ -346,7 +346,7 @@ Setting `model_gateway = "apigee"` in an environment takes three things, all che
 
 1. the capability in `infrastructure/live/<env>/env.yaml` (dev sets it; prd keeps `"none"`);
 2. the catalog `llm-gateway` target in `catalog/environments/<env>.yaml`, with every agent as a caller ([above](#reaching-the-gateway-the-catalog-llm-gateway-target)), then `uv run esmeralda catalog resolve --env all --write`;
-3. the units, in order: `layer-4-governance` (capability contract), the agent units (`ESMERALDA_MODEL_GATEWAY_URL`), `apigee/capabilities/llm-gateway`, `entrypoint` (routes `apigee.<domain>`) and `iap-egress` (Agent Registry entry and `roles/iap.egressor`).
+3. the units: `layer-4-governance` (capability contract), `apigee/capabilities/llm-gateway`, `entrypoint` (routes `apigee.<domain>`), `iap-egress` (Agent Registry entry and `roles/iap.egressor`) and the agent units (`ESMERALDA_MODEL_GATEWAY_URL`). In a running environment, apply the agent units last: once they set the URL, every model call goes through the gateway, so the path must already be in place.
 
 Model Armor's `model_calls` floor setting still screens the calls: it applies per agent project on Vertex AI, and the proxy keeps the agent's project in the request path.
 

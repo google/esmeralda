@@ -89,6 +89,8 @@ def test_llm_gateway_unit_maps_every_catalog_caller(env):
     code = _code(LIVE / env / "layer-5-workloads/apigee/capabilities/llm-gateway/terragrunt.hcl")
     assert 'catalog_iap_egress.endpoints["llm-gateway"]' in code
     assert "agent_principals" in code
+    # Terragrunt runs the module from .terragrunt-cache: the bundle path must come from the repo root.
+    assert 'bundle_source_dir = "${get_repo_root()}/apps/apigee/proxies/llm-gateway"' in code
     assert "_sa_email\"], \"\")]" not in code, "agents call models as their Agent Identity, not a service account"
     refs = _resolved(env)["iap_egress"]["endpoints"].get(TARGET, [])
     for ref in refs:

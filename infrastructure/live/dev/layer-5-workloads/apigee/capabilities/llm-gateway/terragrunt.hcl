@@ -94,6 +94,9 @@ inputs = {
   apigee_env_id   = dependency.platform.outputs.apigee_env_id
   service_account = dependency.platform.outputs.proxy_runtime_sa_email
 
+  # The module runs from .terragrunt-cache, where the repo-relative default path doesn't exist.
+  bundle_source_dir = "${get_repo_root()}/apps/apigee/proxies/llm-gateway"
+
   gateway_host = "apigee.${dependency.networking.outputs.entrypoint_domain}"
 
   # agents/<name>:agent_identity_principal -> unit output; an unmapped reference fails the plan
