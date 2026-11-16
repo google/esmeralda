@@ -268,7 +268,8 @@ def test_discovered_inventory_is_never_compiled(repo, adapter):
 
 def test_pin_adopts_and_fills_unset_inventory_fields(repo, adapter):
     unpinned = "\n".join(line for line in PINNED_TARGET.splitlines() if "registry:" not in line) + "\n"
-    _write(repo, "external/legacy/pricing-api.yaml", unpinned)
+    # Without the pin nothing fills the description, which every target needs.
+    _write(repo, "external/legacy/pricing-api.yaml", unpinned + "description: Pricing API (from the registry)\n")
     baseline = _compiled(repo)
     _write(repo, "external/legacy/pricing-api.yaml", PINNED_TARGET)
     adapter("agent_registry", _registry)
@@ -290,7 +291,8 @@ def test_pin_adopts_and_fills_unset_inventory_fields(repo, adapter):
     compiled = _compiled(repo)
     for block in ("catalog", "iap_egress", "attribution", "google_apis"):
         assert compiled[block] == baseline[block], block  # adoption grants nothing by itself
-    assert compiled["external_targets"]["pricing-api"]["description"] == "Pricing API (from the registry)"
+    assert compiled["external_targets"]["pricing-api"]["description"] == (
+        "Pricing API (from the registry). Used by: no caller declared.")
     data = json.loads(catalog.render_resolved_file(resolved))
     assert data["provenance"]["targets.pricing-api.runtime"]["source"] == "registry"
     assert data["inventory_summary"] == {"registry": {"adopted": 1, "discovered": 1}}
