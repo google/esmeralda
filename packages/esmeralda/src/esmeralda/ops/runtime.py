@@ -79,7 +79,7 @@ async def query_agent(
     repo.unit_dir(root, env, unit)
     engine = repo.output(root, env, unit, "engine_id")
     if not engine:
-        raise OpsError(f"No engine_id output for {agent} in {env}: deploy it (make deploy-{agent} ENV={env})")
+        raise OpsError(f"No engine_id output for {agent} in {env}: deploy it (esmeralda deploy agents/{agent} --env {env})")
     config = AgentConfig.load(root / AGENTS_DIR / agent)
 
     # Never print: on the stdio transport, stdout is the MCP channel.

@@ -39,34 +39,38 @@ Terragrunt `dependency` blocks; never reverse that direction.
 1. **L0 CI/CD** (`live/shared/layer-0-cicd`, shared by all envs): CI/CD project, dev + release Artifact Registry repos, builder/promoter SAs.
 2. **L1 Projects** → **L2 Networking** (Shared VPC, PSC, entry point IP + `esmeralda.internal` DNS) → **L3 Security** (IAM, service accounts, internal Root CA, entry point certificate).
 3. **L4 Governance**: Agent Gateway, Agent Registry, Model Armor, telemetry sinks, alerts, FinOps views.
-4. Images (`make build-images`), then **L5 Workloads** in this order: MCP services → agents → gateways (`gateways/direct` + any enabled adapter) → **entry point** (`entrypoint`) → `iap-egress` (+ `test-vm`).
+4. Images (`esmeralda build images`), then **L5 Workloads**: agents → MCP services → gateways (`gateways/direct` + any enabled adapter) → **entry point** (`entrypoint`) → `iap-egress` (+ `test-vm`).
 
-`make deploy-workloads` runs `terragrunt run --all apply` in `layer-5-workloads`, which derives that order from the dependency blocks.
+`esmeralda deploy --layer 5 --env <env>` (alias `make deploy-workloads`) applies the enabled layer-5 units one by one in the order derived from their Terragrunt `dependency` blocks, `iap-egress` last, then runs the running-image check. `esmeralda deploy --all` runs L0 → L1–L3 → L4 → image builds → L5.
 
 ## Invariants and contracts
 
 - **Gateway adapter contract.** A gateway module (`infrastructure/modules/5-workloads/gateways/<name>/`) outputs `backend_service_id` (a regional `INTERNAL_MANAGED` backend service, or `null` for `direct`) and `routes` (`host` + `probe` = `mcp`|`a2a`|`query`|`none` per host, plus per-route `backend_service_id` and rewrite rules for `direct`). It owns no load balancer, certificate or DNS. Any gateway change must pass `make test-gateway ENV=<env>`. See `docs/src/2-workloads-and-catalog/01-ingress-gateways.md`.
 - **`catalog` and `gateways` blocks in `infrastructure/live/<env>/env.yaml`:** `catalog` declares every MCP service and agent (`kind`, `unit`, `token`, `probe`, `callers`); `gateways` sets `default` (`"direct"` or an enabled adapter), `enabled` (optional adapter units such as `"envoy"`), and `host_rules` (host label or FQDN → `"direct"` or an enabled adapter). The entrypoint module validates these.
 - **Hostnames.** Agents reach MCP servers and other agents only via `https://<name>.esmeralda.internal` (MCP at `/mcp`, A2A card at `/v1/card`). Never call `run.app` or Reasoning Engine URLs directly from agent code.
-- **Gateway routes use agent engine IDs**: after an agent engine is recreated, re-run `make deploy-gateway ENV=<env>` and `make deploy-entrypoint ENV=<env>`.
-- **Images are deployed by digest, never by tag.** `make test-terraform` fails on `image = var.…`; `make verify-images` checks running digests. Images contain no certificates (injected at deploy time), so one digest is promoted from dev to prd (`make promote TAG=vX.Y.Z`).
+- **Gateway routes use agent engine IDs**: after an agent engine is recreated, re-run `esmeralda deploy gateways/direct entrypoint --env <env>` (or `make deploy-gateway` and `make deploy-entrypoint ENV=<env>`).
+- **Images are deployed by digest, never by tag.** `make test-terraform` fails on `image = var.…`; `esmeralda build --verify --env <env>` (`make verify-images`) checks running digests. Images contain no certificates (injected at deploy time), so one digest is promoted from dev to prd (`esmeralda release promote --version vX.Y.Z --source dev-<sha>`, or `make promote VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD`).
 - **Python is one uv workspace** (root `pyproject.toml`, single `uv.lock`). The Makefile exports `UV_FROZEN=1`: never run `uv lock` or `uv add` locally. Edit `pyproject.toml`, then `make lock` (runs `uv lock` in Cloud Build against public PyPI and writes `uv.lock` back) and commit `uv.lock`. `make lock-check` (also the pre-push hook and a PR workflow) fails on a stale lock.
 - **Terragrunt env vars** read by every `env.yaml`: `ESMERALDA_BILLING_ACCOUNT` (required) and `ESMERALDA_ORG_ID` (optional). Put them in the user-local env file `~/.config/esmeralda/env` (or the path in `$ESMERALDA_ENV_FILE`), **outside the repo**, `chmod 600`, never committed: plain `KEY=VALUE` lines, no quotes, only `ESMERALDA_*` keys. The `esmeralda` CLI (`plan`, `apply`, `status`, `units`, `verify`, `doctor`, `mcp`) and the Makefile both read it, so no `bash -ic` wrapper or `~/.bashrc` export is needed; variables already exported in the environment win. `esmeralda doctor` reports where each one comes from (env / env-file / missing) without printing values. Never write these values into a file in the repo.
-- **Git worktrees and local state.** With the local backend, Terragrunt state lives under `infrastructure/live/.local_states/` of the checkout that applied it, so a worktree has none. Image builds (`make build-*`) read layer-0 outputs from the main checkout when the worktree has no layer-0 state (override with `CICD_DIR=<checkout>/infrastructure/live/shared/layer-0-cicd`), fail early with a clear message when no outputs are found, and `make deploy-cicd` refuses to run from such a worktree. For other units, point the CLI at the checkout that holds the state (`esmeralda plan ... --repo <checkout>`).
+- **Git worktrees and local state.** With the local backend, Terragrunt state lives under `infrastructure/live/.local_states/` of the checkout that applied it, so a worktree has none. Image builds (`esmeralda build`, `make build-*`) read layer-0 outputs from the main checkout when the worktree has no layer-0 state (override with `--cicd-dir <checkout>/infrastructure/live/shared/layer-0-cicd` or `CICD_DIR=...`), fail early with a clear message when no outputs are found, and `esmeralda deploy --layer 0` (`make deploy-cicd`) refuses to run from such a worktree unless `--cicd-dir` is given. For other units, point the CLI at the checkout that holds the state (`esmeralda plan ... --repo <checkout>`).
 - **No hardcoded project IDs** in code or docs: read them from layer outputs; write placeholders such as `esm-<env>-gateway-<sfx>`.
 - **Team ownership:** CX orchestrators are `apps/agents/cx-*` (CX project); reusable A2A agents are `apps/agents/ai-coe-*` (AI CoE project).
 
 ## Commands that matter
 
-Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for day-to-day status, planning, verification, querying, logging, and repository guards; `make` targets wrap the CLI and multi-step image/Terragrunt workflows (`make help`, most take `ENV=<env>`, default `dev`).
+Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for status, planning, deploys, image builds, releases, verification, querying, logging, and repository guards; `make` targets are shortcuts for the CLI plus the offline test gates (`make help`, most take `ENV=<env>`, default `dev`).
 
 | Command | Make equivalent | What it proves |
 |---|---|---|
-| `uv run esmeralda status --env <env>` | `make status ENV=<env>` | Git branch/SHA, active worktrees, local state units, image tags/digests, and deployed environment outputs |
+| `uv run esmeralda status --env <env>` | `make status ENV=<env>` | Git branch/SHA, active worktrees, local state units, image tags/digests, and deployed environment outputs (`--unit <unit> --output <name>` prints one raw output value) |
 | `uv run esmeralda doctor --env <env>` | `make doctor ENV=<env>` | Workstation preflight check: required tools, user-local env file and the source of `ESMERALDA_BILLING_ACCOUNT` / `ESMERALDA_ORG_ID`, ADC token, `uv.lock`, and local state readability |
 | `uv run esmeralda units [--layer 0..5] --env <env>` | `make units ENV=<env>` | Lists Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence |
 | `uv run esmeralda plan <unit\|--all> --env <env>` | `make plan [UNIT=<unit>] ENV=<env>` | Read-only `terragrunt plan -lock=false` summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `uv run esmeralda apply <unit> --env <env>` | `make apply UNIT=<unit> ENV=<env>` | Plans to a saved planfile, **enforces the destroy guard** (refuses `destroy > 0` without `--allow-destroy`), and applies |
+| `uv run esmeralda deploy <unit...\|--layer N\|--all> --env <env> [--dry-run]` | `make deploy-<layer\|unit\|all> ENV=<env>` | Applies each unit through the `apply` path (planfile + destroy guard), stops at the first failure; `--layer 5` ends with the running-image check, `--all` builds images before L5; `--dry-run` plans read-only |
+| `uv run esmeralda destroy --env dev --confirm dev` | `make destroy-all ENV=dev` | Destroys L5 → L1 unit by unit; refuses `prd`, never touches L0 |
+| `uv run esmeralda build <agents\|services\|images\|package\|image>` | `make build-<target>` | Runs the tests (agents), builds and pushes images tagged `:dev-latest` and `:dev-<gitsha>`; `build --verify --env <env>` (`make verify-images`) checks running digests |
+| `uv run esmeralda release status` / `release promote --version vX.Y.Z --source dev-<sha>` | `make status-release` / `make promote VERSION=… SOURCE=… VERIFIED=…` | Shows `release/prd.yaml`; copies a verified dev build by digest to the release repository and writes the manifest (no deploy) |
 | `uv run esmeralda verify --env <env>` | `make verify ENV=<env>` | Gateway conformance probes (`scripts/test_gateway.sh`) + Agent Registry egress policies (every entry lists exactly its compiled callers, none on the registry root) + remote specialist and orchestrator queries |
 | `uv run esmeralda verify --partner --env <env>` | `make test-partner ENV=<env>` | Apigee partner front-door conformance probes (`scripts/test_partner.sh`, offline or live) |
 | `uv run esmeralda verify --model-armor --env <env>` | — | Model Armor checks for `governance.model_armor`: injection through model calls, gateway `tools/call` inspection, long-call regression |
@@ -87,8 +91,8 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for day-to-day status, pl
 
 ## Safety
 
-- The `make deploy-*` targets apply with `-auto-approve`: review a plan first, and never apply to `prd` without explicit intent.
-- Never destroy without explicit intent. `make destroy-all` refuses `prd`, asks for confirmation and never touches L0.
+- `esmeralda deploy` (and the `make deploy-*` aliases) applies without a prompt, but every unit goes through the destroy guard: a plan that destroys or replaces resources stops the deploy unless `--allow-destroy` (`ALLOW_DESTROY=1`) is given. Run `--dry-run` first, and never deploy to `prd` without explicit intent.
+- Never destroy without explicit intent. `esmeralda destroy --env <env> --confirm <env>` (`make destroy-all`) refuses `prd` and never touches L0.
 - With the default local state (`state_project`/`state_bucket` empty in `env.yaml`), state lives in `infrastructure/live/.local_states/`; `make clean` deletes `*.tfstate*` files, so don't run it on a machine that holds the only copy of a live env's state.
 - Never commit secrets, `.env`, `*.tfvars`, Terraform state or plans, certificates or keys (`*.pem`, `*.crt`), or load-test results. They are gitignored; keep it that way.
 - Use synthetic data only (the fictional applicants such as Julian Sterling). No real customer data, names or project IDs in code, docs, tests, commits or PRs.

@@ -52,6 +52,10 @@ Every operational subcommand accepts `--repo PATH` (defaults to `$ESMERALDA_REPO
 | `esmeralda units [--env dev\|prd] [--layer 0..5] [--json]` | `make units ENV=dev` | Lists all Terragrunt units for `<env>`, their layer (`0..5`), dependencies, whether enabled or excluded in `env.yaml`, and whether local state exists. |
 | `esmeralda plan <unit\|--all> [--env dev\|prd] [--json]` | `make plan [UNIT=...] ENV=dev` | Runs `terragrunt plan -lock=false` on a unit (full path like `layer-5-workloads/entrypoint` or short name `entrypoint`) or `--all` enabled units, and prints the resource change summary (`to add`, `to change`, `to destroy`, `to replace`). |
 | `esmeralda apply <unit> [--env dev\|prd] [--allow-destroy] [--json]` | `make apply UNIT=... ENV=dev [ALLOW_DESTROY=1]` | Plans `<unit>` to a planfile first, inspects the plan for `destroy` or `replace` actions, **refuses to apply with exit code `2` if `destroy > 0` or `replace > 0` unless `--allow-destroy` is passed**, and otherwise applies the saved planfile. |
+| `esmeralda deploy <unit...\|--layer N\|--all> [--env dev\|prd] [--allow-destroy] [--dry-run] [--json]` | `make deploy-<layer\|unit> ENV=dev`, `make deploy-all ENV=dev` | Applies each unit through the `apply` path (planfile + destroy guard), stops at the first failure, and prints a summary. `--layer 5` applies every enabled workload unit in dependency order (`iap-egress` last), then checks running image digests; `--all` runs L0 → L1–L3 → L4 → image builds → L5. `--dry-run` plans every unit read-only. |
+| `esmeralda destroy --env dev --confirm dev [--dry-run]` | `make destroy-all ENV=dev` | Destroys Layers 5 → 1 unit by unit; refuses `prd` and never touches Layer 0. |
+| `esmeralda build <agents\|services\|images\|package\|image> [--tag T] [--skip-tests] [--dry-run]` | `make build-*` | Builds and pushes images with Cloud Build (`:dev-latest` and `:dev-<gitsha>`); agent builds run the offline tests first. `build --verify --env <env>` (`make verify-images`) checks that every workload runs the expected digest. |
+| `esmeralda release status` / `esmeralda release promote --version vX.Y.Z --source dev-<sha> [--verified YYYY-MM-DD]` | `make status-release` / `make promote VERSION=... SOURCE=... VERIFIED=...` | Shows the `prd` release manifest; promotes a verified dev build by digest and writes `release/prd.yaml` (no deploy). |
 | `esmeralda verify [--env dev\|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]` | `make verify ENV=dev` | Runs gateway conformance probes (`scripts/test_gateway.sh`), optional Apigee partner front-door probes (`--partner`, running `scripts/test_partner.sh`), and—unless `--skip-query` is passed—live remote queries against both `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator`. `--model-armor` runs the Model Armor checks instead (injection on model calls, gateway `tools/call` inspection, long-call regression; see [Model Armor](./01-central-agent-gateway.md#35-model-armor-model-calls-and-optional-content_authz)). Exits `1` if any check fails. |
 | `esmeralda logs <target> [--env dev\|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]` | `make logs TARGET_NAME=... ENV=dev` | Pulls recent Cloud Logging entries for an agent (Reasoning Engine) or MCP/gateway service (Cloud Run), collapsing multi-line Python tracebacks and deduplicating repeated messages with an `(xN)` counter. |
 | `esmeralda contracts [--section all\|entrypoint\|gateway_adapter\|agent_card\|env_yaml] [--json]` | — | Prints the architectural contracts (`entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) and each environment's current `gateways` configuration so teams can verify interface compatibility before writing code. |
@@ -96,6 +100,13 @@ uv run esmeralda apply entrypoint --env dev
 
 * **Safe plans (`destroy == 0` and `replace == 0`)**: applies the exact saved planfile (`terragrunt apply <planfile>`) and cleans up the single-use planfile afterward.
 * **Destructive plans (`destroy > 0` or `replace > 0`)**: **refuses to apply with exit code `2`** and prints every resource that would be deleted or replaced. To proceed intentionally when a replacement is expected, pass `--allow-destroy` (or `ALLOW_DESTROY=1` with `make apply`).
+
+`esmeralda deploy` applies several units through this same path, one at a time, and stops at the first refusal or failure. Preview a whole layer first:
+
+```bash
+uv run esmeralda deploy --layer 5 --env dev --dry-run
+uv run esmeralda deploy --layer 5 --env dev
+```
 
 ---
 

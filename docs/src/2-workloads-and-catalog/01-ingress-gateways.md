@@ -174,7 +174,7 @@ Module `infrastructure/modules/5-workloads/gateways/direct`, live unit `infrastr
 * **Cross-Project Deployer Permission:** Because the entry point references backend services inside the MCPs project, the identity applying `entrypoint` needs `compute.backendServices.use` (`roles/compute.loadBalancerServiceUser` on the MCPs project).
 
 > [!IMPORTANT]
-> Agent routes embed the deployed agents' numeric **engine IDs**. Whenever an agent engine is recreated, re-apply `gateways/direct` (`make deploy-gateway ENV=<env>` or `uv run esmeralda apply layer-5-workloads/gateways/direct --env <env>`) and then `entrypoint` (`make deploy-entrypoint ENV=<env>`).
+> Agent routes embed the deployed agents' numeric **engine IDs**. Whenever an agent engine is recreated, re-deploy `gateways/direct` and then `entrypoint` (`uv run esmeralda deploy gateways/direct entrypoint --env <env>`, or `make deploy-gateway` and `make deploy-entrypoint ENV=<env>`).
 
 ### 5. Token kinds and the client library
 
@@ -196,7 +196,7 @@ Agents mint outbound tokens as their own Agent Identity: each callee grants the 
 
 **How Esmeralda Packages It:**
 
-* **Pinned Distroless Image:** `apps/services/envoy/Dockerfile` uses upstream `envoyproxy/envoy:distroless-v1.40.2` **pinned by SHA-256 digest** (`make build-service-envoy`). It contains no hardcoded routes or certificates.
+* **Pinned Distroless Image:** `apps/services/envoy/Dockerfile` uses upstream `envoyproxy/envoy:distroless-v1.40.2` **pinned by SHA-256 digest** (`uv run esmeralda build envoy-gateway`). It contains no hardcoded routes or certificates.
 * **Pure-Terraform Bootstrap Config:** The provider-free [`config`](../../../infrastructure/modules/5-workloads/gateways/envoy/config/main.tf) submodule renders `envoy.yaml` from `agent_endpoints` (derived from `catalog`), stores it in Secret Manager (`envoy-config-<env>`), and mounts the exact secret version at `/etc/envoy/envoy.yaml` on Cloud Run (`envoy-gateway-<env>`, running as `sa-esmeralda-envoy-<env>`):
   * Creates host routes (`<name>.esmeralda.internal`), apex path routes (`/<name>/...`, `/agents/<name>/...`), and `GET /healthz`.
   * Rewrites `/api/stream_reasoning_engine` to `<engine>:streamQuery?alt=sse` with `streaming = true`.
@@ -236,7 +236,7 @@ For the complete architecture, packet flow, XML/JavaScript policy mechanics, and
 
 Because the entry point serves `direct` and adapter hosts side-by-side, you can migrate a single host (for example, `legacy-dms`) to `envoy` and back with zero downtime and no hostname or certificate changes:
 
-1. **Prepare the adapter:** Apply Layer 3 (to create `sa-esmeralda-envoy-<env>`) and build the image (`make build-service-envoy`).
+1. **Prepare the adapter:** Apply Layer 3 (to create `sa-esmeralda-envoy-<env>`) and build the image (`uv run esmeralda build envoy-gateway`).
 2. **Enable the adapter for one host** in `env.yaml`:
 
    ```hcl
@@ -247,11 +247,10 @@ Because the entry point serves `direct` and adapter hosts side-by-side, you can 
    }
    ```
 
-3. **Apply the affected units** so IAM invokers, `ACCESS_TOKEN_HOSTS`, Envoy, and the entry point URL map update:
+3. **Deploy the affected units** so IAM invokers, `ACCESS_TOKEN_HOSTS`, Envoy, and the entry point URL map update (the CLI applies them in dependency order, each through the destroy guard):
 
    ```bash
-   uv run esmeralda apply layer-5-workloads/gateways/envoy --env dev
-   uv run esmeralda apply layer-5-workloads/entrypoint --env dev
+   uv run esmeralda deploy gateways/envoy entrypoint --env dev
    ```
 
 4. **Verify every route** with `uv run esmeralda verify --env dev` (or `make test-gateway ENV=dev`).
@@ -262,7 +261,7 @@ To roll back at any point, revert `env.yaml` and re-apply the agents and `entryp
 
 ## Apply order
 
-For a greenfield environment: `L0` → `L1` → `L2` (entry point IP + DNS) → `L3` (entry point certificate) → `L4` → container images → `L5` services → agents → `gateways/direct` (and any enabled adapter) → `entrypoint` → `iap-egress` / `test-vm`. Both `make deploy-workloads` and `uv run esmeralda units --env dev` follow this dependency order automatically.
+For a greenfield environment: `L0` → `L1` → `L2` (entry point IP + DNS) → `L3` (entry point certificate) → `L4` → container images → `L5` agents → services → `gateways/direct` (and any enabled adapter) → `entrypoint` → `test-vm` → `iap-egress`. `uv run esmeralda deploy --all --env <env>` (or `--layer 5` for Layer 5 only) applies the units in this dependency order, and `uv run esmeralda units --env dev` lists it.
 
 ---
 

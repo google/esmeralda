@@ -24,7 +24,7 @@ care, and update both agents and the docs in the same PR):
 | `context.user_token(ctx)`, `context.CallerContext` | `context.py` | End-user token and caller identity propagation |
 | `esmeralda run -- <cmd>` / `serve` / `query` | `cli.py` (+ `certs.py`, `serve.py`, `query.py`) | Container entrypoint (installs the Agent Gateway root CA), server from `agent.yaml`, one client for ADK and A2A |
 | `esmeralda query --local-mcp`, `python -m esmeralda.local_mcp` | `local_mcp.py` | Development only: the list of local MCP servers and ports; starts them on 127.0.0.1 for a query (or until Ctrl+C for `make run-mcp-local`) and always stops what it started |
-| `esmeralda mcp` / `status` / `doctor` / `units` / `plan` / `apply` / `verify` / `logs` / `contracts` / `guard` | `cli.py` + `ops/` | Read-only MCP server (`mcp`) and first-class platform operations CLI (`--json` + human formatters, destroy guard on `apply`, sensitive content `guard`) |
+| `esmeralda mcp` / `status` / `doctor` / `units` / `plan` / `apply` / `deploy` / `destroy` / `build` / `release` / `verify` / `logs` / `contracts` / `guard` | `cli.py` + `ops/` (`deploy.py`, `build.py`) | Read-only MCP server (`mcp`) and first-class platform operations CLI (`--json` + human formatters, destroy guard on `apply` and on every unit of `deploy`, image builds and the running-image check, release promotion, sensitive content `guard`); the Make deploy/build/release targets are aliases of these commands |
 | `AgentConfig` | `config.py` | Parsed `agent.yaml` (`framework`, `env`, `local_env`, `agent_card`) |
 
 The top-level `esmeralda` namespace exports only `prepare`, `finalize`, `create_app` and
@@ -33,7 +33,7 @@ The top-level `esmeralda` namespace exports only `prepare`, `finalize`, `create_
 ## Rules
 
 - Keep it generic: no agent-, team- or environment-specific values (project IDs, hostnames other than defaults documented as examples).
-- Dependencies are declared in `pyproject.toml`; any change needs `make lock` and a committed `uv.lock`. The wheel is built into each agent image by `make build-<agent>` and installed with `--no-deps`, so every runtime dependency must also be in the agents' locked set.
+- Dependencies are declared in `pyproject.toml`; any change needs `make lock` and a committed `uv.lock`. The wheel is built into each agent image by `esmeralda build <agent>` (`make build-<agent>`) and installed with `--no-deps`, so every runtime dependency must also be in the agents' locked set.
 - Python ≥ 3.12, ruff settings from the root `pyproject.toml` (line length 120).
 
 ## Tests

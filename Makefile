@@ -17,28 +17,25 @@ SHELL := /bin/bash
 .SHELLFLAGS := -O expand_aliases -lc
 
 ENV ?= dev
-LIVE_DIR = infrastructure/live/$(ENV)
+
+# Every target that touches an environment or an image is a thin alias of the `esmeralda` CLI
+# (`uv run esmeralda --help`); a guard test (tests/guards/test_makefile_cli.py) fails if a recipe calls
+# terragrunt, `gcloud builds` or `gcloud run deploy` directly.
+ESM = uv run esmeralda
 
 # Layer 0 (shared CI/CD) unit. With the local backend its state lives in the checkout that applied it, so a
-# git worktree has none: when this checkout has no layer-0 local state and the main checkout (resolved via
-# `git rev-parse --git-common-dir`) has it, read the outputs from the main checkout. Override with
-# CICD_DIR=<checkout>/infrastructure/live/shared/layer-0-cicd.
-CICD_UNIT = infrastructure/live/shared/layer-0-cicd
-CICD_STATE = infrastructure/live/.local_states/shared/layer-0-cicd/terraform.tfstate
-MAIN_CHECKOUT := $(patsubst %/,%,$(dir $(abspath $(shell git rev-parse --git-common-dir 2>/dev/null))))
-ifeq ($(origin CICD_DIR),undefined)
-ifeq ($(wildcard $(CICD_STATE)),)
-ifneq ($(and $(MAIN_CHECKOUT),$(wildcard $(MAIN_CHECKOUT)/$(CICD_STATE))),)
-CICD_DIR := $(MAIN_CHECKOUT)/$(CICD_UNIT)
-CICD_FROM_MAIN := 1
-endif
-endif
-endif
-CICD_DIR ?= $(CICD_UNIT)
+# git worktree has none: the CLI then reads the outputs from the main checkout (and refuses to deploy layer 0
+# from the worktree). Override with CICD_DIR=<checkout>/infrastructure/live/shared/layer-0-cicd.
+CICD_DIR ?=
+CICD_FLAG = $(if $(CICD_DIR),--cicd-dir $(CICD_DIR))
 
-# Image builds (env-neutral, shared dev repository)
+# Image builds (env-neutral, shared dev repository): :$(BUILD_TAG) and :dev-<gitsha>
 BUILD_TAG ?= dev-latest
-GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_FLAGS = --tag $(BUILD_TAG) $(CICD_FLAG)
+
+# Deploys: ALLOW_DESTROY=1 permits destroy/replace plans (the destroy guard of `esmeralda apply`, per unit)
+ALLOW_DESTROY ?=
+DEPLOY_FLAGS = --env $(ENV) $(if $(filter 1 true,$(ALLOW_DESTROY)),--allow-destroy,) $(CICD_FLAG)
 
 # Promotion (make promote VERSION=vX.Y.Z SOURCE=dev-<sha> [VERIFIED=YYYY-MM-DD]): see "Releases" below
 VERSION ?=
@@ -177,7 +174,7 @@ query: ## Query an agent: AGENT=<dir under apps/agents> [QUERY="..."] [TARGET=lo
 	@[ -n "$(AGENT)" ] || { echo "❌ Set AGENT=<agent directory under apps/agents>, e.g. AGENT=cx-mortgage-orchestrator"; exit 1; }
 	@case "$(TARGET)" in \
 	  local) uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --local-mcp "$(QUERY)" ;; \
-	  remote) ENGINE=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/$(AGENT) && terragrunt output -raw engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(AGENT) in $(ENV)"; exit 1; }; \
+	  remote) ENGINE=$$($(ESM) status --env $(ENV) --unit layer-5-workloads/agents/$(AGENT) --output engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(AGENT) in $(ENV)"; exit 1; }; \
 	    uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --engine "$$ENGINE" "$(QUERY)" ;; \
 	  http://*|https://*) uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --url "$(TARGET)" "$(QUERY)" ;; \
 	  *) echo "❌ TARGET must be local, remote or a URL (got '$(TARGET)')"; exit 1 ;; \
@@ -190,7 +187,7 @@ serve: ## Serve an agent locally exactly as in the container: AGENT=<dir under a
 	@scripts/with_local_mcp.sh uv run --package $(AGENT) esmeralda serve --agent-dir apps/agents/$(AGENT) --local --port $(PORT) $(if $(WEB),--web)
 
 # ==============================================================================
-# End-to-end tests of a deployed environment (engine IDs from Terragrunt outputs)
+# End-to-end tests of a deployed environment (engine IDs from the unit outputs)
 # ==============================================================================
 
 test-e2e: ## End-to-end check of a deployed env: specialist, then orchestrator -> specialist (fails on any error)
@@ -199,139 +196,94 @@ test-e2e: ## End-to-end check of a deployed env: specialist, then orchestrator -
 	@echo "✅ End-to-end tests passed for $(ENV)!"
 
 # ==============================================================================
-# Layer 0: shared CI/CD (env-independent; one project, dev + release repositories)
+# Deploys: aliases of `esmeralda deploy` (plan to a planfile, destroy guard per unit, apply; stops at the
+# first failure). Layer 0: shared CI/CD (env-independent; one project, dev + release repositories).
 # ==============================================================================
 
 deploy-cicd: ## Deploy Layer 0: shared CI/CD project, dev + release Artifact Registry repos, builder/promoter SAs
-	@echo "🏗️  Deploying Layer 0: shared CI/CD..."
-	@if [ -n "$(CICD_FROM_MAIN)" ]; then \
-		echo "❌ Layer-0 state is in the main checkout ($(MAIN_CHECKOUT)), not in this worktree: run make deploy-cicd there, or set CICD_DIR explicitly." >&2; \
-		exit 1; \
-	fi
-	@cd $(CICD_DIR) && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy --layer 0 $(DEPLOY_FLAGS)
 
 # ==============================================================================
 # Layers 1-3: foundations (projects, networking, security + internal PKI)
 # ==============================================================================
 
-deploy-projects: ## Deploy Layer 1: Projects via Terragrunt for $(ENV)
-	@echo "🏗️  Deploying Layer 1: Projects for $(ENV)..."
-	@cd $(LIVE_DIR)/layer-1-projects && terragrunt --non-interactive apply -auto-approve
+deploy-projects: ## Deploy Layer 1: Projects for $(ENV)
+	@$(ESM) deploy --layer 1 $(DEPLOY_FLAGS)
 
-deploy-networking: ## Deploy Layer 2: Networking via Terragrunt for $(ENV)
-	@echo "🏗️  Deploying Layer 2: Networking for $(ENV)..."
-	@cd $(LIVE_DIR)/layer-2-networking && terragrunt --non-interactive apply -auto-approve
+deploy-networking: ## Deploy Layer 2: Networking for $(ENV)
+	@$(ESM) deploy --layer 2 $(DEPLOY_FLAGS)
 
-deploy-security: ## Deploy Layer 3: Security + internal Root CA via Terragrunt for $(ENV)
-	@echo "🏗️  Deploying Layer 3: Security for $(ENV)..."
-	@cd $(LIVE_DIR)/layer-3-security && terragrunt --non-interactive apply -auto-approve
+deploy-security: ## Deploy Layer 3: Security + internal Root CA for $(ENV)
+	@$(ESM) deploy --layer 3 $(DEPLOY_FLAGS)
 
-deploy-foundations: deploy-projects deploy-networking deploy-security ## Deploy Layers 1-3 (Projects, Networking, Security)
+deploy-foundations: ## Deploy Layers 1-3 (Projects, Networking, Security)
+	@$(ESM) deploy --layer 1 --layer 2 --layer 3 $(DEPLOY_FLAGS)
 
 # ==============================================================================
 # Layer 4: governance (Agent Gateway + ACT + IAP, Agent Registry, Model Armor, telemetry)
 # ==============================================================================
 
 deploy-governance: ## Deploy Layer 4: Governance, Agent Gateway, Observability & Alerts for $(ENV)
-	@echo "🏛️  Deploying Layer 4: Governance for $(ENV)..."
-	@cd $(LIVE_DIR)/layer-4-governance && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy --layer 4 $(DEPLOY_FLAGS)
 
 # ==============================================================================
-# Image builds: env-neutral, always pushed to the shared dev repository
+# Image builds: aliases of `esmeralda build`. Env-neutral, always pushed to the shared dev repository
 # (:$(BUILD_TAG) and :dev-<gitsha>). Promotion to prd is `make promote VERSION=vX.Y.Z SOURCE=dev-<sha>`.
 # ==============================================================================
 
-# $(1) = build context, $(2) = image name, $(3) = uv workspace package (optional),
-# $(4) = workspace library to ship as a wheel (optional).
-# When $(3) is set, the package's exact, hashed dependency set is exported from the committed
-# workspace uv.lock into $(1)/requirements.lock (generated, gitignored) so the image installs
-# exactly what was locked and audited, instead of re-resolving at build time. Workspace members
-# are not in that export; $(4) is built into $(1)/dist/ (gitignored) for the image to install.
-define build_image
-	@echo "🏗️  Building $(2) (:$(BUILD_TAG), :dev-$(GIT_SHA)) in the shared CI/CD project..."
-	$(if $(3),@uv export --frozen --package $(3) --no-dev --no-emit-workspace --quiet -o $(1)/requirements.lock)
-	$(if $(4),@rm -rf $(1)/dist && uv build --package $(4) --wheel --out-dir $(1)/dist --quiet)
-	$(if $(CICD_FROM_MAIN),@echo "ℹ️  No layer-0 state in this worktree: reading CI/CD outputs from $(CICD_DIR)")
-	@CICD_JSON=$$(cd $(CICD_DIR) && terragrunt output -json) && \
-	CICD_PROJ=$$(echo "$$CICD_JSON" | jq -r '.cicd_project_id.value // empty') && \
-	if [ -z "$$CICD_PROJ" ]; then \
-		echo "❌ No layer-0 CI/CD outputs in $(CICD_DIR) (no state there?). Deploy layer 0 (make deploy-cicd), or set CICD_DIR=<checkout with layer-0 state>/$(CICD_UNIT)." >&2; \
-		exit 1; \
-	fi && \
-	REPO_URL=$$(echo "$$CICD_JSON" | jq -r .dev_repository_url.value) && \
-	BUILDER_SA=$$(echo "$$CICD_JSON" | jq -r .builder_sa_email.value) && \
-	SOURCE_BUCKET=$$(echo "$$CICD_JSON" | jq -r .build_source_bucket.value) && \
-	gcloud builds submit $(1) --config=.cloudbuild/build-image.yaml --project=$$CICD_PROJ \
-		--service-account=projects/$$CICD_PROJ/serviceAccounts/$$BUILDER_SA \
-		--gcs-source-staging-dir=gs://$$SOURCE_BUCKET/source \
-		--substitutions=_IMAGE=$(2),_REPOSITORY_URL=$$REPO_URL,_TAG=$(BUILD_TAG),_SHA_TAG=dev-$(GIT_SHA)
-endef
-
 build-ai-coe-mortgage-specialist: ## Build and push the AI CoE mortgage specialist (A2A) image
-	$(call build_image,apps/agents/ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,ai-coe-mortgage-specialist,esmeralda)
+	@$(ESM) build ai-coe-mortgage-specialist --skip-tests $(BUILD_FLAGS)
 
 build-cx-mortgage-orchestrator: ## Build and push the CX mortgage orchestrator image
-	$(call build_image,apps/agents/cx-mortgage-orchestrator,cx-mortgage-orchestrator,cx-mortgage-orchestrator,esmeralda)
+	@$(ESM) build cx-mortgage-orchestrator --skip-tests $(BUILD_FLAGS)
 
 build-agents: $(if $(SKIP_TESTS),,lock-check test test-terraform) ## Run tests (not the gateway harness: no envoy needed), then build both agent images concurrently (SKIP_TESTS=1 if you just ran them)
-	@$(MAKE) -j2 build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator
-	@echo "✅ All agent images built and pushed!"
+	@$(ESM) build agents --skip-tests $(BUILD_FLAGS)
 
 build-service-income-verification: ## Build and push the Income Verification MCP image
-	$(call build_image,apps/services/income-verification,income-verification-api,income-verification-api)
+	@$(ESM) build income-verification-api $(BUILD_FLAGS)
 
 build-service-corporate-email: ## Build and push the Corporate Email MCP image
-	$(call build_image,apps/services/corporate-email,corporate-email,corporate-email)
+	@$(ESM) build corporate-email $(BUILD_FLAGS)
 
 build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
-	$(call build_image,apps/services/legacy-dms,legacy-dms,legacy-dms)
+	@$(ESM) build legacy-dms $(BUILD_FLAGS)
 
 build-service-envoy: ## Build and push the Envoy gateway image (digest-pinned upstream Envoy, no custom code)
-	$(call build_image,apps/services/envoy,envoy-gateway)
+	@$(ESM) build envoy-gateway $(BUILD_FLAGS)
 
 build-services: ## Build all MCP service + Envoy gateway images concurrently
-	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy
-	@echo "✅ All service images built and pushed!"
+	@$(ESM) build services $(BUILD_FLAGS)
 
 build-images: build-services build-agents ## Build every image deployed by Layer 5
 
 # ==============================================================================
-# Layer 5: workloads (MCP services -> agents -> gateways -> entry point -> IAP egress), Terragrunt DAG
+# Layer 5: workloads (agents -> MCP services -> gateways -> entry point -> IAP egress), Terragrunt DAG order
 # ==============================================================================
 
-deploy-workloads: ## Deploy Layer 5 in dependency order (MCP services, agents, gateways, entry point, IAP egress, test VM)
-	@echo "🚀 Deploying Layer 5 workloads for $(ENV)..."
-	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all apply
-	@echo "✨ Layer 5 workloads deployed!"
-	@$(MAKE) --no-print-directory verify-images ENV=$(ENV)
+deploy-workloads: ## Deploy Layer 5 in dependency order (every enabled unit, IAP egress last), then verify-images
+	@$(ESM) deploy --layer 5 $(DEPLOY_FLAGS)
 
 verify-images: ## Check every Layer 5 workload runs the expected digest: release/<env>.yaml if present, else its tag
-	@bash scripts/verify_images.sh $(ENV)
+	@$(ESM) build --verify --env $(ENV)
 
 deploy-services: ## Deploy the 3 MCP services on Cloud Run (+ their Agent Registry entries)
-	@for s in corporate-email income-verification legacy-dms; do \
-		echo "🚀 Deploying $$s..."; \
-		(cd $(LIVE_DIR)/layer-5-workloads/services/$$s && terragrunt --non-interactive apply -auto-approve) || exit 1; \
-	done
+	@$(ESM) deploy services/corporate-email services/income-verification services/legacy-dms $(DEPLOY_FLAGS)
 
 deploy-ai-coe-mortgage-specialist: ## Deploy the AI CoE mortgage specialist (A2A) Reasoning Engine
-	@echo "🚀 Deploying ai-coe-mortgage-specialist..."
-	@cd $(LIVE_DIR)/layer-5-workloads/agents/ai-coe-mortgage-specialist && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy agents/ai-coe-mortgage-specialist $(DEPLOY_FLAGS)
 
 deploy-cx-mortgage-orchestrator: ## Deploy the CX mortgage orchestrator Reasoning Engine
-	@echo "🚀 Deploying cx-mortgage-orchestrator..."
-	@cd $(LIVE_DIR)/layer-5-workloads/agents/cx-mortgage-orchestrator && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy agents/cx-mortgage-orchestrator $(DEPLOY_FLAGS)
 
-deploy-agents: ## Deploy both Reasoning Engine agents, in parallel (no deploy-time dependency between them)
-	@$(MAKE) --no-print-directory -j2 deploy-ai-coe-mortgage-specialist deploy-cx-mortgage-orchestrator
+deploy-agents: ## Deploy both Reasoning Engine agents (no deploy-time dependency between them)
+	@$(ESM) deploy agents/ai-coe-mortgage-specialist agents/cx-mortgage-orchestrator $(DEPLOY_FLAGS)
 
 deploy-gateway: ## Deploy the built-in direct backends (gateways/direct; re-run after agents are recreated: routes use engine IDs)
-	@echo "🚀 Deploying the direct backends (serverless NEGs + aiplatform PSC NEG)..."
-	@cd $(LIVE_DIR)/layer-5-workloads/gateways/direct && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy gateways/direct $(DEPLOY_FLAGS)
 
 deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, forwarding rule) after the gateways
-	@echo "🚪 Deploying the internal entry point..."
-	@cd $(LIVE_DIR)/layer-5-workloads/entrypoint && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy entrypoint $(DEPLOY_FLAGS)
 
 test-gateway: ## Probe every catalog host through the entry point from the test VM (IAP SSH), incl. a real orchestrator query: ENV=<env>
 	@bash scripts/test_gateway.sh $(ENV)
@@ -340,9 +292,7 @@ test-partner: ## Run partner front-door conformance checks (401 unauth, 403/404 
 	@uv run esmeralda verify --partner --env $(ENV)
 
 deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (final Layer 5 step)
-	@IAP_DIR="$(LIVE_DIR)/layer-5-workloads/iap-egress"; \
-	[ -d "$$IAP_DIR" ] || IAP_DIR="$(LIVE_DIR)/layer-5-workloads/services/iap-egress"; \
-	cd "$$IAP_DIR" && terragrunt --non-interactive apply -auto-approve
+	@$(ESM) deploy iap-egress $(DEPLOY_FLAGS)
 
 # ==============================================================================
 # Operations CLI (delegates to `uv run esmeralda ...`)
@@ -350,7 +300,6 @@ deploy-iap-egress: ## Grant roles/iap.egressor on every Agent Registry entry (fi
 
 UNIT ?=
 TARGET_NAME ?=
-ALLOW_DESTROY ?=
 
 status: ## Show git branch/SHA, active worktrees, local state units, image tags/digests, and deployed outputs: ENV=<env>
 	@uv run esmeralda status --env $(ENV)
@@ -377,47 +326,33 @@ guard: ## Scan all tracked files in the repository for secrets and forbidden int
 	@uv run esmeralda guard --all
 
 build-package: ## Build a standalone wheel and sdist of the esmeralda package (as esmeralda-platform; not published on PyPI) into dist/ and verify contents
-	@rm -rf dist && mkdir -p dist
-	@TMP_PKG=$$(mktemp -d) && trap 'rm -rf "$$TMP_PKG"' EXIT && \
-		cp -R packages/esmeralda/src packages/esmeralda/README.md "$$TMP_PKG/" && \
-		sed 's/^name = "esmeralda"/name = "esmeralda-platform"/' packages/esmeralda/pyproject.toml > "$$TMP_PKG/pyproject.toml" && \
-		uv build "$$TMP_PKG" --wheel --sdist --out-dir dist --offline --quiet
-	@uv run python -m zipfile -l dist/esmeralda_platform-*.whl
-	@uv run python -c 'import glob, zipfile; from esmeralda.ops import guard; whl = glob.glob("dist/esmeralda_platform-*.whl")[0]; names = zipfile.ZipFile(whl).namelist(); assert "esmeralda/cli.py" in names and any(n.startswith("esmeralda/ops/") for n in names), names; bad = [f for n in names for f in guard.check_path(n)]; assert not bad, bad; print("✅ Verified wheel contents:", whl)'
+	@$(ESM) build package
 
 # ==============================================================================
 # Whole environment
 # ==============================================================================
 
-deploy-all: ## Build an env from zero: Layer 0 -> 1-3 -> 4 -> images -> 5 (single pass)
-	@$(MAKE) --no-print-directory deploy-cicd
-	@$(MAKE) --no-print-directory deploy-foundations ENV=$(ENV)
-	@$(MAKE) --no-print-directory deploy-governance ENV=$(ENV)
-	@$(MAKE) --no-print-directory build-images
-	@$(MAKE) --no-print-directory deploy-workloads ENV=$(ENV)
-	@echo "🎉 $(ENV) deployed. Verify with: make test-e2e ENV=$(ENV)"
+deploy-all: ## Build an env from zero: Layer 0 -> 1-3 -> 4 -> images -> 5 (single pass; SKIP_TESTS=1 skips the tests before the agent builds)
+	@$(ESM) deploy --all $(DEPLOY_FLAGS) --tag $(BUILD_TAG) $(if $(SKIP_TESTS),--skip-tests)
+	@echo "🎉 $(ENV) deployed. Verify with: esmeralda verify --env $(ENV)"
 
 destroy-all: ## Destroy an env's Layers 5 -> 1 (dev only; never touches the shared Layer 0)
 	@if [ "$(ENV)" = "prd" ]; then echo "❌ destroy-all refuses ENV=prd."; exit 1; fi
-	@read -p "⚠️  Destroy ALL of $(ENV) (layers 5 -> 1)? Type the env name to confirm: " c && [ "$$c" = "$(ENV)" ]
-	@cd $(LIVE_DIR)/layer-5-workloads && terragrunt --non-interactive run --all destroy
-	@cd $(LIVE_DIR)/layer-4-governance && terragrunt --non-interactive destroy -auto-approve
-	@cd $(LIVE_DIR)/layer-3-security && terragrunt --non-interactive destroy -auto-approve
-	@cd $(LIVE_DIR)/layer-2-networking && terragrunt --non-interactive destroy -auto-approve
-	@cd $(LIVE_DIR)/layer-1-projects && terragrunt --non-interactive destroy -auto-approve
+	@read -p "⚠️  Destroy ALL of $(ENV) (layers 5 -> 1)? Type the env name to confirm: " c && [ "$$c" = "$(ENV)" ] && \
+		$(ESM) destroy --env $(ENV) --confirm "$$c"
 	@echo "🧹 $(ENV) destroyed. The shared Layer 0 CI/CD was not touched."
 
 # ==============================================================================
-# Releases: copy dev images by digest into the immutable release repository
+# Releases: aliases of `esmeralda release` (copy dev images by digest into the immutable release repository)
 # ==============================================================================
 
 status-release: ## Show the prd release manifest (version, source, digests) and the shared repositories
-	@bash scripts/promote_release.sh status
+	@$(ESM) release status
 
 promote: ## Promote a verified dev build by digest + write release/prd.yaml: VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD; no deploy
 	@if [ -z "$(VERSION)" ] || [ -z "$(SOURCE)" ] || [ -z "$(VERIFIED)" ]; then \
 		echo "❌ Usage: make promote VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD (the date 'make verify ENV=dev' passed)"; exit 1; fi
-	@bash scripts/promote_release.sh promote --version $(VERSION) --source $(SOURCE) --verified $(VERIFIED)
+	@$(ESM) release promote --version $(VERSION) --source $(SOURCE) --verified $(VERIFIED)
 
 test-governance-chaos: ## Run local chaos simulation test for governance telemetry and alerts
 	@echo "🧪 Running Esmeralda Governance Pipeline Chaos Test..."
@@ -428,7 +363,7 @@ USERS ?= 5
 DURATION ?= 1m
 
 load-test: ## Locust load test of a deployed ADK agent: [LOAD_AGENT=cx-mortgage-orchestrator] [USERS=5] [DURATION=1m] ENV=dev (results in tests/load_test/.results)
-	@ENGINE=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/$(LOAD_AGENT) && terragrunt output -raw engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(LOAD_AGENT) in $(ENV)"; exit 1; }; \
+	@ENGINE=$$($(ESM) status --env $(ENV) --unit layer-5-workloads/agents/$(LOAD_AGENT) --output engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(LOAD_AGENT) in $(ENV)"; exit 1; }; \
 	echo "⚡ Load testing $$ENGINE ($(USERS) users, $(DURATION))..."; \
 	REMOTE_AGENT_ENGINE_ID="$$ENGINE" uv run locust -f tests/load_test/load_test.py --headless -u $(USERS) -r 1 --run-time $(DURATION) \
 		--csv=tests/load_test/.results/results --html=tests/load_test/.results/report.html

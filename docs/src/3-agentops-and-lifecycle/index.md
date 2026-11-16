@@ -125,9 +125,9 @@ sequenceDiagram
 1. **Workload Request**: The CX team requests a domain specialist capable of underwriting mortgages.
 2. **Platform & Security Review**: PlatformOps and SecOps verify project boundaries, budget alerts, and identity separation.
 3. **Infrastructure Provisioning**: PlatformOps provisions the private Cloud SQL PostgreSQL instance (with its zero-bastion schema bootstrap job), GCS buckets, and service accounts in `esm-<env>-ai-coe-agents-<sfx>`.
-4. **Stable Endpoint Handoff**: The AI CoE team deploys `ai-coe-mortgage-specialist`, which registers its **agent card** in the governance Agent Registry. PlatformOps applies `gateways/direct` (`make deploy-gateway`) and `entrypoint` (`make deploy-entrypoint`) so `ai-coe-mortgage-specialist.esmeralda.internal` routes to the new engine. The CX team receives only the stable URL `https://ai-coe-mortgage-specialist.esmeralda.internal` (`A2A_AGENT_URL`).
+4. **Stable Endpoint Handoff**: The AI CoE team deploys `ai-coe-mortgage-specialist`, which registers its **agent card** in the governance Agent Registry. PlatformOps deploys `gateways/direct` and `entrypoint` (`uv run esmeralda deploy gateways/direct entrypoint --env <env>`) so `ai-coe-mortgage-specialist.esmeralda.internal` routes to the new engine. The CX team receives only the stable URL `https://ai-coe-mortgage-specialist.esmeralda.internal` (`A2A_AGENT_URL`).
 5. **Tool Request & Deployment**: When the specialist needs access to legacy loan files, the AppDev Tools team builds `legacy-dms` in `esm-cicd-<sfx>` and deploys it as an internal-LB Cloud Run service in `esm-<env>-mcps-<sfx>`, registered in Agent Registry as `https://legacy-dms.esmeralda.internal/mcp`.
-6. **Least-Privilege Access Grant**: PlatformOps lists the allowed `callers` in the `catalog` block of `env.yaml` and runs the `services/iap-egress` unit (`make deploy-iap-egress`), granting `roles/run.invoker` and per-target `roles/iap.egressor` only to the authorized agent identity.
+6. **Least-Privilege Access Grant**: PlatformOps lists the allowed `callers` in the `catalog` block of `env.yaml` and deploys the `iap-egress` unit (`uv run esmeralda deploy iap-egress --env <env>`), granting `roles/run.invoker` and per-target `roles/iap.egressor` only to the authorized agent identity.
 
 ---
 
@@ -164,7 +164,7 @@ flowchart TD
 
     R_Email & R_Income & R_A2A & R_Root -->|Build| CB
     CB -->|Push :dev-latest + :dev-gitsha| AR_DEV
-    AR_DEV -->|make promote: copy by digest| AR_REL
+    AR_DEV -->|esmeralda release promote: copy by digest| AR_REL
     AR_DEV -->|dev pulls by digest| Run_Email & Run_Income & Run_A2A & Run_Root
     AR_REL -->|prd pulls by digest| Run_Email & Run_Income & Run_A2A & Run_Root
     R_Platform -->|Commit Live Configurations| TG
@@ -252,12 +252,14 @@ Esmeralda enforces a strict **Build Once, Promote by Digest** lifecycle. Contain
 
 ```mermaid
 flowchart LR
-    B["make build-images<br/>(:dev-sha)"] --> D["deploy dev<br/>make deploy-workloads ENV=dev"]
-    D --> V["make verify ENV=dev<br/>gateway probes + both agents answer"]
-    V --> P["make promote VERSION=vX.Y.Z<br/>SOURCE=dev-sha VERIFIED=date"]
+    B["esmeralda build images<br/>tags dev-sha"] --> D["deploy dev<br/>esmeralda deploy --layer 5 --env dev"]
+    D --> V["esmeralda verify --env dev<br/>gateway probes + both agents answer"]
+    V --> P["esmeralda release promote<br/>--version vX.Y.Z --source dev-sha"]
     P --> PR["PR: release/prd.yaml"]
-    PR --> PRD["deploy prd<br/>make deploy-workloads ENV=prd"]
+    PR --> PRD["deploy prd<br/>esmeralda deploy --layer 5 --env prd"]
 ```
+
+Each step has a `make` shortcut: `make build-images`, `make deploy-workloads ENV=<env>`, `make verify ENV=dev`, `make promote VERSION=… SOURCE=… VERIFIED=…`.
 
 ### Step-by-Step Release Lifecycle
 
@@ -265,25 +267,36 @@ flowchart LR
    * Developers iterate locally using `make test-agents`, `make test-terraform`, `make run-mcp-local`, and `make test-*-local` (or `uv run esmeralda serve --local`).
    * Before committing, `.githooks/pre-commit` runs `uv run esmeralda guard --staged` to verify repo hygiene.
 2. **Build Once in Shared CI/CD (`dev`)**:
-   * `make build-*` (e.g., `make build-cx-mortgage-orchestrator` or `make build-images`) submits a Cloud Build job in the shared Layer 0 project `esm-cicd-<sfx>` using `sa-esmeralda-builder`.
-   * The image is pushed to the **mutable dev repository** (`esmeralda-containers`) with two tags: `:dev-latest` and `:dev-<gitsha>`.
+   * `uv run esmeralda build <target>` (e.g., `uv run esmeralda build cx-mortgage-orchestrator` or `uv run esmeralda build images`; shortcuts `make build-*`) submits a Cloud Build job in the shared Layer 0 project `esm-cicd-<sfx>` using `sa-esmeralda-builder`. Agent builds run `make lock-check test test-terraform` first unless `--skip-tests`; logs go to `.esmeralda/build-logs/`.
+   * The image is pushed to the **mutable dev repository** (`esmeralda-containers`) with two tags: `:dev-latest` (or `--tag`) and `:dev-<gitsha>`.
 3. **Deploy and Verify in `dev`**:
-   * `make deploy-workloads ENV=dev` (or `uv run esmeralda apply <unit> --env dev`) deploys Layer 5, resolving each tag to its `sha256` digest and running the serverless Cloud SQL schema bootstrap job.
+   * `uv run esmeralda deploy --layer 5 --env dev` (or one unit: `uv run esmeralda deploy <unit> --env dev`) deploys Layer 5 unit by unit through the destroy guard, resolving each tag to its `sha256` digest and running the serverless Cloud SQL schema bootstrap job, then checks the running digests.
    * `uv run esmeralda verify --env dev` (`make verify ENV=dev`) executes all gateway conformance probes through the internal entry point (`make test-gateway`) **plus** live end-to-end queries against both `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` (`make test-e2e`).
-4. **Promote by Digest (`make promote`)**:
-   * Once `dev` verification passes, `make promote VERSION=vX.Y.Z SOURCE=dev-<gitsha> VERIFIED=<YYYY-MM-DD>` runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh).
+4. **Promote by Digest (`esmeralda release promote`)**:
+   * Once `dev` verification passes, `uv run esmeralda release promote --version vX.Y.Z --source dev-<gitsha> --verified <YYYY-MM-DD>` (`make promote VERSION=… SOURCE=… VERIFIED=…`) runs [`scripts/promote_release.sh`](../../../scripts/promote_release.sh). `--verified` defaults to today.
    * It resolves the `sha256` digest of every workload image tagged `dev-<gitsha>`, copies those exact digests into the **immutable release repository** (`esmeralda-containers-release`) as `vX.Y.Z` (writable only by `sa-esmeralda-promoter`), and writes `release/prd.yaml`.
    * Re-running the same promotion is an idempotent no-op, while attempting to overwrite an existing `vX.Y.Z` tag with different bytes is rejected by both the script and Artifact Registry's immutable tag policy.
 5. **Review and Merge the Release Manifest (`release/prd.yaml`)**:
    * The promoter opens a Pull Request with `release/prd.yaml`. Because the manifest stores only logical image names and `sha256` digests (never hardcoded project IDs; the registry URL comes from Layer 0 outputs, as documented in [`scripts/release_manifest.py`](../../../scripts/release_manifest.py)), reviewers see a crisp diff of which components changed, from which commit, and when `dev` verified them.
-6. **Deploy and Audit `prd` (`make verify-images`)**:
-   * After merging `release/prd.yaml`, `make deploy-workloads ENV=prd` reads `image_digests` from `infrastructure/live/prd/env.yaml` and deploys `<release_repository>/<image>@sha256:...`.
-   * `make verify-images ENV=prd` inspects the live Cloud Run revisions and Vertex AI Reasoning Engines in `prd` and verifies that every running container digest matches `release/prd.yaml` (and `make status-release` displays the active manifest at any time).
+6. **Deploy and Audit `prd` (`esmeralda build --verify`)**:
+   * After merging `release/prd.yaml`, `uv run esmeralda deploy --layer 5 --env prd` reads `image_digests` from `infrastructure/live/prd/env.yaml` and deploys `<release_repository>/<image>@sha256:...`.
+   * `uv run esmeralda build --verify --env prd` (`make verify-images ENV=prd`, also run at the end of every Layer 5 deploy) inspects the live Cloud Run revisions and Vertex AI Reasoning Engines in `prd` and verifies that every running container digest matches `release/prd.yaml`; `uv run esmeralda release status` (`make status-release`) displays the active manifest at any time.
 7. **Instant, Deterministic Rollback**:
-   * Rolling back `prd` is simply `git revert` on the `release/prd.yaml` PR followed by `make deploy-workloads ENV=prd`. Because `esmeralda-containers-release` is immutable, every historical release digest remains permanently available.
+   * Rolling back `prd` is simply `git revert` on the `release/prd.yaml` PR followed by `uv run esmeralda deploy --layer 5 --env prd`. Because `esmeralda-containers-release` is immutable, every historical release digest remains permanently available.
+
+The whole flow from the CLI:
+
+```bash
+uv run esmeralda build images
+uv run esmeralda deploy --layer 5 --env dev
+uv run esmeralda verify --env dev
+uv run esmeralda release promote --version v1.2.0 --source dev-<gitsha>
+uv run esmeralda release status
+uv run esmeralda deploy --layer 5 --env prd --dry-run
+```
 
 > [!TIP]
-> **Production Roadmap Extensions:** In your enterprise CI/CD pipeline, you can wire Steps 1–4 into an automated post-merge workflow that opens the `release/prd.yaml` PR automatically after `make verify ENV=dev` succeeds, and pair `esmeralda-containers-release` with **Binary Authorization** so `prd` admits only cryptographically attested digests.
+> **Production Roadmap Extensions:** In your enterprise CI/CD pipeline, you can wire Steps 1–4 into an automated post-merge workflow that opens the `release/prd.yaml` PR automatically after `uv run esmeralda verify --env dev` succeeds, and pair `esmeralda-containers-release` with **Binary Authorization** so `prd` admits only cryptographically attested digests.
 
 ---
 

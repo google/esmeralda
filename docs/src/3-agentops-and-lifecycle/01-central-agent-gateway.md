@@ -589,7 +589,7 @@ If the variable is missing, the entrypoint logs a warning, and egress through th
 
 ## 7. Deployment checklist: everything you must create
 
-The layers deploy in order (`make deploy-all ENV=<env>`). Items marked exist **only because of the self-signed CA and private destinations**.
+The layers deploy in order (`uv run esmeralda deploy --all --env <env>`, or `make deploy-all ENV=<env>`). Items marked exist **only because of the self-signed CA and private destinations**.
 
 | # | Layer | What | Why |
 | :- | :- | :- | :- |

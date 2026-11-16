@@ -19,10 +19,10 @@ What happens if a bank deploys all of those teams into a single Google Cloud pro
 
 * **Module:** [`infrastructure/modules/1-projects/`](../../../infrastructure/modules/1-projects/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-1-projects/` (inputs from `infrastructure/live/<env>/env.yaml`)
-* **Deploy:** `uv run esmeralda apply layer-1-projects --env <env>` (or `make deploy-projects ENV=<env>`)
+* **Deploy:** `uv run esmeralda deploy --layer 1 --env <env>` (or `make deploy-projects ENV=<env>`)
 
 > [!NOTE]
-> The CI/CD project is **not** part of Layer 1. It is created once, for all environments, by Layer 0 (`uv run esmeralda apply layer-0-cicd` / `make deploy-cicd`, module [`0-cicd`](../../../infrastructure/modules/0-cicd/main.tf)) as `esm-cicd-<sfx>`. It holds the mutable dev image repository (`esmeralda-containers`), the immutable release repository (`esmeralda-containers-release`), and the `sa-esmeralda-builder` / `sa-esmeralda-promoter` service accounts.
+> The CI/CD project is **not** part of Layer 1. It is created once, for all environments, by Layer 0 (`uv run esmeralda deploy --layer 0` / `make deploy-cicd`, run from the checkout that holds the layer-0 state, module [`0-cicd`](../../../infrastructure/modules/0-cicd/main.tf)) as `esm-cicd-<sfx>`. It holds the mutable dev image repository (`esmeralda-containers`), the immutable release repository (`esmeralda-containers-release`), and the `sa-esmeralda-builder` / `sa-esmeralda-promoter` service accounts.
 
 ---
 

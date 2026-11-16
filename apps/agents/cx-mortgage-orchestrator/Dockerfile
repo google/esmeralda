@@ -15,11 +15,11 @@ RUN apt-get update -qqy && apt-get install -qqy --no-install-recommends \
 # so the same image digest can be promoted from dev to prd.
 
 # Install the exact, hash-pinned dependency set exported from the committed workspace uv.lock
-# (generated as requirements.lock by `make build-*`), instead of re-resolving at build time.
+# (generated as requirements.lock by `esmeralda build`), instead of re-resolving at build time.
 COPY requirements.lock .
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
-# The esmeralda runtime library (packages/esmeralda): `make build-*` builds its wheel into dist/.
+# The esmeralda runtime library (packages/esmeralda): `esmeralda build` builds its wheel into dist/.
 # Its own dependencies are already pinned in requirements.lock, hence --no-deps.
 COPY dist/ /tmp/dist/
 RUN pip install --no-cache-dir --no-deps /tmp/dist/esmeralda-*.whl && rm -rf /tmp/dist

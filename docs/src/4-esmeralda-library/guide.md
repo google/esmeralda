@@ -95,7 +95,7 @@ Order matters: `prepare()` patches the google-genai and aiohttp clients, so it m
 COPY requirements.lock .
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
-# The esmeralda wheel, built by `make build-*` into dist/. Its dependencies are in requirements.lock.
+# The esmeralda wheel, built by `esmeralda build` into dist/. Its dependencies are in requirements.lock.
 COPY dist/ /tmp/dist/
 RUN pip install --no-cache-dir --no-deps /tmp/dist/esmeralda-*.whl && rm -rf /tmp/dist
 

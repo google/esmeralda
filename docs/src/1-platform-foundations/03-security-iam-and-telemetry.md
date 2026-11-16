@@ -21,7 +21,7 @@ In a naive agent deployment, `cx-mortgage-orchestrator` and `ai-coe-mortgage-spe
 
 * **Module:** [`infrastructure/modules/3-security/`](../../../infrastructure/modules/3-security/main.tf) (`main.tf`, [`agent_identity.tf`](../../../infrastructure/modules/3-security/agent_identity.tf), [`pki.tf`](../../../infrastructure/modules/3-security/pki.tf))
 * **Live config:** `infrastructure/live/<env>/layer-3-security/`
-* **Deploy:** `uv run esmeralda apply layer-3-security --env <env>` (or `make deploy-security ENV=<env>`)
+* **Deploy:** `uv run esmeralda deploy --layer 3 --env <env>` (or `make deploy-security ENV=<env>`)
 
 > [!NOTE]
 > **Telemetry lives in Layer 4.** Log sinks, the BigQuery telemetry dataset, DLP, alerts, dashboards, FinOps views and Model Armor templates are created by the governance layer (`modules/4-governance`). See [Centralized Monitoring & FinOps](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md) and the [Central Agent Gateway](../3-agentops-and-lifecycle/01-central-agent-gateway.md).
