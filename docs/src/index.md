@@ -121,7 +121,7 @@ flowchart LR
     end
 
     subgraph Gov["3. East–West Zero-Trust Control Plane (Layer 4)"]
-        AGW["GEAP Central Agent Gateway (10.200.0.2)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor"]
+        AGW["GEAP Central Agent Gateway (10.200.0.2)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor (optional)"]
         Gemini["Gemini 3.7 Flash<br/>(Vertex AI API)"]
         FinOps["Central Telemetry & FinOps Hub<br/>(OTel Baggage • BigQuery Chargeback Views)"]
     end
@@ -160,7 +160,7 @@ sequenceDiagram
     actor User as Loan Officer / Partner App
     participant Apigee as Apigee X (10.0.1.3)<br/>(Optional Partner Front Door)
     participant Orch as cx-mortgage-orchestrator<br/>(CX Team, SPIFFE Identity #1)
-    participant AGW as Central Agent Gateway (10.200.0.2)<br/>(UAP/IAP + Semantic NLC + Model Armor)
+    participant AGW as Central Agent Gateway (10.200.0.2)<br/>(UAP/IAP + Semantic NLC + Model Armor, optional)
     participant Gemini as Gemini 3.7 Flash<br/>(Vertex AI API)
     participant EP as Entry Point (10.0.1.2)<br/>(*.esmeralda.internal, direct)
     participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE Team, SPIFFE Identity #2)
@@ -193,7 +193,7 @@ sequenceDiagram
 
 1. **The North–South Front Door (`Apigee X` or Direct SDK):** External B2B partner apps enter through **Apigee X** (`partner.esmeralda.internal`), which validates API keys/OAuth tokens, blocks direct access to internal specialists, and enforces commercial `<LLMTokenQuota>` budgets. Internal callers can invoke the orchestrator directly via `uv run esmeralda query`.
 2. **The Orchestrator Reasons (`cx-mortgage-orchestrator`):** Running as a Bring-Your-Own-Container (BYOC) workload on Vertex AI Agent Runtime in the CX team's project with its own attested **SPIFFE Agent Identity (`principal://`)**, the orchestrator consults Gemini and delegates underwriting to the AI CoE's mortgage specialist.
-3. **The East–West Trust Boundary Inspects (`Central Agent Gateway`):** Every outbound packet passes through the Google-managed **Central Agent Gateway** (`AGENT_TO_ANYWHERE`), which verifies the caller's **SPIFFE `principal://` identity** against per-target **Unified Access Policies (UAP / IAP)**, checks the **Agent Registry**, evaluates **Semantic Governance (Natural Language Constraints, NLC)** on tool arguments, and runs **Model Armor** screening.
+3. **The East–West Trust Boundary Inspects (`Central Agent Gateway`):** Every outbound packet passes through the Google-managed **Central Agent Gateway** (`AGENT_TO_ANYWHERE`), which verifies the caller's **SPIFFE `principal://` identity** against per-target **Unified Access Policies (UAP / IAP)**, checks the **Agent Registry**, evaluates **Semantic Governance (Natural Language Constraints, NLC)** on tool arguments, and, when enabled, runs **Model Armor** on unary MCP tool calls and agent cards ([coverage](./3-agentops-and-lifecycle/01-central-agent-gateway.md#35-model-armor-model-calls-and-optional-content_authz)).
 4. **The Private Front Door Routes (`Entry Point`):** The gateway forwards the request over Private Service Connect to the internal HTTPS load balancer (**entry point**, `*.esmeralda.internal`), which presents a certificate signed by Esmeralda's internal Root CA and routes straight to the target engine or Cloud Run service (`direct` backend).
 5. **The Specialist Calls MCP Tools (`ai-coe-mortgage-specialist` → `Cloud Run`):** The specialist—using its own SPIFFE identity and **Auth Manager 3LO user delegation**—invokes `income-verification`, `legacy-dms`, and `corporate-email` over MCP (`https://<svc>.esmeralda.internal/mcp`).
 6. **FinOps Closes the Loop (`BigQuery & Cloud Monitoring`):** OpenTelemetry caller baggage (`caller.project_id`, `caller.agent_name`) and structured token telemetry flow into BigQuery (`vw_monthly_agent_chargeback`), attributing every token to the exact initiating team and agent.
