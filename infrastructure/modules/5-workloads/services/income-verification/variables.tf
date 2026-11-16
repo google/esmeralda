@@ -92,3 +92,8 @@ variable "extra_allowed_callers" {
   type        = any
   default     = []
 }
+
+variable "registry_description" {
+  description = "Description of the MCP server's Agent Registry entry, compiled from the catalog (catalog/.resolved/<env>.json catalog.<name>.description)"
+  type        = string
+}

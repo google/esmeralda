@@ -3,7 +3,7 @@ module "mcp_service" {
 
   service_name             = "legacy-dms"
   display_name             = "Legacy DMS"
-  description              = "FastMCP service providing legacy document management and retrieval tools"
+  description              = var.registry_description
   project_id               = var.project_id
   governance_project_id    = var.governance_project_id
   region                   = var.region

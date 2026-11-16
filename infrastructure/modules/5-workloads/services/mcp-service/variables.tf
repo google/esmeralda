@@ -10,8 +10,13 @@ variable "display_name" {
 }
 
 variable "description" {
-  description = "Description published on the central governance Agent Registry MCP entry"
+  description = "Description published on the central governance Agent Registry MCP entry: the catalog-compiled text (catalog/.resolved/<env>.json catalog.<name>.description: why it exists, then \"Used by: <callers>\")"
   type        = string
+
+  validation {
+    condition     = length(trimspace(var.description)) > 0 && length(var.description) <= 2048
+    error_message = "The Agent Registry entry needs a non-empty description of at most 2048 characters (set description on the catalog target and regenerate catalog/.resolved/<env>.json)."
+  }
 }
 
 variable "register_server_name" {

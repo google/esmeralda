@@ -29,7 +29,9 @@ overrides:
     # with 403. `esmeralda verify` checks the entry URL and its IAP policy.
     external-probe:
       kind: http
-      description: Synthetic external HTTP target (no backend) proving per-target egress for managed false targets.
+      description: >-
+        Synthetic test target with no backend. esmeralda verify uses it to prove that egress to an
+        external (managed: false) target is allowed only for the agents listed as its callers.
       owner_team: platform
       deploy: { managed: false, endpoint: "https://external-probe.{domain}" }
       gateway: agent_gateway
@@ -44,7 +46,9 @@ overrides:
     # Declare it exactly in the environments with model_gateway = "apigee" (make test-guards checks).
     llm-gateway:
       kind: http
-      description: Apigee model gateway (llm-gateway proxy) the agents send their Gemini calls through.
+      description: >-
+        Apigee LLM gateway: agents' Gemini calls, with Agent Identity verification, per-agent token
+        quotas and usage records for chargeback.
       owner_team: platform
       deploy: { managed: false, endpoint: "https://apigee.{domain}/llm" }
       gateway: apigee

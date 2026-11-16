@@ -3,7 +3,7 @@ module "mcp_service" {
 
   service_name             = "corporate-email"
   display_name             = "Corporate Email"
-  description              = "FastMCP service providing internal email verification tools"
+  description              = var.registry_description
   project_id               = var.project_id
   governance_project_id    = var.governance_project_id
   region                   = var.region

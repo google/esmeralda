@@ -4,7 +4,7 @@ module "mcp_service" {
   service_name             = "income-verification"
   display_name             = "Income Verification"
   register_server_name     = "income-verification-api"
-  description              = "FastMCP service providing applicant employment and income verification tools"
+  description              = var.registry_description
   project_id               = var.project_id
   governance_project_id    = var.governance_project_id
   region                   = var.region

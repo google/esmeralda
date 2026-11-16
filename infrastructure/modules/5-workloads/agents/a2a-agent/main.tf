@@ -444,7 +444,9 @@ resource "google_agent_registry_service" "agent_card" {
   location     = var.region
   service_id   = local.card.name
   display_name = local.card.name
-  description  = local.card.description
+  # The catalog-compiled description (why the agent exists, then its callers); the card's own
+  # description when the unit passes none. The card content below keeps the agent's text.
+  description = trimspace(var.registry_description) != "" ? var.registry_description : local.card.description
 
   agent_spec {
     type    = "A2A_AGENT_CARD"

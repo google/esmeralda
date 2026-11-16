@@ -88,10 +88,11 @@ variable "google_api_endpoints" {
     url              = string
     protocol_binding = string
     display_name     = string
+    description      = string
     grant            = string
     callers          = optional(list(string), [])
   }))
-  description = "Google API entries of the Agent Registry, compiled from the catalog (catalog/.resolved/<env>.json `google_apis`), keyed by service_id. Keys and URLs may hold {region}. grant = baseline: this module grants the agent projects; grant = callers: the layer 5 iap-egress unit grants the declaring agents."
+  description = "Google API entries of the Agent Registry, compiled from the catalog (catalog/.resolved/<env>.json `google_apis`), keyed by service_id. Keys and URLs may hold {region}. description: why agents call the API, then the agents that declare it. grant = baseline: this module grants the agent projects; grant = callers: the layer 5 iap-egress unit grants the declaring agents."
   default     = {}
 
   validation {
@@ -101,6 +102,10 @@ variable "google_api_endpoints" {
   validation {
     condition     = alltrue([for e in values(var.google_api_endpoints) : contains(["HTTP_JSON", "GRPC"], e.protocol_binding)])
     error_message = "google_api_endpoints[*].protocol_binding must be HTTP_JSON or GRPC."
+  }
+  validation {
+    condition     = alltrue([for e in values(var.google_api_endpoints) : length(trimspace(e.description)) > 0 && length(e.description) <= 2048])
+    error_message = "google_api_endpoints[*].description must be non-empty and at most 2048 characters (regenerate catalog/.resolved/<env>.json)."
   }
 }
 

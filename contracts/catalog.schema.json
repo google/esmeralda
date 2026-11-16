@@ -205,7 +205,7 @@
       "required": ["kind", "owner_team", "deploy"],
       "properties": {
         "kind": {"enum": ["mcp", "a2a", "adk", "model", "http"]},
-        "description": {"type": "string"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Why the target exists, in one or two sentences. Required for targets with an Agent Registry entry (deployed MCP servers and agents, managed: false targets): it becomes the entry's description, followed by a generated \"Used by: <callers>\"."},
         "owner_team": {"$ref": "#/$defs/name"},
         "deploy": {"$ref": "#/$defs/deploy"},
         "identity": {"$ref": "#/$defs/identity", "description": "Identity this target calls out as, when it is itself a caller"},

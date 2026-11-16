@@ -57,8 +57,8 @@ def test_resolved_catalog_keeps_the_unit_contract(env):
     data = json.loads((REPO_ROOT / "catalog/.resolved" / f"{env}.json").read_text())
     assert data["environment"] == env
     for name, entry in data["catalog"].items():
-        assert set(entry) <= {"kind", "unit", "token", "probe", "timeout", "callers"}, name
-        assert {"kind", "unit", "token", "probe"} <= set(entry), name
+        assert set(entry) <= {"kind", "unit", "token", "probe", "timeout", "callers", "description"}, name
+        assert {"kind", "unit", "token", "probe", "description"} <= set(entry), name
         assert (LIVE / env / "layer-5-workloads" / entry["unit"] / "terragrunt.hcl").is_file(), entry["unit"]
 
 
@@ -231,7 +231,7 @@ def test_google_api_entries_keep_the_layer4_contract(env):
     known = {api.service_id: api for api in catalog.GOOGLE_APIS.values()}
     assert data["google_apis"], f"{env}: no Google API entry: agents couldn't start"
     for sid, entry in data["google_apis"].items():
-        assert set(entry) == {"api", "url", "protocol_binding", "display_name", "grant", "callers"}, sid
+        assert set(entry) == {"api", "url", "protocol_binding", "display_name", "description", "grant", "callers"}, sid
         api = known[sid]
         assert catalog.GOOGLE_APIS[entry["api"]] == api, sid
         assert entry["url"] == f"https://{api.host}" and entry["protocol_binding"] == api.protocol_binding, sid
