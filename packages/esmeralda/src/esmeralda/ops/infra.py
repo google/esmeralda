@@ -43,6 +43,20 @@ _LAYER_RE = re.compile(r"(?:^|/)layer-(\d+)-")
 _DEP_BLOCK_RE = re.compile(r'dependency\s+"([^"]+)"\s*\{(.*?)\n\}', re.DOTALL)
 _CONFIG_PATH_RE = re.compile(r'config_path\s*=\s*"([^"]+)"')
 _EXCLUDE_GW_RE = re.compile(r'exclude\s*\{[^}]*gateways\.enabled\s*,\s*"([^"]+)"', re.DOTALL)
+# `exclude { if = !(... try(local.env.governance.capabilities.<key>, "<default>") == "apigee") }`
+_EXCLUDE_CAP_RE = re.compile(
+    r'exclude\s*\{[^}]*governance\.capabilities\.(\w+)\s*,\s*"([^"]*)"\s*\)\s*==\s*"apigee"', re.DOTALL
+)
+# Fallback when a unit's terragrunt.hcl has no parsable exclude block: Apigee capability unit
+# (directory name) -> env.yaml `governance.capabilities` key (see modules/4-governance/capabilities.tf).
+APIGEE_CAPABILITY_KEYS = {
+    "cross-cloud": "cross_cloud",
+    "llm-gateway": "model_gateway",
+    "partner-agents": "partner_access",
+    "partner-mcp": "partner_access",
+    "token-quota": "token_quota",
+    "usage-metering": "usage_metering",
+}
 _PLAN_TEXT_SUMMARY_RE = re.compile(
     r"Plan:\s*(\d+)\s+to\s+add,\s*(\d+)\s+to\s+change,\s*(\d+)\s+to\s+destroy"
 )
@@ -96,6 +110,20 @@ def unit_dependencies(root: Path, env: str, unit: str) -> list[str]:
     return deps
 
 
+def apigee_capability_key(hcl_path: Path, unit: str) -> tuple[str, str | None]:
+    """The ``governance.capabilities`` key (and its default) that gates an Apigee capability unit.
+
+    Read from the unit's own ``exclude`` block, so ``units``/``plan --all`` follow the same condition
+    Terragrunt does (``partner-agents`` and ``partner-mcp`` are both gated by ``partner_access``).
+    """
+    if hcl_path.is_file():
+        match = _EXCLUDE_CAP_RE.search(hcl_path.read_text(errors="replace"))
+        if match:
+            return match.group(1), match.group(2)
+    name = unit.rsplit("/", 1)[-1]
+    return APIGEE_CAPABILITY_KEYS.get(name, name.replace("-", "_")), None
+
+
 def unit_enabled(root: Path, env: str, unit: str) -> bool:
     """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks, ``gateways``, and ``governance``)."""
     hcl_path = repo.env_dir(root, env) / unit / repo.UNIT_FILE
@@ -106,9 +134,9 @@ def unit_enabled(root: Path, env: str, unit: str) -> bool:
             if not apigee_enabled:
                 return False
             if unit.startswith("layer-5-workloads/apigee/capabilities/"):
-                cap_key = unit.rsplit("/", 1)[-1].replace("-", "_")
+                cap_key, default = apigee_capability_key(hcl_path, unit)
                 caps = gov.get("capabilities") or {}
-                return caps.get(cap_key) == "apigee"
+                return caps.get(cap_key, default) == "apigee"
             return True
     gw = repo.gateways_block(root, env)
     enabled_gws = gw.get("enabled")
