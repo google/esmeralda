@@ -360,7 +360,8 @@ resource "google_secret_manager_secret_iam_member" "agw_ca_secret_accessors" {
   member    = startswith(each.value, "serviceAccount:") || startswith(each.value, "principalSet:") || startswith(each.value, "principal:") ? each.value : "serviceAccount:${each.value}"
 }
 
-data "google_project" "agent_projects" {
+module "agent_project_trust_domain" {
+  source     = "../../../_shared/agent_identity_trust_domain"
   for_each   = toset(var.agent_project_ids)
   project_id = each.value
 }
@@ -374,9 +375,9 @@ locals {
   # crosses this gateway. The agent and test VM service accounts in var.agent_invoker_sa_emails
   # are not on this list either (they only read the CA secret above).
   dynamic_agent_members = flatten([
-    for proj_id, p in data.google_project.agent_projects : [
-      "principalSet://agents.global.${p.org_id != "" ? "org-${p.org_id}" : "proj-${p.number}"}.system.id.goog/attribute.platformContainer/aiplatform/projects/${p.number}",
-      "principalSet://agents.global.${p.org_id != "" ? "org-${p.org_id}" : "proj-${p.number}"}.system.id.goog/attribute.container/projects/${p.number}"
+    for proj_id, td in module.agent_project_trust_domain : [
+      td.platform_container_principal_set,
+      td.container_principal_set,
     ]
   ])
 

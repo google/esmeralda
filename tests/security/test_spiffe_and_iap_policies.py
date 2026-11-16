@@ -45,8 +45,15 @@ def test_agent_gateway_eliminates_org_wide_wildcard_principal_set():
     assert "system.id.goog/*" not in content, (
         "6_agent_gateway/main.tf must not contain the org-wide wildcard principalSet (*.system.id.goog/*)"
     )
-    assert "attribute.platformContainer/aiplatform/projects/" in content
-    assert "attribute.container/projects/" in content
+    # Per-project principalSets, from the shared trust domain module.
+    assert "td.platform_container_principal_set" in content
+    assert "td.container_principal_set" in content
+    shared_outputs = (
+        REPO_ROOT / "infrastructure/modules/_shared/agent_identity_trust_domain/outputs.tf"
+    ).read_text()
+    assert "system.id.goog/*" not in shared_outputs
+    assert "/attribute.platformContainer/aiplatform/projects/${data.google_project.this.number}" in shared_outputs
+    assert "/attribute.container/projects/${data.google_project.this.number}" in shared_outputs
 
 
 @pytest.mark.parametrize("agent_dir", [ADK_AGENT_DIR, A2A_AGENT_DIR], ids=["adk-agent", "a2a-agent"])

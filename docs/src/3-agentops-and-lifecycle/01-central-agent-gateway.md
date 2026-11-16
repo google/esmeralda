@@ -176,6 +176,10 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 **Esmeralda:**
 - Role grants and `roles/iap.egressor` live in [3-security/agent_identity.tf](../../../infrastructure/modules/3-security/agent_identity.tf).
 - Because CX agents and AI CoE agents run in separate projects, each team's agents form their own `principalSet`.
+- The trust domain is built in one place, the shared module [`_shared/agent_identity_trust_domain`](../../../infrastructure/modules/_shared/agent_identity_trust_domain/main.tf), which layers 3, 4 and 5 call:
+  - a project in an organization, whether its parent is the organization or a folder (`folder_id` in `env.yaml`), gets `agents.global.org-<ORG_ID>.system.id.goog`. The project's own `org_id` field is empty when its parent is a folder, so the module looks up the organization of that folder (through nested folders too); the deployer needs `resourcemanager.folders.get` on it;
+  - a project with no organization gets `agents.global.proj-<PROJECT_NUMBER>.system.id.goog`;
+  - a project under a folder whose organization can't be resolved fails the plan with a clear error, instead of falling back to the project-scoped pool (which doesn't exist for that project).
 
 ### 3.3 Agent Registry
 
@@ -640,6 +644,7 @@ The layers deploy in order (`uv run esmeralda deploy --all --env <env>`, or `mak
 | `5xx` / connection errors for `*.esmeralda.internal` only (Google APIs work) | Leg 2: gateway can't validate the entry point's cert, can't resolve the name or can't route | Check the ACT `tls_config` TrustConfig contains the **same** root that signed the entry point leaf; DNS peering for `esmeralda.internal.`; service agent `dns.peer`/`networkUser`; A records → entry point IP |
 | `Network is unreachable` | Code overrides DNS or sockets, or uses a proxy variable | Remove the override; let normal DNS and the runtime redirection work |
 | `HTTP 498` / session or token errors at start-up, or `Egress request is not authorized ... unregistered in the Agent Registry` | A Google API the agent calls isn't declared (so not registered or not granted to it) | Add the API to the agent's catalog `google_apis` (or the policy baseline), regenerate `catalog/.resolved/<env>.json`, apply layer 4 then the `iap-egress` unit |
+| Layer 3, 4 or 5: `Identity Pool does not exist (.../workloadIdentityPools/agents.global.proj-<n>.system.id.goog)` | A trust domain was built from the project's `org_id`, which is empty for a project under a folder | Fixed in the shared trust domain module (section 3.2), which takes the organization from the parent folder |
 
 ---
 
