@@ -86,7 +86,7 @@ flowchart TD
 
 ### Cloud Run Service Contract (`modules/5-workloads/services/<tool>/`)
 
-Each MCP microservice is built via Cloud Build into the shared Layer 0 Artifact Registry (`make build-services` or `make build-service-<name>`) and deployed by immutable digest (`make deploy-services ENV=<env>` or `uv run esmeralda apply layer-5-workloads/services/<name> --env <env>`):
+Each MCP microservice is built via Cloud Build into the shared Layer 0 Artifact Registry (`uv run esmeralda build services` or `uv run esmeralda build <image>`, e.g. `legacy-dms`; shortcut `make build-services`) and deployed by immutable digest (`uv run esmeralda deploy services/<name> --env <env>`; shortcut `make deploy-services ENV=<env>` for all three):
 
 * **Internal-Only Ingress:** `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` ensures the Cloud Run service cannot be reached from the public internet; all traffic arrives through the private entry point (`*.esmeralda.internal`).
 * **Cross-Project Serverless NEG (`direct` Backend):** With the default `direct` backend, Terraform creates a serverless Network Endpoint Group (NEG) and a regional backend service **inside the MCPs project** (since a serverless NEG must reside in the same project as its Cloud Run service) and attaches it cross-project to the entry point's URL map in the gateway project. See [1.3 Entry Point → The `direct` Backend](./01-ingress-gateways.md#4-the-direct-backend-gatewaysdirect-default).
@@ -120,7 +120,7 @@ resource "google_agent_registry_service" "governance_mcp" {
 }
 ```
 
-Once the registry entries exist, the `services/iap-egress` unit (`make deploy-iap-egress` or `uv run esmeralda apply layer-5-workloads/services/iap-egress --env <env>`) grants `roles/iap.egressor` on those entries to the authorized agent principal sets.
+Once the registry entries exist, the `iap-egress` unit (`uv run esmeralda deploy iap-egress --env <env>`, or `make deploy-iap-egress`) grants `roles/iap.egressor` on those entries to the authorized agent principal sets.
 
 *(For local convenience, each module also invokes `apps/services/register_mcp.py`, which writes the Cloud Run URL into a local, gitignored `apps/services/mcp_registry.json` file without calling any external API.)*
 

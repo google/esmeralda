@@ -168,20 +168,32 @@ uv run esmeralda verify --env dev          # probe every catalog route + live or
 uv run esmeralda logs cx-mortgage-orchestrator --env dev
 ```
 
+Build, deploy and release with the same CLI. Every unit goes through the `apply` path (plan to a planfile, destroy guard, apply), and a deploy stops at the first failure:
+
+```bash
+uv run esmeralda deploy --all --env dev --dry-run    # plan every unit read-only, print build commands
+uv run esmeralda deploy --all --env dev              # layer 0 -> 1-3 -> 4 -> build images -> 5
+uv run esmeralda build images                        # test, then build and push every Layer 5 image
+uv run esmeralda deploy --layer 5 --env dev          # workloads in dependency order, then image check
+uv run esmeralda build --verify --env dev            # running digests match the expected images
+uv run esmeralda release status                      # current release/prd.yaml
+uv run esmeralda destroy --env dev --confirm dev     # layers 5 -> 1, never layer 0, refuses prd
+```
+
 Coding agents can also inspect the workspace directly via the read-only MCP server:
 
 ```bash
 uv run esmeralda mcp
 ```
 
-#### 2. Using `make` Targets (Full-Stack Automation)
+#### 2. Using `make` Shortcuts
 
-The root `Makefile` wraps full-environment bootstrap, testing, image builds, and multi-layer deployments:
+The root `Makefile` covers bootstrap and offline tests, and keeps short aliases for the CLI (for example `make deploy-all ENV=dev` runs `esmeralda deploy --all --env dev`):
 
 ```bash
 make bootstrap                 # preflight checks + uv workspace sync
 make test-all                  # Python unit tests + Terraform validation + gateway harness
-make deploy-all ENV=dev        # Layer 0 -> 1-3 -> 4 -> build images -> 5
+make deploy-all ENV=dev        # shortcut for: uv run esmeralda deploy --all --env dev
 make test-e2e ENV=dev          # specialist, then orchestrator -> specialist through the gateway
 make test-gateway ENV=dev      # probe every *.esmeralda.internal route + live query
 ```

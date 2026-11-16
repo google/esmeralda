@@ -120,7 +120,7 @@ flowchart TD
 
 ## 6. Operating Foundations in Practice (`esmeralda` CLI)
 
-You can inspect, plan, and apply the foundational layers using the `esmeralda` CLI (or the `make` wrappers):
+You can inspect, plan, and deploy the foundational layers with the `esmeralda` CLI (`make` targets are shortcuts for the same commands):
 
 ```bash
 # 1. Run preflight checks and inspect Layer 1–3 unit states
@@ -133,8 +133,8 @@ uv run esmeralda units --env dev --layer 3
 uv run esmeralda plan layer-1-projects --env dev
 uv run esmeralda apply layer-1-projects --env dev
 
-# Or deploy Layers 1–3 together via Make:
-make deploy-foundations ENV=dev
+# 3. Deploy Layers 1–3 in order, each through the destroy guard (shortcut: make deploy-foundations ENV=dev)
+uv run esmeralda deploy --layer 1 --layer 2 --layer 3 --env dev
 ```
 
 ---

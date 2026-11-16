@@ -36,7 +36,7 @@ RUN groupadd -g 65532 nonroot && \
 WORKDIR /app
 
 # Install the exact, hash-pinned dependency set exported from the committed workspace uv.lock
-# (generated as requirements.lock by `make build-*`), instead of re-resolving at build time.
+# (generated as requirements.lock by `esmeralda build`), instead of re-resolving at build time.
 COPY --chown=65532:65532 requirements.lock ./
 RUN uv venv .venv && uv pip install --python .venv/bin/python --require-hashes --no-cache -r requirements.lock
 

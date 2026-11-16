@@ -46,7 +46,7 @@ When Julian Sterling asks `cx-mortgage-orchestrator` to check his loan status, h
 
 ## Complete Technical Architecture & Reference
 
-All resources below are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`make deploy-governance ENV=<env>`). The Central Agent Gateway, which lives in the same module, has its own deep-dive in **[2.1 Central Agent Gateway & Private PKI](./01-central-agent-gateway.md)**.
+All resources below are created by the Layer 4 module [`infrastructure/modules/4-governance`](../../../infrastructure/modules/4-governance/main.tf) (`uv run esmeralda deploy --layer 4 --env <env>`, or `make deploy-governance ENV=<env>`). The Central Agent Gateway, which lives in the same module, has its own deep-dive in **[2.1 Central Agent Gateway & Private PKI](./01-central-agent-gateway.md)**.
 
 ```mermaid
 flowchart TD
@@ -187,11 +187,11 @@ The FinOps views are layered, each one built on the previous:
 | **`vw_security_audit_trail`** | One row per audit event | SecOps audit (below). |
 
 > [!NOTE]
-> All views are created by `make deploy-governance`, including on a fresh environment: Terraform pre-creates every table they read.
+> All views are created by the Layer 4 deploy (`uv run esmeralda deploy --layer 4`), including on a fresh environment: Terraform pre-creates every table they read.
 >
 > Upgrading an environment where the sinks already created the stdout table: import it once before applying, e.g. `cd infrastructure/live/<env>/layer-4-governance && terragrunt import module.finops_analytics.google_bigquery_table.reasoning_engine_stdout projects/<governance-project>/datasets/esmeralda_telemetry_logs_<env>/tables/aiplatform_googleapis_com_reasoning_engine_stdout`.
 >
-> Upgrading an environment that still has the pre-contract `genai/*` log metrics: Cloud Monitoring refuses to delete a metric that an alert policy still uses, and Terraform may try to delete `genai/realtime_token_consumption` before it updates the runaway-loop alert. If `make deploy-governance` fails with "Cannot delete metric … still used in an alerting policy", apply the alert first (`terragrunt apply -target=module.alert_policies.google_monitoring_alert_policy.runaway_loop_token_cap` in `infrastructure/live/<env>/layer-4-governance`), then deploy again.
+> Upgrading an environment that still has the pre-contract `genai/*` log metrics: Cloud Monitoring refuses to delete a metric that an alert policy still uses, and Terraform may try to delete `genai/realtime_token_consumption` before it updates the runaway-loop alert. If the Layer 4 deploy fails with "Cannot delete metric … still used in an alerting policy", apply the alert first (`terragrunt apply -target=module.alert_policies.google_monitoring_alert_policy.runaway_loop_token_cap` in `infrastructure/live/<env>/layer-4-governance`), then deploy again.
 
 #### 1. `vw_monthly_agent_chargeback` (FinOps Monthly TCO & Cache ROI)
 Calculates monthly cost and context-caching savings per **paying team** (`billed_team`), agent and model. A caller's team counts only when it comes from authentication (`verified = TRUE`); without a verified caller, a workload's records (`source = workload`, never gateway records) are billed to the team that owns its project (`attribution = 'workload'`, `verified = FALSE`); anything else lands in `billed_team = 'unattributed'`, and `attribution` says why. The rates are **estimates hard-coded** in [`sql/vw_monthly_agent_chargeback.sql.tpl`](../../../infrastructure/modules/4-governance/sql/vw_monthly_agent_chargeback.sql.tpl) (Gemini 3.7 Flash tier); update them to match your contract:

@@ -120,7 +120,7 @@ workspace are pinned, with hashes, in the root [`uv.lock`](../../uv.lock). Each
 `pyproject.toml` only declares version *ranges*; `uv.lock` records the exact
 versions that were tested.
 
-**How images use it.** `make build-images` exports each app's exact set from
+**How images use it.** `esmeralda build images` (`make build-images`) exports each app's exact set from
 `uv.lock` into `apps/**/requirements.lock` (generated, gitignored) and the
 Dockerfile installs it with `--require-hashes`. An image therefore contains
 exactly what is in `uv.lock`, never whatever is newest on PyPI on build day.
@@ -175,5 +175,6 @@ Conventions:
   `local.image_by_digest`; the `google_artifact_registry_docker_image` data
   source in `agents/*`). Copy that pattern for new workloads:
   `make test-terraform` fails if a module deploys `image = var.…` directly, and
-  `deploy-workloads` ends with `make verify-images`, which compares the digest
+  `esmeralda deploy --layer 5` ends with `esmeralda build --verify`
+  (`make verify-images`), which compares the digest
   each workload is running with the digest its tag points to.

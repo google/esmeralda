@@ -286,7 +286,7 @@ def agent_logs(
     if agent_unit in known:
         engine = repo.output(root, env, agent_unit, "engine_id")
         if not engine:
-            raise OpsError(f"No engine_id output for {agent} in {env}: deploy it (make deploy-{agent} ENV={env})")
+            raise OpsError(f"No engine_id output for {agent} in {env}: deploy it (esmeralda deploy agents/{agent} --env {env})")
         project, filter_ = build_filter(engine, severity, start_time)
         resource_id = engine.rsplit("/", 1)[-1]
     elif service_unit in known or gateway_unit in known:

@@ -33,7 +33,7 @@ terraform {
 
 ## Dependencies and mocks
 
-- Depend only on lower layers, or on earlier L5 units (services → agents → gateways → entrypoint → iap-egress).
+- Depend only on lower layers, or on earlier L5 units (agents → services → gateways → entrypoint → iap-egress; services read the agents' identities for their caller guard).
 - When a unit must `validate`/`plan` before its dependency has been applied, add `mock_outputs` with `mock_outputs_allowed_terraform_commands = ["validate", "plan"]` (and `mock_outputs_merge_strategy_with_state = "shallow"` where outputs may be partially present). Mocks must never reach `apply`.
 - A dependency that is conditionally used has `enabled = <condition>` and is read with `try(dependency.x.outputs.y, null)` (see `layer-5-workloads/entrypoint/terragrunt.hcl`).
 
@@ -43,15 +43,15 @@ terraform {
 2. Add the unit under `live/dev/...` and the same unit under `live/prd/...`.
 3. Workloads with an image resolve the tag to a digest at plan time (`services/*/image.tf` → `local.image_by_digest`; the `google_artifact_registry_docker_image` data source in `agents/*`). Never `image = var.…`.
 4. Anything agents must reach needs an Agent Registry entry and must be listed in `layer-5-workloads/iap-egress` (`registry_service_ids`). Destinations Esmeralda doesn't deploy are catalog targets with `deploy.managed: false`: the `iap-egress` unit registers them (`external_targets`), never a hand-written registry resource. Never grant `roles/iap.egressor` on the registry root (it is inherited by every entry); grants are per entry (`grant_iap_egress.sh`).
-5. If it needs a Make target, add it to the root `Makefile` with a `## help` comment.
-6. `make test-terraform`, then `terragrunt plan` in the unit directory.
+5. `esmeralda deploy --layer <n>` picks up the new unit automatically; add a Make alias to the root `Makefile` (with a `## help` comment) only if it needs its own shortcut.
+6. `make test-terraform`, then `uv run esmeralda plan <unit> --env <env>`.
 
 ## Adding a gateway adapter
 
 1. Module `modules/5-workloads/gateways/<name>/` with outputs `backend_service_id` (regional `INTERNAL_MANAGED` backend service in the gateway project) and `routes` (`host`, `probe` per host). No load balancer, certificate or DNS record.
 2. Live unit `live/<env>/layer-5-workloads/gateways/<name>/` with an `exclude` block when `<name>` is not in `gateways.enabled`.
 3. In `live/<env>/layer-5-workloads/entrypoint/terragrunt.hcl`: one `dependency "<name>"` block (`enabled = contains(local.env_vars.locals.gateways.enabled, "<name>")`, mocked `backend_service_id`) plus its entry in `inputs.backends`.
-4. Enable it in `env.yaml` `gateways` (move hosts one at a time with `host_rules`), apply the gateway, then `make deploy-entrypoint ENV=<env>`, then `make test-gateway ENV=<env>` and a real `make query ... TARGET=remote`.
+4. Enable it in `env.yaml` `gateways` (move hosts one at a time with `host_rules`), deploy the gateway and the entry point (`uv run esmeralda deploy gateways/<name> entrypoint --env <env>`), then `make test-gateway ENV=<env>` and a real `make query ... TARGET=remote`.
 
 Reference: `modules/5-workloads/gateways/envoy/` and `docs/src/2-workloads-and-catalog/01-ingress-gateways.md`. `gateways/direct` is the built-in default backend (`backend_service_id = null`, per-route backends).
 

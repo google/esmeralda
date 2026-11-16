@@ -80,18 +80,20 @@ Why separate orchestrators, specialists, MCP tools, and gateways into distinct L
 
 ### The Layer 5 Deployment Order
 
-When you deploy Layer 5 (`make deploy-workloads ENV=dev` or unit-by-unit via `uv run esmeralda apply <unit> --env dev`), Terragrunt resolves the dependency graph in six deterministic stages:
+When you deploy Layer 5 (`uv run esmeralda deploy --layer 5 --env dev`, shortcut `make deploy-workloads ENV=dev`), the CLI applies every enabled unit one by one in the order derived from their Terragrunt dependency blocks, each through the destroy guard, and stops at the first failure. The order has six stages:
 
-1. **MCP Tool Services** (`services/{legacy-dms,income-verification,corporate-email}`) — Deploys the private Cloud Run containers and registers their `TOOL_SPEC` schemas (`tools.json`) in the central **Agent Registry**.
-2. **AI Reasoning Engines** (`agents/ai-coe-mortgage-specialist`, then `agents/cx-mortgage-orchestrator`) — Deploys the BYOC containers on Vertex AI Agent Runtime, binds them to the Layer 4 Central Agent Gateway, and registers the specialist's `A2A_AGENT_CARD`.
+1. **AI Reasoning Engines** (`agents/ai-coe-mortgage-specialist`, `agents/cx-mortgage-orchestrator`) — Deploys the BYOC containers on Vertex AI Agent Runtime, binds them to the Layer 4 Central Agent Gateway, and registers the specialist's `A2A_AGENT_CARD`.
+2. **MCP Tool Services** (`services/{legacy-dms,income-verification,corporate-email}`) — Deploys the private Cloud Run containers and registers their `TOOL_SPEC` schemas (`tools.json`) in the central **Agent Registry**. They come after the agents because they read each agent's identity for `run.invoker` and their caller guard.
 3. **Gateway Backends** (`gateways/direct` always, plus any enabled adapter in `gateways.enabled` such as `gateways/envoy`) — Creates the serverless NEGs and Private Service Connect NEGs pointing at the deployed services and agent engine IDs.
 4. **Private Entry Point** (`entrypoint`) — Configures the internal HTTPS load balancer (`*.esmeralda.internal`) using the reserved IP and DNS zone from Layer 2 and the internal Root CA leaf certificate from Layer 3.
-5. **IAP Egress Grants** (`services/iap-egress`) — Registers the catalog's external (`managed: false`) targets in the Agent Registry and grants `roles/iap.egressor` on each Agent Registry entry to the callers the catalog lists, so the agents' SPIFFE identities are authorized to egress through the Central Agent Gateway to exactly those destinations.
-6. **Verification Test VM** (`services/test-vm`) — Provisions the private IAP-tunneled runner VM used by `uv run esmeralda verify` (`make test-gateway`) to probe every catalog route from inside the Shared VPC.
+5. **Verification Test VM** (`test-vm`) — Provisions the private IAP-tunneled runner VM used by `uv run esmeralda verify` (`make test-gateway`) to probe every catalog route from inside the Shared VPC.
+6. **IAP Egress Grants** (`iap-egress`, always last) — Registers the catalog's external (`managed: false`) targets in the Agent Registry and grants `roles/iap.egressor` on each Agent Registry entry to the callers the catalog lists, so the agents' SPIFFE identities are authorized to egress through the Central Agent Gateway to exactly those destinations.
+
+After the last unit, the deploy runs the running-image check (`uv run esmeralda build --verify --env dev`, skip it with `--skip-verify-images`).
 
 ### Operating Layer 5 with the `esmeralda` CLI
 
-You can inspect, test, deploy, and verify every Layer 5 workload directly from the CLI:
+You can inspect, test, build, deploy, and verify every Layer 5 workload directly from the CLI:
 
 ```bash
 # List all Layer 5 units and live catalog routing
@@ -105,6 +107,14 @@ uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator --local-
 # Plan or apply a specific Layer 5 workload unit (with destroy-guard protection)
 uv run esmeralda plan layer-5-workloads/services/income-verification --env dev
 uv run esmeralda apply layer-5-workloads/services/income-verification --env dev
+
+# Build and push one image, then deploy its unit
+uv run esmeralda build income-verification-api
+uv run esmeralda deploy services/income-verification --env dev
+
+# Plan all of Layer 5 read-only, then deploy it
+uv run esmeralda deploy --layer 5 --env dev --dry-run
+uv run esmeralda deploy --layer 5 --env dev
 
 # Verify all *.esmeralda.internal routes and run a live end-to-end orchestrator query
 uv run esmeralda verify --env dev

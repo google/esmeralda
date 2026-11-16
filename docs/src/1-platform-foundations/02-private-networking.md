@@ -22,7 +22,7 @@ Historically, teams tried two flawed workarounds:
 
 * **Module:** [`infrastructure/modules/2-networking/`](../../../infrastructure/modules/2-networking/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-2-networking/`
-* **Deploy:** `uv run esmeralda apply layer-2-networking --env <env>` (or `make deploy-networking ENV=<env>`)
+* **Deploy:** `uv run esmeralda deploy --layer 2 --env <env>` (or `make deploy-networking ENV=<env>`)
 
 ---
 
