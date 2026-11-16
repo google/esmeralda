@@ -556,7 +556,9 @@ def test_stub_sources_are_extension_points(repo):
         catalog.resolve(repo, "dev")
 
 
-def test_registered_adapter_fills_unset_fields_and_conflicts_fail(repo, monkeypatch):
+def test_registered_adapter_never_merges_into_a_target_by_name(repo, monkeypatch):
+    """An adapter can't fill fields of a catalog target it names: adoption needs a deploy.registry pin
+    (the multi-source rules are covered in test_catalog_sources.py)."""
     from esmeralda.catalog import Layer, Source, register_source
     from esmeralda.catalog import sources as catalog_sources
 
@@ -564,9 +566,11 @@ def test_registered_adapter_fills_unset_fields_and_conflicts_fail(repo, monkeypa
 
     @register_source("test_inventory")
     class Inventory(Source):
+        CAPABILITIES = {"inventory": ["*"], "targets": ["description"]}
+
         def load(self) -> Layer:
             layer = Layer(source=self.name)
-            layer.targets["legacy-dms"] = {"description": "from inventory", **self.spec.get("options", {})}
+            layer.targets["legacy-dms"] = {"description": "from inventory"}
             return layer
 
     path = repo / "catalog/sources.yaml"
@@ -575,14 +579,8 @@ def test_registered_adapter_fills_unset_fields_and_conflicts_fail(repo, monkeypa
         "  - name: inventory\n    type: test_inventory\n\n  # Inventory from Agent Registry",
     )
     path.write_text(text)
-    # legacy-dms already has a description in the files source: conflicting value.
-    assert "conflicting values" in _problems(repo)
-
-    target = repo / "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
-    target.write_text("\n".join(line for line in target.read_text().splitlines() if not line.startswith("description")))
-    resolved = catalog.resolve(repo, "dev")
-    assert resolved.targets["legacy-dms"]["description"] == "from inventory"
-    assert resolved.document["sources"] == ["catalog-files", "inventory", "environments/dev.yaml"]
+    assert "inventory: may not set targets.legacy-dms: " in _problems(repo)
+    assert "never by name" in _problems(repo)
 
 
 def test_check_resolved_detects_stale_file(repo):

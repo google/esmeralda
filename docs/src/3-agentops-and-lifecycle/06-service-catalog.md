@@ -305,29 +305,74 @@ resolved_dir: .resolved
 | Organization | Typical setup |
 | :--- | :--- |
 | Greenfield / demo | `files` only (the default) |
-| Inventory already in Agent Registry or API Hub | `agent_registry` for targets and endpoints; `files` keeps policy, callers and grants |
-| Teams and cost centres in project labels or finance systems | `project_labels` fills `owner_team` and team `cost_centers` |
+| Inventory already in Agent Registry or API Hub | `agent_registry` reports what exists; `files` keeps policy, callers and grants, and adopts entries by pin |
+| Teams and cost centres in project labels or finance systems | `project_labels` maps projects to the teams declared in `files` (attribution only) |
 | Backstage, a CMDB or another catalog | A custom adapter |
 
 `agent_registry` and `project_labels` are registered extension points. Enabling one today fails
-with a clear "not implemented" error. A custom adapter is a small Python class that returns entries
-of the schema's shape:
+with a clear "not implemented" error.
+
+**Discovery never grants; adoption is a repo review.** The merge rules hold for every source:
+
+- `files` must be the first enabled source, and it's the only one that may set **authorization
+  data**: target callers and their grants (tools, quota, product, cost centres, gateway), the
+  `callers` section, identities, `policy`, teams and their `cost_centers`, `google_apis`,
+  `user_credential`, `deploy.unit`, `serving`, `models`, `gateway` and `observability`.
+  `environments/<env>.yaml` overrides stay repo-reviewed too.
+- Any other source contributes only what the **capability allowlist** of its type permits (a code
+  constant, never configuration). Anything else fails the resolve with a message naming the source
+  and the field, for example `my-cmdb: may not set targets.legacy-dms.callers`. `options.fields` in
+  `sources.yaml` can narrow a source, never widen it.
+
+  | Source type | May contribute |
+  | :--- | :--- |
+  | `files` | everything |
+  | `agent_registry` | inventory entries; on adopted targets: `deploy.endpoint`, `runtime`, `runtime_resource`, `description`, `registry` |
+  | `project_labels` | `teams.<existing team>.projects`; `owner_team` of inventory entries another source reported |
+  | `backstage` | inventory entries; on adopted targets: `description`, `system`, `deploy.endpoint`; team profile `description`, `contacts`, `oncall` |
+  | custom adapter | what its `CAPABILITIES` declare, capped by the inventory and attribution fields above |
+
+- External entries land in a separate `inventory` section of the resolved catalog. Inventory is
+  shown but **never compiled**: no IAM, no Agent Gateway policy, no registry entry, no allowlist.
+- A catalog file adopts an inventory entry **only through a pin**, never by name:
+  `deploy: { managed: false, endpoint: ..., registry: { source: <source name>, id: <entry id> } }`.
+  An inventory entry named like an unpinned target fails the resolve, and so does a pin whose id the
+  source doesn't report. Callers of an adopted target still come from the file.
+- **Field strategies.** `strict` fields (`kind`, `owner_team`, `deploy.endpoint`, `runtime`,
+  `runtime_resource`, `registry.id`) must agree across sources, otherwise the resolve fails and
+  names both origins. `first` fields (`description`, `system`, `registry.skills`, profile
+  `description`/`contacts`/`oncall`) keep the earliest value (files first) and record the loser as
+  `shadowed`. To override a strict external value, use `environments/<env>.yaml`.
+- **Provenance and determinism.** The resolved catalog (`--format json`) carries a `provenance`
+  map: entry-level for every entry, field-level for each field an external source contributed or
+  shadowed. When an external source contributed, `.resolved/<env>.json` also gets `provenance` and
+  `inventory_summary`, so a reviewer sees which source changed a compiled value; for a files-only
+  catalog both are omitted. Sources merge in `sources.yaml` order and entries in sorted order, so
+  the output doesn't depend on adapter dict order or hash seeds.
+
+A custom adapter is a small Python class that reports what it discovered as inventory:
 
 ```python
 from esmeralda.catalog import Layer, Source, register_source
 
-@register_source("backstage")
-class BackstageSource(Source):
+@register_source("my_cmdb")
+class CmdbSource(Source):
+    # Inventory only: whole inventory entries, and the description of the targets that pin it.
+    CAPABILITIES = {"inventory": ["*"], "targets": ["description"]}
+
     def load(self) -> Layer:
         layer = Layer(source=self.name)
-        for component in fetch_components(self.spec.get("options", {})):  # your client
-            layer.targets[component.name] = {
+        for item in read_export(self.spec.get("options", {})):  # your client or a file export
+            layer.inventory[item.name] = {
                 "kind": "http",
-                "owner_team": component.owner,
-                "deploy": {"managed": False, "endpoint": component.url},
+                "description": item.description,
+                "deploy": {"endpoint": item.url},
+                "registry": {"id": item.id},
             }
         return layer
 ```
 
-Then add `- { name: backstage, type: backstage, options: {...} }` to `sources.yaml`. The merge,
-validation and compile steps stay the same, so enforcement doesn't depend on where the data lives.
+Then add `- { name: my-cmdb, type: my_cmdb, options: {...} }` to `sources.yaml` after the `files`
+source. To put one of those entries under enforcement, a team adds a catalog file for it with the
+pin `deploy.registry: { source: my-cmdb, id: <id> }` and the callers it allows, and that change goes
+through review like any other grant.

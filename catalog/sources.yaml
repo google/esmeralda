@@ -1,9 +1,11 @@
 # catalog/sources.yaml: which sources `esmeralda catalog resolve` merges, in order.
 # Owned by platform + security (see README.md, CODEOWNERS).
 #
-# Later sources may add entries or fill fields that earlier sources left unset; a conflicting value
-# fails the resolve. Duplicates inside the `files` source always fail. environments/<env>.yaml
-# overrides are applied last.
+# `files` comes first and is the only source that may set authorization data (callers and grants,
+# identities, policy, teams and cost centres, google_apis, ...). Other sources report inventory and
+# attribution metadata within the capability allowlist of their type; a catalog file adopts an
+# external entry only through a deploy.registry pin. Duplicates inside the `files` source always
+# fail. environments/<env>.yaml overrides are applied last.
 schema: esmeralda.catalog
 schema_version: 1
 

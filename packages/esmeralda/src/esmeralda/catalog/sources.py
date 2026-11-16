@@ -14,10 +14,12 @@
 
 """Catalog sources: where catalog entries come from (``catalog/sources.yaml``).
 
-Each source returns a :class:`Layer` (teams, callers, targets, team profiles, policy). The resolver
-merges the layers in the order ``sources.yaml`` lists them. Implemented:
+Each source returns a :class:`Layer` (teams, callers, targets, team profiles, policy, inventory).
+The resolver merges the layers in the order ``sources.yaml`` lists them (see
+:mod:`esmeralda.catalog.merge`). Implemented:
 
 * ``files``: YAML documents under ``catalog/`` (the demo default, owned per team via CODEOWNERS).
+  It must be the first enabled source, and it is the only one that may set authorization data.
 
 Extension points (registered, not implemented yet):
 
@@ -25,8 +27,10 @@ Extension points (registered, not implemented yet):
 * ``project_labels``: team attribution from project labels.
 
 Adapters for other systems (Backstage, a CMDB, ...) subclass :class:`Source` and call
-:func:`register_source`; they only have to return a :class:`Layer` whose entries satisfy
-``contracts/catalog.schema.json``.
+:func:`register_source`. Discovery never grants: a non-``files`` source may only contribute
+inventory (``Layer.inventory``) and attribution metadata, within the capabilities of its type
+(``CAPABILITIES``, capped in code by :data:`esmeralda.catalog.merge.MAX_EXTERNAL_CAPABILITIES`).
+Callers, grants, identities, policy, teams and their cost centres stay in catalog files.
 """
 
 from __future__ import annotations
@@ -38,11 +42,17 @@ from typing import Any, Callable
 from esmeralda.catalog.schema import CatalogError, check_header, load_yaml, validate
 
 SECTIONS = ("teams", "callers", "targets", "profiles")
+# Sections a layer may hold besides the policy: SECTIONS plus discovered (never compiled) inventory.
+LAYER_SECTIONS = (*SECTIONS, "inventory")
 
 
 @dataclass
 class Layer:
-    """Entries contributed by one source, with where each one came from (for error messages)."""
+    """Entries contributed by one source, with where each one came from (for errors and provenance).
+
+    ``inventory`` holds what an external source discovered, keyed by a deterministic name; a catalog
+    file adopts an inventory entry only through an explicit pin (``deploy.registry``).
+    """
 
     source: str
     teams: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -50,6 +60,7 @@ class Layer:
     targets: dict[str, dict[str, Any]] = field(default_factory=dict)
     profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     policy: dict[str, Any] = field(default_factory=dict)
+    inventory: dict[str, dict[str, Any]] = field(default_factory=dict)
     origins: dict[tuple[str, str], str] = field(default_factory=dict)
 
     def section(self, name: str) -> dict[str, dict[str, Any]]:
@@ -57,9 +68,16 @@ class Layer:
 
 
 class Source:
-    """A catalog source. Subclasses implement :meth:`load`."""
+    """A catalog source. Subclasses implement :meth:`load`.
+
+    ``CAPABILITIES`` (``{section: {field path, ...}}``, ``"*"`` for whole inventory entries) is what
+    an adapter of a type without a built-in allowlist may contribute; ``None`` means nothing. It can
+    never exceed :data:`esmeralda.catalog.merge.MAX_EXTERNAL_CAPABILITIES` (no authorization data),
+    and ``options.fields`` in sources.yaml may only narrow it.
+    """
 
     type_name = ""
+    CAPABILITIES: dict[str, Any] | None = None
 
     def __init__(self, *, name: str, catalog_dir: Path, root: Path, schema: dict[str, Any], spec: dict[str, Any]):
         self.name = name
@@ -76,9 +94,15 @@ SOURCE_TYPES: dict[str, type[Source]] = {}
 
 
 def register_source(type_name: str) -> Callable[[type[Source]], type[Source]]:
-    """Class decorator: make a :class:`Source` available as ``type: <type_name>`` in sources.yaml."""
+    """Class decorator: make a :class:`Source` available as ``type: <type_name>`` in sources.yaml.
+
+    ``files`` is reserved for the built-in :class:`FilesSource`: it is the only source type that may
+    set authorization data, so an adapter can't take it over.
+    """
 
     def wrap(cls: type[Source]) -> type[Source]:
+        if type_name == "files" and "files" in SOURCE_TYPES and SOURCE_TYPES["files"] is not cls:
+            raise CatalogError("source type 'files' is reserved for the built-in catalog files source")
         cls.type_name = type_name
         SOURCE_TYPES[type_name] = cls
         return cls
@@ -190,16 +214,17 @@ class _NotImplementedSource(Source):
 
 @register_source("agent_registry")
 class AgentRegistrySource(_NotImplementedSource):
-    """Inventory (agents, MCP servers, endpoints) from Agent Registry. Planned: map each registry entry
-    to a target with ``deploy.managed: false`` + ``endpoint`` unless a files entry already deploys it."""
+    """Inventory (agents, MCP servers, endpoints) from Agent Registry. Planned: report each registry
+    entry as inventory; a catalog file adopts one only with a ``deploy.registry`` pin."""
 
     phase = " (planned with the catalog sources phase)"
 
 
 @register_source("project_labels")
 class ProjectLabelsSource(_NotImplementedSource):
-    """Team attribution from project labels (e.g. ``team``, ``cost-center``). Planned: fill ``owner_team``
-    and team ``cost_centers`` that the files source leaves unset."""
+    """Team attribution from project labels (e.g. ``team``, ``cost-center``). Planned: map projects to
+    teams declared in catalog files (``teams.<team>.projects``) and fill ``owner_team`` of discovered
+    inventory. Labels never create teams, never extend ``cost_centers`` and never override files."""
 
     phase = " (planned with the catalog sources phase)"
 
