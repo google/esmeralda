@@ -304,7 +304,7 @@ An agent's Agent Identity ID token is signed by its trust domain on Security Tok
 | `allowed_callers` | the Agent Identity principals of the catalog `llm-gateway` target's callers, plus the test VM's service account |
 | `agent_issuers` | the Security Token Service issuers of those principals' trust domains |
 | `caller_workloads` | `<principal>=<agent name>`: the usage record's `workload.name` |
-| `allowed_projects` | the CX and AI CoE agent projects (the project in the request path) |
+| `allowed_projects` | the CX and AI CoE agent projects (the project in the request path), as IDs and numbers: on Agent Runtime, `GOOGLE_CLOUD_PROJECT` is the project number |
 | `allowed_locations` | the env region and `global` |
 | `allowed_models` | `gemini-*` |
 | `quota_limit`, `quota_timeunit` | tokens per caller per interval (default 1,000,000 per minute) |

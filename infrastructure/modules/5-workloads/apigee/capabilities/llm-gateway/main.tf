@@ -45,6 +45,10 @@ locals {
   ])
   callers = distinct(concat(values(var.agent_principals), var.allowed_callers))
 
+  # The project in the request path is the agent's GOOGLE_CLOUD_PROJECT, which Agent Runtime sets to
+  # the project NUMBER (elsewhere it's usually the ID): allow both forms of each model project.
+  model_project_refs = distinct(concat(var.model_projects, [for p in data.google_project.model : p.number]))
+
   # kvm-llm-gateway, read by KVM-Get-LLM-Gateway-Config. Apigee rejects empty KVM values, so an
   # empty allowlist is written as "none" (matches no caller, issuer, project, location or model:
   # fail closed).
@@ -53,12 +57,17 @@ locals {
     allowed_callers   = length(local.callers) > 0 ? join(",", sort(local.callers)) : "none"
     agent_issuers     = length(local.agent_issuers) > 0 ? join(",", sort(local.agent_issuers)) : "none"
     caller_workloads  = length(var.agent_principals) > 0 ? join(",", sort([for name, principal in var.agent_principals : "${principal}=${name}"])) : "none"
-    allowed_projects  = length(var.model_projects) > 0 ? join(",", sort(distinct(var.model_projects))) : "none"
+    allowed_projects  = length(local.model_project_refs) > 0 ? join(",", sort(local.model_project_refs)) : "none"
     allowed_locations = length(var.allowed_locations) > 0 ? join(",", sort(distinct(var.allowed_locations))) : "none"
     allowed_models    = length(var.allowed_models) > 0 ? join(",", var.allowed_models) : "none"
     quota_limit       = tostring(var.quota_tokens_per_interval)
     quota_timeunit    = var.quota_time_unit
   }
+}
+
+data "google_project" "model" {
+  for_each   = toset(var.model_projects)
+  project_id = each.value
 }
 
 data "archive_file" "bundle" {

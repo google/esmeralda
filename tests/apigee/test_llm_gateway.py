@@ -249,6 +249,21 @@ def test_authorize_streaming_and_global_location() -> None:
     assert state["llm.target.url"] == f"https://aiplatform.googleapis.com{path}"
 
 
+def test_authorize_project_number_in_the_path() -> None:
+    """On Agent Runtime GOOGLE_CLOUD_PROJECT is the project number; the KVM lists IDs and numbers."""
+    path = MODEL_PATH.replace(PROJECT, "123456789012") + ":generateContent"
+    assert _authorize(**{"proxy.pathsuffix": path})["llmgw.denied.reason"] == "target_not_allowed"
+    state = _authorize(**{"proxy.pathsuffix": path, "llmgw.allowed_projects": f"{PROJECT},123456789012"})
+    assert state["llmgw.denied.reason"] == ""
+    assert state["llm.project"] == "123456789012"
+
+
+def test_module_allows_model_projects_by_id_and_number() -> None:
+    main_tf = (REPO_ROOT / "infrastructure/modules/5-workloads/apigee/capabilities/llm-gateway/main.tf").read_text()
+    assert 'data "google_project" "model"' in main_tf
+    assert "allowed_projects  = length(local.model_project_refs)" in main_tf
+
+
 @pytest.mark.parametrize(
     ("overrides", "reason"),
     [
