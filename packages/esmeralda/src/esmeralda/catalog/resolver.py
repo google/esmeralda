@@ -14,12 +14,16 @@
 
 """Resolve the catalog for an environment, compile it for Terraform, and describe it.
 
-Merge rules:
+Merge rules (details in :mod:`esmeralda.catalog.merge`):
 
-* Inside the ``files`` source, an entry (team, caller, target, team profile) or a policy leaf
-  defined twice is an error.
-* Across sources, a later source may add entries or fill fields an earlier source left unset; a
-  different value for a field that is already set is a conflict (error).
+* The first enabled source is ``files``. Inside it, an entry (team, caller, target, team profile) or
+  a policy leaf defined twice is an error.
+* Only ``files`` may set authorization data (callers and grants, identities, policy, teams and cost
+  centres, ``google_apis``, ``user_credential``, ``deploy.unit``, ...). Other sources contribute
+  inventory and attribution metadata within the capability allowlist of their type; anything else
+  fails. A catalog file adopts an external entry only through a ``deploy.registry`` pin.
+* Field strategies: ``strict`` (every contributor must agree) or ``first`` (earlier source wins, the
+  loser is recorded in provenance).
 * ``environments/<env>.yaml`` ``overrides`` are applied last: maps merge, lists replace, ``null``
   deletes the key.
 * ``policy.defaults`` fill ``gateway``, ``user_credential`` and ``observability`` fields that a
@@ -35,6 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from esmeralda.catalog.merge import apply_override_provenance, merge_layers
 from esmeralda.catalog.schema import (
     SCHEMA,
     SCHEMA_VERSION,
@@ -44,7 +49,7 @@ from esmeralda.catalog.schema import (
     load_yaml,
     validate,
 )
-from esmeralda.catalog.sources import SECTIONS, Layer, build_sources
+from esmeralda.catalog.sources import build_sources
 
 CATALOG_DIR = Path("catalog")
 SOURCES_FILE = "sources.yaml"
@@ -136,11 +141,16 @@ AGENT_PRINCIPAL_TYPE = "agent_runtime"
 
 @dataclass
 class Resolved:
-    """A resolved catalog: the document (``esmeralda.catalog`` ``resolved`` shape) plus provenance."""
+    """A resolved catalog: the document (``esmeralda.catalog`` ``resolved`` shape) plus provenance.
+
+    ``origins`` maps ``(section, name)`` to where the entry came from (a repo path for files);
+    ``adopted`` maps each target adopted through a ``deploy.registry`` pin to its source.
+    """
 
     env: str
     document: dict[str, Any]
     origins: dict[tuple[str, str], str] = field(default_factory=dict)
+    adopted: dict[str, str] = field(default_factory=dict)
 
     @property
     def teams(self) -> dict[str, Any]:
@@ -158,41 +168,18 @@ class Resolved:
     def policy(self) -> dict[str, Any]:
         return self.document["policy"]
 
+    @property
+    def inventory(self) -> dict[str, Any]:
+        return self.document.get("inventory") or {}
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        return self.document.get("provenance") or {}
+
 
 # ------------------------------------------------------------------------------------------
-# merging
+# merging (across sources: esmeralda.catalog.merge)
 # ------------------------------------------------------------------------------------------
-
-
-def _fill(existing: Any, new: Any, path: str, problems: list[str]) -> Any:
-    """``new`` merged into ``existing`` without overwriting: unset fields are filled, conflicts reported."""
-    if isinstance(existing, dict) and isinstance(new, dict):
-        out = dict(existing)
-        for key, value in new.items():
-            out[key] = _fill(existing[key], value, f"{path}.{key}", problems) if key in existing else value
-        return out
-    if existing != new:
-        problems.append(f"{path}: conflicting values {existing!r} and {new!r}")
-    return existing
-
-
-def _merge_layer(acc: Layer, layer: Layer) -> list[str]:
-    problems: list[str] = []
-    for section in SECTIONS:
-        into = acc.section(section)
-        for name, value in layer.section(section).items():
-            origin = layer.origins.get((section, name), layer.source)
-            if name in into:
-                where = f"{section}.{name} ({acc.origins.get((section, name))} vs {origin})"
-                into[name] = _fill(into[name], value, where, problems)
-            else:
-                into[name] = copy.deepcopy(value)
-                acc.origins[(section, name)] = origin
-    if acc.policy:
-        acc.policy = _fill(acc.policy, layer.policy, f"policy (source {layer.source})", problems)
-    else:
-        acc.policy = copy.deepcopy(layer.policy)
-    return problems
 
 
 def _override(base: Any, patch: Any) -> Any:
@@ -487,17 +474,22 @@ def attribution_policy(policy: dict[str, Any]) -> dict[str, Any]:
     return {
         "unmapped_caller": attribution.get("unmapped_caller", "deny"),
         "declared_mismatch": attribution.get("declared_mismatch", "reject"),
+        "label_mismatch": attribution.get("label_mismatch", "fail"),
         "flag_environments": list(attribution.get("flag_environments", DEFAULT_FLAG_ENVIRONMENTS)),
     }
 
 
 def _check_attribution(doc: dict[str, Any], env: str) -> list[str]:
     attribution = attribution_policy(doc["policy"])
+    allowed = ", ".join(attribution["flag_environments"]) or "(none)"
+    problems = []
     if attribution["unmapped_caller"] == "flag" and env not in attribution["flag_environments"]:
-        allowed = ", ".join(attribution["flag_environments"]) or "(none)"
-        return [f"policy.attribution.unmapped_caller: 'flag' is not allowed in environment '{env}' (only in: "
-                f"{allowed}); unknown callers must be denied there"]
-    return []
+        problems.append(f"policy.attribution.unmapped_caller: 'flag' is not allowed in environment '{env}' (only in: "
+                        f"{allowed}); unknown callers must be denied there")
+    if attribution["label_mismatch"] == "warn" and env not in attribution["flag_environments"]:
+        problems.append(f"policy.attribution.label_mismatch: 'warn' is not allowed in environment '{env}' (only in: "
+                        f"{allowed}); metadata that disagrees with the catalog files must fail there")
+    return problems
 
 
 # ------------------------------------------------------------------------------------------
@@ -553,38 +545,47 @@ def resolve(root: Path, env: str) -> Resolved:
     env_doc = _environment_doc(root, schema, sources_doc, env)
     sources = build_sources(root, catalog_dir(root), schema, sources_doc)
 
-    acc = Layer(source="resolved")
-    problems: list[str] = []
-    for source in sources:
-        problems += _merge_layer(acc, source.load())
-    if problems:
-        raise CatalogError(problems)
+    merged = merge_layers([(source, source.load()) for source in sources])
+    acc = merged.layer
+    origins = {
+        (section, name): record["origin"]
+        for key, record in merged.provenance.items()
+        for section, _, name in [key.partition(".")]
+        if "." not in name
+    }
 
+    env_label = f"environments/{env}.yaml"
     doc: dict[str, Any] = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
         "environment": env,
-        "sources": [s.name for s in sources] + [f"environments/{env}.yaml"],
+        "sources": [s.name for s in sources] + [env_label],
         "teams": acc.teams,
         "profiles": acc.profiles,
         "callers": acc.callers,
         "targets": acc.targets,
         "policy": acc.policy,
+        "inventory": acc.inventory,
     }
     overrides = env_doc.get("overrides") or {}
+    before = {section: copy.deepcopy(doc[section]) for section in ("teams", "callers", "targets", "policy")}
     for section in ("teams", "callers", "targets", "policy"):
         if overrides.get(section):
             doc[section] = _override(doc[section], overrides[section])
+    doc["provenance"] = apply_override_provenance(
+        merged.provenance, before, doc, {k: v for k, v in overrides.items() if v and k != "policy"}, env_label
+    )
     _apply_defaults(doc["targets"], (doc["policy"].get("defaults") or {}))
 
     label = f"resolved catalog ({env})"
     problems = validate(schema, "resolved", doc, label)
     if problems:
         raise CatalogError(problems)
-    problems = _check_references(doc, acc.origins) + _check_attribution(doc, env)
+    problems = _check_references(doc, origins) + _check_attribution(doc, env)
     if problems:
         raise CatalogError(problems)
-    return Resolved(env=env, document=doc, origins=acc.origins)
+    adopted = {name: src for name, src in merged.adopted.items() if name in doc["targets"]}
+    return Resolved(env=env, document=doc, origins=origins, adopted=adopted)
 
 
 # ------------------------------------------------------------------------------------------
@@ -969,8 +970,33 @@ def resolved_path(root: Path, env: str) -> Path:
     return catalog_dir(root) / resolved_dir / f"{env}.json"
 
 
+def _external_provenance(resolved: Resolved) -> tuple[dict[str, Any], dict[str, dict[str, int]]]:
+    """Provenance of the compiled entries an external source touched, and inventory counts per source.
+
+    Both are empty for a files-only catalog, so its ``.resolved`` file doesn't change.
+    """
+    provenance = resolved.provenance
+    fields = {key: record for key, record in provenance.items() if key.count(".") >= 2
+              and key.split(".", 1)[0] in ("teams", "targets", "profiles")}
+    entries = {".".join(key.split(".", 2)[:2]) for key in fields}
+    out = {key: provenance[key] for key in sorted(set(fields) | (entries & set(provenance)))}
+    summary: dict[str, dict[str, int]] = {}
+    for src in resolved.adopted.values():
+        summary.setdefault(src, {"adopted": 0, "discovered": 0})["adopted"] += 1
+    for name in resolved.inventory:
+        src = provenance.get(f"inventory.{name}", {}).get("source", "unknown")
+        summary.setdefault(src, {"adopted": 0, "discovered": 0})["discovered"] += 1
+    return out, {src: summary[src] for src in sorted(summary)}
+
+
 def render_resolved_file(resolved: Resolved) -> str:
-    """Content of ``catalog/.resolved/<env>.json`` (deterministic, committed, read by env.yaml)."""
+    """Content of ``catalog/.resolved/<env>.json`` (deterministic, committed, read by env.yaml).
+
+    When an external source contributed (adopted targets, discovered inventory, attribution fields),
+    the file also carries ``provenance`` (of the compiled entries it touched) and
+    ``inventory_summary``, so a reviewer sees which source changed an enforced value. Terraform reads
+    only its own keys.
+    """
     doc = {
         "generated_by": f"esmeralda catalog resolve --env {resolved.env} --write",
         "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
@@ -981,6 +1007,10 @@ def render_resolved_file(resolved: Resolved) -> str:
         "iap_egress": compile_iap_egress(resolved),
         "attribution": compile_attribution(resolved),
     }
+    provenance, summary = _external_provenance(resolved)
+    if provenance or summary:
+        doc["provenance"] = provenance
+        doc["inventory_summary"] = summary
     return json.dumps(doc, indent=2, sort_keys=True) + "\n"
 
 

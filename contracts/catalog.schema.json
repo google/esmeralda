@@ -47,6 +47,7 @@
         "cost_centers": {"$ref": "#/$defs/strings", "minItems": 1},
         "country": {"type": "string", "pattern": "^[A-Z]{2}$"},
         "external": {"type": "boolean", "default": false},
+        "projects": {"$ref": "#/$defs/strings", "description": "Attribution only: aliases of the projects this team owns (infra-cost chargeback). A project_labels source may fill it for a team declared in catalog files; it never creates teams or cost centres."},
         "example": {"$ref": "#/$defs/example"}
       }
     },
@@ -147,7 +148,8 @@
               "type": "string",
               "pattern": "^https://",
               "description": "Exact https URL. Environment-specific parts are placeholders the registering unit substitutes from layer outputs: {domain} (the entry point domain, as <label>.{domain}) and {region}."
-            }
+            },
+            "registry": {"$ref": "#/$defs/source_pin"}
           }
         }
       ]
@@ -218,7 +220,87 @@
         "models": {"$ref": "#/$defs/strings"},
         "google_apis": {"$ref": "#/$defs/google_apis", "description": "Agents (a2a, adk) only: the Google APIs this agent calls through the Agent Gateway, beyond policy.agent_gateway.google_apis.baseline. Compiled into its own roles/iap.egressor grant on each API's Agent Registry entry; an API no agent declares is not registered, so the gateway denies it."},
         "observability": {"$ref": "#/$defs/observability"},
+        "runtime": {"$ref": "#/$defs/runtime"},
+        "runtime_resource": {"$ref": "#/$defs/runtime_resource"},
+        "system": {"$ref": "#/$defs/name", "description": "Descriptive grouping (for example a Backstage System); never used for enforcement."},
+        "registry": {"$ref": "#/$defs/registry_data"},
         "example": {"$ref": "#/$defs/example"}
+      }
+    },
+    "runtime": {
+      "description": "Where the target runs. Inventory data: an external source may fill it on a target adopted through deploy.registry.",
+      "enum": ["agent_runtime", "cloud_run", "gke", "external_k8s"]
+    },
+    "runtime_resource": {
+      "description": "Full resource name of the runtime resource, with placeholders for environment-specific ids.",
+      "type": "string",
+      "minLength": 1
+    },
+    "source_pin": {
+      "description": "Adoption pin: this catalog file entry adopts the entry with registry.id == id that the external source `source` (a name in sources.yaml) reports. External entries never match a catalog entry by name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "id"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "registry_data": {
+      "description": "What an external source reports about an entry (inventory data, informational).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Stable id of the entry in its source; adoption pins match on it."},
+        "skills": {"$ref": "#/$defs/strings", "description": "Informational (A2A card skills); never a tools grant."},
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {"url": {"type": "string", "pattern": "^https://"}, "protocol_binding": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "inventory_entry": {
+      "description": "Something an external source discovered that no catalog file adopts. Resolved and shown, never compiled: no IAM, no Agent Gateway policy, no registry write, no allowlist. Carries inventory and attribution data only.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["mcp", "a2a", "adk", "model", "http"]},
+        "description": {"type": "string"},
+        "owner_team": {"$ref": "#/$defs/name"},
+        "deploy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"endpoint": {"type": "string", "pattern": "^https://"}}
+        },
+        "runtime": {"$ref": "#/$defs/runtime"},
+        "runtime_resource": {"$ref": "#/$defs/runtime_resource"},
+        "system": {"$ref": "#/$defs/name"},
+        "registry": {"$ref": "#/$defs/registry_data"}
+      }
+    },
+    "provenance_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "origin"],
+      "properties": {
+        "source": {"type": "string"},
+        "origin": {"type": "string"},
+        "strategy": {"enum": ["strict", "first", "override"]},
+        "shadowed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "origin", "value_hash"],
+            "properties": {"source": {"type": "string"}, "origin": {"type": "string"}, "value_hash": {"type": "string"}}
+          }
+        }
       }
     },
     "dimension": {
@@ -245,7 +327,8 @@
           "properties": {
             "unmapped_caller": {"enum": ["deny", "flag"], "description": "An authenticated caller that is not in the catalog: deny (403, fail closed) or flag (allow, mark the record unattributed and alert). flag is accepted only in the environments listed in flag_environments, and never widens a gateway or IAM grant."},
             "declared_mismatch": {"enum": ["reject", "bill_own_team"], "description": "A declared cost centre the catalog does not allow for the verified caller: reject (403) or bill_own_team (bill the caller's verified team and flag the record)."},
-            "flag_environments": {"$ref": "#/$defs/names", "description": "Environments where unmapped_caller: flag is accepted (default: [dev])."}
+            "flag_environments": {"$ref": "#/$defs/names", "description": "Environments where unmapped_caller: flag (and label_mismatch: warn) is accepted (default: [dev])."},
+            "label_mismatch": {"enum": ["fail", "warn"], "description": "Resolve-time: inventory or attribution metadata from an external source (project labels, ...) disagrees with the catalog files: fail (default) or warn. warn is accepted only in flag_environments. Separate from declared_mismatch, which is a per-request runtime rule."}
           }
         },
         "defaults": {
@@ -383,7 +466,18 @@
         "profiles": {"type": "object", "additionalProperties": {"$ref": "#/$defs/team_profile"}},
         "callers": {"$ref": "#/$defs/callers_map"},
         "targets": {"$ref": "#/$defs/targets_map"},
-        "policy": {"$ref": "#/$defs/policy"}
+        "policy": {"$ref": "#/$defs/policy"},
+        "inventory": {
+          "description": "Discovered entries (external, not adopted by a catalog file): never compiled.",
+          "type": "object",
+          "propertyNames": {"$ref": "#/$defs/name"},
+          "additionalProperties": {"$ref": "#/$defs/inventory_entry"}
+        },
+        "provenance": {
+          "description": "Where each value came from: '<section>.<name>' for every entry, '<section>.<name>.<field path>' for fields an external source contributed, a shadowed loser, or an environment override.",
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/provenance_record"}
+        }
       },
       "additionalProperties": false
     }

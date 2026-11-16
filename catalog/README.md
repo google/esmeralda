@@ -72,8 +72,11 @@ The resolver:
 1. merges the enabled sources of `sources.yaml` in order. Only the `files` source is implemented;
    `agent_registry` and `project_labels` are extension points (`enabled: false`), and other adapters
    (Backstage, a CMDB) register with `esmeralda.catalog.register_source`. Inside `files`, an entry
-   or a policy leaf defined twice fails; a later source may only fill fields left unset (a different
-   value is a conflict);
+   or a policy leaf defined twice fails. `files` comes first and is the only source that may set
+   authorization data (callers and grants, identities, policy, teams and cost centres,
+   `google_apis`, ...); other sources report inventory and attribution metadata within the
+   capability allowlist of their type, and a catalog file adopts an external entry only through a
+   `deploy.registry` pin (see the service catalog page, "Swapping or adding sources");
 2. applies `environments/<env>.yaml` overrides (maps merge, lists replace, `null` deletes);
 3. fills unset `gateway`, `user_credential` and `observability` fields from `policy.defaults`;
 4. validates against the schema, then fails on unknown teams, callers, models or dimensions, on
