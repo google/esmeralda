@@ -1,3 +1,8 @@
+---
+title: "AI agent workloads and service catalog on Google Cloud"
+description: "The workloads of a governed multi-agent platform: ADK and A2A agents, MCP tool servers and gateways, wired together by a declarative service catalog in env.yaml."
+---
+
 # 1.0 Workloads, Catalog & Gateways — Overview (Layer 5)
 
 In the [Overview](../index.md), our loan officer asked a simple question: ***"Can you verify Julian Sterling's income?"***

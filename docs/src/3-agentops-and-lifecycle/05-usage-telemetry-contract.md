@@ -1,3 +1,8 @@
+---
+title: "Usage telemetry contract: one schema for AI agent token chargeback"
+description: "The esmeralda.usage record, a JSON Schema any producer can implement, so token and tool usage from every team, framework and cloud lands in one chargeback view."
+---
+
 # 2.5 Usage Telemetry Contract
 
 Chargeback across teams, frameworks and clouds only works if every producer describes usage the

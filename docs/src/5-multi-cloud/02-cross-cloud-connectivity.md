@@ -1,3 +1,8 @@
+---
+title: "Cross-cloud connectivity for agents: gateways, networks, A2A and MCP"
+description: "Pick the gateway for each cross-cloud hop (Apigee, Envoy, direct, Agent Gateway), the network path (public, HA VPN, Cross-Cloud Interconnect), and A2A or MCP."
+---
+
 # 5.2 Cross-Cloud Connectivity & Protocols
 
 In **[5.1 Identity Across Clouds](./01-identity-across-clouds.md)**, the underwriting agent on another cloud learned how to prove who it is. Its request still has to *get somewhere*: across a network boundary between two providers, through a gateway that can verify, authorize, meter and log it, and in a protocol both sides understand.

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/esmeralda_logo.png" alt="Esmeralda logo" width="350" />
   <h1><code>esmeralda</code></h1>
-  <p>An opinionated, commercial-grade reference blueprint for taking autonomous AI Agents and MCP tool servers from prototype to zero-trust production on Google Cloud.</p>
+  <p>An open-source blueprint for a governed multi-agent platform on Google Cloud: ADK and A2A agents on Agent Runtime, private MCP tool servers, Agent Gateway (Preview), Agent Identity and Agent Registry, Apigee token quotas, and per-team chargeback, deployed with Terraform and operated with the <code>esmeralda</code> CLI.</p>
 
   <p>
     <a href="#the-challenge">Why Esmeralda</a> &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -12,10 +12,11 @@
   </p>
 
   <p>
+    <a href="https://google.github.io/esmeralda/"><img src="https://img.shields.io/badge/docs-google.github.io%2Fesmeralda-1f8a70" alt="Documentation" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
     <a href="https://cloud.google.com/"><img src="https://img.shields.io/badge/Cloud-Google_Cloud-4285F4?style=flat&logo=google-cloud&logoColor=white" alt="Google Cloud" /></a>
     <a href="https://www.terraform.io/"><img src="https://img.shields.io/badge/IAC-Terraform-623CE4?style=flat&logo=terraform&logoColor=white" alt="Terraform" /></a>
-    <a href="https://cloud.google.com/vertex-ai"><img src="https://img.shields.io/badge/AI-Vertex_AI-00C1FF?style=flat&logo=google-cloud&logoColor=white" alt="Vertex AI" /></a>
+    <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern"><img src="https://img.shields.io/badge/AI-Agent_Platform-00C1FF?style=flat&logo=google-cloud&logoColor=white" alt="Gemini Enterprise Agent Platform" /></a>
   </p>
 </div>
 

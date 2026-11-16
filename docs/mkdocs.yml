@@ -1,5 +1,6 @@
 site_name: Esmeralda
-site_description: Reference blueprint for running AI agents and MCP servers in production on Google Cloud
+site_description: "Open-source blueprint for a governed multi-agent platform on Google Cloud: ADK and A2A agents on Agent Runtime, MCP tool servers, Agent Gateway, Agent Registry, Apigee and per-team chargeback, deployed with Terraform."
+site_author: Google LLC
 site_url: https://google.github.io/esmeralda/
 docs_dir: src
 site_dir: ../site
@@ -10,6 +11,8 @@ repo_name: google/esmeralda
 
 theme:
   name: material
+  # Adds Open Graph / Twitter card meta and JSON-LD to every page (overrides/main.html).
+  custom_dir: overrides
   favicon: assets/favicon.svg
   icon:
     logo: material/diamond-stone
@@ -86,6 +89,13 @@ markdown_extensions:
 
 extra_css:
   - stylesheets/custom.css
+
+extra:
+  # Image for link previews (Open Graph / Twitter cards), relative to site_url.
+  social_image: assets/esmeralda-banner.jpg
+  social_image_alt: Esmeralda, a governed multi-agent platform blueprint for Google Cloud
+  # Optional Google Search Console HTML-tag verification token. Empty: no tag is rendered.
+  google_site_verification: ""
 
 nav:
   - "Overview": index.md

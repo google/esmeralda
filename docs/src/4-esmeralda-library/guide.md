@@ -1,3 +1,8 @@
+---
+title: "esmeralda developer guide: ADK and A2A agents, MCP and local runs"
+description: "Add the esmeralda library to an agent: serve ADK and A2A agents, call MCP servers and remote agents through the gateway, pass user tokens, and query agents."
+---
+
 # 4.1 Developer Usage Guide (`esmeralda`)
 
 ## From Local Workstation to Zero-Trust Production Without Changing a Line of Code

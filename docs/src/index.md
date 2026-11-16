@@ -1,8 +1,13 @@
-# Esmeralda Architecture & Documentation
+---
+title: "Esmeralda: governed multi-agent platform blueprint for Google Cloud"
+description: "Open-source blueprint to run ADK and A2A agents and MCP tools in production on Google Cloud with Agent Gateway, Agent Registry, Apigee and per-team chargeback."
+---
+
+# Esmeralda: a governed multi-agent platform blueprint for Google Cloud
 
 <img src="assets/esmeralda-banner.jpg" alt="Esmeralda" class="esmeralda-banner" width="360" />
 
-Welcome to **Esmeralda**—an opinionated, commercial-grade reference blueprint for taking autonomous AI agents and Model Context Protocol (MCP) tool servers from a developer's laptop into zero-trust enterprise production on **Google Cloud**.
+Welcome to **Esmeralda**, an open-source reference blueprint for running AI agents and Model Context Protocol (MCP) tool servers in zero-trust production on **Google Cloud**: Google ADK and A2A agents on **Agent Runtime** (Gemini Enterprise Agent Platform, formerly Vertex AI Agent Engine), private MCP tool servers on Cloud Run, **Agent Gateway** (Preview), Agent Identity and **Agent Registry** for governed egress, **Apigee** token quotas for partners, optional Model Armor, and per-team token chargeback, all deployed with Terraform and Terragrunt.
 
 Throughout the documentation, we follow a single real-world scenario (**Julian Sterling's mortgage underwriting application**) from the front-door request down to the cloud foundation and developer SDK. Expand any section in the **left sidebar** (or in the **Contents** right below) to jump directly to a topic, or use the **Next / Previous** links at the bottom of each page.
 

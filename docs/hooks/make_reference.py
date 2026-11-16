@@ -41,6 +41,12 @@ def _parse(makefile: str) -> list[tuple[str, list[tuple[str, str]]]]:
 
 def _render(sections: list[tuple[str, list[tuple[str, str]]]]) -> str:
     out = [
+        "---",
+        'title: "Make targets reference"',
+        'description: "Every Make target in the Esmeralda repository (bootstrap, tests, image builds, '
+        'Terragrunt deploys, verification), generated from the Makefile help comments."',
+        "---",
+        "",
         "# Make Targets",
         "",
         "Every workflow in Esmeralda runs through the root [`Makefile`](https://github.com/google/esmeralda/blob/main/Makefile). "

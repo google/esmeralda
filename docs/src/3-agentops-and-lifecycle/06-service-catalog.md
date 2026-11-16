@@ -1,3 +1,8 @@
+---
+title: "Service catalog for AI agents: teams, callers, targets and policy"
+description: "One declarative catalog lists every agent, MCP server, model and API, its owning team and allowed callers. Terraform, the entry point and verify all derive from it."
+---
+
 # 2.6 Service Catalog: Teams, Callers, Targets & Policy
 
 The **catalog** is the single place that says which targets exist (agents, MCP servers, models,

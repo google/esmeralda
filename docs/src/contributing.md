@@ -1,3 +1,8 @@
+---
+title: "Contributing guide"
+description: "How to contribute to Esmeralda: sign the CLA, run the offline tests and strict docs build, change dependencies through the uv lock workflow, and follow conventions."
+---
+
 # How to Contribute
 
 We would love to accept your patches and contributions to this project.

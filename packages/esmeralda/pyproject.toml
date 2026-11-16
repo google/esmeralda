@@ -19,14 +19,19 @@ description = "Operational runtime and CLI for Esmeralda agents on Agent Runtime
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
+keywords = ["ai-agents", "multi-agent", "google-cloud", "agent-runtime", "agent-gateway", "adk", "a2a", "mcp", "apigee", "finops"]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: System :: Systems Administration",
 ]
 dependencies = [
     "google-adk>=2.4.0",

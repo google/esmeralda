@@ -1,3 +1,8 @@
+---
+title: "esmeralda package and CLI reference"
+description: "Reference for every esmeralda module, function, CLI subcommand and flag, environment variable and telemetry event schema used by agents on Agent Runtime."
+---
+
 # 4.2 Package & CLI Reference (`esmeralda`)
 
 ## One Audited Contract for Every Runtime Hook and Operator Command

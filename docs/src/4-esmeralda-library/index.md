@@ -1,3 +1,8 @@
+---
+title: "esmeralda Python library and CLI for agent platform operations"
+description: "The esmeralda runtime library (ADK plugin, telemetry, gateway trust) and CLI and MCP server for plans, guarded applies and end-to-end verification."
+---
+
 # 4.0 The `esmeralda` Runtime & Operations Library
 
 ## 1. Keeping Every Agent at ~30 Lines of Pure Domain Logic

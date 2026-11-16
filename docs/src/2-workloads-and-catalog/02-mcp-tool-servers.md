@@ -1,3 +1,8 @@
+---
+title: "Private MCP tool servers on Cloud Run, registered in Agent Registry"
+description: "Wrap enterprise systems as FastMCP servers on private Cloud Run, register them in Agent Registry, verify caller and end-user claims, and test them locally."
+---
+
 # 1.2 Wrapping Enterprise Systems as MCP Tool Servers
 
 In [1.1 Two Teams, Two Agents](./03-ai-agents-and-database.md), the CX orchestrator handed Julian Sterling's underwriting request over to the AI CoE's **Mortgage Specialist** (`ai-coe-mortgage-specialist`). Now the specialist needs real facts—Julian's tax returns, his verified annual salary, and any recent correspondence with the loan officer.

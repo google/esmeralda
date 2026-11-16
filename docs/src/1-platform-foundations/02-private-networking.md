@@ -1,3 +1,8 @@
+---
+title: "Private networking for Agent Runtime: Shared VPC, PSC and DNS"
+description: "How agents on Agent Runtime reach private services with no public IPs: Shared VPC, Private Service Connect attachments, a private DNS zone and a reserved entry point IP."
+---
+
 # 3.2 Private Networking, Shared VPC & Private DNS (Layer 2)
 
 ## 1. How Tenant-Hosted Agents Reach Private Bank Services with Zero Public IPs

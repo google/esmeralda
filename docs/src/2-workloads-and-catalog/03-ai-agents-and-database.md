@@ -1,3 +1,8 @@
+---
+title: "ADK and A2A agents on Agent Runtime with Terraform (BYOC)"
+description: "Run a Google ADK orchestrator and an A2A specialist on Agent Runtime as BYOC containers, with Agent Identity, Agent Gateway binding and a private Cloud SQL task store."
+---
+
 # 1.1 Two Teams, Two Agents — Orchestration vs. Specialization (ADK & A2A)
 
 When our loan officer asks, ***"Can you verify Julian Sterling's income?"***, the first workload to wake up is an AI agent.

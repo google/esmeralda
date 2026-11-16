@@ -1,3 +1,8 @@
+---
+title: "Google Cloud landing zone for AI agents: platform foundations"
+description: "How the projects, networking and security layers bootstrap a greenfield or brownfield Google Cloud landing zone for AI agents, with every decision driven by env.yaml."
+---
+
 # 3.0 Platform Foundations — Overview (Layers 1, 2, and 3)
 
 ## 1. How Layered Contracts Unlock Parallel Teams

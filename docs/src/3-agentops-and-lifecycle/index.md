@@ -1,3 +1,8 @@
+---
+title: "AgentOps on Google Cloud: governance layer and release lifecycle"
+description: "How the governance layer sets the trust boundary for agents (Agent Gateway, policies, telemetry) and how teams promote immutable image digests from dev to prd."
+---
+
 # 2.0 Governance, Identity & AgentOps — Overview & Release Lifecycle (Layer 4)
 
 In **[1. Workloads, Catalog & Gateways](../2-workloads-and-catalog/index.md)**, we met the cast of runtime workloads in Layer 5: `cx-mortgage-orchestrator`, `ai-coe-mortgage-specialist`, the three Cloud Run MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`), the internal HTTPS entry point (`*.esmeralda.internal`), and the optional **Apigee X** partner front door (`partner.esmeralda.internal`).

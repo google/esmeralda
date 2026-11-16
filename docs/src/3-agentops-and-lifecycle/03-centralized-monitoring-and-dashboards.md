@@ -1,3 +1,8 @@
+---
+title: "AI agent FinOps: per-team LLM token chargeback in BigQuery"
+description: "Attribute every Gemini token to the calling team with OpenTelemetry baggage, central log sinks, BigQuery chargeback views, SLOs and Cloud Monitoring dashboards."
+---
+
 # 2.3 FinOps, Telemetry & Cross-Team Chargeback
 
 Imagine it is the first Monday of the month. The bank's **Chief Financial Officer (CFO)** and **VP of Engineering** sit down to review the cloud bill for the new AI mortgage platform.

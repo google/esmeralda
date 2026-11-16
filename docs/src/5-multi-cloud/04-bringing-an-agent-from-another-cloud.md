@@ -1,3 +1,8 @@
+---
+title: "Bringing an agent from another cloud: an end-to-end A2A example"
+description: "Worked example: a synthetic underwriting agent on another cloud calls an A2A specialist on Agent Runtime, with its catalog entries, request flow and usage records."
+---
+
 # 5.4 Bringing an Agent from Another Cloud, End to End
 
 The previous three subsections introduced the pieces one at a time. Now let's watch them work together on a single, concrete onboarding.

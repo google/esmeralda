@@ -1,3 +1,8 @@
+---
+title: "Apigee as an LLM and MCP gateway: token quotas and partner monetization"
+description: "Expose agents and MCP tools to partners through Apigee X: API products, LLMTokenQuota enforcement on streaming responses, usage metering and tiered plans."
+---
+
 # 1.4 Partner API Management & Token Monetization with Apigee X
 
 In **[1.3 The Private Front Door & Pluggable Gateways](./01-ingress-gateways.md)**, we saw how internal workloads inside the bank's VPC call `*.esmeralda.internal` through the internal HTTPS load balancer (`entrypoint`), using the built-in **`direct`** backend by default. And in **[2.1 Central Agent Gateway & Private PKI](../3-agentops-and-lifecycle/01-central-agent-gateway.md)**, we will see how every internal AI agent's outbound traffic is governed by Google's **Central Agent Gateway** using attested **SPIFFE Agent Identities (`principal://`)**.

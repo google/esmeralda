@@ -1,0 +1,83 @@
+{#-
+  SEO and link-preview metadata for every page, without extra MkDocs plugins.
+
+  Material already renders <meta name="description"> (front matter `description:` or
+  site_description), <meta name="author"> and <link rel="canonical">. This override adds:
+    * Open Graph and Twitter card tags from the page's front matter `title:` / `description:`;
+    * the optional Google Search Console tag, when `extra.google_site_verification` is set;
+    * JSON-LD: SoftwareSourceCode on every page, plus WebSite on the home page.
+-#}
+{% extends "base.html" %}
+
+{% block htmltitle %}
+  {#- The home page's front matter title already names the brand: don't append it again. -#}
+  {% if page and page.is_homepage and page.meta and page.meta.title %}
+    <title>{{ page.meta.title | e }}</title>
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock %}
+
+{% block extrahead %}
+  {{ super() }}
+  {%- if page and page.meta and page.meta.title %}
+    {%- set seo_title = page.meta.title %}
+  {%- elif page and page.title and not page.is_homepage %}
+    {%- set seo_title = (page.title | striptags) ~ " - " ~ config.site_name %}
+  {%- else %}
+    {%- set seo_title = config.site_name %}
+  {%- endif %}
+  {%- if page and page.meta and page.meta.description %}
+    {%- set seo_description = page.meta.description %}
+  {%- else %}
+    {%- set seo_description = config.site_description %}
+  {%- endif %}
+  {%- set seo_url = page.canonical_url if page and page.canonical_url else config.site_url %}
+  {%- set seo_image = config.site_url ~ config.extra.social_image if config.extra.social_image else "" %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name | e }}">
+  <meta property="og:title" content="{{ seo_title | e }}">
+  <meta property="og:description" content="{{ seo_description | e }}">
+  {%- if page and page.canonical_url %}
+  <meta property="og:url" content="{{ seo_url | e }}">
+  {%- endif %}
+  {%- if seo_image %}
+  <meta property="og:image" content="{{ seo_image | e }}">
+  <meta property="og:image:alt" content="{{ config.extra.social_image_alt | default(config.site_name) | e }}">
+  {%- endif %}
+  <meta name="twitter:card" content="{{ 'summary_large_image' if seo_image else 'summary' }}">
+  <meta name="twitter:title" content="{{ seo_title | e }}">
+  <meta name="twitter:description" content="{{ seo_description | e }}">
+  {%- if seo_image %}
+  <meta name="twitter:image" content="{{ seo_image | e }}">
+  {%- endif %}
+  {%- if config.extra.google_site_verification %}
+  <meta name="google-site-verification" content="{{ config.extra.google_site_verification | e }}">
+  {%- endif %}
+  {%- set source_code = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": config.site_name,
+    "headline": seo_title,
+    "description": seo_description,
+    "url": seo_url,
+    "codeRepository": config.repo_url,
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "programmingLanguage": ["Python", "HCL"],
+    "author": {"@type": "Organization", "name": config.site_author},
+  } %}
+  {#- Structured data only on real pages (not on the 404 page). #}
+  {%- if page and page.canonical_url %}
+  <script type="application/ld+json">{{ source_code | tojson }}</script>
+  {%- endif %}
+  {%- if page and page.is_homepage %}
+  {%- set website = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": config.site_name,
+    "url": config.site_url,
+    "description": config.site_description,
+  } %}
+  <script type="application/ld+json">{{ website | tojson }}</script>
+  {%- endif %}
+{% endblock %}
