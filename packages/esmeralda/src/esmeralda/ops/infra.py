@@ -42,6 +42,7 @@ _BLOB = 200  # scalar outputs longer than this are summarised, not returned
 _LAYER_RE = re.compile(r"(?:^|/)layer-(\d+)-")
 _DEP_BLOCK_RE = re.compile(r'dependency\s+"([^"]+)"\s*\{(.*?)\n\}', re.DOTALL)
 _CONFIG_PATH_RE = re.compile(r'config_path\s*=\s*"([^"]+)"')
+_DEPENDENCIES_RE = re.compile(r"^\s*dependencies\s*\{[^}]*?paths\s*=\s*\[([^\]]*)\]", re.MULTILINE | re.DOTALL)
 _EXCLUDE_GW_RE = re.compile(r'exclude\s*\{[^}]*gateways\.enabled\s*,\s*"([^"]+)"', re.DOTALL)
 # `exclude { if = !(... try(local.env.governance.capabilities.<key>, "<default>") == "apigee") }`
 _EXCLUDE_CAP_RE = re.compile(
@@ -90,23 +91,30 @@ def unit_dependencies(root: Path, env: str, unit: str) -> list[str]:
         return []
     text = hcl_path.read_text(errors="replace")
     deps: list[str] = []
+
+    def add(raw_path: str) -> None:
+        resolved = (hcl_path.parent / raw_path).resolve()
+        try:
+            dep_unit = resolved.relative_to(base.resolve()).as_posix()
+        except ValueError:
+            try:
+                dep_unit = resolved.relative_to((root / repo.LIVE).resolve()).as_posix()
+            except ValueError:
+                dep_unit = raw_path
+        if dep_unit not in deps:
+            deps.append(dep_unit)
+
     for match in _DEP_BLOCK_RE.finditer(text):
         dep_name, body = match.group(1), match.group(2)
         cp_match = _CONFIG_PATH_RE.search(body)
         if cp_match:
-            raw_path = cp_match.group(1)
-            resolved = (hcl_path.parent / raw_path).resolve()
-            try:
-                dep_unit = resolved.relative_to(base.resolve()).as_posix()
-            except ValueError:
-                try:
-                    dep_unit = resolved.relative_to((root / repo.LIVE).resolve()).as_posix()
-                except ValueError:
-                    dep_unit = raw_path
-            if dep_unit not in deps:
-                deps.append(dep_unit)
+            add(cp_match.group(1))
         elif dep_name not in deps:
             deps.append(dep_name)
+    # `dependencies { paths = [...] }`: ordering-only dependencies (no outputs read), same DAG for Terragrunt
+    for match in _DEPENDENCIES_RE.finditer(text):
+        for raw_path in re.findall(r'"([^"]+)"', match.group(1)):
+            add(raw_path)
     return deps
 
 
@@ -381,6 +389,28 @@ def plan_file(root: Path, env: str, unit: str) -> Path:
     return root / PLAN_DIR / env / f"{slug}.tfplan"
 
 
+# Shared (env-independent) units under infrastructure/live/, outside any env directory.
+CICD_UNIT = "shared/layer-0-cicd"
+_SHARED_ALIASES = {"layer-0-cicd": CICD_UNIT, CICD_UNIT: CICD_UNIT}
+
+
+def locate_unit(root: Path, env: str, unit: str, *, directory: Path | None = None) -> tuple[str, Path]:
+    """``(unit label, directory)`` for an env unit (path or short name) or the shared layer-0 unit.
+
+    ``directory`` overrides where the shared layer-0 unit runs (the ``CICD_DIR`` override); env
+    units always run in their own directory.
+    """
+    cleaned = unit.strip().strip("/")
+    if cleaned in _SHARED_ALIASES:
+        location = directory or (root / repo.LIVE / CICD_UNIT)
+        if not (Path(location) / repo.UNIT_FILE).is_file():
+            raise OpsError(f"No {repo.UNIT_FILE} in {location} (layer-0 CI/CD unit)")
+        return CICD_UNIT, Path(location)
+    resolved = resolve_unit(root, env, cleaned)
+    found = repo.unit_dir(root, env, resolved)
+    return found.relative_to(repo.env_dir(root, env)).as_posix(), found
+
+
 def plan_unit(
     root: Path,
     env: str,
@@ -388,13 +418,12 @@ def plan_unit(
     *,
     all_units: bool = False,
     timeout: float = 900.0,
+    directory: Path | None = None,
 ) -> dict[str, Any]:
     """Read-only plan of one unit (``-lock=false``) or ``--all`` enabled units, summarised."""
     if all_units or unit == "--all":
         return plan_all(root, env, timeout=timeout)
-    resolved = resolve_unit(root, env, unit)
-    directory = repo.unit_dir(root, env, resolved)
-    unit = directory.relative_to(repo.env_dir(root, env)).as_posix()
+    unit, directory = locate_unit(root, env, unit, directory=directory)
     out = plan_file(root, env, unit)
     out.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -459,11 +488,11 @@ def apply_unit(
     *,
     allow_destroy: bool = False,
     timeout: float = 900.0,
+    directory: Path | None = None,
 ) -> dict[str, Any]:
     """Plans ``unit`` to a planfile first, enforces the destroy guard, and applies the saved planfile."""
-    resolved = resolve_unit(root, env, unit)
-    directory = repo.unit_dir(root, env, resolved)
-    planned = plan_unit(root, env, resolved, timeout=timeout)
+    resolved, directory = locate_unit(root, env, unit, directory=directory)
+    planned = plan_unit(root, env, resolved, timeout=timeout, directory=directory)
     counts = planned.get("counts") or {}
     destroy_count = int(counts.get("destroy", 0)) + int(counts.get("replace", 0))
     if destroy_count > 0 and not allow_destroy:

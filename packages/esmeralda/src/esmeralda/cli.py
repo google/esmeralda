@@ -27,11 +27,15 @@ Container & agent runtime commands:
   plans, agent queries, gateway probes and agent logs (see ``esmeralda.ops``).
 
 Repository & platform operations (backed by ``esmeralda.ops``):
-* ``esmeralda status [--env dev|prd] [--json]``
+* ``esmeralda status [--env dev|prd] [--unit <unit> [--output <name>]] [--json]``
 * ``esmeralda doctor [--env dev|prd] [--json]``
 * ``esmeralda units [--env dev|prd] [--layer 0..5] [--json]``
 * ``esmeralda plan <unit|--all> [--env dev|prd] [--json]``
 * ``esmeralda apply <unit> [--env dev|prd] [--allow-destroy] [--json]``
+* ``esmeralda deploy <unit>... | --layer N | --all [--env dev|prd] [--allow-destroy] [--dry-run] [--json]``
+* ``esmeralda destroy --env dev --confirm dev [--dry-run] [--json]``
+* ``esmeralda build <agents|services|images|package|<image>> [--tag T] [--skip-tests] [--dry-run] [--verify]``
+* ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified YYYY-MM-DD]]``
 * ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
@@ -54,7 +58,8 @@ from typing import Any
 from esmeralda import certs
 
 USAGE = (
-    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,verify,logs,contracts,guard,catalog} ...  "
+    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,deploy,destroy,build,release,verify,logs,"
+    "contracts,guard,catalog} ...  "
     "(esmeralda run -- <command> [args...])"
 )
 
@@ -292,6 +297,81 @@ def _format_apply(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+_STEP_ICONS = {
+    "applied": "✅", "planned": "📋", "built": "✅", "passed": "✅", "destroyed": "🧹", "dry-run": "📝",
+    "refused": "⛔", "failed": "❌", "skipped": "⏭️", "pending": "⏸️",
+}
+
+
+def _format_deploy(data: dict[str, Any]) -> str:
+    action = "Destroy" if data.get("destroy") else "Deploy"
+    mode = " (dry run: plans only, nothing applied)" if data.get("dry_run") else ""
+    lines = [f"🚀 {action} '{data.get('env')}'{mode}:"]
+    for step in data.get("steps") or []:
+        icon = _STEP_ICONS.get(step.get("status", ""), "•")
+        label = step["step"] if step.get("kind") == "unit" else f"{step.get('kind')} {step['step']}"
+        detail = ""
+        if "counts" in step or step.get("status") in ("planned", "applied", "refused"):
+            c = step.get("counts") or {}
+            detail = f"+{c.get('add', 0)} ~{c.get('change', 0)} -{c.get('destroy', 0)}"
+            detail += f" ±{c['replace']}" if c.get("replace") else ""
+        if step.get("would_refuse"):
+            detail += "  ⚠️  destroy/replace: apply would refuse without --allow-destroy"
+        if step.get("status") == "refused":
+            detail += f"  {step.get('reason', '')}"
+        if step.get("error"):
+            detail += f"  {step['error']}"
+        if step.get("reason") and step.get("status") == "skipped":
+            detail += step["reason"]
+        seconds = f" ({step['seconds']}s)" if step.get("seconds") is not None else ""
+        lines.append(f"  {icon} {step.get('status', ''):<9} {label}{seconds}  {detail}".rstrip())
+        for command in step.get("commands") or []:
+            lines.append(f"      $ {command}")
+        for image in step.get("images") or []:
+            for command in image.get("commands") or []:
+                lines.append(f"      $ {command}")
+            if image.get("status") == "failed":
+                lines.append(f"      ❌ {image['image']}: see {image.get('log')}")
+        for resource in (step.get("resources") or []) if step.get("status") in ("planned", "refused") else []:
+            lines.append(f"      {resource}")
+    done = sum(1 for s in data.get("steps") or [] if s.get("status") not in ("pending", "skipped"))
+    total = len(data.get("steps") or [])
+    if data.get("ok"):
+        lines.append(f"✅ {action} {'plan ' if data.get('dry_run') else ''}finished: {done}/{total} step(s).")
+    else:
+        lines.append(f"❌ {action} stopped at step {done}/{total}; later steps did not run.")
+    return "\n".join(lines)
+
+
+def _format_build(data: dict[str, Any]) -> str:
+    if data.get("target") == "package":
+        if data.get("dry_run"):
+            return "\n".join(f"$ {c}" for c in data.get("commands") or [])
+        lines = [f"📦 {name}" for name in data.get("files") or []]
+        lines += [f"⛔ {p}" for p in data.get("problems") or []]
+        if data.get("ok"):
+            lines.append(f"✅ Verified wheel contents: {data.get('wheel')}")
+        return "\n".join(lines)
+    lines = [
+        f"🏗️  Build {data.get('target')} (:{data.get('tag')}, :{data.get('sha_tag')})"
+        + (" (dry run)" if data.get("dry_run") else "")
+    ]
+    if data.get("tests") == "failed":
+        lines.append("❌ Tests failed: no image was built.")
+    for image in data.get("images") or []:
+        icon = _STEP_ICONS.get(image.get("status", ""), "•")
+        timing = f" ({image['seconds']}s, log {image['log']})" if "log" in image else ""
+        lines.append(f"  {icon} {image['image']}{timing}")
+        for command in image.get("commands") or []:
+            lines.append(f"      $ {command}")
+        if image.get("status") == "failed":
+            lines.append(f"      {image.get('error') or image.get('failed_command', '')}")
+            lines.extend(f"      | {line}" for line in image.get("tail") or [])
+    if not data.get("dry_run"):
+        lines.append("✅ All images built and pushed!" if data.get("ok") else "❌ Build failed.")
+    return "\n".join(lines)
+
+
 def _format_verify(data: dict[str, Any]) -> str:
     lines = [f"🔎 Verify '{data.get('env', 'dev')}':"]
     for step in data.get("steps") or []:
@@ -437,16 +517,91 @@ def _catalog(args: argparse.Namespace) -> int:
 
 
 def _ops_dispatch(args: argparse.Namespace) -> int:
-    from esmeralda.ops import contracts, guard, infra, logs, repo, runtime
+    from esmeralda.ops import build, contracts, deploy, guard, infra, logs, repo, runtime
     from esmeralda.ops.repo import OpsError
 
     try:
         root = _resolve_root(getattr(args, "repo", None))
         if args.cmd == "status":
             unit_arg = getattr(args, "unit", None)
+            if getattr(args, "output", None):
+                if not unit_arg:
+                    raise OpsError("--output needs --unit <unit>")
+                resolved = infra.resolve_unit(root, args.env, unit_arg)
+                value = repo.unit_state(root, args.env, resolved).outputs.get(args.output)
+                if value is None:
+                    print(f"❌ No output '{args.output}' for {args.env}/{resolved}", file=sys.stderr)
+                    return 1
+                print(value if isinstance(value, str) else json.dumps(value))
+                return 0
             data = infra.status(root, args.env, unit_arg) if unit_arg else repo.status(root, args.env)
             print(json.dumps(data, indent=2) if args.json else _format_status(data))
             return 0
+
+        if args.cmd == "deploy":
+            steps = deploy.plan_steps(
+                root,
+                args.env,
+                layers=args.layer,
+                units=args.units,
+                all_layers=args.all_layers,
+                skip_build=args.skip_build,
+                skip_verify=args.skip_verify_images,
+            )
+            options = deploy.Options(
+                allow_destroy=args.allow_destroy,
+                timeout=args.timeout,
+                dry_run=args.dry_run,
+                cicd_dir=args.cicd_dir,
+                skip_tests=args.skip_tests,
+                tag=args.tag,
+            )
+            data = deploy.deploy(root, args.env, steps, options)
+            print(json.dumps(data, indent=2) if args.json else _format_deploy(data))
+            return int(data["exit_code"])
+
+        if args.cmd == "destroy":
+            data = deploy.destroy(root, args.env, confirm=args.confirm, dry_run=args.dry_run, timeout=args.timeout)
+            print(json.dumps(data, indent=2) if args.json else _format_deploy(data))
+            return int(data["exit_code"])
+
+        if args.cmd == "build":
+            if not args.target and not args.verify:
+                raise OpsError(
+                    f"Specify what to build ({', '.join(build.TARGETS)} or an image: {', '.join(build.image_names())}) "
+                    "or pass --verify"
+                )
+            code = 0
+            if args.target == "package":
+                data = build.build_package(root, dry_run=args.dry_run)
+                print(json.dumps(data, indent=2) if args.json else _format_build(data))
+                code = int(data["exit_code"])
+            elif args.target:
+                data = build.build_images(
+                    root,
+                    args.target,
+                    tag=args.tag,
+                    cicd_dir=args.cicd_dir,
+                    skip_tests=args.skip_tests,
+                    dry_run=args.dry_run,
+                    timeout=args.timeout,
+                    jobs=args.jobs,
+                )
+                print(json.dumps(data, indent=2) if args.json else _format_build(data))
+                code = int(data["exit_code"])
+            if args.verify and code == 0:
+                if args.dry_run:
+                    print(f"$ {' '.join(build.verify_images_cmd(args.env))}")
+                else:
+                    code = build.verify_images(root, args.env)
+            return code
+
+        if args.cmd == "release":
+            if args.release_cmd == "promote":
+                return build.release(
+                    root, "promote", env=args.env, version=args.version, source=args.source, verified=args.verified
+                )
+            return build.release(root, "status", env=args.env)
 
         if args.cmd == "doctor":
             data = repo.doctor(root, args.env)
@@ -588,6 +743,7 @@ def _parser() -> argparse.ArgumentParser:
         help="show git branch/SHA, active worktrees, local state units, image tags/digests, and deployed outputs",
     )
     status.add_argument("--unit", help="optional unit path for its full (non-sensitive) outputs")
+    status.add_argument("--output", metavar="NAME", help="with --unit: print just this output's raw value")
     _add_common_ops_flags(status, with_env=True)
 
     doctor = sub.add_parser(
@@ -632,6 +788,96 @@ def _parser() -> argparse.ArgumentParser:
         help="seconds allowed for the plan and for the apply (default: 900); raise it for long provisioners",
     )
     _add_common_ops_flags(apply_p, with_env=True)
+
+    deploy_p = sub.add_parser(
+        "deploy",
+        help="apply units, whole layers or the whole env in dependency order (destroy guard per unit, "
+        "stops at the first failure)",
+    )
+    deploy_p.add_argument(
+        "units",
+        nargs="*",
+        help="units (path or short name; shared/layer-0-cicd for layer 0), applied in dependency order",
+    )
+    deploy_p.add_argument(
+        "--layer", type=int, action="append", choices=range(0, 6), metavar="N",
+        help="deploy layer N (0..5; repeatable). Layer 5 = every enabled workload unit, iap-egress last, then the "
+        "running-image check",
+    )
+    deploy_p.add_argument(
+        "--all", action="store_true", dest="all_layers",
+        help="layer 0 -> 1-3 -> 4 -> image builds -> layer 5 (as make deploy-all)",
+    )
+    deploy_p.add_argument("--allow-destroy", action="store_true", help="permit destroy/replace plans in every unit")
+    deploy_p.add_argument(
+        "--timeout", type=_positive_seconds, default=1800.0,
+        help="seconds allowed for each unit's plan and apply (default: 1800)",
+    )
+    deploy_p.add_argument("--dry-run", action="store_true", help="plan each unit (read-only) and print build commands")
+    deploy_p.add_argument("--skip-build", action="store_true", help="with --all: don't build images")
+    deploy_p.add_argument(
+        "--skip-tests", action="store_true", help="with --all: don't run the tests before agent builds"
+    )
+    deploy_p.add_argument(
+        "--skip-verify-images", action="store_true", help="don't run the running-image check after layer 5"
+    )
+    deploy_p.add_argument("--tag", help="image tag for the --all builds (default: $BUILD_TAG or dev-latest)")
+    deploy_p.add_argument(
+        "--cicd-dir", help="layer-0 unit directory (default: this checkout, or the main checkout's for a worktree)"
+    )
+    _add_common_ops_flags(deploy_p, with_env=True)
+
+    destroy_p = sub.add_parser(
+        "destroy", help="destroy an env's layers 5 -> 1, unit by unit (never prd, never the shared layer 0)"
+    )
+    destroy_p.add_argument("--confirm", metavar="ENV", help="the environment name again, to confirm")
+    destroy_p.add_argument("--dry-run", action="store_true", help="list what would be destroyed, in order")
+    destroy_p.add_argument(
+        "--timeout", type=_positive_seconds, default=1800.0, help="seconds allowed for each unit (default: 1800)"
+    )
+    _add_common_ops_flags(destroy_p, with_env=True)
+
+    build_p = sub.add_parser(
+        "build",
+        help="build images with Cloud Build in the shared CI/CD project (agents, services, images, one image), "
+        "the esmeralda-platform package, or --verify running images",
+    )
+    build_p.add_argument(
+        "target", nargs="?",
+        help="agents | services | images | package | an image (e.g. legacy-dms, cx-mortgage-orchestrator)",
+    )
+    build_p.add_argument("--tag", help="mutable tag (default: $BUILD_TAG or dev-latest); :dev-<gitsha> is always added")
+    build_p.add_argument("--skip-tests", action="store_true", help="don't run the tests before agent builds")
+    build_p.add_argument("--dry-run", action="store_true", help="print the commands instead of running them")
+    build_p.add_argument(
+        "--verify", action="store_true",
+        help="check every layer-5 workload runs the expected digest (scripts/verify_images.sh) for --env",
+    )
+    build_p.add_argument("--jobs", type=int, help="concurrent builds per batch (default: all of the batch)")
+    build_p.add_argument(
+        "--timeout",
+        type=_positive_seconds,
+        default=3600.0,
+        help="seconds allowed for each build command (default: 3600)",
+    )
+    build_p.add_argument(
+        "--cicd-dir", help="layer-0 unit directory (default: this checkout, or the main checkout's for a worktree)"
+    )
+    _add_common_ops_flags(build_p, with_env=True)
+
+    release_p = sub.add_parser("release", help="promote a verified dev build by digest, or show the release manifest")
+    release_sub = release_p.add_subparsers(dest="release_cmd", required=True)
+    rel_status = release_sub.add_parser("status", help="show release/<env>.yaml and the shared repositories")
+    rel_status.add_argument("--env", default="prd", help="release environment (default: prd)")
+    rel_status.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
+    rel_promote = release_sub.add_parser(
+        "promote", help="copy every dev-<sha> image by digest to the release repository and write release/<env>.yaml"
+    )
+    rel_promote.add_argument("--version", required=True, help="release version, vX.Y.Z")
+    rel_promote.add_argument("--source", required=True, help="immutable dev build tag, dev-<gitsha>")
+    rel_promote.add_argument("--verified", help="date (YYYY-MM-DD) verify passed in dev on that build (default: today)")
+    rel_promote.add_argument("--env", default="prd", help="release environment (default: prd)")
+    rel_promote.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
 
     verify = sub.add_parser(
         "verify",
