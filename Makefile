@@ -298,6 +298,9 @@ build-service-legacy-dms: ## Build and push the Legacy DMS MCP image
 build-service-envoy: ## Build and push the Envoy gateway image (digest-pinned upstream Envoy, no custom code)
 	$(call build_image,apps/services/envoy,envoy-gateway)
 
+build-service-esmeralda-ui: ## Build and push the Esmeralda UI console image (TypeScript / Node.js 22)
+	$(call build_image,apps/services/esmeralda-ui,esmeralda-ui)
+
 build-services: ## Build all MCP service + Envoy gateway images concurrently
 	@$(MAKE) -j4 build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy
 	@echo "✅ All service images built and pushed!"

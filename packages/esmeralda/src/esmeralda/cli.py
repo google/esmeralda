@@ -53,7 +53,7 @@ from typing import Any
 from esmeralda import certs
 
 USAGE = (
-    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,verify,logs,contracts,guard,catalog} ...  "
+    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,verify,logs,contracts,guard,catalog,ui} ...  "
     "(esmeralda run -- <command> [args...])"
 )
 
@@ -511,6 +511,87 @@ def _positive_seconds(value: str) -> float:
     return seconds
 
 
+def _ui(args: argparse.Namespace) -> int:
+    import shutil
+    import subprocess
+
+    root = _resolve_root(args.repo)
+    ui_dir = root / "apps" / "services" / "esmeralda-ui"
+
+    if args.local:
+        node_bin = shutil.which("node")
+        if not node_bin:
+            print("❌ Node.js (>=22.6.0) is required for --local.", file=sys.stderr)
+            return 2
+        env = dict(os.environ)
+        env["PORT"] = str(args.port)
+        env.setdefault("ENVIRONMENT", args.env)
+        os.execvpe(
+            node_bin,
+            [node_bin, "--experimental-strip-types", str(ui_dir / "src" / "server" / "index.ts")],
+            env,
+        )
+        return 0
+
+    project_id = args.project
+    service_uri: str | None = None
+    if not project_id or args.url:
+        from esmeralda.ops import infra
+
+        try:
+            ui_state = infra.status(root, args.env, "layer-5-workloads/services/esmeralda-ui")
+            service_uri = (ui_state.get("outputs") or {}).get("service_uri")
+        except Exception:
+            service_uri = None
+        if not project_id:
+            try:
+                proj_state = infra.status(root, args.env, "layer-1-projects")
+                project_id = (proj_state.get("outputs") or {}).get("mcps_project_id")
+            except Exception:
+                project_id = None
+
+    if args.url:
+        if service_uri:
+            if args.json:
+                print(json.dumps({"service": "esmeralda-ui", "env": args.env, "url": service_uri}, indent=2))
+            else:
+                print(service_uri)
+            return 0
+        cmd = ["gcloud", "run", "services", "describe", "esmeralda-ui", "--region", args.region, "--format=value(status.url)"]
+        if project_id:
+            cmd.extend(["--project", project_id])
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0 or not res.stdout.strip():
+            print(f"❌ Could not resolve esmeralda-ui Cloud Run URL: {res.stderr.strip()}", file=sys.stderr)
+            return 1
+        url = res.stdout.strip()
+        if args.json:
+            print(json.dumps({"service": "esmeralda-ui", "env": args.env, "url": url}, indent=2))
+        else:
+            print(url)
+        return 0
+
+    gcloud_bin = shutil.which("gcloud")
+    if not gcloud_bin:
+        print("❌ gcloud CLI is required to proxy esmeralda-ui from Cloud Run.", file=sys.stderr)
+        return 2
+    proxy_cmd = [
+        gcloud_bin,
+        "run",
+        "services",
+        "proxy",
+        "esmeralda-ui",
+        "--region",
+        args.region,
+        "--port",
+        str(args.port),
+    ]
+    if project_id:
+        proxy_cmd.extend(["--project", project_id])
+    os.execvp(gcloud_bin, proxy_cmd)
+    return 0
+
+
 def _add_common_ops_flags(subparser: argparse.ArgumentParser, *, with_env: bool = True) -> None:
     if with_env:
         subparser.add_argument("--env", default="dev", help="environment under infrastructure/live (default: dev)")
@@ -685,6 +766,17 @@ def _parser() -> argparse.ArgumentParser:
     show_p.add_argument("--caller", help="only what this caller can call")
     _add_common_ops_flags(show_p, with_env=True)
 
+    ui_p = sub.add_parser(
+        "ui",
+        help="open or proxy the Esmeralda UI console (gcloud run services proxy, --url, or --local)",
+    )
+    ui_p.add_argument("--port", type=int, default=8080, help="local port for proxy or local server (default: 8080)")
+    ui_p.add_argument("--url", action="store_true", help="print the deployed Cloud Run IAP URL without proxying")
+    ui_p.add_argument("--local", action="store_true", help="run apps/services/esmeralda-ui locally via Node.js")
+    ui_p.add_argument("--project", help="override GCP project ID for Cloud Run service proxy")
+    ui_p.add_argument("--region", default="us-central1", help="GCP region (default: us-central1)")
+    _add_common_ops_flags(ui_p, with_env=True)
+
     return parser
 
 
@@ -706,6 +798,8 @@ def main(argv: list[str] | None = None) -> int:
         return server.main(args.repo)
     if args.cmd == "catalog":
         return _catalog(args)
+    if args.cmd == "ui":
+        return _ui(args)
     return _ops_dispatch(args)
 
 
