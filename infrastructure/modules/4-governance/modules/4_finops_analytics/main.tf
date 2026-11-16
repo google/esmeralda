@@ -207,6 +207,51 @@ resource "google_bigquery_table" "vw_principal_teams" {
   }
 }
 
+# Catalog target metadata lookup: one row per target (agents, MCP servers, external endpoints).
+# Loaded transactionally by layer 5 iap-egress (`source = 'catalog'`) alongside principal_teams,
+# enabling SQL joins between usage_events and target metadata (`owner_team`, `kind`, `endpoint`)
+# in BigQuery views and esmeralda-ui.
+locals {
+  catalog_targets_columns = [
+    { name = "target", type = "STRING", mode = "REQUIRED", description = "Catalog target name (host label)" },
+    { name = "kind", type = "STRING", mode = "REQUIRED", description = "adk | a2a | mcp | http | model" },
+    { name = "owner_team", type = "STRING", mode = "NULLABLE", description = "Owning catalog team (teams.yaml key)" },
+    { name = "unit", type = "STRING", mode = "NULLABLE", description = "Layer-5 unit path for managed targets (services/<name> or agents/<name>)" },
+    { name = "endpoint", type = "STRING", mode = "NULLABLE", description = "Resolved https endpoint URL" },
+    { name = "token", type = "STRING", mode = "NULLABLE", description = "Token type expected on direct routes (id | access)" },
+    { name = "probe", type = "STRING", mode = "NULLABLE", description = "Verification probe kind (mcp | a2a | query | none)" },
+    { name = "callers_json", type = "STRING", mode = "NULLABLE", description = "JSON array of resolved callers with bound principals and cost centers" },
+    { name = "source", type = "STRING", mode = "REQUIRED", description = "Who wrote the row: catalog | <tool>" },
+  ]
+}
+
+resource "google_bigquery_table" "catalog_targets" {
+  dataset_id          = "esmeralda_telemetry_logs_${var.environment}"
+  table_id            = "catalog_targets"
+  project             = var.governance_project_id
+  deletion_protection = false
+  description         = "Catalog target metadata written by layer 5 iap-egress (runtime catalog store). Read through vw_catalog_targets."
+
+  schema = jsonencode(local.catalog_targets_columns)
+}
+
+# The effective catalog target metadata view.
+resource "google_bigquery_table" "vw_catalog_targets" {
+  dataset_id  = "esmeralda_telemetry_logs_${var.environment}"
+  table_id    = "vw_catalog_targets"
+  project     = var.governance_project_id
+  description = "Effective catalog target metadata: catalog_targets table (source = catalog)."
+
+  view {
+    query = templatefile("${path.module}/../../sql/vw_catalog_targets.sql.tpl", {
+      dataset_id = "esmeralda_telemetry_logs_${var.environment}"
+    })
+    use_legacy_sql = false
+  }
+
+  depends_on = [google_bigquery_table.catalog_targets]
+}
+
 # usage_events: every esmeralda.usage record, flattened to typed columns (one UNION ALL branch per
 # landing table). The view is the stable name consumers query; the landing tables are an export detail.
 resource "google_bigquery_table" "usage_events" {

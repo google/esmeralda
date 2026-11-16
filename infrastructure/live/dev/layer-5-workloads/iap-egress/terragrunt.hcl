@@ -175,4 +175,17 @@ inputs = {
   principal_teams_table = "${dependency.projects.outputs.governance_project_id}.${try(dependency.governance.outputs.governance_dataset_id, "")}.${try(dependency.governance.outputs.principal_teams_table_id, "")}"
   notification_channels = try(dependency.governance.outputs.alert_notification_channels, [])
   alert_on_unattributed = try(dependency.governance.outputs.alert_on_unattributed_usage, false)
+
+  # Runtime catalog store (runtime_catalog.tf): publishes the bound catalog payload (resolved
+  # endpoints, identity_refs, and active governance capabilities) to Secret Manager in the
+  # governance project (`esmeralda-runtime-catalog-<env>`) and loads the `source = 'catalog'` rows
+  # into `catalog_targets` when layer 4 publishes `catalog_targets_table_id`.
+  catalog_resolved = {
+    catalog          = local.env_vars.locals.catalog
+    external_targets = local.env_vars.locals.catalog_external_targets
+    iap_egress       = local.env_vars.locals.catalog_iap_egress
+    attribution      = local.env_vars.locals.catalog_attribution
+  }
+  governance_capabilities = try(dependency.governance.outputs.capabilities, {})
+  catalog_targets_table   = try(dependency.governance.outputs.catalog_targets_table_id, "") != "" ? "${dependency.projects.outputs.governance_project_id}.${try(dependency.governance.outputs.governance_dataset_id, "")}.${try(dependency.governance.outputs.catalog_targets_table_id, "")}" : ""
 }

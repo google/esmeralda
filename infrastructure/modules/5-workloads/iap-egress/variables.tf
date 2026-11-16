@@ -115,3 +115,29 @@ variable "alert_on_unattributed" {
   type        = bool
   default     = false
 }
+
+# Runtime catalog store (runtime_catalog.tf)
+
+variable "runtime_catalog_enabled" {
+  description = "Publish the bound runtime catalog payload to Secret Manager in the governance project and optionally load catalog_targets_table"
+  type        = bool
+  default     = true
+}
+
+variable "catalog_resolved" {
+  description = "Decoded catalog/.resolved/<env>.json map (or object with catalog, attribution, iap_egress, external_targets)"
+  type        = any
+  default     = {}
+}
+
+variable "governance_capabilities" {
+  description = "Active provider map for each governance capability from layer 4 (egress_allowlist, content_safety, partner_access, token_quota, usage_metering, cross_cloud)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "catalog_targets_table" {
+  description = "Fully qualified layer-4 catalog_targets table (<project>.<dataset>.catalog_targets); when non-empty, loads the source = 'catalog' target rows"
+  type        = string
+  default     = ""
+}

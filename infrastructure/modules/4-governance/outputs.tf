@@ -49,6 +49,16 @@ output "principal_teams_view_id" {
   description = "BigQuery view (in governance_dataset_id) of the effective principal -> team mapping (table + Terraform-declared rows)"
 }
 
+output "catalog_targets_table_id" {
+  value       = module.finops_analytics.catalog_targets_table_id
+  description = "BigQuery catalog target metadata table (in governance_dataset_id), filled by the runtime catalog store"
+}
+
+output "catalog_targets_view_id" {
+  value       = module.finops_analytics.catalog_targets_view_id
+  description = "BigQuery view (in governance_dataset_id) of the effective catalog target metadata"
+}
+
 output "partner_apigee_chargeback_view_id" {
   value       = module.finops_analytics.partner_apigee_chargeback_view_id
   description = "BigQuery FinOps partner Apigee gateway chargeback and latency decomposition view ID"

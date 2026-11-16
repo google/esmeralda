@@ -32,3 +32,13 @@ output "principal_teams_view_id" {
   value       = google_bigquery_table.vw_principal_teams.table_id
   description = "BigQuery view of the effective principal -> team mapping (table + Terraform-declared rows)"
 }
+
+output "catalog_targets_table_id" {
+  value       = google_bigquery_table.catalog_targets.table_id
+  description = "BigQuery catalog target metadata table, written by the runtime catalog store"
+}
+
+output "catalog_targets_view_id" {
+  value       = google_bigquery_table.vw_catalog_targets.table_id
+  description = "BigQuery view of the effective catalog target metadata"
+}

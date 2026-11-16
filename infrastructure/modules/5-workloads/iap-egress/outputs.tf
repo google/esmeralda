@@ -14,3 +14,18 @@ output "external_registry_entries" {
     }
   }
 }
+
+output "runtime_catalog_secret_id" {
+  description = "Secret Manager secret ID storing the bound runtime catalog payload (esmeralda-runtime-catalog-<env>)"
+  value       = try(google_secret_manager_secret.runtime_catalog[0].secret_id, "")
+}
+
+output "runtime_catalog_secret_name" {
+  description = "Full Secret Manager resource name storing the bound runtime catalog payload"
+  value       = try(google_secret_manager_secret.runtime_catalog[0].name, "")
+}
+
+output "runtime_catalog_payload" {
+  description = "Bound runtime catalog document (esmeralda.runtime_catalog v1) with resolved endpoints, caller principals, and active governance capabilities"
+  value       = local.runtime_catalog_payload
+}

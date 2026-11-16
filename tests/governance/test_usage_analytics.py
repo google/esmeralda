@@ -174,6 +174,20 @@ def test_principal_teams_view_unions_table_and_terraform_rows():
     assert "%{ for r in rows ~}" in sql and "jsonencode(r.principal)" in sql
 
 
+def test_catalog_targets_table_and_view_schema():
+    finops = _read(FINOPS_TF)
+    table = _blocks(finops, "resource", "google_bigquery_table")["catalog_targets"]
+    assert 'table_id            = "catalog_targets"' in table
+    assert "schema = jsonencode(local.catalog_targets_columns)" in table
+    view = _blocks(finops, "resource", "google_bigquery_table")["vw_catalog_targets"]
+    assert "sql/vw_catalog_targets.sql.tpl" in view
+    assert "depends_on = [google_bigquery_table.catalog_targets]" in view
+    sql = _read(SQL_DIR / "vw_catalog_targets.sql.tpl")
+    assert "FROM `${dataset_id}.catalog_targets`" in sql
+    for col in ("target", "kind", "owner_team", "unit", "endpoint", "token", "probe", "callers_json", "source"):
+        assert col in sql, col
+
+
 def test_legacy_tables_are_kept_for_historical_data():
     tables = _blocks(_read(FINOPS_TF), "resource", "google_bigquery_table")
     for name in (

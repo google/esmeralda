@@ -17,8 +17,13 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import re
+import shutil
+import subprocess
+
+import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 GOVERNANCE = REPO_ROOT / "infrastructure/modules/4-governance"
@@ -26,6 +31,17 @@ ALERTS_TF = GOVERNANCE / "modules/3_alert_policies/main.tf"
 IAP_EGRESS = REPO_ROOT / "infrastructure/modules/5-workloads/iap-egress"
 PRINCIPAL_TYPES = {"gcp_project", "agent_runtime", "spiffe", "service_account", "group", "apigee_app",
                    "workload_identity_federation", "oidc"}
+
+
+def _tf_binary() -> str:
+    if os.environ.get("TF_BIN") and shutil.which(os.environ["TF_BIN"]):
+        return shutil.which(os.environ["TF_BIN"])  # type: ignore[return-value]
+    user_tf = pathlib.Path.home() / ".terraform/bin/terraform"
+    for candidate in (os.fspath(user_tf), "terraform", "tofu"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    pytest.skip("Neither terraform nor tofu binary is available on this machine.")
 
 
 def _read(path: pathlib.Path) -> str:
@@ -123,3 +139,85 @@ def test_catalog_rows_use_the_table_principal_types():
         assert rows, env
         assert {r["principal_type"] for r in rows} <= PRINCIPAL_TYPES, env
         assert all(r["team"] for r in rows), env
+
+
+def test_layer4_defines_catalog_targets_table_and_view():
+    finops_tf = _read(GOVERNANCE / "modules/4_finops_analytics/main.tf")
+    table = _block(finops_tf, "resource", "google_bigquery_table", "catalog_targets")
+    assert 'table_id            = "catalog_targets"' in table
+    assert "schema = jsonencode(local.catalog_targets_columns)" in table
+    for col in ("target", "kind", "owner_team", "unit", "endpoint", "token", "probe", "callers_json", "source"):
+        assert f'name = "{col}"' in finops_tf, col
+    view = _block(finops_tf, "resource", "google_bigquery_table", "vw_catalog_targets")
+    assert "sql/vw_catalog_targets.sql.tpl" in view
+    sql = _read(GOVERNANCE / "sql/vw_catalog_targets.sql.tpl")
+    assert "FROM `${dataset_id}.catalog_targets`" in sql
+    for out_path in (GOVERNANCE / "modules/4_finops_analytics/outputs.tf", GOVERNANCE / "outputs.tf"):
+        outputs = _read(out_path)
+        assert 'output "catalog_targets_table_id"' in outputs
+        assert 'output "catalog_targets_view_id"' in outputs
+
+
+def test_runtime_catalog_store_secret_and_bigquery_load():
+    tf = _read(IAP_EGRESS / "runtime_catalog.tf")
+    secret = _block(tf, "resource", "google_secret_manager_secret", "runtime_catalog")
+    assert 'secret_id = "esmeralda-runtime-catalog-${var.environment}"' in secret
+    assert "auto {}" in secret
+    version = _block(tf, "resource", "google_secret_manager_secret_version", "runtime_catalog")
+    assert "secret_data = jsonencode(local.runtime_catalog_payload)" in version
+
+    assert 'schema         = "esmeralda.runtime_catalog"' in tf
+    assert "DELETE FROM `${var.catalog_targets_table}` WHERE source = 'catalog';" in tf
+    assert "INSERT INTO `${var.catalog_targets_table}` (target, kind, owner_team, unit, endpoint, token, probe, callers_json, source)" in tf
+    job = _block(tf, "resource", "google_bigquery_job", "catalog_targets_catalog")
+    assert 'create_disposition = ""' in job and 'write_disposition  = ""' in job
+    assert "sha256(local.catalog_targets_sql)" in job and "random_id.catalog_targets_load[0].hex" in job
+    keepers = _block(tf, "resource", "random_id", "catalog_targets_load")
+    assert "sql = sha256(local.catalog_targets_sql)" in keepers
+
+    variables = _read(IAP_EGRESS / "variables.tf")
+    for var in ("runtime_catalog_enabled", "catalog_resolved", "governance_capabilities", "catalog_targets_table"):
+        assert f'variable "{var}"' in variables, var
+    outputs = _read(IAP_EGRESS / "outputs.tf")
+    for out in ("runtime_catalog_secret_id", "runtime_catalog_secret_name", "runtime_catalog_payload"):
+        assert f'output "{out}"' in outputs, out
+
+    for env in ("dev", "prd"):
+        unit = _read(REPO_ROOT / f"infrastructure/live/{env}/layer-5-workloads/iap-egress/terragrunt.hcl")
+        for fragment in ("catalog_resolved", "governance_capabilities", "catalog_targets_table", "catalog_targets_table_id"):
+            assert fragment in unit, (env, fragment)
+
+
+def _init_and_validate(module_dir: pathlib.Path) -> None:
+    tf = _tf_binary()
+    env = {**os.environ, "TF_IN_AUTOMATION": "1"}
+    init_args = [tf, f"-chdir={module_dir}", "init", "-backend=false", "-input=false", "-no-color"]
+    providers_dir = module_dir / ".terraform/providers"
+    plugin_cache = pathlib.Path.home() / ".terraform.d/plugin-cache"
+    if providers_dir.is_dir():
+        init_args.append(f"-plugin-dir={providers_dir}")
+    elif plugin_cache.is_dir():
+        init_args.append(f"-plugin-dir={plugin_cache}")
+    init_res = subprocess.run(init_args, capture_output=True, text=True, env=env)
+    assert init_res.returncode == 0, init_res.stdout + init_res.stderr
+
+    val_res = subprocess.run(
+        [tf, f"-chdir={module_dir}", "validate", "-no-color"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert val_res.returncode == 0, val_res.stdout + val_res.stderr
+
+
+@pytest.mark.parametrize(
+    "module_dir",
+    [GOVERNANCE, IAP_EGRESS],
+    ids=["4-governance", "5-workloads/iap-egress"],
+)
+def test_terraform_validate_runtime_catalog_modules(module_dir: pathlib.Path) -> None:
+    """Both Layer 4 governance and Layer 5 iap-egress pass offline `terraform init -backend=false` + `terraform validate`."""
+    _init_and_validate(module_dir)
+
+
+

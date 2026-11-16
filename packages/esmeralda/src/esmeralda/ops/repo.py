@@ -290,6 +290,8 @@ def run(cmd: list[str], *, cwd: Path, timeout: float, what: str) -> subprocess.C
             env=tool_env(),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             stdin=subprocess.DEVNULL,
         )
