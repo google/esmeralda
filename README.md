@@ -156,11 +156,9 @@ uv run esmeralda status --env dev          # live status of layers, catalog host
 uv run esmeralda contracts                 # inspect gateway & catalog architectural contracts
 uv run esmeralda guard --all               # run security & hygiene guards across the repo
 
-# Local development: query an agent in-process (its MCP servers must be reachable)
-uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator \
+# Local development: start the agent's local MCP servers, query it in-process, stop them
+uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator --local-mcp \
   "Can you verify Julian Sterling's income?"
-# ...or start the local MCP servers and query the agent in one command
-make query AGENT=cx-mortgage-orchestrator QUERY="Can you verify Julian Sterling's income?"
 
 # Infrastructure lifecycle & end-to-end verification
 uv run esmeralda units --env dev           # list all deployable Terragrunt units

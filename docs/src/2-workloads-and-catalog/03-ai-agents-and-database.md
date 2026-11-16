@@ -120,14 +120,16 @@ In many organizations, deploying a multi-agent workflow requires coordinating ac
 
 #### 1. Local Iteration & Live Queries (`uv run esmeralda`)
 
-Use `make query` to test either agent locally (it launches the local FastMCP servers, then runs `esmeralda query`) and the `esmeralda` CLI to inspect logs and verify deployed engines:
+Use the `esmeralda` CLI to test either agent locally (`--local-mcp` starts the local FastMCP servers for the run and stops them afterwards) or to inspect logs and verify deployed engines:
 
 ```bash
 # Query the CX orchestrator locally (delegates to the specialist & local MCP tools)
-make query AGENT=cx-mortgage-orchestrator QUERY="Can you verify Julian Sterling's income?"
+uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator --local-mcp \
+  "Can you verify Julian Sterling's income?"
 
 # Query the AI CoE specialist directly during prompt development
-make query AGENT=ai-coe-mortgage-specialist QUERY="Check Julian Sterling's income and tax documents."
+uv run esmeralda query --agent-dir apps/agents/ai-coe-mortgage-specialist --local-mcp \
+  "Check Julian Sterling's income and tax documents."
 
 # Plan or apply an agent unit in dev
 uv run esmeralda plan layer-5-workloads/agents/cx-mortgage-orchestrator --env dev

@@ -66,12 +66,14 @@ workflow runs it, and validates the sandbox Terraform, on every PR and push to
 `pyproject.toml` or `uv.lock`. (`make test-gateway` is a different target: it
 probes a deployed environment's routes from the test VM.)
 
-If you changed agent or MCP code, also exercise it locally (the targets start
-and stop the three MCP servers on ports 8001-8003 for you):
+If you changed agent or MCP code, also exercise it locally (`--local-mcp` starts
+and stops the three MCP servers on ports 8001-8003 for you):
 
 ```bash
-make query AGENT=ai-coe-mortgage-specialist   # AI CoE specialist (A2A) -> local MCP servers
-make query AGENT=cx-mortgage-orchestrator     # CX orchestrator -> specialist -> local MCP servers
+# AI CoE specialist (A2A) -> local MCP servers
+uv run esmeralda query --agent-dir apps/agents/ai-coe-mortgage-specialist --local-mcp "Verify Julian Sterling's income"
+# CX orchestrator -> specialist -> local MCP servers
+uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator --local-mcp "Verify Julian Sterling's income"
 ```
 
 If you have a deployed `dev` environment, `make test-e2e ENV=dev` checks the
