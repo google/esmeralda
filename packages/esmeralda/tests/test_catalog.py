@@ -140,7 +140,9 @@ def _problems(root: Path, env: str = "dev") -> str:
 def test_repo_catalog_compiles_to_the_legacy_env_yaml_map(env):
     resolved = catalog.resolve(REPO, env)
     compiled = catalog.compile_terraform(resolved)
-    assert compiled == ENV_MAPS[env]
+    # The legacy map, plus each entry's Agent Registry description (#220).
+    assert all(entry["description"] for entry in compiled.values())
+    assert {n: {k: v for k, v in e.items() if k != "description"} for n, e in compiled.items()} == ENV_MAPS[env]
     # Caller order is preserved (list attributes in the units).
     assert compiled["legacy-dms"]["callers"] == LEGACY_MAP["legacy-dms"]["callers"]
 
@@ -175,8 +177,9 @@ def test_render_hcl_matches_the_former_inline_form():
     assert hcl.startswith("catalog = {\n")
     assert (
         '  cx-mortgage-orchestrator   = { kind = "adk", unit = "agents/cx-mortgage-orchestrator", token = "access", '
-        'probe = "query", timeout = 600 }' in hcl
+        'probe = "query", description = "' in hcl
     )
+    assert 'timeout = 600 }' in hcl
     assert 'callers = ["cx-mortgage-orchestrator", "test-vm"]' in hcl
 
 
@@ -420,6 +423,42 @@ def test_every_known_google_api_is_a_plain_googleapis_host():
     assert catalog.GOOGLE_APIS["bigquerystorage"].protocol_binding == "GRPC"
 
 
+def test_registry_descriptions_say_why_and_who():
+    """Every compiled Agent Registry entry: its catalog text, then the callers (#220)."""
+    resolved = catalog.resolve(REPO, "dev")
+    google = catalog.compile_google_apis(resolved)
+    assert google["bigquery"]["description"] == (
+        catalog.GOOGLE_APIS["bigquery"].description + " Used by: ai-coe-mortgage-specialist."
+    )
+    assert google["telemetry"]["description"].endswith(
+        " Used by every agent (baseline): ai-coe-mortgage-specialist, cx-mortgage-orchestrator."
+    )
+    external = catalog.compile_external_targets(resolved)["external-probe"]
+    assert external["description"].startswith("Synthetic test target with no backend.")
+    assert external["description"].endswith(" Used by: ai-coe-mortgage-specialist.")
+    compiled = catalog.compile_terraform(resolved)
+    assert compiled["legacy-dms"]["description"].endswith(" Used by: ai-coe-mortgage-specialist, test-vm.")
+    assert compiled["ai-coe-mortgage-specialist"]["description"].endswith(
+        " Used by: cx-mortgage-orchestrator, test-vm."
+    )
+
+
+def test_registry_description_format_and_limit():
+    describe = catalog.resolver.registry_description
+    assert describe("Why  it\n exists", ["a", "b"]) == "Why it exists. Used by: a, b."
+    assert describe("Why.", []) == "Why. Used by: no caller declared."
+    assert describe("Why.", ["a"], baseline=True) == "Why. Used by every agent (baseline): a."
+    with pytest.raises(catalog.CatalogError, match="over the 2048 limit"):
+        describe("x" * 2048, ["a"])
+
+
+def test_a_target_with_a_registry_entry_needs_a_description(repo):
+    _edit(repo, "catalog/teams/ai-coe/mcp/legacy-dms.yaml",
+          "description: MCP server on Cloud Run over the legacy document management system (synthetic data).\n", "")
+    assert "target 'legacy-dms'" in _problems(repo)
+    assert "description is required" in _problems(repo)
+
+
 def test_show_lists_the_google_apis_of_each_agent():
     resolved = catalog.resolve(REPO, "dev")
     (row,) = catalog.show(resolved, target="cx-mortgage-orchestrator")["targets"]
@@ -540,7 +579,8 @@ def test_environment_overrides_merge_maps_and_null_deletes(repo):
     assert compiled["legacy-dms"]["callers"] == ["ai-coe-mortgage-specialist"]
     assert compiled["cx-mortgage-orchestrator"]["timeout"] == 900
     assert compiled["cx-mortgage-orchestrator"]["token"] == "access"  # merged, not replaced
-    assert catalog.compile_terraform(catalog.resolve(repo, "dev")) == DEV_MAP
+    dev = catalog.compile_terraform(catalog.resolve(repo, "dev"))
+    assert {n: {k: v for k, v in e.items() if k != "description"} for n, e in dev.items()} == DEV_MAP
 
 
 def test_override_is_validated(repo):
@@ -743,7 +783,7 @@ def _external(root: Path, name: str, body: str) -> None:
     _write(root, f"external/legacy/{name}.yaml", f"name: {name}\n" + body)
 
 
-_HTTP = ("kind: http\nowner_team: platform\n"
+_HTTP = ("kind: http\nowner_team: platform\ndescription: Synthetic legacy API.\n"
          "deploy: {{ managed: false, endpoint: \"{endpoint}\" }}\n")
 
 
@@ -755,7 +795,8 @@ def test_dev_external_targets_are_registered_with_their_callers_only():
             "registry": "endpoint",
             "url": "https://external-probe.{domain}",
             "protocol_binding": "HTTP_JSON",
-            "description": resolved.targets["external-probe"]["description"],
+            "description": " ".join(resolved.targets["external-probe"]["description"].split())
+            + " Used by: ai-coe-mortgage-specialist.",
             "owner_team": "platform",
         },
         "llm-gateway": {
@@ -763,7 +804,8 @@ def test_dev_external_targets_are_registered_with_their_callers_only():
             "registry": "endpoint",
             "url": "https://apigee.{domain}/llm",
             "protocol_binding": "HTTP_JSON",
-            "description": resolved.targets["llm-gateway"]["description"],
+            "description": " ".join(resolved.targets["llm-gateway"]["description"].split())
+            + " Used by: cx-mortgage-orchestrator, ai-coe-mortgage-specialist.",
             "owner_team": "platform",
         },
     }
@@ -810,7 +852,7 @@ def test_examples_and_google_api_hosts_are_never_registered():
     ],
 )
 def test_each_kind_maps_to_its_registry_entry(repo, kind, registry, group, binding):
-    _external(repo, "brownfield", f"kind: {kind}\nowner_team: platform\n"
+    _external(repo, "brownfield", f"kind: {kind}\nowner_team: platform\ndescription: Brownfield {kind} target.\n"
               "deploy: { managed: false, endpoint: \"https://brownfield.example.com/api\" }\n"
               "callers:\n  ai-coe-mortgage-specialist: {}\n  test-vm: {}\n")
     resolved = catalog.resolve(repo, "prd")

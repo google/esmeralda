@@ -88,6 +88,7 @@ class GoogleApi:
     service_id: str  # Agent Registry service id; {region} is the environment's region
     host: str  # exact hostname the clients call; {region} as above
     display_name: str
+    description: str  # why agents call it; the registry entry adds "Used by: <agents>."
     protocol_binding: str = "HTTP_JSON"
 
 
@@ -96,25 +97,74 @@ class GoogleApi:
 # or REP variants (agents pin GOOGLE_API_USE_MTLS_ENDPOINT=never, so they never call *.mtls hosts).
 # Layer 4 registers each declared API with both https://<host> and https://<host>:443 interfaces
 # (gRPC clients send host:443 as the authority). Keep the service ids stable: renaming one
-# replaces a live registry entry and its policy.
+# replaces a live registry entry and its policy. The description says which client calls the API
+# and why; it becomes the registry entry's description, followed by the agents that declare it.
 GOOGLE_APIS: dict[str, GoogleApi] = {
-    "aiplatform": GoogleApi("aiplatform", "aiplatform.googleapis.com", "Vertex AI Platform"),
+    "aiplatform": GoogleApi(
+        "aiplatform", "aiplatform.googleapis.com", "Vertex AI Platform",
+        "Gemini model calls (generateContent) from agents through the Vertex AI global endpoint.",
+    ),
     "aiplatform_runtime_region": GoogleApi(
-        "{region}-aiplatform", "{region}-aiplatform.googleapis.com", "Vertex AI Platform Regional"
+        "{region}-aiplatform", "{region}-aiplatform.googleapis.com", "Vertex AI Platform Regional",
+        "Regional Vertex AI / Agent Runtime APIs: the agent's managed sessions (VertexAiSessionService) on "
+        "every request, and regional Vertex AI calls such as models in the runtime region.",
     ),
-    "bigquery": GoogleApi("bigquery", "bigquery.googleapis.com", "BigQuery"),
-    "bigquerystorage": GoogleApi("bigquerystorage", "bigquerystorage.googleapis.com", "BigQuery Storage", "GRPC"),
+    "bigquery": GoogleApi(
+        "bigquery", "bigquery.googleapis.com", "BigQuery",
+        "BigQuery Agent Analytics plugin setup: checks or creates the events table and its analytics "
+        "views (table reads and query jobs), at agent startup.",
+    ),
+    "bigquerystorage": GoogleApi(
+        "bigquerystorage", "bigquerystorage.googleapis.com", "BigQuery Storage",
+        "Streams agent analytics events from the BigQuery Agent Analytics plugin to BigQuery through the "
+        "Storage Write API (gRPC AppendRows).",
+        protocol_binding="GRPC",
+    ),
     "cloudresourcemanager": GoogleApi(
-        "cloudresourcemanager", "cloudresourcemanager.googleapis.com", "Cloud Resource Manager"
+        "cloudresourcemanager", "cloudresourcemanager.googleapis.com", "Cloud Resource Manager",
+        "Project lookup (GetProject) at agent startup by the agent framework's Google Cloud telemetry "
+        "exporters, to detect the Google Cloud resource they report.",
     ),
-    "cloudtrace": GoogleApi("cloudtrace", "cloudtrace.googleapis.com", "Cloud Trace"),
-    "iamcredentials": GoogleApi("iamcredentials", "iamcredentials.googleapis.com", "IAM Credentials"),
-    "logging": GoogleApi("logging", "logging.googleapis.com", "Logging"),
-    "monitoring": GoogleApi("monitoring", "monitoring.googleapis.com", "Monitoring"),
-    "secretmanager": GoogleApi("secretmanager", "secretmanager.googleapis.com", "Secret Manager"),
-    "storage": GoogleApi("storage", "storage.googleapis.com", "Cloud Storage"),
-    "telemetry": GoogleApi("telemetry", "telemetry.googleapis.com", "Telemetry"),
+    "cloudtrace": GoogleApi(
+        "cloudtrace", "cloudtrace.googleapis.com", "Cloud Trace",
+        "Cloud Trace API, for agents that export traces with a Cloud Trace exporter instead of OpenTelemetry "
+        "(OTLP) to the telemetry API.",
+    ),
+    "iamcredentials": GoogleApi(
+        "iamcredentials", "iamcredentials.googleapis.com", "IAM Credentials",
+        "Credential calls of the Google auth libraries for the agent's runtime identity (regional access "
+        "boundary lookups), and service account impersonation (generateIdToken, generateAccessToken) when "
+        "an agent sets the deprecated SERVICE_ACCOUNT_EMAIL opt-in.",
+    ),
+    "logging": GoogleApi(
+        "logging", "logging.googleapis.com", "Logging",
+        "Cloud Logging API, for agents that write logs with a Cloud Logging client instead of OpenTelemetry "
+        "(OTLP) to the telemetry API.",
+    ),
+    "monitoring": GoogleApi(
+        "monitoring", "monitoring.googleapis.com", "Monitoring",
+        "Cloud Monitoring API, for agents that write metrics with a Cloud Monitoring client instead of "
+        "OpenTelemetry (OTLP) to the telemetry API.",
+    ),
+    "secretmanager": GoogleApi(
+        "secretmanager", "secretmanager.googleapis.com", "Secret Manager",
+        "Secret Manager API, for agents that read secrets at runtime.",
+    ),
+    "storage": GoogleApi(
+        "storage", "storage.googleapis.com", "Cloud Storage",
+        "Offloads large or multimodal analytics payloads from the BigQuery Agent Analytics plugin to Cloud "
+        "Storage.",
+    ),
+    "telemetry": GoogleApi(
+        "telemetry", "telemetry.googleapis.com", "Telemetry",
+        "Exports agent traces, logs and metrics (OpenTelemetry, OTLP) to Google Cloud Observability.",
+    ),
 }
+# Agent Registry `Service.description` limit (characters). Every entry Esmeralda registers carries a
+# description generated from the catalog (the entry's own text plus "Used by: <callers>.").
+REGISTRY_DESCRIPTION_MAX = 2048
+# Catalog description limit of a target with a registry entry: leaves room for the "Used by" suffix.
+TARGET_DESCRIPTION_MAX = 1024
 # Who holds roles/iap.egressor on a compiled Google API entry: `baseline` (every agent runtime: layer
 # 4 grants the agent projects, so a replaced engine can start before its new identity is granted) or
 # `callers` (only the agents that declare it: the iap-egress unit grants their Agent Identity).
@@ -310,6 +360,50 @@ def _registry_group(target: dict[str, Any]) -> str | None:
     return None
 
 
+def registry_description(text: str, callers: list[str], *, baseline: bool = False) -> str:
+    """Description of an Agent Registry entry: why it exists (``text``), then who uses it.
+
+    ``callers`` are the catalog callers of a target, or the agents that declare a Google API;
+    ``baseline`` marks a Google API every agent runtime may reach (``policy.agent_gateway.google_apis
+    .baseline``). Raises :class:`CatalogError` when the result exceeds the registry limit.
+    """
+    text = " ".join(text.split())
+    if text and text[-1] not in ".!?":
+        text += "."
+    label = "Used by every agent (baseline)" if baseline else "Used by"
+    if callers:
+        used_by = f"{label}: {', '.join(callers)}."
+    else:
+        used_by = f"{label}." if baseline else f"{label}: no caller declared."
+    out = f"{text} {used_by}".strip()
+    if len(out) > REGISTRY_DESCRIPTION_MAX:
+        raise CatalogError(f"Agent Registry description is {len(out)} characters, over the {REGISTRY_DESCRIPTION_MAX} "
+                           f"limit: {out[:80]}...")
+    return out
+
+
+def _has_registry_entry(target: dict[str, Any]) -> bool:
+    """A target Esmeralda registers or routes as an Agent Registry entry (deployed or external)."""
+    return _is_compiled(target) or _is_external(target)
+
+
+def _check_descriptions(doc: dict[str, Any], where: Any) -> list[str]:
+    """Targets with an Agent Registry entry say why they exist (the entry's description)."""
+    problems: list[str] = []
+    for name in sorted(doc["targets"]):
+        target = doc["targets"][name]
+        if not _has_registry_entry(target):
+            continue
+        text = " ".join(str(target.get("description") or "").split())
+        if not text:
+            problems.append(f"{where('targets', name)}: description is required: it becomes the description of the "
+                            "target's Agent Registry entry (why it exists; the callers are added)")
+        elif len(text) > TARGET_DESCRIPTION_MAX:
+            problems.append(f"{where('targets', name)}: description is {len(text)} characters (max "
+                            f"{TARGET_DESCRIPTION_MAX}, so the Agent Registry entry stays within its limit)")
+    return problems
+
+
 def _external_problems(label: str, name: str, target: dict[str, Any]) -> list[str]:
     """Endpoint shape of a non-example ``managed: false`` target (placeholders, ``{domain}`` hosts)."""
     endpoint = target["deploy"]["endpoint"]
@@ -439,7 +533,8 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
     for dim in ((policy.get("defaults") or {}).get("observability") or {}).get("dimensions") or []:
         if dim not in dimensions:
             problems.append(f"policy.defaults.observability: unknown dimension '{dim}'")
-    return problems + _check_external_hosts(doc, where) + _check_google_apis(doc, where)
+    return (problems + _check_external_hosts(doc, where) + _check_google_apis(doc, where)
+            + _check_descriptions(doc, where))
 
 
 def _check_external_hosts(doc: dict[str, Any], where: Any) -> list[str]:
@@ -611,8 +706,9 @@ def compile_terraform(resolved: Resolved) -> dict[str, dict[str, Any]]:
 
     Entry shape (unchanged from the former inline env.yaml map): ``kind``, ``unit``, ``token``,
     ``probe``, optional ``timeout`` and optional ``callers`` (names whose service accounts the
-    units grant ``run.invoker`` / ``aiplatform.user``). Example entries, ``managed: false`` targets and
-    models are not part of it.
+    units grant ``run.invoker`` / ``aiplatform.user``), plus ``description``: the description of the
+    target's Agent Registry entry (its catalog description, then "Used by: <every catalog caller>").
+    Example entries, ``managed: false`` targets and models are not part of it.
     """
     out: dict[str, dict[str, Any]] = {}
     for name in sorted(resolved.targets):
@@ -625,6 +721,7 @@ def compile_terraform(resolved: Resolved) -> dict[str, dict[str, Any]]:
             "unit": target["deploy"]["unit"],
             "token": serving["token"],
             "probe": serving["probe"],
+            "description": registry_description(target.get("description") or "", list(target.get("callers") or {})),
         }
         if "timeout" in serving:
             entry["timeout"] = serving["timeout"]
@@ -663,7 +760,8 @@ def compile_google_apis(resolved: Resolved) -> dict[str, dict[str, Any]]:
     One entry per Google API that at least one deployed agent may reach, keyed by its registry
     ``service_id`` (``{region}`` kept for layer 4 to substitute): ``api`` (catalog name), ``url``
     (``https://<host>``; layer 4 also registers ``<url>:443``), ``protocol_binding``,
-    ``display_name``, ``grant`` and ``callers`` (the agents that may reach it). ``grant`` says who
+    ``display_name``, ``description`` (the API's known-hosts description, then the agents that may
+    reach it), ``grant`` and ``callers`` (the agents that may reach it). ``grant`` says who
     writes the entry's ``roles/iap.egressor`` policy:
 
     * ``baseline`` (``policy.agent_gateway.google_apis.baseline``): layer 4, for the agent projects,
@@ -690,6 +788,7 @@ def compile_google_apis(resolved: Resolved) -> dict[str, dict[str, Any]]:
             "url": f"https://{api.host}",
             "protocol_binding": api.protocol_binding,
             "display_name": api.display_name,
+            "description": registry_description(api.description, callers[api_name], baseline=api_name in baseline),
             "grant": "baseline" if api_name in baseline else "callers",
             "callers": callers[api_name],
         }
@@ -757,7 +856,8 @@ def compile_external_targets(resolved: Resolved) -> dict[str, dict[str, Any]]:
     One entry per target, keyed by target name (the entry's ``service_id``): ``kind``, ``registry``
     (``endpoint`` | ``mcp_server`` | ``agent``), ``url`` (the catalog endpoint, placeholders such as
     ``{domain}`` kept for the ``iap-egress`` unit to substitute from layer outputs),
-    ``protocol_binding``, ``description`` and ``owner_team``. Targets on Google API hosts are left
+    ``protocol_binding``, ``description`` (the catalog description, then "Used by: <callers>") and
+    ``owner_team``. Targets on Google API hosts are left
     out: they are Google API entries (:func:`compile_google_apis`), registered by layer 4. Their
     caller lists are in ``iap_egress`` under the matching group.
     """
@@ -772,7 +872,7 @@ def compile_external_targets(resolved: Resolved) -> dict[str, dict[str, Any]]:
             "registry": registry,
             "url": target["deploy"]["endpoint"],
             "protocol_binding": binding,
-            "description": target.get("description") or name,
+            "description": registry_description(target.get("description") or "", list(target.get("callers") or {})),
             "owner_team": target["owner_team"],
         }
     return out

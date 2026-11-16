@@ -98,4 +98,7 @@ inputs = {
 
   agent_config_path = "${get_repo_root()}/apps/agents/ai-coe-mortgage-specialist/agent.yaml"
   agent_card_json   = jsonencode(yamldecode(file("${get_repo_root()}/apps/agents/ai-coe-mortgage-specialist/agent.yaml")).agent_card)
+  # Description of the agent card entry in the governance Agent Registry, compiled from the catalog
+  # (why the agent exists, then its callers).
+  registry_description = try(local.catalog[local.name].description, "")
 }

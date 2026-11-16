@@ -89,6 +89,8 @@ inputs = {
   container_image       = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"
   tools_spec_path       = "${get_repo_root()}/apps/services/legacy-dms/tools.json"
   internal_hostname     = "${local.name}.${dependency.networking.outputs.entrypoint_domain}"
+  # Agent Registry entry description, compiled from the catalog (why it exists, then its callers).
+  registry_description  = try(local.env_vars.locals.catalog[local.name].description, "")
 
   # roles/run.invoker, from the catalog callers: each agent caller's Agent Identity principal (a
   # `<unit>:agent_identity_principal` reference, resolved through identity_refs below); the service

@@ -280,6 +280,7 @@ locals {
   google_api_endpoints = var.enable_agent_gateway ? {
     for sid, e in var.google_api_endpoints : replace(sid, "{region}", var.region) => {
       display_name     = e.display_name
+      description      = e.description
       url              = replace(e.url, "{region}", var.region)
       protocol_binding = e.protocol_binding
       grant            = e.grant
@@ -299,7 +300,8 @@ resource "google_agent_registry_service" "system_endpoints" {
   location     = var.region
   service_id   = each.key
   display_name = each.value.display_name
-
+  # Why the entry exists and which agents declare the API (catalog-compiled, see GOOGLE_APIS).
+  description = each.value.description
   interfaces {
     url              = each.value.url
     protocol_binding = each.value.protocol_binding

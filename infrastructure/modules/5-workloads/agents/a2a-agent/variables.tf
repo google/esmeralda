@@ -109,6 +109,17 @@ variable "agent_card_json" {
   default     = ""
 }
 
+variable "registry_description" {
+  description = "Description of the agent's entry in the governance Agent Registry, compiled from the catalog (catalog/.resolved/<env>.json catalog.<name>.description: why it exists, then its callers). Empty: the agent card's description"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = length(var.registry_description) <= 2048
+    error_message = "registry_description must be at most 2048 characters (the Agent Registry limit)."
+  }
+}
+
 variable "agent_gateway_id" {
   description = "The resource ID of the Central Agent Gateway in Governance project (AGENT_TO_ANYWHERE)"
   type        = string

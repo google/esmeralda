@@ -151,6 +151,7 @@
         "cx-mortgage-orchestrator",
         "test-vm"
       ],
+      "description": "A2A mortgage underwriting specialist on Agent Runtime; calls the three MCP servers. Used by: cx-mortgage-orchestrator, test-vm.",
       "kind": "a2a",
       "probe": "a2a",
       "token": "access",
@@ -162,12 +163,14 @@
         "test-vm",
         "apigee-partner-mcp"
       ],
+      "description": "MCP server on Cloud Run that drafts and sends applicant emails (synthetic data). Used by: ai-coe-mortgage-specialist, test-vm, apigee-partner-mcp.",
       "kind": "mcp",
       "probe": "mcp",
       "token": "id",
       "unit": "services/corporate-email"
     },
     "cx-mortgage-orchestrator": {
+      "description": "Customer-facing ADK mortgage orchestrator on Agent Runtime; delegates to the AI CoE specialist. Used by: no caller declared.",
       "kind": "adk",
       "probe": "query",
       "timeout": 600,
@@ -180,6 +183,7 @@
         "test-vm",
         "apigee-partner-mcp"
       ],
+      "description": "MCP server on Cloud Run that verifies applicant income (synthetic data). Used by: ai-coe-mortgage-specialist, test-vm, apigee-partner-mcp.",
       "kind": "mcp",
       "probe": "mcp",
       "token": "id",
@@ -190,6 +194,7 @@
         "ai-coe-mortgage-specialist",
         "test-vm"
       ],
+      "description": "MCP server on Cloud Run over the legacy document management system (synthetic data). Used by: ai-coe-mortgage-specialist, test-vm.",
       "kind": "mcp",
       "probe": "mcp",
       "token": "id",
@@ -200,7 +205,7 @@
   "environment": "dev",
   "external_targets": {
     "external-probe": {
-      "description": "Synthetic external HTTP target (no backend) proving per-target egress for managed false targets.",
+      "description": "Synthetic test target with no backend. esmeralda verify uses it to prove that egress to an external (managed: false) target is allowed only for the agents listed as its callers. Used by: ai-coe-mortgage-specialist.",
       "kind": "http",
       "owner_team": "platform",
       "protocol_binding": "HTTP_JSON",
@@ -208,7 +213,7 @@
       "url": "https://external-probe.{domain}"
     },
     "llm-gateway": {
-      "description": "Apigee model gateway (llm-gateway proxy) the agents send their Gemini calls through.",
+      "description": "Apigee LLM gateway: agents' Gemini calls, with Agent Identity verification, per-agent token quotas and usage records for chargeback. Used by: cx-mortgage-orchestrator, ai-coe-mortgage-specialist.",
       "kind": "http",
       "owner_team": "platform",
       "protocol_binding": "HTTP_JSON",
@@ -224,6 +229,7 @@
         "ai-coe-mortgage-specialist",
         "cx-mortgage-orchestrator"
       ],
+      "description": "Gemini model calls (generateContent) from agents through the Vertex AI global endpoint. Used by: ai-coe-mortgage-specialist, cx-mortgage-orchestrator.",
       "display_name": "Vertex AI Platform",
       "grant": "callers",
       "protocol_binding": "HTTP_JSON",
@@ -234,6 +240,7 @@
       "callers": [
         "ai-coe-mortgage-specialist"
       ],
+      "description": "BigQuery Agent Analytics plugin setup: checks or creates the events table and its analytics views (table reads and query jobs), at agent startup. Used by: ai-coe-mortgage-specialist.",
       "display_name": "BigQuery",
       "grant": "callers",
       "protocol_binding": "HTTP_JSON",
@@ -244,6 +251,7 @@
       "callers": [
         "ai-coe-mortgage-specialist"
       ],
+      "description": "Streams agent analytics events from the BigQuery Agent Analytics plugin to BigQuery through the Storage Write API (gRPC AppendRows). Used by: ai-coe-mortgage-specialist.",
       "display_name": "BigQuery Storage",
       "grant": "callers",
       "protocol_binding": "GRPC",
@@ -255,6 +263,7 @@
         "ai-coe-mortgage-specialist",
         "cx-mortgage-orchestrator"
       ],
+      "description": "Project lookup (GetProject) at agent startup by the agent framework's Google Cloud telemetry exporters, to detect the Google Cloud resource they report. Used by every agent (baseline): ai-coe-mortgage-specialist, cx-mortgage-orchestrator.",
       "display_name": "Cloud Resource Manager",
       "grant": "baseline",
       "protocol_binding": "HTTP_JSON",
@@ -266,6 +275,7 @@
         "ai-coe-mortgage-specialist",
         "cx-mortgage-orchestrator"
       ],
+      "description": "Credential calls of the Google auth libraries for the agent's runtime identity (regional access boundary lookups), and service account impersonation (generateIdToken, generateAccessToken) when an agent sets the deprecated SERVICE_ACCOUNT_EMAIL opt-in. Used by every agent (baseline): ai-coe-mortgage-specialist, cx-mortgage-orchestrator.",
       "display_name": "IAM Credentials",
       "grant": "baseline",
       "protocol_binding": "HTTP_JSON",
@@ -276,6 +286,7 @@
       "callers": [
         "ai-coe-mortgage-specialist"
       ],
+      "description": "Offloads large or multimodal analytics payloads from the BigQuery Agent Analytics plugin to Cloud Storage. Used by: ai-coe-mortgage-specialist.",
       "display_name": "Cloud Storage",
       "grant": "callers",
       "protocol_binding": "HTTP_JSON",
@@ -287,6 +298,7 @@
         "ai-coe-mortgage-specialist",
         "cx-mortgage-orchestrator"
       ],
+      "description": "Exports agent traces, logs and metrics (OpenTelemetry, OTLP) to Google Cloud Observability. Used by every agent (baseline): ai-coe-mortgage-specialist, cx-mortgage-orchestrator.",
       "display_name": "Telemetry",
       "grant": "baseline",
       "protocol_binding": "HTTP_JSON",
@@ -298,6 +310,7 @@
         "ai-coe-mortgage-specialist",
         "cx-mortgage-orchestrator"
       ],
+      "description": "Regional Vertex AI / Agent Runtime APIs: the agent's managed sessions (VertexAiSessionService) on every request, and regional Vertex AI calls such as models in the runtime region. Used by every agent (baseline): ai-coe-mortgage-specialist, cx-mortgage-orchestrator.",
       "display_name": "Vertex AI Platform Regional",
       "grant": "baseline",
       "protocol_binding": "HTTP_JSON",

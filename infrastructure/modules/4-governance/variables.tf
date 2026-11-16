@@ -168,11 +168,12 @@ variable "google_api_endpoints" {
     url              = string
     protocol_binding = string
     display_name     = string
+    description      = string
     grant            = string
     callers          = optional(list(string), [])
   }))
   default     = {}
-  description = "Google API entries of the Agent Registry compiled from the catalog (catalog/.resolved/<env>.json `google_apis`, env.yaml catalog_google_apis): the only Google APIs agents can reach through the Agent Gateway."
+  description = "Google API entries of the Agent Registry compiled from the catalog (catalog/.resolved/<env>.json `google_apis`, env.yaml catalog_google_apis): the only Google APIs agents can reach through the Agent Gateway. Each carries the registry entry's description (why agents call it, then who does)."
 }
 
 variable "enable_agent_gateway" {

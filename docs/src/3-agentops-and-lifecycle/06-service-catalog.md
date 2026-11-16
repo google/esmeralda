@@ -253,7 +253,8 @@ flowchart LR
 
     They compile into `google_apis` in `.resolved/<env>.json` (`env.yaml` decodes it as
     `catalog_google_apis`): one Agent Registry entry per API at least one deployed agent may reach,
-    keyed by its service id, with `url`, `protocol_binding`, `grant` and `callers`.
+    keyed by its service id, with `url`, `protocol_binding`, `description` (see 6c), `grant` and
+    `callers`.
 
     - **Names** come from the resolver's known-hosts table (`esmeralda.catalog.GOOGLE_APIS`): real,
       serving hostnames only, such as `aiplatform` (`aiplatform.googleapis.com`, the global model
@@ -272,6 +273,24 @@ flowchart LR
       per-agent entry lists exactly the declaring agents (never a service agent or a project-wide
       set), and the code signals of each agent (model location, sessions, `--otel-to-cloud`, the
       BigQuery analytics plugin, literal `*.googleapis.com` hosts) are covered by its declarations.
+
+    <a id="registry-descriptions"></a>
+    **6c. Registry descriptions.** Every Agent Registry entry Esmeralda creates says why it exists
+    and who uses it, so an operator can tell from the console whether an entry is safe to remove.
+    The text comes from the catalog and is compiled into `.resolved/<env>.json` as `description`:
+
+    - **Google APIs:** the API's `description` in the known-hosts table, which names the client that
+      calls it (for example `bigquerystorage`: the BigQuery Agent Analytics plugin's `AppendRows`
+      writes).
+    - **MCP servers, A2A agents and `managed: false` targets:** the target's `description`, which is
+      required for any target with a registry entry (at most 1,024 characters).
+    - **Who uses it:** a generated suffix, `Used by: <callers>` (the target's catalog callers, or the
+      agents that declare the API; `Used by every agent (baseline): ...` for baseline APIs).
+
+    Layer 4, the `iap-egress` unit and the MCP and agent units pass it to
+    `google_agent_registry_service.description`, an in-place update. The resolve fails when a
+    description is missing or the result is over the Agent Registry limit (2,048 characters), and a
+    guard checks that every `google_agent_registry_service` resource sets one.
 
 7. **Compile verified attribution.** The same callers compile into an `attribution` block: the
     `principal_teams` rows (each verified principal, its catalog caller and the team that pays), the
