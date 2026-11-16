@@ -145,41 +145,36 @@ def _clean_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     return env
 
 
-@pytest.mark.skipif(not (shutil.which("make") and shutil.which("git")), reason="make/git not installed")
-def test_makefile_cicd_dir_falls_back_to_main_checkout_state(tmp_path):
-    """A worktree without layer-0 local state reads the CI/CD outputs from the main checkout."""
+@pytest.mark.skipif(not shutil.which("git"), reason="git not installed")
+def test_cicd_dir_falls_back_to_main_checkout_state(tmp_path, monkeypatch):
+    """A worktree without layer-0 local state reads the CI/CD outputs from the main checkout (esmeralda build)."""
+    from esmeralda.ops import build
+
     main, worktree = tmp_path / "main", tmp_path / "wt"
     main.mkdir()
-    shutil.copy(REPO_ROOT / "Makefile", main / "Makefile")
+    (main / "README.md").write_text("x\n")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"]
     env = _clean_env(tmp_path)
-    for args in (["init", "-q"], ["add", "Makefile"], ["commit", "-q", "-m", "init"]):
+    for args in (["init", "-q"], ["add", "README.md"], ["commit", "-q", "-m", "init"]):
         subprocess.run([*git, "-C", str(main), *args], env=env, check=True, capture_output=True)
     subprocess.run(
         [*git, "-C", str(main), "worktree", "add", "-q", str(worktree)], env=env, check=True, capture_output=True
     )
-    probe = "_esm_probe: ; @echo cicd=$(CICD_DIR) from_main=$(CICD_FROM_MAIN)"
+    monkeypatch.delenv(build.CICD_DIR_ENV, raising=False)
+    for name in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(name)
 
-    def cicd(checkout: Path, **extra: str) -> str:
-        result = subprocess.run(
-            ["make", "-s", "-C", str(checkout), f"--eval={probe}", "_esm_probe"],
-            env=_clean_env(tmp_path, **extra),
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=True,
-        )
-        return result.stdout.strip().splitlines()[-1]
+    default = (worktree / build.CICD_UNIT, False)
+    assert build.resolve_cicd_dir(worktree) == default  # no state anywhere: default (fails early at build time)
 
-    default = "cicd=infrastructure/live/shared/layer-0-cicd from_main="
-    assert cicd(worktree) == default  # no state anywhere: unchanged default (fails early at build time)
-
-    state = main / "infrastructure/live/.local_states/shared/layer-0-cicd/terraform.tfstate"
+    state = main / build.CICD_STATE
     state.parent.mkdir(parents=True)
     state.write_text("{}")
-    assert cicd(main) == default  # the main checkout uses its own state
-    assert cicd(worktree) == f"cicd={main.resolve()}/infrastructure/live/shared/layer-0-cicd from_main=1"
-    assert cicd(worktree, CICD_DIR="/explicit") == "cicd=/explicit from_main="
+    assert build.resolve_cicd_dir(main) == (main / build.CICD_UNIT, False)  # the main checkout uses its own state
+    assert build.resolve_cicd_dir(worktree) == (main.resolve() / build.CICD_UNIT, True)
+    assert build.resolve_cicd_dir(worktree, "/explicit") == (Path("/explicit"), False)
+    monkeypatch.setenv(build.CICD_DIR_ENV, "/from-env")
+    assert build.resolve_cicd_dir(worktree) == (Path("/from-env"), False)
 
 
 def test_envfile_missing_file_and_permissions(tmp_path):

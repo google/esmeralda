@@ -100,7 +100,7 @@ check_engine "cx-mortgage-orchestrator"   "${ORCH_ENGINE}" cx-mortgage-orchestra
 check_engine "ai-coe-mortgage-specialist" "${SPEC_ENGINE}" ai-coe-mortgage-specialist
 
 if [ "${failures}" -gt 0 ]; then
-  echo "❌ ${failures} workload(s) are not running ${EXPECTED_DESC}. Re-run 'make deploy-workloads ENV=${ENV_NAME}'."
+  echo "❌ ${failures} workload(s) are not running ${EXPECTED_DESC}. Re-run 'esmeralda deploy --layer 5 --env ${ENV_NAME}'."
   exit 1
 fi
 echo "✅ All workloads run ${EXPECTED_DESC}."

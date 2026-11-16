@@ -97,7 +97,7 @@ if [[ "${ACTION}" == "status" ]]; then
   echo "• Dev repository     : ${DEV_REPO}  (mutable, every build)"
   echo "• Release repository : ${RELEASE_REPO}  (immutable, promoted by digest)"
   echo "------------------------------------------------------------------------"
-  echo "Promote: make promote VERSION=vX.Y.Z SOURCE=dev-<sha> VERIFIED=YYYY-MM-DD"
+  echo "Promote: esmeralda release promote --version vX.Y.Z --source dev-<sha> --verified YYYY-MM-DD"
   echo "========================================================================"
   exit 0
 fi
@@ -166,6 +166,6 @@ for IMG in "${IMAGES[@]}"; do IMAGE_ARGS+=(--image "${IMG}=${DIGESTS[${IMG}]}");
 echo ""
 echo "🎉 Promoted ${VERSION}. Nothing was deployed. Next:"
 echo "   1. open a PR with release/${ENV_NAME}.yaml and merge it"
-echo "   2. make deploy-workloads ENV=${ENV_NAME}   (then make verify-images ENV=${ENV_NAME})"
+echo "   2. esmeralda deploy --layer 5 --env ${ENV_NAME}   (it ends with esmeralda build --verify --env ${ENV_NAME})"
 echo "   Roll back = revert that PR and deploy again."
 echo "========================================================================"
