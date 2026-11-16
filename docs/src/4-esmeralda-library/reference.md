@@ -1,8 +1,13 @@
-# 4.2 Package & CLI Reference (`esmeralda-platform`)
+---
+title: "esmeralda package and CLI reference"
+description: "Reference for every esmeralda module, function, CLI subcommand and flag, environment variable and telemetry event schema used by agents on Agent Runtime."
+---
+
+# 4.2 Package & CLI Reference (`esmeralda`)
 
 ## One Audited Contract for Every Runtime Hook and Operator Command
 
-This page is the complete API and CLI reference for `esmeralda` (`esmeralda-platform` on PyPI, [source](../../../packages/esmeralda/src/esmeralda/__init__.py)). While the [usage guide](guide.md) walks through recipes by task, this reference documents the exact contract of every module, function, class, CLI flag, telemetry JSON payload, and environment variable so platform engineers and application developers have a single authoritative specification.
+This page is the complete API and CLI reference for `esmeralda` ([source](../../../packages/esmeralda/src/esmeralda/__init__.py); installed from this repository, see [Installing the package](index.md#installing-the-package)). While the [usage guide](guide.md) walks through recipes by task, this reference documents the exact contract of every module, function, class, CLI flag, telemetry JSON payload, and environment variable so platform engineers and application developers have a single authoritative specification.
 
 ---
 

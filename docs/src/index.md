@@ -1,8 +1,13 @@
-# Esmeralda Architecture & Documentation
+---
+title: "Esmeralda: governed multi-agent platform blueprint for Google Cloud"
+description: "Open-source blueprint to run ADK and A2A agents and MCP tools in production on Google Cloud with Agent Gateway, Agent Registry, Apigee and per-team chargeback."
+---
+
+# Esmeralda: a governed multi-agent platform blueprint for Google Cloud
 
 <img src="assets/esmeralda-banner.jpg" alt="Esmeralda" class="esmeralda-banner" width="360" />
 
-Welcome to **Esmeralda**—an opinionated, commercial-grade reference blueprint for taking autonomous AI agents and Model Context Protocol (MCP) tool servers from a developer's laptop into zero-trust enterprise production on **Google Cloud**.
+Welcome to **Esmeralda**, an open-source reference blueprint for running AI agents and Model Context Protocol (MCP) tool servers in zero-trust production on **Google Cloud**: Google ADK and A2A agents on **Agent Runtime** (Gemini Enterprise Agent Platform, formerly Vertex AI Agent Engine), private MCP tool servers on Cloud Run, **Agent Gateway** (Preview), Agent Identity and **Agent Registry** for governed egress, **Apigee** token quotas for partners, optional Model Armor, and per-team token chargeback, all deployed with Terraform and Terragrunt.
 
 Throughout the documentation, we follow a single real-world scenario (**Julian Sterling's mortgage underwriting application**) from the front-door request down to the cloud foundation and developer SDK. Expand any section in the **left sidebar** (or in the **Contents** right below) to jump directly to a topic, or use the **Next / Previous** links at the bottom of each page.
 
@@ -36,10 +41,10 @@ Throughout the documentation, we follow a single real-world scenario (**Julian S
     * **[3.2 Private Networking, Shared VPC & Private DNS (Layer 2)](./1-platform-foundations/02-private-networking.md)** — How tenant-hosted Reasoning Engines reach private `*.esmeralda.internal` endpoints with zero public IPs via Shared VPC, Direct VPC Egress, PSC attachments, and DNS peering.
     * **[3.3 Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)](./1-platform-foundations/03-security-iam-and-telemetry.md)** — The Three-Identity Delegation Architecture (`User Identity`, `Agent SPIFFE Identity`, `Delegated Identity`), centralized KMS CMEK keys, and the internal Root CA.
 
-??? abstract "4. Esmeralda Library & CLI (`esmeralda-platform`)"
+??? abstract "4. Esmeralda Library & CLI (`esmeralda`)"
     *Best for Application Developers, Platform Engineers, and AI Coding Agents.*
 
-    * **[4.0 Overview — Keeping Every Agent at ~30 Lines of Pure Domain Logic](./4-esmeralda-library/index.md)** — How `packages/esmeralda` (`esmeralda-platform` on PyPI) handles certificates, proxy routing, auth, telemetry, and CLI operations.
+    * **[4.0 Overview — Keeping Every Agent at ~30 Lines of Pure Domain Logic](./4-esmeralda-library/index.md)** — How `packages/esmeralda` (installed from this repository) handles certificates, proxy routing, auth, telemetry, and CLI operations.
     * **[4.1 Developer Usage Guide](./4-esmeralda-library/guide.md)** — Recipes for serving ADK/A2A agents, calling MCP servers and remote agents, propagating 3LO user tokens, and running local full-stack queries.
     * **[4.2 Package & CLI Reference](./4-esmeralda-library/reference.md)** — Complete specification of every module (`esmeralda.app`, `auth`, `auth_manager`, `mcp`, `mcp_authz`, `a2a`, `telemetry`, `certs`, `ops`, `cli`), CLI flag, and environment variable.
 

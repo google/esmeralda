@@ -10,6 +10,11 @@ The operational runtime shared by every Esmeralda agent on Agent Runtime:
 - `esmeralda mcp`, a read-only MCP server (stdio) that lets any coding agent operate a checkout with few
   tokens: `status`, `list_units`, `plan_unit`, `query_agent`, `test_gateway`, `agent_logs`, `describe_contracts`.
 
+Installation: the package is not published on PyPI (the name `esmeralda` there belongs to an unrelated
+project). Use it from a checkout of this repository (`uv run esmeralda --help`), put the CLI on your
+`PATH` with `uv tool install --editable packages/esmeralda`, or install the library from Git with
+`uv pip install "git+https://github.com/google/esmeralda#subdirectory=packages/esmeralda"`.
+
 MCP client configuration (run from the repository root; `fastmcp` comes from the workspace lock):
 
 ```json

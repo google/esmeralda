@@ -1,3 +1,8 @@
+---
+title: "Multi-cloud AI agents: identity, A2A and MCP across clouds"
+description: "Why enterprise agents span clouds and how Esmeralda handles cross-cloud identity federation, a gateway per hop, and unified chargeback."
+---
+
 # 5.0 Multi-Cloud & Interoperability — Why Multi-Cloud Agents
 
 Until now, every actor in Julian Sterling's mortgage story has lived inside one Google Cloud organization. `cx-mortgage-orchestrator` and `ai-coe-mortgage-specialist` run on Vertex AI Agent Runtime with SPIFFE Agent Identities, the MCP tool servers run on private Cloud Run, and every hop crosses the **Central Agent Gateway** and the private **entry point** (`*.esmeralda.internal`).

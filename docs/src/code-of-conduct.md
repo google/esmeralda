@@ -1,3 +1,8 @@
+---
+title: "Code of Conduct"
+description: "Community standards for the Esmeralda project: our pledge, expected and unacceptable behavior, scope, and how reported violations are handled."
+---
+
 # Code of Conduct
 
 ## Our Pledge

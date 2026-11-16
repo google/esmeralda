@@ -1,3 +1,8 @@
+---
+title: "Multi-cloud AI agent observability and token chargeback"
+description: "Normalize usage from agents on any cloud into the esmeralda.usage record with an OpenTelemetry adapter or Collector, land it in BigQuery, and charge back by team."
+---
+
 # 5.3 Unified Observability & Chargeback
 
 In **[2.3 FinOps, Telemetry & Cross-Team Chargeback](../3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)**, the CFO could see what Julian Sterling's mortgage inquiry cost, because every agent wrote structured telemetry into Cloud Logging and Layer 4 sank it into BigQuery. That worked because every producer was an Esmeralda agent on Google Cloud, using the same library.

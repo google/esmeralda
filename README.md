@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/esmeralda_logo.png" alt="Esmeralda logo" width="350" />
   <h1><code>esmeralda</code></h1>
-  <p>An opinionated, commercial-grade reference blueprint for taking autonomous AI Agents and MCP tool servers from prototype to zero-trust production on Google Cloud.</p>
+  <p>An open-source blueprint for a governed multi-agent platform on Google Cloud: ADK and A2A agents on Agent Runtime, private MCP tool servers, Agent Gateway (Preview), Agent Identity and Agent Registry, Apigee token quotas, and per-team chargeback, deployed with Terraform and operated with the <code>esmeralda</code> CLI.</p>
 
   <p>
     <a href="#the-challenge">Why Esmeralda</a> &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -12,10 +12,11 @@
   </p>
 
   <p>
+    <a href="https://google.github.io/esmeralda/"><img src="https://img.shields.io/badge/docs-google.github.io%2Fesmeralda-1f8a70" alt="Documentation" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
     <a href="https://cloud.google.com/"><img src="https://img.shields.io/badge/Cloud-Google_Cloud-4285F4?style=flat&logo=google-cloud&logoColor=white" alt="Google Cloud" /></a>
     <a href="https://www.terraform.io/"><img src="https://img.shields.io/badge/IAC-Terraform-623CE4?style=flat&logo=terraform&logoColor=white" alt="Terraform" /></a>
-    <a href="https://cloud.google.com/vertex-ai"><img src="https://img.shields.io/badge/AI-Vertex_AI-00C1FF?style=flat&logo=google-cloud&logoColor=white" alt="Vertex AI" /></a>
+    <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern"><img src="https://img.shields.io/badge/AI-Agent_Platform-00C1FF?style=flat&logo=google-cloud&logoColor=white" alt="Gemini Enterprise Agent Platform" /></a>
   </p>
 </div>
 
@@ -124,7 +125,7 @@ flowchart LR
 | **Partner Monetization** | **Removable Apigee X Capability Modules** | Optional Layer 5 capability bundles (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`, `cross-cloud`) and tiered API Products (`bronze`, `silver`, `gold`) toggled declaratively via `governance.capabilities` in `env.yaml`. |
 | **Multi-Agent & MCP Ecosystem** | **A2A Protocol & Serverless FastMCP** | The CX orchestrator (Google ADK) delegates underwriting over **A2A** to the AI CoE specialist, which invokes private Cloud Run **FastMCP** servers (`legacy-dms`, `income-verification`, `corporate-email`) at `https://<svc>.esmeralda.internal/mcp`. |
 | **Observability & FinOps** | **OpenTelemetry Baggage & BigQuery Chargeback** | Cross-project W3C baggage propagation (`BaggageSpanProcessor`), structured token telemetry, hub-and-spoke log sinks, automated BigQuery chargeback SQL views (`vw_monthly_agent_chargeback`), and Cloud Monitoring Golden Signals. |
-| **Unified Developer CLI** | **`esmeralda` CLI & MCP Server** | First-class CLI (`uv run esmeralda ...`, published as `esmeralda-platform`) and read-only MCP server (`uv run esmeralda mcp`) for local development, guarded Terraform plans/applies, live partner & internal verification (`esmeralda verify --partner`), and AI-assisted operations. |
+| **Unified Developer CLI** | **`esmeralda` CLI & MCP Server** | First-class CLI (`uv run esmeralda ...` from a checkout of this repository; not published on PyPI) and read-only MCP server (`uv run esmeralda mcp`) for local development, guarded Terraform plans/applies, live partner & internal verification (`esmeralda verify --partner`), and AI-assisted operations. |
 
 ---
 

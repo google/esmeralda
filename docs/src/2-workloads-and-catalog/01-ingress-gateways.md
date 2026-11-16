@@ -1,3 +1,8 @@
+---
+title: "Private entry point and pluggable gateways for agents and MCP"
+description: "An internal HTTPS load balancer for private agent and MCP hosts with built-in direct routing, a pluggable gateway adapter contract (Envoy, Apigee) and per-host migration."
+---
+
 # 1.3 The Private Front Door & Pluggable Gateways
 
 In [1.1 Two Teams, Two Agents](./03-ai-agents-and-database.md) and [1.2 MCP Tool Servers](./02-mcp-tool-servers.md), we saw how Julian Sterling's mortgage verification flows from `cx-mortgage-orchestrator` to `ai-coe-mortgage-specialist` and then to three MCP tool servers (`legacy-dms`, `income-verification`, `corporate-email`).

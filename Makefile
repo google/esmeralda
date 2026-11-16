@@ -385,7 +385,7 @@ logs: ## Fetch recent Cloud Logging entries for an agent or MCP service: TARGET_
 guard: ## Scan all tracked files in the repository for secrets and forbidden internal strings
 	@uv run esmeralda guard --all
 
-build-package: ## Build the PyPI wheel and sdist (esmeralda-platform) into dist/ and verify contents
+build-package: ## Build a standalone wheel and sdist of the esmeralda package (as esmeralda-platform; not published on PyPI) into dist/ and verify contents
 	@rm -rf dist && mkdir -p dist
 	@TMP_PKG=$$(mktemp -d) && trap 'rm -rf "$$TMP_PKG"' EXIT && \
 		cp -R packages/esmeralda/src packages/esmeralda/README.md "$$TMP_PKG/" && \

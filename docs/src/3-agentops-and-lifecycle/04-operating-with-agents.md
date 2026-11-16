@@ -1,3 +1,8 @@
+---
+title: "Agent platform CLI and MCP server for day-2 operations"
+description: "Operate a multi-agent platform with the esmeralda CLI: compact status, guarded Terraform plans and applies, end-to-end verify, logs, and a read-only MCP server."
+---
+
 # 2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server
 
 Building an enterprise multi-agent platform is only half the story. What happens on **Day 2**, when six independent tracks—NetOps, SecOps, FinOps, AppDev Tools, AI CoE, and CX—are shipping updates in parallel, and both human platform engineers and **AI coding assistants** are operating the repository?

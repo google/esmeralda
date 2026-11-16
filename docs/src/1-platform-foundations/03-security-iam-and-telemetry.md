@@ -1,3 +1,8 @@
+---
+title: "Zero-trust AI agents: SPIFFE agent identity, CMEK and internal PKI"
+description: "Least-privilege service accounts, SPIFFE agent identity grants, CMEK keys, Secret Manager and an internal root CA for a zero-trust agent platform on Google Cloud."
+---
+
 # 3.3 Cryptographic Trust — SPIFFE Agent Identity, CMEK & Internal PKI (Layer 3)
 
 ## 1. Proving Who Is Calling Whom—Without Shared Secrets

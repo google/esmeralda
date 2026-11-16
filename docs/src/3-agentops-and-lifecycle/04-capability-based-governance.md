@@ -1,3 +1,8 @@
+---
+title: "Agent governance: access policies, semantic governance and Model Armor"
+description: "How Esmeralda splits agent governance across Apigee, Agent Identity and Agent Gateway (Preview): access policies, natural-language constraints and optional Model Armor."
+---
+
 # 2.2 Capability-Based & Semantic Governance — Preventing the "Confused Deputy"
 
 In **[2.1 Zero-Trust Egress & The Central Agent Gateway](./01-central-agent-gateway.md)**, we saw how the **Central Agent Gateway** stops Julian Sterling's mortgage agents from connecting to any host not registered in the Agent Registry, and how Identity-Aware Proxy (`roles/iap.egressor`) verifies each agent's cryptographic SPIFFE identity before forwarding a packet.

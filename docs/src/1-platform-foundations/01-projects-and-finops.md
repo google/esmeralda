@@ -1,3 +1,8 @@
+---
+title: "Project isolation and FinOps for multi-team AI agents"
+description: "Why each team's agents get their own Google Cloud project: blast radius, quota and billing isolation, cost labels, enabled APIs and eagerly created service identities."
+---
+
 # 3.1 Project Isolation, Blast Radius & FinOps (Layer 1)
 
 ## 1. Why One Project Is Never Enough

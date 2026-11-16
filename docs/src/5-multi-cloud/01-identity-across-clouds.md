@@ -1,3 +1,8 @@
+---
+title: "Cross-cloud identity for AI agents: workload identity federation"
+description: "Verify agents from other clouds without shared secrets: workload identity federation, OIDC claims checked at the gateway, SPIFFE federation, mTLS, and fail-closed rules."
+---
+
 # 5.1 Identity Across Clouds
 
 Inside one Google Cloud organization, identity is easy to take for granted. When `cx-mortgage-orchestrator` calls `ai-coe-mortgage-specialist`, the Central Agent Gateway sees an attested SPIFFE `principal://` identity, and IAM sees a Google-issued token. Both were minted by the same platform that checks them.

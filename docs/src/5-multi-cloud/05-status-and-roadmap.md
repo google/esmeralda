@@ -1,3 +1,8 @@
+---
+title: "Multi-cloud agent support: status and roadmap"
+description: "What multi-cloud support for agents is available on main today, what is in open pull requests, and what is planned, so you can tell what you can deploy now."
+---
+
 # 5.5 Status & Roadmap
 
 Multi-cloud support in Esmeralda is being delivered in small steps, each one deployed and verified end to end in a `dev` environment before it merges. Some building blocks from this section are on `main` today, some are in open pull requests, and some are planned. This page keeps the line between them explicit, so you can tell what you can deploy now from what is still arriving.

@@ -1,3 +1,8 @@
+---
+title: "Choosing a gateway for each hop of a multi-agent system"
+description: "The default gateway for every hop (entry point, Agent Gateway, Apigee X, Envoy, model routing), the alternatives, when to choose them, and the env.yaml switch for each."
+---
+
 # 1.5 One Gateway per Hop
 
 In [1.3](./01-ingress-gateways.md) and [1.4](./04-apigee-partner-gateway.md) we met the gateways one by one. This page puts them side by side.

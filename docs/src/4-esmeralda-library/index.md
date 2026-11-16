@@ -1,4 +1,9 @@
-# 4.0 The `esmeralda` Runtime & Operations Library (`esmeralda-platform`)
+---
+title: "esmeralda Python library and CLI for agent platform operations"
+description: "The esmeralda runtime library (ADK plugin, telemetry, gateway trust) and CLI and MCP server for plans, guarded applies and end-to-end verification."
+---
+
+# 4.0 The `esmeralda` Runtime & Operations Library
 
 ## 1. Keeping Every Agent at ~30 Lines of Pure Domain Logic
 
@@ -15,7 +20,7 @@ In reality, running an enterprise agent inside a zero-trust bank environment req
 
 Before the `esmeralda` library existed, each agent carried its own copy-pasted `entrypoint.sh`, telemetry callbacks, and monkey-patches. Those copies inevitably drifted apart—and worse, code wired onto `AdkApp` subclasses never even executed when the container launched `adk api_server` or an A2A server in production.
 
-**We extracted [`packages/esmeralda`](../../../packages/esmeralda/README.md) (published on PyPI as `esmeralda-platform`, imported as `esmeralda`) so agent authors never write plumbing code again—and platform operators get a single, unified CLI (`uv run esmeralda ...`) and MCP server (`esmeralda mcp`) to operate the entire repository.**
+**We extracted [`packages/esmeralda`](../../../packages/esmeralda/README.md) (a uv workspace package in this repository, imported as `esmeralda`; see [Installing the package](#installing-the-package)) so agent authors never write plumbing code again—and platform operators get a single, unified CLI (`uv run esmeralda ...`) and MCP server (`esmeralda mcp`) to operate the entire repository.**
 
 ```mermaid
 flowchart TB
@@ -25,7 +30,7 @@ flowchart TB
         A3["agent.yaml<br/>framework (google-adk | a2a), env & local_env"]
     end
 
-    subgraph RuntimeLib["What esmeralda (esmeralda-platform) Handles Automatically"]
+    subgraph RuntimeLib["What esmeralda Handles Automatically"]
         R1["Container & Process Lifecycle<br/>• esmeralda run (installs Gateway Root CA)<br/>• esmeralda.prepare() (httpx/aiohttp proxy patches)<br/>• esmeralda serve (ADK API server or A2A server)"]
         R2["Zero-Trust Auth & Delegation<br/>• esmeralda.mcp & esmeralda.a2a headers<br/>• esmeralda.auth_manager (3LO Auth Manager + SPIFFE)<br/>• esmeralda.mcp_authz (zero-latency JWT verification)"]
         R3["FinOps & Trace Telemetry<br/>• EsmeraldaTelemetryPlugin (token & tool JSON events)<br/>• BaggageSpanProcessor (caller.project_id / agent_name)"]
@@ -38,13 +43,24 @@ flowchart TB
 * **[Usage guide](guide.md):** step-by-step patterns for adding `esmeralda` to an agent, serving ADK/A2A workloads, calling MCP servers and remote agents, brokering 3LO tokens, querying agents, and operating a checkout with `esmeralda mcp`.
 * **[Package reference](reference.md):** complete API reference for every module, function, class, CLI subcommand, environment variable, and telemetry event schema.
 
+### Installing the package
+
+The `esmeralda` package is not published on PyPI. Install it from this repository:
+
+* **From a checkout (recommended).** `uv sync` at the repository root installs it in the workspace; run the CLI with `uv run esmeralda --help`. The operations commands (`status`, `plan`, `apply`, `verify`, `mcp`, ...) act on that checkout.
+* **CLI on your `PATH`.** From the repository root, `uv tool install --editable packages/esmeralda` puts `esmeralda` on your `PATH` and follows your checkout as it changes. Add `--with fastmcp` if you want `esmeralda mcp` from that install (in the workspace, `fastmcp` comes from the lock).
+* **Runtime library in another project.** Install from Git: `uv pip install "git+https://github.com/google/esmeralda#subdirectory=packages/esmeralda"`. The package has no workspace-only dependencies, so it builds on its own.
+
+> [!NOTE]
+> A different, unrelated project already uses the name `esmeralda` on PyPI. `pip install esmeralda` does not install this package.
+
 ---
 
 ## 2. Why We Built It This Way (Key Decisions & Rationale)
 
 | Decision | Alternative Considered | Why We Chose This |
 | :--- | :--- | :--- |
-| **Shared Workspace & PyPI Package (`esmeralda-platform` / `import esmeralda`)** | Copy-pasting `entrypoint.sh`, auth helpers, and OTel callbacks into each agent directory | Eliminates code drift across teams; keeps every agent's `agent/__init__.py` to 4 lines and `agent/agent.py` focused 100% on business prompts and tools. |
+| **Shared Workspace Package (`packages/esmeralda` / `import esmeralda`)** | Copy-pasting `entrypoint.sh`, auth helpers, and OTel callbacks into each agent directory | Eliminates code drift across teams; keeps every agent's `agent/__init__.py` to 4 lines and `agent/agent.py` focused 100% on business prompts and tools. |
 | **Hook Only Universal Extension Points (`ENTRYPOINT`, import-time `prepare()`, ADK `App` plugin)** | Subclassing `AdkApp` or attaching per-agent `after_model_callback` | `adk api_server` and A2A servers bypass `AdkApp` subclasses in production. Using `esmeralda run` (`ENTRYPOINT`), `esmeralda.prepare()`, and `EsmeraldaTelemetryPlugin` guarantees identical behavior in Agent Runtime, Gemini Enterprise, A2A, and `adk web`. |
 | **Runtime CA Injection (`esmeralda run`) Instead of Baking Certs into Dockerfiles** | `COPY root-ca.crt` inside `Dockerfile` during `docker build` | Baking an environment's CA into the image breaks immutable promotion from `dev` to `prd`. Injecting `AGENT_GATEWAY_ROOT_CERTIFICATES` at deploy time lets the exact same image digest run in every environment. |
 | **Unified Runtime + Operations CLI (`uv run esmeralda ...` & `esmeralda mcp`)** | Separate bash scripts and raw `terragrunt`/`gcloud` one-liners | Gives human engineers (`esmeralda status/plan/apply/verify/query/logs`) and AI coding agents (`esmeralda mcp`) one structured, destroy-guarded interface backed by `esmeralda.ops`. |

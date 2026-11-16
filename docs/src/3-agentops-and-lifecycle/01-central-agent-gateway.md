@@ -1,3 +1,8 @@
+---
+title: "Agent Gateway with Terraform: governed agent egress and Agent Registry"
+description: "Deploy Agent Gateway (Preview) with Terraform: SPIFFE agent identity, Agent Registry allowlists, per-target IAP egress policies and a private PKI for agents."
+---
+
 # 2.1 Zero-Trust Egress & The Central Agent Gateway
 
 Imagine that **Julian Sterling**, a prospective homebuyer, opens his bank's mortgage portal and asks a simple question:
