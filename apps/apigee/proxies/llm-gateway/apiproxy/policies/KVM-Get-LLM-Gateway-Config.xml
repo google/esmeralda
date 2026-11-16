@@ -18,6 +18,16 @@
       <Parameter>allowed_callers</Parameter>
     </Key>
   </Get>
+  <Get assignTo="llmgw.agent_issuers">
+    <Key>
+      <Parameter>agent_issuers</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.caller_workloads">
+    <Key>
+      <Parameter>caller_workloads</Parameter>
+    </Key>
+  </Get>
   <Get assignTo="llmgw.allowed_projects">
     <Key>
       <Parameter>allowed_projects</Parameter>

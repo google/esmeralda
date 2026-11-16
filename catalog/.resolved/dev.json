@@ -206,6 +206,14 @@
       "protocol_binding": "HTTP_JSON",
       "registry": "endpoint",
       "url": "https://external-probe.{domain}"
+    },
+    "llm-gateway": {
+      "description": "Apigee model gateway (llm-gateway proxy) the agents send their Gemini calls through.",
+      "kind": "http",
+      "owner_team": "platform",
+      "protocol_binding": "HTTP_JSON",
+      "registry": "endpoint",
+      "url": "https://apigee.{domain}/llm"
     }
   },
   "generated_by": "esmeralda catalog resolve --env dev --write",
@@ -315,6 +323,10 @@
         "agents/ai-coe-mortgage-specialist:agent_identity_principal"
       ],
       "external-probe": [
+        "agents/ai-coe-mortgage-specialist:agent_identity_principal"
+      ],
+      "llm-gateway": [
+        "agents/cx-mortgage-orchestrator:agent_identity_principal",
         "agents/ai-coe-mortgage-specialist:agent_identity_principal"
       ],
       "storage": [

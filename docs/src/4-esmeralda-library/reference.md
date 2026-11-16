@@ -53,8 +53,9 @@ Model egress through a model gateway ([Apigee `llm-gateway`](../2-workloads-and-
 | Function / class | Description |
 |---|---|
 | `route_models(root_agent)` | Replaces every Gemini model name in the agent tree with `gemini(name)`; model objects and inherited models are left alone. Returns `root_agent` |
-| `gemini(model, *, url=None)` | `model` unchanged without a gateway, else an ADK `Gemini` with `base_url` = the gateway, explicit `project` / `location` (`MODEL_LOCATION`, else `global`) and `GatewayIdTokenCredentials` |
-| `GatewayIdTokenCredentials(audience)` | Bearer credentials holding a Google ID token for the agent's runtime identity (not `SERVICE_ACCOUNT_EMAIL`), refreshed before expiry |
+| `gemini(model, *, url=None)` | `model` unchanged without a gateway, else an ADK `Gemini` with `base_url` = the gateway, explicit `project` / `location` (`MODEL_LOCATION`, else `global`) and `GatewayIdTokenCredentials`; each request also carries the current span's `traceparent` (`trace_headers()`) |
+| `GatewayIdTokenCredentials(audience)` | Bearer credentials holding an unbound ID token (`auth.unbound_id_token_credentials`) for the agent's runtime identity, its Agent Identity on Agent Runtime (never `SERVICE_ACCOUNT_EMAIL`), refreshed before expiry |
+| `trace_headers()` | W3C `traceparent` / `tracestate` of the current span, or `{}` |
 | `gateway_url()` | The configured gateway URL (must be `https`), or `None` |
 
 ## `esmeralda.lifecycle`
@@ -204,6 +205,7 @@ A frozen dataclass.
 |---|---|
 | `id_token(audience) -> str` | A Google-signed ID token for `audience`, for the runtime identity (on Agent Runtime, the agent's own Agent Identity). Always requested unbound (`google.oauth2.id_token.fetch_id_token_credentials(audience, bind_id_token=False)`; google-auth before 2.61 takes no such argument and never binds), so it survives the Agent Gateway and the entry point. With the deprecated `SERVICE_ACCOUNT_EMAIL` opt-in, minted through impersonation of that service account instead (falls back to the runtime identity, with a warning, if impersonation fails). Cached per audience and service account; refreshed before expiry. Raises if no token can be minted |
 | `id_token_async(audience)` | `id_token` in a worker thread |
+| `unbound_id_token_credentials(audience, request)` | The uncached google-auth credentials behind `id_token` for the runtime identity (never impersonation), always unbound. `esmeralda.models` uses them for the model gateway |
 | `access_token() -> str` | An OAuth2 access token (scope `cloud-platform`) for the runtime identity; for `SERVICE_ACCOUNT_EMAIL` through impersonation when that deprecated opt-in is set (same fallback as `id_token`). Cached; refreshed before expiry |
 | `access_token_async()` | `access_token` in a worker thread |
 | `token_kind(url) -> "id" \| "access"` | `"access"` for hosts listed in `ACCESS_TOKEN_HOSTS` and for `*.googleapis.com`; `"id"` otherwise |

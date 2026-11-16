@@ -137,6 +137,7 @@ def test_id_token_credentials_refresh_from_runtime_identity(monkeypatch):
     exp = int(datetime.datetime.now(datetime.UTC).timestamp()) + 3600
     token = _jwt(exp)
     calls = []
+    binds = []
 
     class FakeSource:
         token = None
@@ -145,16 +146,21 @@ def test_id_token_credentials_refresh_from_runtime_identity(monkeypatch):
             calls.append(request)
             self.token = token
 
-    def fake_fetch(audience, request):
+    def fake_fetch(audience, request, bind_id_token=True):
         assert audience == "https://apigee.esmeralda.internal"
+        binds.append(bind_id_token)
         return FakeSource()
 
+    monkeypatch.setenv("SERVICE_ACCOUNT_EMAIL", "sa-mcp-invoker@example-project.iam.gserviceaccount.com")
     monkeypatch.setattr("google.oauth2.id_token.fetch_id_token_credentials", fake_fetch)
     credentials = models.GatewayIdTokenCredentials("https://apigee.esmeralda.internal")
     assert not credentials.valid
     credentials.refresh("request")
     assert credentials.valid and credentials.token == token
     assert credentials.expiry == datetime.datetime.fromtimestamp(exp, datetime.UTC).replace(tzinfo=None)
+    # Unbound: the Agent Gateway and the entry point re-terminate TLS before the model gateway.
+    # Runtime identity even with SERVICE_ACCOUNT_EMAIL set: the gateway meters each agent's principal.
+    assert binds == [False]
 
     headers: dict[str, str] = {}
     credentials.before_request("request", "POST", GATEWAY, headers)
@@ -167,3 +173,47 @@ def test_id_token_credentials_expire_before_the_token(monkeypatch):
     credentials.token = "t"
     credentials.expiry = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) + datetime.timedelta(minutes=2)
     assert credentials.expired  # inside google-auth's refresh threshold
+
+
+def test_trace_headers_follow_the_current_span():
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    tracer = TracerProvider().get_tracer("test")
+    assert "traceparent" not in models.trace_headers()  # no span: nothing to propagate
+    with tracer.start_as_current_span("call_llm") as span:
+        headers = models.trace_headers()
+        trace_id = format(span.get_span_context().trace_id, "032x")
+    assert headers["traceparent"].split("-")[1] == trace_id
+    assert set(headers) <= {"traceparent", "tracestate"}
+    assert trace.get_current_span().get_span_context().is_valid is False
+
+
+def test_gateway_model_sends_the_trace_context(monkeypatch):
+    """The routed model adds traceparent to each request, so gateway and agent records share trace_id."""
+    import asyncio
+
+    from google.adk.models.google_llm import Gemini
+    from google.adk.models.llm_request import LlmRequest
+    from google.genai import types
+
+    seen: list[dict[str, str]] = []
+
+    async def fake_super(self, llm_request, stream=False):
+        seen.append(dict(llm_request.config.http_options.headers or {}))
+        yield "response"
+
+    monkeypatch.setattr(Gemini, "generate_content_async", fake_super)
+    monkeypatch.setattr(models, "trace_headers", lambda: {"traceparent": "00-" + "a" * 32 + "-" + "b" * 16 + "-01"})
+    model = models.gemini("gemini-2.5-flash", url=GATEWAY)
+    assert isinstance(model, Gemini)
+    request = LlmRequest(
+        model="gemini-2.5-flash",
+        config=types.GenerateContentConfig(http_options=types.HttpOptions(headers={"x-keep": "1"})),
+    )
+
+    async def run():
+        return [r async for r in model.generate_content_async(request)]
+
+    assert asyncio.run(run()) == ["response"]
+    assert seen == [{"x-keep": "1", "traceparent": "00-" + "a" * 32 + "-" + "b" * 16 + "-01"}]

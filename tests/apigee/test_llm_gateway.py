@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = REPO_ROOT / "apps" / "apigee" / "proxies" / "llm-gateway" / "apiproxy"
 AUTHORIZE_JS = BUNDLE / "resources" / "jsc" / "authorize-llm-call.js"
 EXTRACT_TOKENS_JS = BUNDLE / "resources" / "jsc" / "extract-tokens.js"
+SELECT_ISSUER_JS = BUNDLE / "resources" / "jsc" / "select-token-issuer.js"
 
 CALLER = "sa-cx-orchestrator@example-project.iam.gserviceaccount.com"
 PROJECT = "esm-dev-cx-agents-mock"
@@ -67,6 +68,7 @@ def test_bundle_manifest_matches_files() -> None:
 def test_required_policies_present() -> None:
     """Caller verification, per-caller token quota, analytics capture and usage logging are all in the bundle."""
     kinds = {path.stem: ET.parse(path).getroot().tag for path in (BUNDLE / "policies").glob("*.xml")}
+    assert kinds["DJ-Decode-Caller-Token"] == "DecodeJWT"
     assert kinds["VJ-Verify-Caller-Token"] == "VerifyJWT"
     assert kinds["LTQ-enforce"] == "LLMTokenQuota"
     assert kinds["LTQ-count"] == "LLMTokenQuota"
@@ -79,14 +81,21 @@ def test_required_policies_present() -> None:
 def test_preflow_verifies_and_authorizes_before_anything_else() -> None:
     proxy = _xml("proxies/default.xml")
     names = [name for name, _ in _steps(proxy, "./PreFlow/Request/Step")]
-    assert names[:3] == ["KVM-Get-LLM-Gateway-Config", "VJ-Verify-Caller-Token", "JS-Authorize-LLM-Call"]
+    assert names[:5] == [
+        "KVM-Get-LLM-Gateway-Config",
+        "DJ-Decode-Caller-Token",
+        "JS-Select-Token-Issuer",
+        "VJ-Verify-Caller-Token",
+        "JS-Authorize-LLM-Call",
+    ]
     # Rejections run before the quota and before credentials are swapped.
     for rejection in ("RF-Caller-Not-Allowed", "RF-Not-Found", "RF-Target-Not-Allowed"):
         assert names.index(rejection) < names.index("LTQ-enforce") < names.index("AM-Strip-Caller-Credentials")
     conditions = dict(_steps(proxy, "./PreFlow/Request/Step"))
     assert conditions["RF-Caller-Not-Allowed"] == 'llmgw.denied.reason = "caller_not_allowed"'
     assert conditions["RF-Target-Not-Allowed"] == 'llmgw.denied.reason = "target_not_allowed"'
-    assert conditions["VJ-Verify-Caller-Token"] == "" and conditions["LTQ-enforce"] == ""
+    for unconditional in ("DJ-Decode-Caller-Token", "JS-Select-Token-Issuer", "VJ-Verify-Caller-Token", "LTQ-enforce"):
+        assert conditions[unconditional] == ""
 
     fault_rule = proxy.find("./DefaultFaultRule")
     assert fault_rule is not None and (fault_rule.findtext("AlwaysEnforce") or "").strip() == "true"
@@ -97,16 +106,69 @@ def test_preflow_verifies_and_authorizes_before_anything_else() -> None:
     assert routes == {"sse": "llm.stream = true", "default": ""}
 
 
-def test_caller_token_is_a_google_id_token_bound_to_the_gateway() -> None:
+def test_caller_token_is_an_id_token_bound_to_the_gateway() -> None:
     vj = _xml("policies/VJ-Verify-Caller-Token.xml")
     assert vj.attrib.get("continueOnError") == "false"
     assert (vj.findtext("Algorithm") or "").strip() == "RS256"
     assert vj.find("Source") is None, "the token is read from Authorization: Bearer"
     jwks = vj.find("./PublicKey/JWKS")
-    assert jwks is not None and jwks.attrib.get("uri") == "https://www.googleapis.com/oauth2/v3/certs"
-    assert (vj.findtext("Issuer") or "").strip() == "https://accounts.google.com"
+    assert jwks is not None and jwks.attrib == {"uriRef": "llmgw.token.jwks_uri"}
+    issuer = vj.find("Issuer")
+    assert issuer is not None and issuer.attrib.get("ref") == "llmgw.token.issuer"
     audience = vj.find("Audience")
     assert audience is not None and audience.attrib.get("ref") == "llmgw.audience"
+
+    dj = _xml("policies/DJ-Decode-Caller-Token.xml")
+    assert dj.tag == "DecodeJWT" and dj.attrib.get("continueOnError") == "false"
+    assert dj.find("Source") is None
+    select = _xml("policies/JS-Select-Token-Issuer.xml")
+    assert select.attrib.get("continueOnError") == "false"
+    assert (select.findtext("ResourceURL") or "").strip() == "jsc://select-token-issuer.js"
+
+
+AGENT_ISSUER = (
+    "https://sts.googleapis.com/v1/organizations/0000000000/locations/global/workloadIdentityPools/"
+    "agents.global.org-0000000000.system.id.goog"
+)
+AGENT_PRINCIPAL = (
+    "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000"
+    "/locations/us-central1/reasoningEngines/1234567890"
+)
+
+
+def _select(issuer: str | None, agent_issuers: str = AGENT_ISSUER) -> dict[str, Any]:
+    flow: dict[str, Any] = {"llmgw.agent_issuers": agent_issuers}
+    if issuer is not None:
+        flow["jwt.DJ-Decode-Caller-Token.decoded.claim.iss"] = issuer
+    return run_apigee_js(SELECT_ISSUER_JS, flow)
+
+
+def test_select_issuer_agent_identity_token() -> None:
+    """An Agent Identity token of a trusted trust domain is verified against that domain's STS JWKS."""
+    state = _select(AGENT_ISSUER, agent_issuers=f"{AGENT_ISSUER.replace('0000000000', '1111111111')}, {AGENT_ISSUER}")
+    assert state["llmgw.token.kind"] == "agent_identity"
+    assert state["llmgw.token.issuer"] == AGENT_ISSUER
+    assert state["llmgw.token.jwks_uri"] == AGENT_ISSUER + "/openid/jwks"
+
+
+@pytest.mark.parametrize(
+    ("issuer", "agent_issuers"),
+    [
+        ("https://accounts.google.com", AGENT_ISSUER),  # service account ID token (test VM)
+        (None, AGENT_ISSUER),  # undecodable: VerifyJWT rejects it anyway
+        # an issuer the gateway doesn't trust never chooses the JWKS: Google's is used and VerifyJWT fails
+        ("https://attacker.example.com", AGENT_ISSUER),
+        (AGENT_ISSUER.replace("0000000000", "9999999999"), AGENT_ISSUER),
+        (AGENT_ISSUER, "none"),
+        # only Security Token Service issuers can be trusted as agent issuers
+        ("https://attacker.example.com", "https://attacker.example.com"),
+    ],
+)
+def test_select_issuer_falls_back_to_google(issuer: str | None, agent_issuers: str) -> None:
+    state = _select(issuer, agent_issuers)
+    assert state["llmgw.token.kind"] == "google"
+    assert state["llmgw.token.issuer"] == "https://accounts.google.com"
+    assert state["llmgw.token.jwks_uri"] == "https://www.googleapis.com/oauth2/v3/certs"
 
 
 def test_quota_is_per_verified_caller() -> None:
@@ -241,6 +303,46 @@ def test_authorize_subject_principal_when_no_email() -> None:
     )
     assert state["llmgw.denied.reason"] == ""
     assert state["llmgw.caller.principal"] == "112233445566778899"
+
+
+def _agent_identity(**overrides: Any) -> dict[str, Any]:
+    flow: dict[str, Any] = {
+        # An Agent Identity ID token: SPIFFE subject, no email.
+        "jwt.VJ-Verify-Caller-Token.claim.subject": "spiffe://" + AGENT_PRINCIPAL[len("principal://"):],
+        "jwt.VJ-Verify-Caller-Token.claim.email": None,
+        "jwt.VJ-Verify-Caller-Token.claim.email_verified": None,
+        "llmgw.allowed_callers": f"{AGENT_PRINCIPAL},{CALLER}",
+        "llmgw.caller_workloads": f"{AGENT_PRINCIPAL}=cx-mortgage-orchestrator,{AGENT_PRINCIPAL[:-1]}9=other-agent",
+    }
+    flow.update(overrides)
+    return _authorize(**flow)
+
+
+def test_authorize_agent_identity_principal_and_workload() -> None:
+    """The spiffe:// subject becomes the catalog's principal:// form, and maps to the calling agent."""
+    state = _agent_identity()
+    assert state["llmgw.denied.reason"] == ""
+    assert state["llmgw.caller.principal"] == AGENT_PRINCIPAL
+    assert state["consumer.app.name"] == AGENT_PRINCIPAL
+    assert state["llmgw.caller.workload"] == "cx-mortgage-orchestrator"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"llmgw.allowed_callers": CALLER},  # agent not registered
+        {"jwt.VJ-Verify-Caller-Token.claim.subject": "spiffe://" + AGENT_PRINCIPAL[len("principal://"):-1] + "9"},
+    ],
+)
+def test_authorize_agent_identity_fails_closed(overrides: dict[str, Any]) -> None:
+    state = _agent_identity(**overrides)
+    assert state["llmgw.denied.reason"] == "caller_not_allowed"
+
+
+def test_authorize_unmapped_caller_has_no_workload() -> None:
+    state = _authorize(**{"llmgw.caller_workloads": "none"})
+    assert state["llmgw.denied.reason"] == ""
+    assert state["llmgw.caller.workload"] == ""
 
 
 def test_extract_tokens_gemini_generate_content_json() -> None:

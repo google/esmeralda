@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<DecodeJWT name="DJ-Decode-Caller-Token" continueOnError="false" enabled="true">
+  <DisplayName>DJ-Decode-Caller-Token</DisplayName>
+  <!-- Reads the caller's ID token (Authorization: Bearer) WITHOUT verifying it, only so that
+       JS-Select-Token-Issuer can pick the issuer and JWKS VJ-Verify-Caller-Token verifies it
+       against. Nothing downstream trusts these claims: the principal comes from VerifyJWT. A
+       missing or malformed token fails here (401). -->
+</DecodeJWT>

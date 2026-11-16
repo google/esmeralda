@@ -21,9 +21,16 @@ by the agent's Terraform unit only when ``governance.capabilities.model_gateway 
 stay the Vertex AI ones (``/v1beta1/projects/<p>/locations/<l>/publishers/google/models/...``), so the
 gateway is a pass-through.
 
-The gateway authenticates the caller with a Google-signed **ID token** (audience: the gateway
-origin) minted for the agent's **runtime identity**, not for ``SERVICE_ACCOUNT_EMAIL``: that one
-is a shared MCP invoker identity, and the model gateway attributes token usage per agent.
+The gateway authenticates the caller with an **ID token** (audience: the gateway origin) minted for
+the agent's **runtime identity**: on Agent Runtime, the agent's own Agent Identity, so the gateway
+verifies and meters each agent as its ``principal://``. Never ``SERVICE_ACCOUNT_EMAIL`` (the
+deprecated shared invoker), which would bill every agent's tokens to one identity. The token is
+**unbound** (``esmeralda.auth``): the call crosses the Central Agent Gateway and the entry point,
+which re-terminate TLS, so a certificate-bound token could not be checked at the gateway.
+
+Each call also carries the W3C ``traceparent`` of the current span, so the gateway's
+``esmeralda.usage`` record shares its ``trace_id`` with the agent's own ``llm.call`` record and the
+usage views count the tokens once.
 
 Unset (the default), nothing changes: agents call Vertex AI directly.
 """
@@ -100,11 +107,11 @@ class GatewayIdTokenCredentials:
         return self.token is not None and not self.expired
 
     def refresh(self, request: Any) -> None:
-        from google.oauth2 import id_token
+        from esmeralda import auth
 
         with self._lock:
             if self._source is None:
-                self._source = id_token.fetch_id_token_credentials(self.audience, request=request)
+                self._source = auth.unbound_id_token_credentials(self.audience, request)
             self._source.refresh(request)
             self.token = self._source.token
             self.expiry = _jwt_expiry(self.token)
@@ -113,6 +120,52 @@ class GatewayIdTokenCredentials:
         if not self.valid:
             self.refresh(request)
         headers["authorization"] = f"Bearer {self.token}"
+
+
+def trace_headers() -> dict[str, str]:
+    """W3C trace context (``traceparent``, ``tracestate``) of the current span; empty without one."""
+    try:
+        from opentelemetry import propagate
+    except ImportError:  # pragma: no cover - opentelemetry is a dependency
+        return {}
+    carrier: dict[str, str] = {}
+    try:
+        propagate.inject(carrier)
+    except Exception:  # noqa: BLE001 - tracing must never break a model call
+        logger.debug("Could not inject the trace context into a model call", exc_info=True)
+        return {}
+    return {k: v for k, v in carrier.items() if k in ("traceparent", "tracestate")}
+
+
+_gateway_gemini_class: Any = None
+
+
+def _gateway_gemini() -> Any:
+    """ADK ``Gemini`` that adds the current trace context to every request it sends."""
+    global _gateway_gemini_class
+    if _gateway_gemini_class is None:
+        from google.adk.models.google_llm import Gemini
+        from google.genai import types
+
+        class GatewayGemini(Gemini):
+            """``Gemini`` through a model gateway: requests carry ``traceparent``."""
+
+            async def generate_content_async(self, llm_request: Any, stream: bool = False) -> Any:
+                headers = trace_headers()
+                if headers:
+                    if llm_request.config is None:
+                        llm_request.config = types.GenerateContentConfig()
+                    if not llm_request.config.http_options:
+                        llm_request.config.http_options = types.HttpOptions()
+                    llm_request.config.http_options.headers = {
+                        **(llm_request.config.http_options.headers or {}),
+                        **headers,
+                    }
+                async for response in super().generate_content_async(llm_request, stream=stream):
+                    yield response
+
+        _gateway_gemini_class = GatewayGemini
+    return _gateway_gemini_class
 
 
 def gemini(model: str, *, url: str | None = None) -> Any:
@@ -126,7 +179,6 @@ def gemini(model: str, *, url: str | None = None) -> Any:
     url = url or gateway_url()
     if not url:
         return model
-    from google.adk.models.google_llm import Gemini
 
     project = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
     if not project:
@@ -134,7 +186,7 @@ def gemini(model: str, *, url: str | None = None) -> Any:
     location = os.environ.get("MODEL_LOCATION", "").strip() or "global"
     parts = urllib.parse.urlsplit(url)
     audience = f"{parts.scheme}://{parts.netloc}"
-    return Gemini(
+    return _gateway_gemini()(
         model=model,
         base_url=url,
         client_kwargs={

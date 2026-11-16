@@ -84,10 +84,15 @@ LEGACY_IAP_EGRESS = {
     },
     "endpoints": GOOGLE_API_IAP,
 }
-# dev also declares the synthetic external target external-probe (catalog/environments/dev.yaml).
+# dev also declares the synthetic external target external-probe and, with model_gateway = "apigee",
+# the Apigee model gateway llm-gateway (catalog/environments/dev.yaml).
+_AGENTS = ["agents/cx-mortgage-orchestrator:agent_identity_principal", *_SPECIALIST]
 ENV_IAP_EGRESS = {
     "prd": LEGACY_IAP_EGRESS,
-    "dev": {**LEGACY_IAP_EGRESS, "endpoints": {**GOOGLE_API_IAP, "external-probe": _SPECIALIST}},
+    "dev": {
+        **LEGACY_IAP_EGRESS,
+        "endpoints": {**GOOGLE_API_IAP, "external-probe": _SPECIALIST, "llm-gateway": _AGENTS},
+    },
 }
 # The Google API entries layer 4 registers (8, from 91 hostname variants before): the baseline
 # (every agent runtime) and the per-agent ones.
@@ -744,7 +749,7 @@ _HTTP = ("kind: http\nowner_team: platform\n"
          "deploy: {{ managed: false, endpoint: \"{endpoint}\" }}\n")
 
 
-def test_dev_external_probe_is_registered_with_the_specialist_only():
+def test_dev_external_targets_are_registered_with_their_callers_only():
     resolved = catalog.resolve(REPO, "dev")
     assert catalog.compile_external_targets(resolved) == {
         "external-probe": {
@@ -754,12 +759,25 @@ def test_dev_external_probe_is_registered_with_the_specialist_only():
             "protocol_binding": "HTTP_JSON",
             "description": resolved.targets["external-probe"]["description"],
             "owner_team": "platform",
-        }
+        },
+        "llm-gateway": {
+            "kind": "http",
+            "registry": "endpoint",
+            "url": "https://apigee.{domain}/llm",
+            "protocol_binding": "HTTP_JSON",
+            "description": resolved.targets["llm-gateway"]["description"],
+            "owner_team": "platform",
+        },
     }
-    assert catalog.compile_iap_egress(resolved)["endpoints"] == {**GOOGLE_API_IAP, "external-probe": _SPECIALIST}
+    assert catalog.compile_iap_egress(resolved)["endpoints"] == {
+        **GOOGLE_API_IAP,
+        "external-probe": _SPECIALIST,
+        "llm-gateway": _AGENTS,
+    }
     # Not deployed by a unit: no entry point route, no IAM grant, no in-process allowlist.
-    assert "external-probe" not in catalog.compile_terraform(resolved)
-    assert "external-probe" not in catalog.compile_caller_allowlists(resolved)
+    for name in ("external-probe", "llm-gateway"):
+        assert name not in catalog.compile_terraform(resolved)
+        assert name not in catalog.compile_caller_allowlists(resolved)
     # prd has none (its endpoints are the per-agent Google API entries only).
     prd = catalog.resolve(REPO, "prd")
     assert catalog.compile_external_targets(prd) == {} and catalog.compile_iap_egress(prd)["endpoints"] == GOOGLE_API_IAP

@@ -11,7 +11,9 @@
     <Policy>AM-Set-Target-Url</Policy>
     <Policy>AM-Strip-Caller-Credentials</Policy>
     <Policy>DC-capture-llm-metrics</Policy>
+    <Policy>DJ-Decode-Caller-Token</Policy>
     <Policy>JS-Authorize-LLM-Call</Policy>
+    <Policy>JS-Select-Token-Issuer</Policy>
     <Policy>JS-extract-tokens</Policy>
     <Policy>JS-Usage-Context</Policy>
     <Policy>JS-Usage-Context-Fault</Policy>
@@ -30,6 +32,7 @@
   <Resources>
     <Resource>jsc://authorize-llm-call.js</Resource>
     <Resource>jsc://extract-tokens.js</Resource>
+    <Resource>jsc://select-token-issuer.js</Resource>
     <Resource>jsc://usage-context.js</Resource>
   </Resources>
   <TargetEndpoints>

@@ -31,11 +31,28 @@ locals {
   bundle_root = coalesce(var.bundle_source_dir, "${path.module}/../../../../../apps/apigee/proxies/llm-gateway")
   audience    = "https://${var.gateway_host}"
 
+  # Agent Identity ID tokens are signed by the agent's trust domain on Security Token Service:
+  #   principal://agents.global.org-<n>.system.id.goog/...  -> iss https://sts.googleapis.com/v1/organizations/<n>/locations/global/workloadIdentityPools/agents.global.org-<n>.system.id.goog
+  #   principal://agents.global.proj-<n>.system.id.goog/... -> iss https://sts.googleapis.com/v1/projects/<n>/locations/global/workloadIdentityPools/agents.global.proj-<n>.system.id.goog
+  # (JWKS: <iss>/openid/jwks, from the issuer's /.well-known/openid-configuration).
+  agent_trust_domains = {
+    for name, principal in var.agent_principals :
+    name => regex("^principal://(agents\\.global\\.(org|proj)-([0-9]+)\\.system\\.id\\.goog)/", principal)
+  }
+  agent_issuers = distinct([
+    for name, td in local.agent_trust_domains :
+    "https://sts.googleapis.com/v1/${td[1] == "org" ? "organizations" : "projects"}/${td[2]}/locations/global/workloadIdentityPools/${td[0]}"
+  ])
+  callers = distinct(concat(values(var.agent_principals), var.allowed_callers))
+
   # kvm-llm-gateway, read by KVM-Get-LLM-Gateway-Config. Apigee rejects empty KVM values, so an
-  # empty allowlist is written as "none" (matches no caller, project, location or model: fail closed).
+  # empty allowlist is written as "none" (matches no caller, issuer, project, location or model:
+  # fail closed).
   kvm_entries = {
     audience          = local.audience
-    allowed_callers   = length(var.allowed_callers) > 0 ? join(",", sort(distinct(var.allowed_callers))) : "none"
+    allowed_callers   = length(local.callers) > 0 ? join(",", sort(local.callers)) : "none"
+    agent_issuers     = length(local.agent_issuers) > 0 ? join(",", sort(local.agent_issuers)) : "none"
+    caller_workloads  = length(var.agent_principals) > 0 ? join(",", sort([for name, principal in var.agent_principals : "${principal}=${name}"])) : "none"
     allowed_projects  = length(var.model_projects) > 0 ? join(",", sort(distinct(var.model_projects))) : "none"
     allowed_locations = length(var.allowed_locations) > 0 ? join(",", sort(distinct(var.allowed_locations))) : "none"
     allowed_models    = length(var.allowed_models) > 0 ? join(",", var.allowed_models) : "none"

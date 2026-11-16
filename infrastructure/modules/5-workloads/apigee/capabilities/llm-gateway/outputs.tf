@@ -28,11 +28,16 @@ output "base_url" {
 }
 
 output "audience" {
-  description = "Audience of the Google ID token agents send to the gateway."
+  description = "Audience of the ID token agents send to the gateway."
   value       = local.audience
 }
 
 output "allowed_callers" {
-  description = "Verified caller principals allowed through the gateway."
-  value       = sort(distinct(var.allowed_callers))
+  description = "Verified caller principals allowed through the gateway (agent principals and other callers)."
+  value       = sort(local.callers)
+}
+
+output "agent_issuers" {
+  description = "Agent Identity trust domain issuers whose ID tokens the gateway verifies."
+  value       = sort(local.agent_issuers)
 }

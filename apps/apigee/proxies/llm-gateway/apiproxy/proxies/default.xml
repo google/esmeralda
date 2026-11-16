@@ -4,7 +4,7 @@
   Licensed under the Apache License, Version 2.0.
 -->
 <ProxyEndpoint name="default">
-  <Description>Agent-to-model egress: verifies the caller's Google ID token, authorizes caller / project / location / model, enforces a per-caller LLM token quota and forwards to Vertex AI with the proxy's own Google access token.</Description>
+  <Description>Agent-to-model egress: verifies the caller's ID token (the agent's Agent Identity, or a Google service account), authorizes caller / project / location / model, enforces a per-caller LLM token quota and forwards to Vertex AI with the proxy's own Google access token.</Description>
   <FaultRules/>
   <DefaultFaultRule name="usage-on-fault">
     <!-- Keeps the esmeralda.usage record complete (timestamp, outcome) for rejected calls. -->
@@ -17,6 +17,12 @@
     <Request>
       <Step>
         <Name>KVM-Get-LLM-Gateway-Config</Name>
+      </Step>
+      <Step>
+        <Name>DJ-Decode-Caller-Token</Name>
+      </Step>
+      <Step>
+        <Name>JS-Select-Token-Issuer</Name>
       </Step>
       <Step>
         <Name>VJ-Verify-Caller-Token</Name>

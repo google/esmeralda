@@ -9,9 +9,11 @@ include "root" {
 locals {
   env = read_terragrunt_config(find_in_parent_folders("env.yaml")).locals
 
-  # Agents in the catalog (kind a2a / adk) call models; their service accounts are the verified
-  # principals of the ID tokens they send (plus the test VM, for probes).
-  agent_names = [for name, entry in local.env.catalog : name if contains(["a2a", "adk"], try(entry.kind, ""))]
+  # Source of truth for who may call models: the callers of the catalog's `llm-gateway` target
+  # (managed: false, https://apigee.{domain}/llm), compiled into catalog_iap_egress as
+  # agents/<name>:agent_identity_principal references. The same list is the target's
+  # roles/iap.egressor policy at the Central Agent Gateway (iap-egress unit).
+  caller_refs = try(local.env.catalog_iap_egress.endpoints["llm-gateway"], [])
 }
 
 terraform {
@@ -69,6 +71,23 @@ dependency "security" {
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
+# Agents call models as their own Agent Identity (unbound ID tokens, audience https://apigee.<domain>).
+dependency "cx_mortgage_orchestrator" {
+  config_path = "../../../agents/cx-mortgage-orchestrator"
+  mock_outputs = {
+    agent_identity_principal = "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000/locations/us-central1/reasoningEngines/mock-cx-mortgage-orchestrator"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
+dependency "ai_coe_mortgage_specialist" {
+  config_path = "../../../agents/ai-coe-mortgage-specialist"
+  mock_outputs = {
+    agent_identity_principal = "principal://agents.global.org-0000000000.system.id.goog/resources/aiplatform/projects/000000000000/locations/us-central1/reasoningEngines/mock-ai-coe-mortgage-specialist"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+}
+
 inputs = {
   org_id          = dependency.platform.outputs.org_id
   apigee_env_name = dependency.platform.outputs.apigee_env_name
@@ -76,10 +95,18 @@ inputs = {
   service_account = dependency.platform.outputs.proxy_runtime_sa_email
 
   gateway_host = "apigee.${dependency.networking.outputs.entrypoint_domain}"
-  allowed_callers = distinct(compact(concat(
-    [for name in local.agent_names : try(dependency.security.outputs["${replace(name, "-", "_")}_sa_email"], "")],
-    [try(dependency.security.outputs.test_vm_sa_email, "")],
-  )))
+
+  # agents/<name>:agent_identity_principal -> unit output; an unmapped reference fails the plan
+  # (add the agent's dependency block above).
+  agent_principals = {
+    for ref in local.caller_refs :
+    trimprefix(split(":", ref)[0], "agents/") => {
+      "agents/cx-mortgage-orchestrator:agent_identity_principal"   = dependency.cx_mortgage_orchestrator.outputs.agent_identity_principal
+      "agents/ai-coe-mortgage-specialist:agent_identity_principal" = dependency.ai_coe_mortgage_specialist.outputs.agent_identity_principal
+    }[ref]
+  }
+  # Service account callers (Google ID tokens): the test VM, for probes.
+  allowed_callers = compact([try(dependency.security.outputs.test_vm_sa_email, "")])
   model_projects = [
     dependency.projects.outputs.cx_agents_project_id,
     dependency.projects.outputs.ai_coe_agents_project_id,

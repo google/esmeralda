@@ -203,7 +203,7 @@ A MessageLogging template can't compute values, omit empty fields or add numbers
 | :--- | :--- | :--- | :--- |
 | `partner-agents` | `gateway.request` | verified cross-cloud `iss#sub`, else the Apigee developer app name | `workload` = target agent, `gen_ai.usage.*` |
 | `partner-mcp` | `gateway.request` | same as `partner-agents` | `workload` = MCP server, `tool` for `tools/call` |
-| `llm-gateway` | `llm.call` | the agent's Google identity (ID token `email`, else `sub`) | `gen_ai.request.model`, `response.model`, `usage.*` |
+| `llm-gateway` | `llm.call` | the calling agent's Agent Identity `principal://` (verified ID token `sub`; a service account's `email` for other callers) | `workload` = calling agent, `gen_ai.request.model`, `response.model`, `usage.*` |
 
 ```json
 {
@@ -213,7 +213,8 @@ A MessageLogging template can't compute values, omit empty fields or add numbers
   "source": "gateway",
   "timestamp": "2026-11-09T02:13:22.123Z",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "caller": {"principal": "sa-cx-mortgage-orchestrator@esm-<env>-cx-agents-<sfx>.iam.gserviceaccount.com", "verified": true},
+  "caller": {"principal": "principal://agents.global.org-<ORG_ID>.system.id.goog/resources/aiplatform/projects/<PROJECT_NUMBER>/locations/<REGION>/reasoningEngines/<ENGINE_ID>", "verified": true},
+  "workload": {"name": "cx-mortgage-orchestrator", "runtime": "agent_engine", "cloud": "gcp"},
   "gen_ai": {
     "system": "gcp.vertex_ai",
     "operation.name": "generate_content",
@@ -234,6 +235,8 @@ A MessageLogging template can't compute values, omit empty fields or add numbers
 
 `usage.output_tokens` includes reasoning tokens and `usage.input_tokens` includes cached tokens (OpenTelemetry GenAI semantics); Gemini reports thinking tokens apart from candidates, so the gateway adds them.
 
+The agent sends the W3C `traceparent` of its current span with every model call, and the `llm-gateway` record names the calling agent as `workload.name`, so `vw_usage_billable` puts the gateway record and the agent's own `llm.call` record in the same billable unit (`trace_id` + agent) and counts the tokens once, from the gateway. The verified `principal://` resolves to the agent's team through its `principal_teams` row (compiled from the catalog), so chargeback bills the calling team as `verified`.
+
 ### 5.4 Proxy 3: `llm-gateway`, the agent → model hop (`apps/apigee/proxies/llm-gateway/`)
 
 The partner proxies govern traffic **into** the platform. The `llm-gateway` proxy governs the agents' own **model egress**: with `model_gateway = "apigee"`, every Gemini call an agent makes goes through Apigee instead of straight to `*-aiplatform.googleapis.com`. Apigee then becomes the primary source of token usage and caller identity for chargeback, and enforces a token budget per agent.
@@ -247,13 +250,13 @@ sequenceDiagram
     participant Apigee as Apigee X Runtime<br/>(llm-gateway proxy)
     participant Vertex as Vertex AI Gemini<br/>(<location>-aiplatform.googleapis.com)
 
-    Agent->>AGW: POST /llm/v1beta1/projects/<p>/locations/global/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse<br/>Authorization: Bearer <ID token, aud https://apigee.esmeralda.internal>
-    AGW->>EP: Registered destination
+    Agent->>AGW: POST /llm/v1beta1/projects/<p>/locations/global/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse<br/>Authorization: Bearer <unbound Agent Identity ID token, aud https://apigee.esmeralda.internal><br/>traceparent
+    AGW->>EP: Registered destination (catalog llm-gateway target, roles/iap.egressor for the agents)
     EP->>Apigee: Route via PSC NEG
-    Note over Apigee: 1. KVM-Get-LLM-Gateway-Config (kvm-llm-gateway)<br/>2. VJ-Verify-Caller-Token: VerifyJWT, Google JWKS, issuer, audience (401)<br/>3. JS-Authorize-LLM-Call: caller, path, project, location, model (403 / 404)<br/>4. LTQ-enforce: LLMTokenQuota per verified caller (429)<br/>5. AM-Strip-Caller-Credentials: the ID token stops here
+    Note over Apigee: 1. KVM-Get-LLM-Gateway-Config (kvm-llm-gateway)<br/>2. DJ-Decode-Caller-Token + JS-Select-Token-Issuer: trusted issuer and JWKS<br/>3. VJ-Verify-Caller-Token: VerifyJWT, signature, issuer, audience (401)<br/>4. JS-Authorize-LLM-Call: caller, path, project, location, model (403 / 404)<br/>5. LTQ-enforce: LLMTokenQuota per verified caller (429)<br/>6. AM-Strip-Caller-Credentials: the ID token stops here
     Apigee->>Vertex: Same Vertex AI path, GoogleAccessToken (proxy service account)
     Vertex-->>Apigee: SSE chunks with usageMetadata
-    Note over Apigee: 6. EventFlow: JS-extract-tokens per chunk<br/>7. Final chunk: LTQ-count, DC-capture-llm-metrics, JS-Usage-Context<br/>8. PostClientFlow: ML-interaction (esmeralda.usage llm.call)
+    Note over Apigee: 7. EventFlow: JS-extract-tokens per chunk<br/>8. Final chunk: LTQ-count, DC-capture-llm-metrics, JS-Usage-Context<br/>9. PostClientFlow: ML-interaction (esmeralda.usage llm.call)
     Apigee-->>Agent: Unbuffered SSE stream
 ```
 
@@ -263,13 +266,33 @@ The agent Terraform units set `ESMERALDA_MODEL_GATEWAY_URL = https://apigee.<dom
 
 * uses the gateway as `base_url`, so the request path stays the Vertex AI one and the proxy is a pass-through;
 * passes `project` (`GOOGLE_CLOUD_PROJECT`) and `location` (`MODEL_LOCATION`, else `global`) explicitly, because google-genai drops them from the path for a custom base URL otherwise;
-* authenticates with a Google-signed **ID token** for the agent's **runtime identity**, audience `https://apigee.<domain>`. It is not minted for `SERVICE_ACCOUNT_EMAIL`, which is a shared MCP invoker identity: the gateway attributes tokens per agent.
+* authenticates with an **ID token** for the agent's **runtime identity**, audience `https://apigee.<domain>`: on Agent Runtime, the agent's own Agent Identity, so the gateway verifies and meters each agent as its `principal://`. It is never minted for `SERVICE_ACCOUNT_EMAIL` (the deprecated shared invoker), which would bill every agent to one identity. Like every ID token `esmeralda.auth` mints, it is **unbound** (`bind_id_token=False`): the Central Agent Gateway and the entry point re-terminate TLS, so a certificate-bound token could not be checked behind them;
+* sends the W3C `traceparent` of the current span, so the gateway's usage record joins the agent's own.
 
 Model objects (`Gemini(...)`, `LiteLlm(...)`) and inherited models are left as they are.
 
+#### Reaching the gateway: the catalog `llm-gateway` target
+
+The Central Agent Gateway denies every host that isn't in the Agent Registry. The model gateway is declared in the [service catalog](../3-agentops-and-lifecycle/06-service-catalog.md) as a `managed: false` target, in the overrides of each environment that sets `model_gateway = "apigee"` (dev: `catalog/environments/dev.yaml`):
+
+```yaml
+llm-gateway:
+  kind: http
+  owner_team: platform
+  deploy: { managed: false, endpoint: "https://apigee.{domain}/llm" }
+  gateway: apigee
+  callers:
+    cx-mortgage-orchestrator: {}
+    ai-coe-mortgage-specialist: {}
+```
+
+It compiles into an Agent Registry endpoint entry for `apigee.<domain>` with a `roles/iap.egressor` policy listing the two agents' principals (the `iap-egress` unit), and the same callers are the proxy's `allowed_callers` (the `llm-gateway` unit reads them from `catalog_iap_egress`). An agent missing from `callers` is stopped by the Agent Gateway (403) before Apigee, and by the proxy if it got there. `make test-guards` fails when the target and the capability disagree in an environment.
+
 #### Why an ID token and `VerifyJWT`
 
-Google OAuth2 access tokens are opaque: Apigee has no local policy that can verify them (`VerifyAccessToken` only accepts Apigee-issued tokens), so checking one would take a `ServiceCallout` to Google's tokeninfo endpoint on every model call. A Google ID token is a JWT that `VerifyJWT` checks locally against Google's cached JWKS (signature, `iss = https://accounts.google.com`, `exp`), and its audience binds it to this gateway, so it can't be replayed against another service. The agents already mint ID tokens the same way for MCP servers.
+Google OAuth2 access tokens are opaque: Apigee has no local policy that can verify them (`VerifyAccessToken` only accepts Apigee-issued tokens), so checking one would take a `ServiceCallout` to Google's tokeninfo endpoint on every model call. An ID token is a JWT that `VerifyJWT` checks locally against the issuer's cached JWKS (signature, `iss`, `exp`), and its audience binds it to this gateway, so it can't be replayed against another service. The agents already mint ID tokens the same way for MCP servers.
+
+An agent's Agent Identity ID token is signed by its trust domain on Security Token Service: `iss = https://sts.googleapis.com/v1/organizations/<ORG_ID>/locations/global/workloadIdentityPools/agents.global.org-<ORG_ID>.system.id.goog`, JWKS at `<iss>/openid/jwks`, `sub = spiffe://agents.global.org-<ORG_ID>.system.id.goog/...` (no email). `DJ-Decode-Caller-Token` reads the token's `iss` without trusting it, and `JS-Select-Token-Issuer` picks the issuer and JWKS `VerifyJWT` checks against: the trust domain issuer when it is in the KVM's `agent_issuers` (derived from the agents' principals), else Google's (`https://accounts.google.com`, service account ID tokens such as the test VM's). A token from any other issuer fails `VerifyJWT` (401), and the JWKS URI is never built from an issuer outside the allowlist. `JS-Authorize-LLM-Call` turns the `spiffe://` subject into the `principal://` form the catalog and the usage views use.
 
 #### Authorization and southbound call
 
@@ -278,7 +301,9 @@ Google OAuth2 access tokens are opaque: Apigee has no local policy that can veri
 | KVM entry | Live unit value |
 | :--- | :--- |
 | `audience` | `https://apigee.<domain>` |
-| `allowed_callers` | service accounts of the catalog agents (`kind` `a2a` / `adk`), plus the test VM |
+| `allowed_callers` | the Agent Identity principals of the catalog `llm-gateway` target's callers, plus the test VM's service account |
+| `agent_issuers` | the Security Token Service issuers of those principals' trust domains |
+| `caller_workloads` | `<principal>=<agent name>`: the usage record's `workload.name` |
 | `allowed_projects` | the CX and AI CoE agent projects (the project in the request path) |
 | `allowed_locations` | the env region and `global` |
 | `allowed_models` | `gemini-*` |
@@ -317,8 +342,13 @@ The partner proxies call the `cross-cloud` shared flow (`FC-Cross-Cloud`), and A
 
 `model_gateway` takes `"none"` (default: agents call Vertex AI directly and the workload records are the only token source) or `"apigee"`. Layer 4 rejects `"apigee"` unless `usage_metering = "apigee"` (the proxy writes to its data collectors), the environment is `INTERMEDIATE` or `COMPREHENSIVE` (`LLMTokenQuota`), and `partner_access = "apigee"` (the entry point only enables its Apigee backend for partner access; with `model_gateway = "apigee"` it also routes `apigee.<domain>`, already a hostname of the Apigee environment group, to that backend).
 
-> [!WARNING]
-> `model_gateway = "apigee"` is not end to end yet. Agents egress through the Central Agent Gateway, which denies hosts that are not in the Agent Registry, and nothing registers `apigee.<domain>` or grants the agents `roles/iap.egressor` on it yet. Until the service catalog can declare the model gateway as a target, keep `model_gateway = "none"` (the default in dev and prd).
+Setting `model_gateway = "apigee"` in an environment takes three things, all checked offline by `make test-guards`:
+
+1. the capability in `infrastructure/live/<env>/env.yaml` (dev sets it; prd keeps `"none"`);
+2. the catalog `llm-gateway` target in `catalog/environments/<env>.yaml`, with every agent as a caller ([above](#reaching-the-gateway-the-catalog-llm-gateway-target)), then `uv run esmeralda catalog resolve --env all --write`;
+3. the units, in order: `layer-4-governance` (capability contract), the agent units (`ESMERALDA_MODEL_GATEWAY_URL`), `apigee/capabilities/llm-gateway`, `entrypoint` (routes `apigee.<domain>`) and `iap-egress` (Agent Registry entry and `roles/iap.egressor`).
+
+Model Armor's `model_calls` floor setting still screens the calls: it applies per agent project on Vertex AI, and the proxy keeps the agent's project in the request path.
 
 ### Deploying & Running the Live Partner Conformance Probes
 

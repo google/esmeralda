@@ -56,9 +56,28 @@ variable "gateway_host" {
 }
 
 variable "allowed_callers" {
-  description = "Verified caller principals allowed to call models: the email (or subject) of the Google ID token each agent sends. Empty denies every caller."
+  description = "Other verified caller principals allowed to call models (service accounts, e.g. the test VM's): the email (or subject) of the Google ID token they send. Agents go in agent_principals."
   type        = list(string)
   default     = []
+}
+
+variable "agent_principals" {
+  description = "Agents allowed to call models, agent name => its Agent Identity principal (principal://agents.global.<org|proj>-<n>.system.id.goog/..., the agent unit's agent_identity_principal output). The gateway verifies their unbound Agent Identity ID tokens against each trust domain's issuer, and records the agent name as the usage record's workload."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for principal in values(var.agent_principals) :
+      can(regex("^principal://agents\\.global\\.(org|proj)-[0-9]+\\.system\\.id\\.goog/[^,=]+$", principal))
+    ])
+    error_message = "agent_principals values must be Agent Identity principals: principal://agents.global.<org|proj>-<number>.system.id.goog/<resource> (no commas or '=')."
+  }
+
+  validation {
+    condition     = alltrue([for name in keys(var.agent_principals) : can(regex("^[a-z0-9][a-z0-9-]*$", name))])
+    error_message = "agent_principals keys must be agent names (lowercase letters, digits and dashes)."
+  }
 }
 
 variable "model_projects" {

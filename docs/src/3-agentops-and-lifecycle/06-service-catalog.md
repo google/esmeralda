@@ -217,6 +217,12 @@ flowchart LR
       endpoint, as the Apigee model gateway, Cloud Run or API Gateway expect; `access`; or omitted).
     - **Examples** (`example: true`, such as `external/legacy/example-core-banking.yaml`) stay
       illustrative: they are never registered.
+    - **The Apigee model gateway** is one: with `governance.capabilities.model_gateway = "apigee"`,
+      dev's overrides declare `llm-gateway` (`kind: http`, `https://apigee.{domain}/llm`,
+      `serving.token: id`) with both agents as callers. Its callers are also the proxy's allowlist
+      ([Apigee `llm-gateway`](../2-workloads-and-catalog/04-apigee-partner-gateway.md#reaching-the-gateway-the-catalog-llm-gateway-target)),
+      and `make test-guards` fails if it is declared where the capability is off, or missing where
+      it is on.
     - **Verification.** `esmeralda verify` (step `registry-egress`) reads every registry entry and
       its IAP policy and fails unless the registry root holds no binding, each baseline Google API
       entry lists exactly the layer-4 members, each catalog entry lists exactly its compiled callers,

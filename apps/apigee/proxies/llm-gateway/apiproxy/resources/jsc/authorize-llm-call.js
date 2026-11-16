@@ -5,8 +5,10 @@
  * Authorizes one agent -> model call through the LLM gateway, after VJ-Verify-Caller-Token
  * has verified the caller's Google-signed ID token (signature, issuer, audience, expiry).
  *
- *  1. Caller principal: the verified `email` claim (when email_verified), else `sub`.
+ *  1. Caller principal: the verified `email` claim (when email_verified), else `sub` (an Agent
+ *     Identity token's spiffe:// subject in its principal:// form).
  *     Fail closed: the principal (or its email / subject) must be in `allowed_callers`.
+ *     `caller_workloads` maps it to the calling agent's name (llmgw.caller.workload).
  *  2. Path: only Vertex AI publisher-model generateContent, streamGenerateContent and
  *     countTokens (POST) on `/{v1|v1beta1}/projects/{p}/locations/{l}/publishers/google/models/{m}`.
  *  3. Target: the project, location and model must be allowed (`allowed_projects`,
@@ -51,6 +53,11 @@
 
   var jwt = 'jwt.VJ-Verify-Caller-Token.';
   var subject = str(jwt + 'claim.subject') || str(jwt + 'decoded.claim.sub');
+  // An Agent Identity ID token's subject is the agent's SPIFFE id (spiffe://<trust domain>/...);
+  // the catalog, the principal_teams rows and the usage views use its principal:// form.
+  if (subject.indexOf('spiffe://') === 0) {
+    subject = 'principal://' + subject.substring('spiffe://'.length);
+  }
   var email = str(jwt + 'claim.email') || str(jwt + 'decoded.claim.email');
   var emailVerified = (str(jwt + 'claim.email_verified') || str(jwt + 'decoded.claim.email_verified')).toLowerCase();
   if (emailVerified !== 'true') {
@@ -60,6 +67,18 @@
   context.setVariable('llmgw.caller.principal', principal);
   // DC-capture-llm-metrics reports the verified caller in the dc_consumer_app collector.
   context.setVariable('consumer.app.name', principal || 'anonymous');
+
+  // The calling agent's name (kvm caller_workloads: "<principal>=<agent>,..."): the usage record's
+  // workload.name, so the views join it with the agent's own llm.call records (same trace_id).
+  var workloads = list('llmgw.caller_workloads');
+  var workload = '';
+  for (var w = 0; w < workloads.length && principal; w++) {
+    var eq = workloads[w].lastIndexOf('=');
+    if (eq > 0 && workloads[w].substring(0, eq) === principal) {
+      workload = workloads[w].substring(eq + 1);
+    }
+  }
+  context.setVariable('llmgw.caller.workload', workload);
 
   var reason = '';
   // Fail closed: no principal, or a principal outside the allowlist, is rejected. No wildcard.
