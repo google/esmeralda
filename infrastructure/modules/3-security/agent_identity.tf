@@ -3,15 +3,25 @@
 # ESMERALDA AGENT IDENTITY SECURITY & IAM PARITY CONFIGURATION
 # ==============================================================================
 
-locals {
-  cx_agents_trust_domain     = "agents.global.${data.google_project.cx_agents.org_id != "" ? "org-${data.google_project.cx_agents.org_id}" : "proj-${data.google_project.cx_agents.number}"}.system.id.goog"
-  ai_coe_agents_trust_domain = "agents.global.${data.google_project.ai_coe_agents.org_id != "" ? "org-${data.google_project.ai_coe_agents.org_id}" : "proj-${data.google_project.ai_coe_agents.number}"}.system.id.goog"
+# Agent Identity trust domain of each agent project (org-<ORG_ID> also for projects under a folder).
+module "cx_agents_trust_domain" {
+  source     = "../_shared/agent_identity_trust_domain"
+  project_id = var.cx_agents_project_id
+  org_id     = var.org_id
+}
 
+module "ai_coe_agents_trust_domain" {
+  source     = "../_shared/agent_identity_trust_domain"
+  project_id = var.ai_coe_agents_project_id
+  org_id     = var.org_id
+}
+
+locals {
   # CX mortgage orchestrator identity PrincipalSet URI format for Vertex AI Reasoning Engine
-  cx_mortgage_orchestrator_identity_principal = "principalSet://${local.cx_agents_trust_domain}/attribute.platformContainer/aiplatform/projects/${data.google_project.cx_agents.number}"
+  cx_mortgage_orchestrator_identity_principal = module.cx_agents_trust_domain.platform_container_principal_set
 
   # AI CoE mortgage specialist identity PrincipalSet URI format for Vertex AI Reasoning Engine
-  ai_coe_mortgage_specialist_identity_principal = "principalSet://${local.ai_coe_agents_trust_domain}/attribute.platformContainer/aiplatform/projects/${data.google_project.ai_coe_agents.number}"
+  ai_coe_mortgage_specialist_identity_principal = module.ai_coe_agents_trust_domain.platform_container_principal_set
 }
 
 # 0. Vertex AI Service Identities for Agent Identity projects

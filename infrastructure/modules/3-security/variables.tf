@@ -53,7 +53,7 @@ variable "region" {
 }
 
 variable "org_id" {
-  description = "The GCP Organization ID (numeric string)"
+  description = "The GCP Organization ID (numeric string). Optional: the Agent Identity trust domain takes the organization from the project ancestry and uses this only as a fallback."
   type        = string
   default     = ""
 }
