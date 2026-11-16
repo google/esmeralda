@@ -325,6 +325,7 @@ The same applies to `finalize`, with `esmeralda.lifecycle.FINALIZE`. When you pa
 | Target | Command | How it calls the agent |
 |---|---|---|
 | In-process (default) | `esmeralda query --agent-dir apps/agents/<agent> "message"` | Loads the package's `app` and runs it through the ADK runner. No server or port needed, and it works in a debugger |
+| In-process, with local MCP servers | `... --local-mcp "message"` | Same, after starting the MCP servers its `local_env` points at (127.0.0.1); stops them when the query ends |
 | A running server | `... --url http://localhost:8080 "message"` | ADK: `POST /api/stream_reasoning_engine` (`async_stream_query`). A2A: agent card, then `message:send` |
 | The deployed agent | `... --engine projects/P/locations/L/reasoningEngines/ID "message"` | The same calls through the Agent Runtime API, with your gcloud credentials |
 
@@ -349,7 +350,7 @@ A local run applies the agent's `agent.yaml` `env` (the same variables the deplo
 ```yaml
 local_env:
   LOCAL_MODE: "true"                               # orchestrator: load the specialist in-process
-  EMAIL_MCP_URL: "http://localhost:8001/mcp"       # local MCP servers started by make query
+  EMAIL_MCP_URL: "http://localhost:8001/mcp"       # local MCP servers started by esmeralda query --local-mcp
   INCOME_VERIFICATION_URL: "http://localhost:8002/mcp"
   DMS_MCP_URL: "http://localhost:8003/mcp"
 ```

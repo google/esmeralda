@@ -132,7 +132,19 @@ flowchart LR
 <a id="quick-start"></a>
 ### Quick Start
 
-Requires `gcloud`, `terraform`, `terragrunt`, and [`uv`](https://docs.astral.sh/uv/). Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID`) and review `infrastructure/live/<env>/env.yaml`.
+<a id="prerequisites"></a>
+#### Prerequisites
+
+| Tool | Version | Used for |
+|---|---|---|
+| [`uv`](https://docs.astral.sh/uv/getting-started/installation/) | recent | Python 3.12+ toolchain, the `esmeralda` CLI and every workspace package |
+| [`gcloud`](https://cloud.google.com/sdk/docs/install) | recent | Authentication (`gcloud auth application-default login`), image builds and live checks |
+| [`terraform`](https://developer.hashicorp.com/terraform/install) | >= 1.5 | Infrastructure modules |
+| [`terragrunt`](https://terragrunt.gruntwork.io/docs/getting-started/install/) | recent (the `run --all` command and `exclude` blocks) | Per-environment units under `infrastructure/live/` |
+| [`jq`](https://jqlang.org/download/) | any | Parsing Terraform outputs in the `make` targets (`build-images`, `deploy-all`) and `scripts/` (`esmeralda verify`) |
+| `git`, `make`, `bash` | any | Checkout, `make` targets and helper scripts |
+
+`uv run esmeralda doctor --env dev` checks that these tools are on your `PATH`. Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID`) and review `infrastructure/live/<env>/env.yaml`.
 
 #### 1. Using the `esmeralda` CLI (Recommended)
 
@@ -144,9 +156,9 @@ uv run esmeralda status --env dev          # live status of layers, catalog host
 uv run esmeralda contracts                 # inspect gateway & catalog architectural contracts
 uv run esmeralda guard --all               # run security & hygiene guards across the repo
 
-# Local development: run an agent + local MCP servers in one command
-uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
-  -q "Can you verify Julian Sterling's income?"
+# Local development: start the agent's local MCP servers, query it in-process, stop them
+uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator --local-mcp \
+  "Can you verify Julian Sterling's income?"
 
 # Infrastructure lifecycle & end-to-end verification
 uv run esmeralda units --env dev           # list all deployable Terragrunt units

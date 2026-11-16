@@ -297,12 +297,14 @@ def run(cmd: list[str], *, cwd: Path, timeout: float, what: str) -> subprocess.C
         raise OpsError(f"{what} timed out after {timeout:.0f}s in {cwd}") from exc
 
 
+_PREREQS = "see Prerequisites, README.md#prerequisites"
 INSTALL_HINTS = {
     "git": "install Git",
     "uv": "install uv (curl -LsSf https://astral.sh/uv/install.sh | sh)",
-    "terragrunt": "install Terragrunt (see the repo README, Prerequisites)",
-    "terraform": "install Terraform (see the repo README, Prerequisites)",
-    "gcloud": "install the Google Cloud CLI",
+    "terragrunt": f"install Terragrunt ({_PREREQS})",
+    "terraform": f"install Terraform >= 1.5 ({_PREREQS})",
+    "gcloud": f"install the Google Cloud CLI ({_PREREQS})",
+    "jq": f"install jq, used by the make targets and scripts ({_PREREQS})",
     "bash": "bash is required",
 }
 
@@ -635,6 +637,7 @@ def doctor(root: Path, env: str = "dev") -> dict[str, Any]:
         ("terraform", ["version"]),
         ("terragrunt", ["--version"]),
         ("gcloud", ["--version"]),
+        ("jq", ["--version"]),
     ]
     for name, ver_args in required_tools:
         resolved = which(name)

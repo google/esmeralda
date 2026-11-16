@@ -20,6 +20,7 @@ Everything runs against a synthetic checkout in tmp_path: no Terraform, gcloud o
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import textwrap
@@ -343,7 +344,7 @@ locals {
       enabled = false
     }
     capabilities = {
-      partner_agents = "apigee"
+      partner_access = "apigee"
       token_quota    = "agent_gateway"
       cross_cloud    = "apigee"
     }
@@ -365,6 +366,103 @@ locals {
     assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/partner-agents") is True
     assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/cross-cloud") is True
     assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/token-quota") is False
+
+
+# ---- Apigee capability units vs the real repository ----------------------------------------
+
+_REAL_LIVE = REPO_ROOT / "infrastructure" / "live"
+_REAL_ENVS = [e for e in ("dev", "prd") if (_REAL_LIVE / e / "env.yaml").is_file()]
+_CAPS_TF = REPO_ROOT / "infrastructure" / "modules" / "4-governance" / "capabilities.tf"
+# Independent of infra._EXCLUDE_CAP_RE: the whole `if` expression of the unit's exclude block.
+_TEST_EXCLUDE_RE = re.compile(r"exclude\s*\{\s*if\s*=\s*(.+?)\n", re.DOTALL)
+_TEST_CAP_RE = re.compile(r'governance\.capabilities\.(\w+)\s*,\s*"([^"]*)"\)\s*==\s*"apigee"')
+
+
+def _schema_capabilities() -> dict[str, str]:
+    """``governance_config.capabilities`` keys and defaults declared in capabilities.tf."""
+    text = _CAPS_TF.read_text()
+    body = re.search(r"capabilities\s*=\s*optional\(object\(\{(.*?)\}\)", text, re.DOTALL)
+    assert body, "capabilities object not found in capabilities.tf"
+    return dict(re.findall(r'(\w+)\s*=\s*optional\(string,\s*"([^"]*)"\)', body.group(1)))
+
+
+def _real_capability_units(env: str) -> list[str]:
+    base = _REAL_LIVE / env / "layer-5-workloads" / "apigee" / "capabilities"
+    return sorted(
+        f"layer-5-workloads/apigee/capabilities/{p.name}" for p in base.iterdir() if (p / "terragrunt.hcl").is_file()
+    )
+
+
+def _unit_condition(env: str, unit: str) -> tuple[str, str]:
+    """(capability key, default) that the unit's real exclude block gates on."""
+    text = (_REAL_LIVE / env / unit / "terragrunt.hcl").read_text()
+    expr = _TEST_EXCLUDE_RE.search(text)
+    assert expr, f"{env}/{unit}: no exclude block"
+    assert "governance.apigee.enabled" in expr.group(1), f"{env}/{unit}: exclude does not check apigee.enabled"
+    caps = _TEST_CAP_RE.findall(expr.group(1))
+    assert len(caps) == 1, f"{env}/{unit}: expected exactly one capability in the exclude block, got {caps}"
+    return caps[0]
+
+
+@pytest.mark.skipif(not _REAL_ENVS, reason="real infrastructure/live not available")
+@pytest.mark.parametrize("env", _REAL_ENVS)
+def test_apigee_capability_units_gate_on_real_schema_keys(env):
+    """Every capability unit's exclude key exists in capabilities.tf, and the CLI fallback map agrees."""
+    schema = _schema_capabilities()
+    units = _real_capability_units(env)
+    assert units, f"no Apigee capability units in {env}"
+    for unit in units:
+        key, default = _unit_condition(env, unit)
+        assert key in schema, f"{env}/{unit}: '{key}' is not a governance.capabilities key in capabilities.tf"
+        assert default == schema[key], f"{env}/{unit}: default '{default}' differs from capabilities.tf '{schema[key]}'"
+        hcl = _REAL_LIVE / env / unit / "terragrunt.hcl"
+        assert infra.apigee_capability_key(hcl, unit) == (key, default)
+        assert infra.APIGEE_CAPABILITY_KEYS[unit.rsplit("/", 1)[-1]] == key
+
+
+@pytest.mark.skipif(not _REAL_ENVS, reason="real infrastructure/live not available")
+@pytest.mark.parametrize("env", _REAL_ENVS)
+def test_apigee_capability_units_match_real_env_yaml(env):
+    """``unit_enabled`` agrees with each unit's exclude condition evaluated on the real env.yaml."""
+    gov = repo.governance_block(REPO_ROOT, env)
+    apigee_on = bool(gov.get("apigee", {}).get("enabled"))
+    for unit in _real_capability_units(env):
+        key, default = _unit_condition(env, unit)
+        expected = apigee_on and gov.get("capabilities", {}).get(key, default) == "apigee"
+        assert infra.unit_enabled(REPO_ROOT, env, unit) is expected, f"{env}/{unit} (key {key})"
+
+
+@pytest.mark.skipif(not _REAL_ENVS, reason="real infrastructure/live not available")
+def test_apigee_capability_units_follow_each_schema_key(checkout):
+    """With the real unit files, setting one capability to "apigee" enables exactly the units it gates."""
+    env = _REAL_ENVS[0]
+    units = _real_capability_units(env)
+    for unit in units:
+        target = checkout / "infrastructure/live/dev" / unit
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copy(_REAL_LIVE / env / unit / "terragrunt.hcl", target / "terragrunt.hcl")
+    env_yaml = checkout / "infrastructure/live/dev/env.yaml"
+    gated = {unit: _unit_condition(env, unit)[0] for unit in units}
+    for key in _schema_capabilities():
+        env_yaml.write_text(
+            ENV_YAML
+            + f"""
+locals {{
+  governance = {{
+    apigee = {{
+      enabled = true
+    }}
+    capabilities = {{
+      {key} = "apigee"
+    }}
+  }}
+}}
+"""
+        )
+        for unit in units:
+            assert infra.unit_enabled(checkout, "dev", unit) is (gated[unit] == key), f"{key} -> {unit}"
+    partner_units = {u.rsplit("/", 1)[-1] for u, k in gated.items() if k == "partner_access"}
+    assert {"partner-agents", "partner-mcp"} <= partner_units
 
 
 def test_gcs_backend_detected(checkout):

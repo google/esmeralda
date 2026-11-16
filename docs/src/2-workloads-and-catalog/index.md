@@ -98,9 +98,9 @@ You can inspect, test, deploy, and verify every Layer 5 workload directly from t
 uv run esmeralda units --env dev
 uv run esmeralda status --env dev
 
-# Run Julian Sterling's underwriting query locally (starts local MCP servers automatically)
-uv run esmeralda query apps/agents/cx-mortgage-orchestrator \
-  -q "Can you verify Julian Sterling's income?"
+# Run Julian Sterling's underwriting query locally (--local-mcp starts and stops the local MCP servers)
+uv run esmeralda query --agent-dir apps/agents/cx-mortgage-orchestrator --local-mcp \
+  "Can you verify Julian Sterling's income?"
 
 # Plan or apply a specific Layer 5 workload unit (with destroy-guard protection)
 uv run esmeralda plan layer-5-workloads/services/income-verification --env dev

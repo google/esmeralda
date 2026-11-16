@@ -70,7 +70,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for day-to-day status, pl
 | `uv run esmeralda verify --env <env>` | `make verify ENV=<env>` | Gateway conformance probes (`scripts/test_gateway.sh`) + Agent Registry egress policies (every entry lists exactly its compiled callers, none on the registry root) + remote specialist and orchestrator queries |
 | `uv run esmeralda verify --partner --env <env>` | `make test-partner ENV=<env>` | Apigee partner front-door conformance probes (`scripts/test_partner.sh`, offline or live) |
 | `uv run esmeralda verify --model-armor --env <env>` | — | Model Armor checks for `governance.model_armor`: injection through model calls, gateway `tools/call` inspection, long-call regression |
-| `uv run esmeralda query --agent-dir apps/agents/<agent> "..."` | `make query AGENT=<agent> [TARGET=local\|remote]` | Queries an ADK or A2A agent in-process, over `--url`, or on Agent Runtime (`--engine`), with `--user-token` support |
+| `uv run esmeralda query --agent-dir apps/agents/<agent> [--local-mcp] "..."` | `make query AGENT=<agent> [TARGET=local\|remote]` | Queries an ADK or A2A agent in-process (`--local-mcp` starts and stops its local MCP servers), over `--url`, or on Agent Runtime (`--engine`), with `--user-token` support |
 | `uv run esmeralda logs <target> --env <env>` | `make logs TARGET_NAME=<target> ENV=<env>` | Recent Cloud Logging entries for an agent or MCP service (tracebacks collapsed, deduplicated) |
 | `uv run esmeralda contracts [--section ...]` | — | Prints architectural contracts (`entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
 | `uv run esmeralda guard [--staged\|--diff <range>\|--all]` | `make guard` | Public-repository sensitive-content and forbidden-path scanner |

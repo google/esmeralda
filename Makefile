@@ -160,17 +160,8 @@ test-release: ## Unit tests for the release manifest writer (scripts/release_man
 	@echo "🧪 Running unit tests for the release manifest..."
 	@python3 -m unittest discover -s scripts/tests -q
 
-run-mcp-local: ## Launch the 3 MCP servers locally on dedicated localhost ports
-	@[ -n "$$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null)" ] && kill -9 $$(lsof -t -i :8001 -i :8002 -i :8003 2>/dev/null) 2>/dev/null || true
-	@echo "🚀 Launching MCP Servers..."
-	@uv run --package corporate-email uvicorn main:app --app-dir apps/services/corporate-email --port 8001 & pid_email=$$! ; \
-	 echo "📧 corporate-email running on http://localhost:8001" ; \
-	 uv run --package income-verification-api uvicorn main:app --app-dir apps/services/income-verification --port 8002 & pid_income=$$! ; \
-	 echo "💰 income-verification-api running on http://localhost:8002" ; \
-	 uv run --package legacy-dms uvicorn server:app --app-dir apps/services/legacy-dms --port 8003 & pid_dms=$$! ; \
-	 echo "🗄️ legacy-dms running on http://localhost:8003" ; \
-	 trap 'echo "🧹 Interrupt caught! Tearing down MCP servers..."; kill $$pid_email $$pid_income $$pid_dms 2>/dev/null || true' INT TERM EXIT; \
-	 wait
+run-mcp-local: ## Launch the 3 MCP servers locally on 127.0.0.1:8001-8003 until Ctrl+C (servers listed in esmeralda.local_mcp)
+	@uv run --package esmeralda python -m esmeralda.local_mcp
 
 # Default query used for local agent testing
 QUERY ?= Can you verify Julian Sterling's income?
@@ -185,7 +176,7 @@ TARGET ?= local
 query: ## Query an agent: AGENT=<dir under apps/agents> [QUERY="..."] [TARGET=local|remote|<url>] (remote = the ENV deployment)
 	@[ -n "$(AGENT)" ] || { echo "❌ Set AGENT=<agent directory under apps/agents>, e.g. AGENT=cx-mortgage-orchestrator"; exit 1; }
 	@case "$(TARGET)" in \
-	  local) scripts/with_local_mcp.sh uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) "$(QUERY)" ;; \
+	  local) uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --local-mcp "$(QUERY)" ;; \
 	  remote) ENGINE=$$(cd $(LIVE_DIR)/layer-5-workloads/agents/$(AGENT) && terragrunt output -raw engine_id 2>/dev/null) && [ -n "$$ENGINE" ] || { echo "❌ No engine_id output for $(AGENT) in $(ENV)"; exit 1; }; \
 	    uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --engine "$$ENGINE" "$(QUERY)" ;; \
 	  http://*|https://*) uv run --package $(AGENT) esmeralda query --agent-dir apps/agents/$(AGENT) --url "$(TARGET)" "$(QUERY)" ;; \
