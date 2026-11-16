@@ -373,7 +373,7 @@ esmeralda run -- <command> [args...]
 Exit codes (when it doesn't `exec`): `2` for a usage error, `1` if the certificate bundle is invalid. Other failures (for example `update-ca-certificates` failing) stop the container with a traceback.
 
 ```text
-esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE] [--user ID] [--session ID]
+esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE | --local-mcp] [--user ID] [--session ID]
                 [--caller PROJECT/AGENT] [--timeout SECONDS] [--fail-on-tool-error] [--verbose] MESSAGE
 ```
 
@@ -382,6 +382,7 @@ esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE] [--user ID] [-
 | `--agent-dir` | `.` | Agent directory, with `agent.yaml` and the `agent` package |
 | `--url` | | A running server. ADK: `POST <url>/api/stream_reasoning_engine`. A2A: card at `<url>/v1/card` (or `/.well-known/agent-card.json`), then `message:send` |
 | `--engine` | | `projects/P/locations/L/reasoningEngines/ID`. ADK: `:streamQuery`. A2A: `<engine>/a2a`. Authenticated with ADC, else `gcloud auth print-access-token` |
+| `--local-mcp` | off | In-process run with the local MCP servers up: starts the servers whose `localhost:<port>` URLs are in `local_env` (`esmeralda.local_mcp.SERVERS`, bound to 127.0.0.1, logs in `.esmeralda/local-mcp/`), waits for `/health`, and stops them after the query, also on Ctrl+C. Servers already running are reused and left running. Exit code `1` if a server doesn't start |
 | `--user` | `esmeralda-cli` | User id |
 | `--session` | new session | Session id (ADK) or context id (A2A) to continue |
 | `--caller` | `<project>/esmeralda_cli` | Caller context. The project comes from `GOOGLE_CLOUD_PROJECT`, else ADC |

@@ -23,6 +23,7 @@ care, and update both agents and the docs in the same PR):
 | `auth.id_token(audience)`, `auth.access_token()`, `auth.token_kind(url)`, `auth.bearer_token(url)` | `auth.py` | Cached ID and OAuth2 access tokens (plus `*_async`) for the runtime identity (the agent's own Agent Identity on Agent Runtime); ID tokens are always requested unbound (`bind_id_token=False`, so they survive the Agent Gateway), access tokens keep the library default; impersonates `SERVICE_ACCOUNT_EMAIL` only when that deprecated opt-in is set; skipped for local URLs |
 | `context.user_token(ctx)`, `context.CallerContext` | `context.py` | End-user token and caller identity propagation |
 | `esmeralda run -- <cmd>` / `serve` / `query` | `cli.py` (+ `certs.py`, `serve.py`, `query.py`) | Container entrypoint (installs the Agent Gateway root CA), server from `agent.yaml`, one client for ADK and A2A |
+| `esmeralda query --local-mcp`, `python -m esmeralda.local_mcp` | `local_mcp.py` | Development only: the list of local MCP servers and ports; starts them on 127.0.0.1 for a query (or until Ctrl+C for `make run-mcp-local`) and always stops what it started |
 | `esmeralda mcp` / `status` / `doctor` / `units` / `plan` / `apply` / `verify` / `logs` / `contracts` / `guard` | `cli.py` + `ops/` | Read-only MCP server (`mcp`) and first-class platform operations CLI (`--json` + human formatters, destroy guard on `apply`, sensitive content `guard`) |
 | `AgentConfig` | `config.py` | Parsed `agent.yaml` (`framework`, `env`, `local_env`, `agent_card`) |
 

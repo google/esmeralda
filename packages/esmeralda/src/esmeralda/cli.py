@@ -22,6 +22,7 @@ Container & agent runtime commands:
   and in the container. ``--local`` applies ``local_env`` from ``agent.yaml``.
 * ``esmeralda query [options] MESSAGE``: queries an agent (ADK or A2A) in-process, on a running
   server (``--url``) or on Agent Runtime (``--engine``), and exits non-zero if the run failed.
+  ``--local-mcp`` starts the agent's local MCP servers for an in-process run (``esmeralda.local_mcp``).
 * ``esmeralda mcp [--repo PATH]``: a read-only MCP server (stdio) to operate the checkout: status,
   plans, agent queries, gateway probes and agent logs (see ``esmeralda.ops``).
 
@@ -101,6 +102,28 @@ def _query(args: argparse.Namespace) -> int:
         return 2
 
     report = Report(verbose=args.verbose)
+    if getattr(args, "local_mcp", False):
+        from esmeralda import local_mcp
+
+        try:
+            with local_mcp.sigterm_as_interrupt():
+                servers = local_mcp.servers_for(config.local_env)
+                if not servers:
+                    print("ℹ️  agent.yaml local_env points at no local MCP server: nothing to start", file=sys.stderr)
+                with local_mcp.running(local_mcp.find_root(config.directory), servers):
+                    return _run_query(args, config, request, report)
+        except local_mcp.LocalMcpError as exc:
+            print(f"❌ {exc}", file=sys.stderr)
+            return 1
+        except KeyboardInterrupt:
+            print("Interrupted.", file=sys.stderr)
+            return 130
+    return _run_query(args, config, request, report)
+
+
+def _run_query(args: argparse.Namespace, config: Any, request: Any, report: Any) -> int:
+    from esmeralda import query as q
+
     try:
         asyncio.run(q.run(config, request, report, url=args.url, engine=args.engine))
     except Exception as exc:  # report transport and agent failures as a failed query
@@ -539,6 +562,12 @@ def _parser() -> argparse.ArgumentParser:
     target = query.add_mutually_exclusive_group()
     target.add_argument("--url", help="a running server, e.g. http://localhost:8080")
     target.add_argument("--engine", help="projects/P/locations/L/reasoningEngines/ID on Agent Runtime")
+    target.add_argument(
+        "--local-mcp",
+        action="store_true",
+        help="in-process run: start the agent's local MCP servers (agent.yaml local_env ports, 127.0.0.1), "
+        "query, then stop them",
+    )
     query.add_argument("--user", default="esmeralda-cli", help="user id (default: esmeralda-cli)")
     query.add_argument("--session", help="session id (ADK) or context id (A2A) to continue")
     query.add_argument("--caller", help="caller context as project/agent (default: <project>/esmeralda_cli)")
