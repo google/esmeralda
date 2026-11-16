@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<Javascript name="JS-Select-Token-Issuer" continueOnError="false" enabled="true" timeLimit="200">
+  <DisplayName>JS-Select-Token-Issuer</DisplayName>
+  <ResourceURL>jsc://select-token-issuer.js</ResourceURL>
+</Javascript>

@@ -38,6 +38,7 @@ EXPECTED_DEFAULT_CAPABILITIES = {
     "token_quota": "none",
     "usage_metering": "agent_gateway",
     "cross_cloud": "agent_gateway",
+    "model_gateway": "none",
 }
 
 
@@ -157,6 +158,7 @@ def test_explicit_env_yaml_agw_configuration_passes(tmp_path: pathlib.Path):
         "cross_cloud",
         "content_safety",
         "egress_allowlist",
+        "model_gateway",
     ],
 )
 def test_apigee_capability_with_apigee_disabled_fails(tmp_path: pathlib.Path, capability: str):
@@ -275,3 +277,62 @@ def test_egress_allowlist_cannot_be_none(tmp_path: pathlib.Path):
         evaluate_capabilities(tmp_path / "ungoverned-egress", config)
 
     assert 'governance_config.capabilities.egress_allowlist cannot be "none"' in _squash(str(exc_info.value))
+
+
+MODEL_GATEWAY_ERROR = 'governance_config.capabilities.model_gateway must be "none" or "apigee"'
+
+
+@pytest.mark.parametrize(
+    ("env_type", "capabilities"),
+    [
+        # agent_gateway does not proxy model egress
+        ("INTERMEDIATE", {"model_gateway": "agent_gateway"}),
+        # the llm-gateway writes to the usage-metering data collectors
+        ("INTERMEDIATE", {"model_gateway": "apigee", "usage_metering": "agent_gateway"}),
+        # LLMTokenQuota is not supported on BASE
+        ("BASE", {"model_gateway": "apigee", "usage_metering": "apigee"}),
+    ],
+)
+def test_invalid_model_gateway_fails(tmp_path: pathlib.Path, env_type: str, capabilities: dict[str, str]):
+    """`model_gateway` is none or apigee; apigee needs usage_metering = apigee and an INTERMEDIATE+ environment."""
+    config = {"apigee": {"enabled": True, "byo": False, "environment_type": env_type}, "capabilities": capabilities}
+    with pytest.raises(AssertionError) as exc_info:
+        evaluate_capabilities(tmp_path / "bad-model-gateway", config)
+
+    assert MODEL_GATEWAY_ERROR in _squash(str(exc_info.value))
+
+
+def test_model_gateway_apigee_passes(tmp_path: pathlib.Path):
+    """`model_gateway = "apigee"` with usage_metering and partner access on Apigee and an INTERMEDIATE environment passes."""
+    config = {
+        "apigee": {"enabled": True, "byo": False, "environment_type": "INTERMEDIATE"},
+        "capabilities": {
+            "model_gateway": "apigee",
+            "usage_metering": "apigee",
+            "partner_access": "apigee",
+            "cross_cloud": "apigee",
+        },
+    }
+    outputs = evaluate_capabilities(tmp_path / "model-gateway", config)
+    assert outputs["capabilities"]["model_gateway"] == "apigee"
+
+
+def test_model_gateway_apigee_requires_the_entry_point_apigee_backend(tmp_path: pathlib.Path):
+    """The entry point only enables its Apigee backend with partner_access = "apigee"."""
+    config = {
+        "apigee": {"enabled": True, "byo": False, "environment_type": "INTERMEDIATE"},
+        "capabilities": {"model_gateway": "apigee", "usage_metering": "apigee"},
+    }
+    with pytest.raises(AssertionError) as exc_info:
+        evaluate_capabilities(tmp_path / "model-gateway-no-partner", config)
+
+    assert 'model_gateway = "apigee" requires partner_access = "apigee"' in _squash(str(exc_info.value))
+
+
+@pytest.mark.parametrize("env", ["dev", "prd"])
+def test_entry_point_routes_the_model_gateway_host_to_apigee(env: str):
+    """With model_gateway = "apigee", the entry point sends apigee.<domain> to the Apigee backend."""
+    hcl = (REPO_ROOT / "infrastructure" / "live" / env / "layer-5-workloads" / "entrypoint" / "terragrunt.hcl").read_text(
+        encoding="utf-8"
+    )
+    assert 'capabilities.model_gateway, "none") == "apigee" ? { "apigee" = "apigee" } : {}' in hcl

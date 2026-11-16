@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<Javascript name="JS-Authorize-LLM-Call" continueOnError="false" enabled="true" timeLimit="200">
+  <DisplayName>JS-Authorize-LLM-Call</DisplayName>
+  <Properties/>
+  <ResourceURL>jsc://authorize-llm-call.js</ResourceURL>
+</Javascript>

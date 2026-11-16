@@ -120,6 +120,9 @@ inputs = {
   default_backend = local.gateways.default
   host_rules = merge(
     try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.partner_access, "none") == "apigee" ? { "partner" = "apigee" } : {},
+    # Model gateway (llm-gateway proxy) on apigee.<domain>; Layer 4 requires partner_access = "apigee",
+    # which enables the Apigee adapter above.
+    try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.model_gateway, "none") == "apigee" ? { "apigee" = "apigee" } : {},
     local.gateways.host_rules
   )
 }

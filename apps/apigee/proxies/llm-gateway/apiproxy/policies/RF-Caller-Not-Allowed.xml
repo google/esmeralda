@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<RaiseFault name="RF-Caller-Not-Allowed" continueOnError="false" enabled="true">
+  <DisplayName>RF-Caller-Not-Allowed</DisplayName>
+  <!-- Fail closed: a verified identity that is not a registered caller is denied (and logged
+       as an error record with its principal, so unattributed traffic shows up). -->
+  <FaultResponse>
+    <Set>
+      <StatusCode>403</StatusCode>
+      <Payload contentType="application/json">{"error":"caller_not_allowed","detail":"The verified caller is not registered for the model gateway."}</Payload>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

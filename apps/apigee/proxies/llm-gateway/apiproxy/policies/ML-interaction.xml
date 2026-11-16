@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<MessageLogging name="ML-interaction" continueOnError="true" enabled="true">
+  <DisplayName>ML-interaction</DisplayName>
+  <!-- One esmeralda.usage record (contracts/usage-event.schema.json) per model call, in
+       PostClientFlow. caller.principal is the verified caller (an agent's principal://); workload
+       is the calling agent (kvm caller_workloads), so the usage views join this record with the
+       agent's own llm.call records on trace_id and workload.name and count the tokens once. The
+       usage.*_fields fragments come from JS-Usage-Context: each is empty or ends with a comma.
+       Never logs bodies, credentials or API keys. -->
+  <CloudLogging>
+    <LogName>projects/{organization.name}/logs/esmeralda-apigee-interactions</LogName>
+    <Message contentType="application/json">{
+  "schema": "esmeralda.usage",
+  "schema_version": 1,
+  "event": "llm.call",
+  "source": "gateway",
+  "timestamp": "{usage.timestamp}",
+  {usage.trace_fields}{usage.caller_fields}{usage.workload_fields}{usage.gen_ai_fields}{usage.outcome_fields}"gateway": {"product": "apigee", "name": "{apiproxy.name}"},
+  "dimensions": {},
+  "latency_ms": {firstnonnull(usage.latency_ms,'0')}
+}</Message>
+    <ResourceType>api</ResourceType>
+  </CloudLogging>
+</MessageLogging>

@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from esmeralda import models
 from esmeralda.plugin import EsmeraldaTelemetryPlugin
 
 
@@ -31,7 +32,12 @@ def create_app(root_agent: Any, *, name: str = "agent", plugins: Iterable[Any] =
 
     ``name`` must match the agent package directory (``agent``), which is also the
     ``--gemini_enterprise_app_name`` the container passes to ``adk api_server``.
+
+    When ``ESMERALDA_MODEL_GATEWAY_URL`` is set, the Gemini models of ``root_agent`` and its
+    sub-agents are routed through that model gateway (``esmeralda.models.route_models``);
+    otherwise the agent is left untouched.
     """
     from google.adk.apps import App
 
+    models.route_models(root_agent)
     return App(name=name, root_agent=root_agent, plugins=[EsmeraldaTelemetryPlugin(), *plugins])

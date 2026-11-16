@@ -87,6 +87,9 @@ inputs = {
   # Agent hosts reached through direct take an OAuth2 access token (esmeralda.auth.token_kind).
   access_token_hosts = [for name in local.access_token_names : "${name}.${dependency.networking.outputs.entrypoint_domain}"]
 
+  # governance.capabilities.model_gateway = "apigee": Gemini calls go through the Apigee llm-gateway.
+  model_gateway_url = try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.model_gateway, "none") == "apigee" ? "https://apigee.${dependency.networking.outputs.entrypoint_domain}/llm" : ""
+
   # BYOC image from the shared layer-0 CI/CD project (resolved to a digest by the module)
   agent_image_uri = "${(lookup(local.env_vars.locals, "image_repository", "dev") == "release" ? dependency.cicd.outputs.release_repository_url : dependency.cicd.outputs.dev_repository_url)}/${local.image_ref}"
 

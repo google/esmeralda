@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<APIProxy revision="1" name="llm-gateway">
+  <DisplayName>llm-gateway</DisplayName>
+  <Description>Agent-to-model egress (AI gateway): verified caller identity, per-caller LLM token quota, token metering and esmeralda.usage records for Vertex AI Gemini generateContent / streamGenerateContent (SSE).</Description>
+  <BasePaths>/llm</BasePaths>
+  <Policies>
+    <Policy>AM-Set-Target-Url</Policy>
+    <Policy>AM-Strip-Caller-Credentials</Policy>
+    <Policy>DC-capture-llm-metrics</Policy>
+    <Policy>DJ-Decode-Caller-Token</Policy>
+    <Policy>JS-Authorize-LLM-Call</Policy>
+    <Policy>JS-Select-Token-Issuer</Policy>
+    <Policy>JS-extract-tokens</Policy>
+    <Policy>JS-Usage-Context</Policy>
+    <Policy>JS-Usage-Context-Fault</Policy>
+    <Policy>KVM-Get-LLM-Gateway-Config</Policy>
+    <Policy>LTQ-count</Policy>
+    <Policy>LTQ-enforce</Policy>
+    <Policy>ML-interaction</Policy>
+    <Policy>RF-Caller-Not-Allowed</Policy>
+    <Policy>RF-Not-Found</Policy>
+    <Policy>RF-Target-Not-Allowed</Policy>
+    <Policy>VJ-Verify-Caller-Token</Policy>
+  </Policies>
+  <ProxyEndpoints>
+    <ProxyEndpoint>default</ProxyEndpoint>
+  </ProxyEndpoints>
+  <Resources>
+    <Resource>jsc://authorize-llm-call.js</Resource>
+    <Resource>jsc://extract-tokens.js</Resource>
+    <Resource>jsc://select-token-issuer.js</Resource>
+    <Resource>jsc://usage-context.js</Resource>
+  </Resources>
+  <TargetEndpoints>
+    <TargetEndpoint>default</TargetEndpoint>
+    <TargetEndpoint>sse</TargetEndpoint>
+  </TargetEndpoints>
+</APIProxy>

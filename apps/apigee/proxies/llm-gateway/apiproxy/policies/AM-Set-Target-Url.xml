@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<AssignMessage name="AM-Set-Target-Url" continueOnError="false" enabled="true">
+  <DisplayName>AM-Set-Target-Url</DisplayName>
+  <!-- llm.target.url = https://<location host><validated Vertex AI path>, built by
+       JS-Authorize-LLM-Call from the allowed location only. Query parameters (alt=sse) are
+       still copied. -->
+  <AssignVariable>
+    <Name>target.url</Name>
+    <Ref>llm.target.url</Ref>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>target.copy.pathsuffix</Name>
+    <Value>false</Value>
+  </AssignVariable>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+</AssignMessage>

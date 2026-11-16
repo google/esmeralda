@@ -11,7 +11,8 @@ care, and update both agents and the docs in the same PR):
 | Surface | Module | Purpose |
 |---|---|---|
 | `prepare()`, `finalize()` | `lifecycle.py` | Process lifecycle; `prepare()` must run before the agent creates its clients |
-| `create_app(root_agent, *, name="agent", plugins=())` | `app.py` | ADK `App` with `EsmeraldaTelemetryPlugin` first |
+| `create_app(root_agent, *, name="agent", plugins=())` | `app.py` | ADK `App` with `EsmeraldaTelemetryPlugin` first; routes Gemini models through the model gateway when configured |
+| `models.route_models(agent)`, `models.gemini(name)` | `models.py` | Model egress through `ESMERALDA_MODEL_GATEWAY_URL` (unbound ID token for the runtime identity, plus `traceparent`); no-op when unset |
 | `EsmeraldaTelemetryPlugin` | `plugin.py` | Caller context and telemetry per request |
 | `mcp.toolset(url, prefix=...)`, `mcp.headers_for(...)` | `mcp.py` | MCP toolset with ID token, the delegated user credential (opt-in per host, see `user_credential`), `X-Agent-Spiffe-Id`, and `X-API-Key` |
 | `user_credential.outgoing_headers(...)`, `user_credential.redact(...)` | `user_credential.py` | Which hosts receive the user credential (`ESMERALDA_USER_CREDENTIAL_TARGETS`) and redaction; the credential never enters telemetry |

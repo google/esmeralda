@@ -79,6 +79,9 @@ inputs = {
   # Agent hosts reached through direct take an OAuth2 access token (esmeralda.auth.token_kind).
   access_token_hosts = [for name in local.access_token_names : "${name}.${dependency.networking.outputs.entrypoint_domain}"]
 
+  # governance.capabilities.model_gateway = "apigee": Gemini calls go through the Apigee llm-gateway.
+  model_gateway_url = try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.model_gateway, "none") == "apigee" ? "https://apigee.${dependency.networking.outputs.entrypoint_domain}/llm" : ""
+
   # Agent Gateway binding + the CA bundle the env-neutral image installs at start-up
   agent_gateway_id                = dependency.governance.outputs.agent_gateway_id
   agent_gateway_root_certificates = dependency.governance.outputs.agw_root_ca_bundle

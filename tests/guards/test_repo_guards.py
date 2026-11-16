@@ -52,6 +52,7 @@ EXPECTED_CAPABILITY_KEYS = {
     "token_quota",
     "usage_metering",
     "cross_cloud",
+    "model_gateway",
 }
 
 # Match concrete 4-char random hex suffixes on Esmeralda project IDs,

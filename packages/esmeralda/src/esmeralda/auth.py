@@ -86,11 +86,12 @@ def is_local(url: str) -> bool:
     return address.is_loopback or address.is_unspecified
 
 
-def _unbound_id_token_credentials(audience: str, request: Any) -> Any:
+def unbound_id_token_credentials(audience: str, request: Any) -> Any:
     """ID token credentials for the runtime identity, never certificate-bound (see the module docstring).
 
-    ``bind_id_token`` exists since google-auth 2.61, the release that started binding ID tokens;
-    older releases don't take it and never bind.
+    Also used by ``esmeralda.models`` for the model gateway, which sits behind the same TLS
+    re-termination. ``bind_id_token`` exists since google-auth 2.61, the release that started
+    binding ID tokens; older releases don't take it and never bind.
     """
     import inspect
 
@@ -114,7 +115,7 @@ def _new_credentials(audience: str, service_account: str) -> Any:
         return impersonated_credentials.IDTokenCredentials(
             target_credentials=target, target_audience=audience, include_email=True
         )
-    return _unbound_id_token_credentials(audience, Request())
+    return unbound_id_token_credentials(audience, Request())
 
 
 def id_token(audience: str) -> str:

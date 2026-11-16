@@ -126,7 +126,7 @@ The `apigee/products` unit also provisions a default smoke-test developer (`part
 
 ## 5. Inside the Proxy & Shared Flow Bundles: Step-by-Step Policy Execution
 
-Esmeralda's Apigee implementation is split into **four independent, removable capability bundles** under [`apps/apigee/`](../../../apps/apigee/): two API proxies (`partner-agents` and `partner-mcp`) and two reusable shared flows (`token-quota` and `usage-metering`).
+Esmeralda's Apigee implementation is split into **five independent, removable capability bundles** under [`apps/apigee/`](../../../apps/apigee/): three API proxies (`partner-agents`, `partner-mcp` and `llm-gateway`) and two reusable shared flows (`token-quota` and `usage-metering`).
 
 ### 5.1 Proxy 1: `partner-agents` (`apps/apigee/proxies/partner-agents/`)
 
@@ -191,22 +191,127 @@ Exposes the MCP servers listed as partner-exposed in the module catalog (by defa
 * **`token-quota` (`apps/apigee/sharedflows/token-quota/`):**
   Encapsulates `AM-Resolve-Quota-Config` (resolving product attribute `llm_token_quota` into count/interval/timeUnit) and `LTQ-Enforce` (`<LLMTokenQuota>` with `EnforceOnly = true`). Requires an `INTERMEDIATE` or `COMPREHENSIVE` Apigee environment.
 * **`usage-metering` (`apps/apigee/sharedflows/usage-metering/`):**
-  Provisions 5 `google_apigee_addons_config` / `google_apigee_sharedflow` DataCollectors (`dc_prompt_tokens`, `dc_candidates_tokens`, `dc_total_tokens`, `dc_llm_model`, `dc_consumer_app`) and attaches `ML-interaction` in `PostClientFlow` so every partner interaction is logged to `projects/<gateway-project>/logs/esmeralda-apigee-interactions` with latency timestamps (`client_received_start_ms`, `target_sent_start_ms`, `target_received_end_ms`, `gateway_responded_ms`), consumer app name, model version, and token counts:
+  Provisions 5 `google_apigee_data_collector` DataCollectors (`dc_prompt_tokens`, `dc_candidates_tokens`, `dc_total_tokens`, `dc_llm_model`, `dc_consumer_app`) used by `DataCapture`, and ships the shared `ML-interaction` template.
+
+#### Usage records (`ML-interaction`)
+
+Every proxy writes one **`esmeralda.usage`** record per request in `PostClientFlow` to `projects/<gateway-project>/logs/esmeralda-apigee-interactions`. The record follows the usage event contract (`contracts/usage-event.schema.json`), the same schema the `esmeralda` library emits from inside agents, so the BigQuery views join gateway and workload records on `trace_id`. Consumers select the records by `jsonPayload.schema = "esmeralda.usage"`, never by log name.
+
+A MessageLogging template can't compute values, omit empty fields or add numbers, so the `JS-Usage-Context` policy (`usage-context.js`, the same file in every bundle) prepares them: an RFC 3339 `timestamp`, `latency_ms`, the W3C `trace_id` from `traceparent`, the outcome (`http`, `status`, `error_type`) and the JSON fragments for `caller`, `workload`, `tool` and `gen_ai`. It runs after authentication, again at the end of the exchange (response `PostFlow`, final SSE event), and in a `DefaultFaultRule` (`AlwaysEnforce`), so rejected calls (401, 403, 429) are recorded too. Records never contain request or response bodies, credentials or API keys:
+
+| Proxy | `event` | `caller.principal` (`verified: true`) | Extra fields |
+| :--- | :--- | :--- | :--- |
+| `partner-agents` | `gateway.request` | verified cross-cloud `iss#sub`, else the Apigee developer app name | `workload` = target agent, `gen_ai.usage.*` |
+| `partner-mcp` | `gateway.request` | same as `partner-agents` | `workload` = MCP server, `tool` for `tools/call` |
+| `llm-gateway` | `llm.call` | the calling agent's Agent Identity `principal://` (verified ID token `sub`; a service account's `email` for other callers) | `workload` = calling agent, `gen_ai.request.model`, `response.model`, `usage.*` |
 
 ```json
 {
-  "event": "apigee.gateway.interaction",
-  "proxy": "partner-agents",
-  "revision": "4",
-  "status": "200",
-  "consumer_app": "partner-smoke-test",
-  "gen_ai.request.model": "gemini-3.7-flash",
-  "gen_ai.usage.input_tokens": "296",
-  "gen_ai.usage.output_tokens": "29",
-  "gen_ai.usage.total_tokens": "325",
-  "path": "/cx-mortgage-orchestrator:streamQuery"
+  "schema": "esmeralda.usage",
+  "schema_version": 1,
+  "event": "llm.call",
+  "source": "gateway",
+  "timestamp": "2026-11-09T02:13:22.123Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "caller": {"principal": "principal://agents.global.org-<ORG_ID>.system.id.goog/resources/aiplatform/projects/<PROJECT_NUMBER>/locations/<REGION>/reasoningEngines/<ENGINE_ID>", "verified": true},
+  "workload": {"name": "cx-mortgage-orchestrator", "runtime": "agent_engine", "cloud": "gcp"},
+  "gen_ai": {
+    "system": "gcp.vertex_ai",
+    "operation.name": "generate_content",
+    "request.model": "gemini-2.5-flash",
+    "response.model": "gemini-2.5-flash-001",
+    "usage.input_tokens": 1200,
+    "usage.output_tokens": 120,
+    "usage.cached_tokens": 1024,
+    "usage.reasoning_tokens": 40
+  },
+  "http": {"request.method": "POST", "response.status_code": 200},
+  "status": "ok",
+  "gateway": {"product": "apigee", "name": "llm-gateway"},
+  "dimensions": {},
+  "latency_ms": 1834
 }
 ```
+
+`usage.output_tokens` includes reasoning tokens and `usage.input_tokens` includes cached tokens (OpenTelemetry GenAI semantics); Gemini reports thinking tokens apart from candidates, so the gateway adds them.
+
+The agent sends the W3C `traceparent` of its current span with every model call, and the `llm-gateway` record names the calling agent as `workload.name`, so `vw_usage_billable` puts the gateway record and the agent's own `llm.call` record in the same billable unit (`trace_id` + agent) and counts the tokens once, from the gateway. The verified `principal://` resolves to the agent's team through its `principal_teams` row (compiled from the catalog), so chargeback bills the calling team as `verified`.
+
+### 5.4 Proxy 3: `llm-gateway`, the agent → model hop (`apps/apigee/proxies/llm-gateway/`)
+
+The partner proxies govern traffic **into** the platform. The `llm-gateway` proxy governs the agents' own **model egress**: with `model_gateway = "apigee"`, every Gemini call an agent makes goes through Apigee instead of straight to `*-aiplatform.googleapis.com`. Apigee then becomes the primary source of token usage and caller identity for chargeback, and enforces a token budget per agent.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent as cx-mortgage-orchestrator<br/>(google-genai via esmeralda.models)
+    participant AGW as Central Agent Gateway
+    participant EP as Entrypoint HTTPS ALB<br/>(apigee.esmeralda.internal)
+    participant Apigee as Apigee X Runtime<br/>(llm-gateway proxy)
+    participant Vertex as Vertex AI Gemini<br/>(<location>-aiplatform.googleapis.com)
+
+    Agent->>AGW: POST /llm/v1beta1/projects/<p>/locations/global/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse<br/>Authorization: Bearer <unbound Agent Identity ID token, aud https://apigee.esmeralda.internal><br/>traceparent
+    AGW->>EP: Registered destination (catalog llm-gateway target, roles/iap.egressor for the agents)
+    EP->>Apigee: Route via PSC NEG
+    Note over Apigee: 1. KVM-Get-LLM-Gateway-Config (kvm-llm-gateway)<br/>2. DJ-Decode-Caller-Token + JS-Select-Token-Issuer: trusted issuer and JWKS<br/>3. VJ-Verify-Caller-Token: VerifyJWT, signature, issuer, audience (401)<br/>4. JS-Authorize-LLM-Call: caller, path, project, location, model (403 / 404)<br/>5. LTQ-enforce: LLMTokenQuota per verified caller (429)<br/>6. AM-Strip-Caller-Credentials: the ID token stops here
+    Apigee->>Vertex: Same Vertex AI path, GoogleAccessToken (proxy service account)
+    Vertex-->>Apigee: SSE chunks with usageMetadata
+    Note over Apigee: 7. EventFlow: JS-extract-tokens per chunk<br/>8. Final chunk: LTQ-count, DC-capture-llm-metrics, JS-Usage-Context<br/>9. PostClientFlow: ML-interaction (esmeralda.usage llm.call)
+    Apigee-->>Agent: Unbuffered SSE stream
+```
+
+#### Agent side: `ESMERALDA_MODEL_GATEWAY_URL`
+
+The agent Terraform units set `ESMERALDA_MODEL_GATEWAY_URL = https://apigee.<domain>/llm` only when `governance.apigee.enabled` and `governance.capabilities.model_gateway = "apigee"`; otherwise the variable is absent and nothing changes. `esmeralda.create_app()` calls `esmeralda.models.route_models(root_agent)`, which replaces every Gemini model name in the agent tree with an ADK `Gemini` model that:
+
+* uses the gateway as `base_url`, so the request path stays the Vertex AI one and the proxy is a pass-through;
+* passes `project` (`GOOGLE_CLOUD_PROJECT`) and `location` (`MODEL_LOCATION`, else `global`) explicitly, because google-genai drops them from the path for a custom base URL otherwise;
+* authenticates with an **ID token** for the agent's **runtime identity**, audience `https://apigee.<domain>`: on Agent Runtime, the agent's own Agent Identity, so the gateway verifies and meters each agent as its `principal://`. It is never minted for `SERVICE_ACCOUNT_EMAIL` (the deprecated shared invoker), which would bill every agent to one identity. Like every ID token `esmeralda.auth` mints, it is **unbound** (`bind_id_token=False`): the Central Agent Gateway and the entry point re-terminate TLS, so a certificate-bound token could not be checked behind them;
+* sends the W3C `traceparent` of the current span, so the gateway's usage record joins the agent's own.
+
+Model objects (`Gemini(...)`, `LiteLlm(...)`) and inherited models are left as they are.
+
+#### Reaching the gateway: the catalog `llm-gateway` target
+
+The Central Agent Gateway denies every host that isn't in the Agent Registry. The model gateway is declared in the [service catalog](../3-agentops-and-lifecycle/06-service-catalog.md) as a `managed: false` target, in the overrides of each environment that sets `model_gateway = "apigee"` (dev: `catalog/environments/dev.yaml`):
+
+```yaml
+llm-gateway:
+  kind: http
+  owner_team: platform
+  deploy: { managed: false, endpoint: "https://apigee.{domain}/llm" }
+  gateway: apigee
+  callers:
+    cx-mortgage-orchestrator: {}
+    ai-coe-mortgage-specialist: {}
+```
+
+It compiles into an Agent Registry endpoint entry for `apigee.<domain>` with a `roles/iap.egressor` policy listing the two agents' principals (the `iap-egress` unit), and the same callers are the proxy's `allowed_callers` (the `llm-gateway` unit reads them from `catalog_iap_egress`). An agent missing from `callers` is stopped by the Agent Gateway (403) before Apigee, and by the proxy if it got there. `make test-guards` fails when the target and the capability disagree in an environment.
+
+#### Why an ID token and `VerifyJWT`
+
+Google OAuth2 access tokens are opaque: Apigee has no local policy that can verify them (`VerifyAccessToken` only accepts Apigee-issued tokens), so checking one would take a `ServiceCallout` to Google's tokeninfo endpoint on every model call. An ID token is a JWT that `VerifyJWT` checks locally against the issuer's cached JWKS (signature, `iss`, `exp`), and its audience binds it to this gateway, so it can't be replayed against another service. The agents already mint ID tokens the same way for MCP servers.
+
+An agent's Agent Identity ID token is signed by its trust domain on Security Token Service: `iss = https://sts.googleapis.com/v1/organizations/<ORG_ID>/locations/global/workloadIdentityPools/agents.global.org-<ORG_ID>.system.id.goog`, JWKS at `<iss>/openid/jwks`, `sub = spiffe://agents.global.org-<ORG_ID>.system.id.goog/...` (no email). `DJ-Decode-Caller-Token` reads the token's `iss` without trusting it, and `JS-Select-Token-Issuer` picks the issuer and JWKS `VerifyJWT` checks against: the trust domain issuer when it is in the KVM's `agent_issuers` (derived from the agents' principals), else Google's (`https://accounts.google.com`, service account ID tokens such as the test VM's). A token from any other issuer fails `VerifyJWT` (401), and the JWKS URI is never built from an issuer outside the allowlist. `JS-Authorize-LLM-Call` turns the `spiffe://` subject into the `principal://` form the catalog and the usage views use.
+
+#### Authorization and southbound call
+
+`kvm-llm-gateway`, written by the capability module, holds the allowlists. All of them fail closed (an empty list is written as `none`; there are no wildcard callers):
+
+| KVM entry | Live unit value |
+| :--- | :--- |
+| `audience` | `https://apigee.<domain>` |
+| `allowed_callers` | the Agent Identity principals of the catalog `llm-gateway` target's callers, plus the test VM's service account |
+| `agent_issuers` | the Security Token Service issuers of those principals' trust domains |
+| `caller_workloads` | `<principal>=<agent name>`: the usage record's `workload.name` |
+| `allowed_projects` | the CX and AI CoE agent projects (the project in the request path), as IDs and numbers: on Agent Runtime, `GOOGLE_CLOUD_PROJECT` is the project number |
+| `allowed_locations` | the env region and `global` |
+| `allowed_models` | `gemini-*` |
+| `quota_limit`, `quota_timeunit` | tokens per caller per interval (default 1,000,000 per minute) |
+
+The southbound host is derived from the **allowed** location only (`global` → `aiplatform.googleapis.com`, otherwise `<location>-aiplatform.googleapis.com`), so a caller can't steer the proxy to another host. Only `generateContent`, `streamGenerateContent` and `countTokens` on `publishers/google/models/*` are served. The proxy calls Vertex AI with its own access token, so the module grants the proxy service account `roles/aiplatform.user` on the allowed projects.
+
+`streamGenerateContent` is routed to a dedicated SSE target (`response.streaming.enabled`, `EventFlow`): tokens are read per event and metered on the final chunk (`finishReason`), and the stream is never buffered.
 
 ---
 
@@ -228,11 +333,22 @@ governance = {
     token_quota      = "apigee"        # Enables token-quota shared flow (LLMTokenQuota)
     usage_metering   = "apigee"        # Enables usage-metering shared flow & DataCollectors
     cross_cloud      = "apigee"        # Required with partner_access: deploys the cross-cloud shared flow the partner proxies call
+    model_gateway    = "apigee"        # Agent -> model through llm-gateway (needs usage_metering and partner_access = "apigee", INTERMEDIATE+)
   }
 }
 ```
 
 The partner proxies call the `cross-cloud` shared flow (`FC-Cross-Cloud`), and Apigee does not deploy a proxy whose shared flow is missing from the environment, so Layer 4 rejects `partner_access = "apigee"` without `cross_cloud = "apigee"`. With no trusted issuers configured, the shared flow rejects every cross-cloud credential (fail closed); API-key partners are unaffected.
+
+`model_gateway` takes `"none"` (default: agents call Vertex AI directly and the workload records are the only token source) or `"apigee"`. Layer 4 rejects `"apigee"` unless `usage_metering = "apigee"` (the proxy writes to its data collectors), the environment is `INTERMEDIATE` or `COMPREHENSIVE` (`LLMTokenQuota`), and `partner_access = "apigee"` (the entry point only enables its Apigee backend for partner access; with `model_gateway = "apigee"` it also routes `apigee.<domain>`, already a hostname of the Apigee environment group, to that backend).
+
+Setting `model_gateway = "apigee"` in an environment takes three things, all checked offline by `make test-guards`:
+
+1. the capability in `infrastructure/live/<env>/env.yaml` (dev sets it; prd keeps `"none"`);
+2. the catalog `llm-gateway` target in `catalog/environments/<env>.yaml`, with every agent as a caller ([above](#reaching-the-gateway-the-catalog-llm-gateway-target)), then `uv run esmeralda catalog resolve --env all --write`;
+3. the units: `layer-4-governance` (capability contract), `apigee/capabilities/llm-gateway`, `entrypoint` (routes `apigee.<domain>`), `iap-egress` (Agent Registry entry and `roles/iap.egressor`) and the agent units (`ESMERALDA_MODEL_GATEWAY_URL`). In a running environment, apply the agent units last: once they set the URL, every model call goes through the gateway, so the path must already be in place.
+
+Model Armor's `model_calls` floor setting still screens the calls: it applies per agent project on Vertex AI, and the proxy keeps the agent's project in the request path.
 
 ### Deploying & Running the Live Partner Conformance Probes
 
@@ -246,6 +362,7 @@ uv run esmeralda apply layer-5-workloads/apigee/capabilities/token-quota --env d
 uv run esmeralda apply layer-5-workloads/apigee/capabilities/usage-metering --env dev
 uv run esmeralda apply layer-5-workloads/apigee/capabilities/partner-agents --env dev
 uv run esmeralda apply layer-5-workloads/apigee/capabilities/partner-mcp --env dev
+uv run esmeralda apply layer-5-workloads/apigee/capabilities/llm-gateway --env dev   # model_gateway = "apigee"
 uv run esmeralda apply layer-5-workloads/apigee/products --env dev
 uv run esmeralda apply layer-5-workloads/entrypoint --env dev
 
@@ -300,7 +417,7 @@ Each simulated user sends a synthetic end-user id (`x-esmeralda-partner-user` he
 3. **Analytics → Developer metrics → Developer apps:** traffic attributed to the `partner-smoke-test` app.
 4. **Distribution → API products → `esmeralda-partner-standard`:** the `allowed_mcp_tools` (`verify_applicant`, `read_email`) and LLM token quota attributes the gateway enforces.
 5. **Management → Environments → `esmeralda-<env>` → Target servers:** `ts-esmeralda-mcp` (host `apigee-southbound.<domain>`, TLS with the internal CA truststore); **Management → Endpoint attachments** shows `ea-esmeralda-mcp-<env>` connected to the entry point service attachment, and **Management → DNS peering** the zone `dz-esmeralda-mcp-<env>`.
-6. **Logging → Logs Explorer:** log `esmeralda-apigee-interactions` in the gateway project (`logName="projects/<gateway-project>/logs/esmeralda-apigee-interactions"`), one entry per partner call of both proxies with the consumer app, status, MCP service/method/tool and token counts. `ML-interaction` writes with the proxy runtime service account (`roles/logging.logWriter`); its message template uses single-quoted literals (`{firstnonnull(llm.model,'mcp')}`), because a double-quoted literal makes the JSON payload invalid and Cloud Logging drops the entry.
+6. **Logging → Logs Explorer:** log `esmeralda-apigee-interactions` in the gateway project (`logName="projects/<gateway-project>/logs/esmeralda-apigee-interactions"`), one `esmeralda.usage` record per partner call of both proxies with the verified caller (`caller.principal`, never the API key), the target workload, the MCP tool, the outcome and token counts. `ML-interaction` writes with the proxy runtime service account (`roles/logging.logWriter`); its message template uses single-quoted literals (`{firstnonnull(usage.latency_ms,'0')}`), because a double-quoted literal makes the JSON payload invalid and Cloud Logging drops the entry. In BigQuery, the records land in `esmeralda_usage_<env>` and feed `vw_partner_apigee_chargeback` (partner chargeback by verified partner team) and `vw_usage_billable`.
 
 > `make load-test` (Locust against the Vertex AI API) bypasses Apigee: its traffic never appears in Apigee Analytics and does not consume partner token quota. Use `make load-test-partner` for anything Apigee should see.
 

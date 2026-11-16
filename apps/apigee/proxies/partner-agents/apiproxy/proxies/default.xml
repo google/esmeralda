@@ -7,6 +7,12 @@
 <ProxyEndpoint name="default">
   <Description>North-south partner front door for allowlisted Esmeralda agents (SSE and JSON routes separated).</Description>
   <FaultRules/>
+  <DefaultFaultRule name="usage-on-fault">
+    <AlwaysEnforce>true</AlwaysEnforce>
+    <Step>
+      <Name>JS-Usage-Context-Fault</Name>
+    </Step>
+  </DefaultFaultRule>
   <PreFlow name="PreFlow">
     <Request>
       <Step>
@@ -31,6 +37,9 @@
         <Name>AM-set-user-var</Name>
       </Step>
       <Step>
+        <Name>JS-Usage-Context</Name>
+      </Step>
+      <Step>
         <Name>LTQ-enforce</Name>
       </Step>
       <Step>
@@ -47,7 +56,11 @@
   </PreFlow>
   <PostFlow name="PostFlow">
     <Request/>
-    <Response/>
+    <Response>
+      <Step>
+        <Name>JS-Usage-Context</Name>
+      </Step>
+    </Response>
   </PostFlow>
   <Flows>
     <Flow name="streamQuery">

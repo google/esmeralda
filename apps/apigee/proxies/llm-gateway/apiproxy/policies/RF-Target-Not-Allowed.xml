@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<RaiseFault name="RF-Target-Not-Allowed" continueOnError="false" enabled="true">
+  <DisplayName>RF-Target-Not-Allowed</DisplayName>
+  <FaultResponse>
+    <Set>
+      <StatusCode>403</StatusCode>
+      <Payload contentType="application/json">{"error":"target_not_allowed","detail":"The requested project, location or model is not allowed through the model gateway."}</Payload>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

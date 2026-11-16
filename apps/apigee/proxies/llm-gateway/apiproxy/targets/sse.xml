@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<TargetEndpoint name="sse">
+  <Description>Streaming Vertex AI target (streamGenerateContent?alt=sse): per-event token extraction, quota count, analytics capture and usage context on the final event; never buffers the stream.</Description>
+  <FaultRules/>
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step>
+        <Name>AM-Set-Target-Url</Name>
+      </Step>
+    </Request>
+    <Response/>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+  <Flows/>
+  <EventFlow name="EventFlow" content-type="text/event-stream">
+    <Response>
+      <Step>
+        <Name>JS-extract-tokens</Name>
+      </Step>
+      <Step>
+        <Name>LTQ-count</Name>
+        <Condition>isFinal = true</Condition>
+      </Step>
+      <Step>
+        <Name>DC-capture-llm-metrics</Name>
+        <Condition>isFinal = true</Condition>
+      </Step>
+      <Step>
+        <Name>JS-Usage-Context</Name>
+        <Condition>isFinal = true</Condition>
+      </Step>
+    </Response>
+  </EventFlow>
+  <HTTPTargetConnection>
+    <!-- Overridden per request by AM-Set-Target-Url with the host derived from the allowed location. -->
+    <URL>https://aiplatform.googleapis.com</URL>
+    <Properties>
+      <Property name="response.streaming.enabled">true</Property>
+      <Property name="io.timeout.millis">300000</Property>
+      <Property name="api.timeout">300000</Property>
+    </Properties>
+    <SSLInfo>
+      <Enabled>true</Enabled>
+      <Enforce>true</Enforce>
+      <IgnoreValidationErrors>false</IgnoreValidationErrors>
+    </SSLInfo>
+    <Authentication>
+      <GoogleAccessToken>
+        <Scopes>
+          <Scope>https://www.googleapis.com/auth/cloud-platform</Scope>
+        </Scopes>
+      </GoogleAccessToken>
+    </Authentication>
+  </HTTPTargetConnection>
+</TargetEndpoint>

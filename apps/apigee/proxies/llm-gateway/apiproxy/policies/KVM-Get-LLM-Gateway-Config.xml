@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<KeyValueMapOperations name="KVM-Get-LLM-Gateway-Config" mapIdentifier="kvm-llm-gateway" continueOnError="false" enabled="true">
+  <DisplayName>KVM-Get-LLM-Gateway-Config</DisplayName>
+  <!-- Written by the llm-gateway capability module from env.yaml / layer outputs. A missing map
+       fails the request (fail closed): no audience means no caller can be verified. -->
+  <Scope>environment</Scope>
+  <Get assignTo="llmgw.audience">
+    <Key>
+      <Parameter>audience</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.allowed_callers">
+    <Key>
+      <Parameter>allowed_callers</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.agent_issuers">
+    <Key>
+      <Parameter>agent_issuers</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.caller_workloads">
+    <Key>
+      <Parameter>caller_workloads</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.allowed_projects">
+    <Key>
+      <Parameter>allowed_projects</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.allowed_locations">
+    <Key>
+      <Parameter>allowed_locations</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.allowed_models">
+    <Key>
+      <Parameter>allowed_models</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.quota.limit">
+    <Key>
+      <Parameter>quota_limit</Parameter>
+    </Key>
+  </Get>
+  <Get assignTo="llmgw.quota.timeunit">
+    <Key>
+      <Parameter>quota_timeunit</Parameter>
+    </Key>
+  </Get>
+</KeyValueMapOperations>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<ProxyEndpoint name="default">
+  <Description>Agent-to-model egress: verifies the caller's ID token (the agent's Agent Identity, or a Google service account), authorizes caller / project / location / model, enforces a per-caller LLM token quota and forwards to Vertex AI with the proxy's own Google access token.</Description>
+  <FaultRules/>
+  <DefaultFaultRule name="usage-on-fault">
+    <!-- Keeps the esmeralda.usage record complete (timestamp, outcome) for rejected calls. -->
+    <AlwaysEnforce>true</AlwaysEnforce>
+    <Step>
+      <Name>JS-Usage-Context-Fault</Name>
+    </Step>
+  </DefaultFaultRule>
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step>
+        <Name>KVM-Get-LLM-Gateway-Config</Name>
+      </Step>
+      <Step>
+        <Name>DJ-Decode-Caller-Token</Name>
+      </Step>
+      <Step>
+        <Name>JS-Select-Token-Issuer</Name>
+      </Step>
+      <Step>
+        <Name>VJ-Verify-Caller-Token</Name>
+      </Step>
+      <Step>
+        <Name>JS-Authorize-LLM-Call</Name>
+      </Step>
+      <Step>
+        <Name>JS-Usage-Context</Name>
+      </Step>
+      <Step>
+        <Name>RF-Caller-Not-Allowed</Name>
+        <Condition>llmgw.denied.reason = "caller_not_allowed"</Condition>
+      </Step>
+      <Step>
+        <Name>RF-Not-Found</Name>
+        <Condition>llmgw.denied.reason = "unsupported_path"</Condition>
+      </Step>
+      <Step>
+        <Name>RF-Target-Not-Allowed</Name>
+        <Condition>llmgw.denied.reason = "target_not_allowed"</Condition>
+      </Step>
+      <Step>
+        <Name>LTQ-enforce</Name>
+      </Step>
+      <Step>
+        <Name>AM-Strip-Caller-Credentials</Name>
+      </Step>
+    </Request>
+    <Response/>
+  </PreFlow>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response>
+      <Step>
+        <Name>JS-Usage-Context</Name>
+      </Step>
+    </Response>
+  </PostFlow>
+  <Flows>
+    <Flow name="generateContent">
+      <Description>Vertex AI publisher model generateContent / countTokens (JSON)</Description>
+      <Request/>
+      <Response/>
+      <Condition>((llm.method = "generateContent") or (llm.method = "countTokens")) and (request.verb = "POST")</Condition>
+    </Flow>
+    <Flow name="streamGenerateContent">
+      <Description>Vertex AI publisher model streamGenerateContent (SSE with alt=sse)</Description>
+      <Request/>
+      <Response/>
+      <Condition>(llm.method = "streamGenerateContent") and (request.verb = "POST")</Condition>
+    </Flow>
+    <Flow name="notFound">
+      <Description>Catch-all 404 for any other path or method</Description>
+      <Request>
+        <Step>
+          <Name>RF-Not-Found</Name>
+        </Step>
+      </Request>
+      <Response/>
+    </Flow>
+  </Flows>
+  <HTTPProxyConnection>
+    <BasePath>/llm</BasePath>
+    <Properties>
+      <Property name="response.streaming.enabled">true</Property>
+      <Property name="api.timeout">300000</Property>
+    </Properties>
+  </HTTPProxyConnection>
+  <RouteRule name="sse">
+    <TargetEndpoint>sse</TargetEndpoint>
+    <Condition>llm.stream = true</Condition>
+  </RouteRule>
+  <RouteRule name="default">
+    <TargetEndpoint>default</TargetEndpoint>
+  </RouteRule>
+  <PostClientFlow name="PostClientFlow">
+    <Response>
+      <Step>
+        <Name>ML-interaction</Name>
+      </Step>
+    </Response>
+  </PostClientFlow>
+</ProxyEndpoint>

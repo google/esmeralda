@@ -15,4 +15,7 @@
   <Step>
     <Name>DC-capture-llm-metrics</Name>
   </Step>
+  <Step>
+    <Name>JS-Usage-Context</Name>
+  </Step>
 </SharedFlow>

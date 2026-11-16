@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Copyright 2026 Google LLC
+  Licensed under the Apache License, Version 2.0.
+-->
+<VerifyJWT name="VJ-Verify-Caller-Token" continueOnError="false" enabled="true">
+  <DisplayName>VJ-Verify-Caller-Token</DisplayName>
+  <!-- Verifies the caller's Google-signed ID token locally against the issuer's JWKS (cached by
+       Apigee): RS256 signature, issuer, audience bound to this gateway, expiry. With no <Source>,
+       the token is read from the Authorization header ("Bearer <jwt>").
+       Issuer and JWKS come from JS-Select-Token-Issuer: an agent's Agent Identity trust domain on
+       Security Token Service (only the trust domains in kvm-llm-gateway agent_issuers), else
+       Google (https://accounts.google.com, service account ID tokens). Agents send UNBOUND ID
+       tokens: the Agent Gateway and the entry point re-terminate TLS, so a certificate-bound one
+       could not be checked here.
+       Google OAuth2 access tokens are opaque, so no local policy can verify them; that would take
+       a tokeninfo ServiceCallout on every model call. -->
+  <Algorithm>RS256</Algorithm>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+  <PublicKey>
+    <JWKS uriRef="llmgw.token.jwks_uri"/>
+  </PublicKey>
+  <Issuer ref="llmgw.token.issuer"/>
+  <Audience ref="llmgw.audience"/>
+  <TimeAllowance>60s</TimeAllowance>
+</VerifyJWT>

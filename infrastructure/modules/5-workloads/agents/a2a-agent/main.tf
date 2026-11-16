@@ -198,6 +198,8 @@ locals {
     AGENT_GATEWAY_ROOT_CERTIFICATES = var.agent_gateway_root_certificates
     # Hosts the agent calls with an OAuth2 access token instead of an ID token (esmeralda.auth.token_kind)
     ACCESS_TOKEN_HOSTS = join(",", var.access_token_hosts)
+    # Gemini base URL of the model gateway (esmeralda.models); empty = direct Vertex AI calls
+    ESMERALDA_MODEL_GATEWAY_URL = var.model_gateway_url
   }
 
   final_env_vars = merge(

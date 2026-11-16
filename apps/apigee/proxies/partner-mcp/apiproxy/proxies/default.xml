@@ -7,6 +7,12 @@
 <ProxyEndpoint name="default">
   <Description>North-south partner front door for MCP tool servers via the internal entrypoint with server-side tool scope enforcement.</Description>
   <FaultRules/>
+  <DefaultFaultRule name="usage-on-fault">
+    <AlwaysEnforce>true</AlwaysEnforce>
+    <Step>
+      <Name>JS-Usage-Context-Fault</Name>
+    </Step>
+  </DefaultFaultRule>
   <PreFlow name="PreFlow">
     <Request>
       <Step>
@@ -33,6 +39,9 @@
         <Name>JS-Enforce-Tool-Scope</Name>
       </Step>
       <Step>
+        <Name>JS-Usage-Context</Name>
+      </Step>
+      <Step>
         <Name>RF-Not-Found</Name>
         <Condition>mcp.service.allowed != true</Condition>
       </Step>
@@ -48,7 +57,11 @@
   </PreFlow>
   <PostFlow name="PostFlow">
     <Request/>
-    <Response/>
+    <Response>
+      <Step>
+        <Name>JS-Usage-Context</Name>
+      </Step>
+    </Response>
   </PostFlow>
   <Flows>
     <Flow name="mcpJsonRpc">

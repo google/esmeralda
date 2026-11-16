@@ -141,6 +141,12 @@ variable "governance_project_id" {
   default     = ""
 }
 
+variable "model_gateway_url" {
+  description = "Gemini base URL of the model gateway (governance.capabilities.model_gateway = \"apigee\"), set as ESMERALDA_MODEL_GATEWAY_URL; empty (default) = the agent calls Vertex AI directly"
+  type        = string
+  default     = ""
+}
+
 variable "central_events_dataset_id" {
   description = "Central BigQuery dataset ID in the governance project for agent event logs"
   type        = string

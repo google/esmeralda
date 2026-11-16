@@ -143,6 +143,23 @@
       var adkUsage = findAdkUsageMetadata(p);
       var geminiUsage = p.usageMetadata || (p.result && p.result.usageMetadata);
 
+      // Cached (subset of input) and thinking (reported apart from candidates) token counts.
+      var detail = adkUsage || geminiUsage;
+      if (detail) {
+        var cachedTok =
+          detail.cached_content_token_count != null
+            ? detail.cached_content_token_count
+            : detail.cachedContentTokenCount;
+        var thoughtsTok =
+          detail.thoughts_token_count != null ? detail.thoughts_token_count : detail.thoughtsTokenCount;
+        if (cachedTok != null) {
+          context.setVariable('llm.cachedTokenCount', Number(cachedTok));
+        }
+        if (thoughtsTok != null) {
+          context.setVariable('llm.thoughtsTokenCount', Number(thoughtsTok));
+        }
+      }
+
       if (adkUsage) {
         if (adkUsage.prompt_token_count != null || adkUsage.input_tokens != null) {
           inTok = Number(

@@ -138,3 +138,9 @@ variable "access_token_hosts" {
   type        = list(string)
   default     = []
 }
+
+variable "model_gateway_url" {
+  description = "Gemini base URL of the model gateway (governance.capabilities.model_gateway = \"apigee\"), set as ESMERALDA_MODEL_GATEWAY_URL; empty (default) = the agent calls Vertex AI directly"
+  type        = string
+  default     = ""
+}

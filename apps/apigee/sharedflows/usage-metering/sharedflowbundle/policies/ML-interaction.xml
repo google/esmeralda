@@ -6,42 +6,22 @@
 -->
 <MessageLogging name="ML-interaction" continueOnError="true" enabled="true">
   <DisplayName>ML-interaction</DisplayName>
-  <!-- Emits one structured JSON entry per interaction in PostClientFlow using
-       OpenTelemetry GenAI semantic conventions. Never logs request or response
-       bodies so SSE streams are never buffered and sensitive payloads never
-       enter gateway logs. -->
+  <!-- One esmeralda.usage record (contracts/usage-event.schema.json) per metered interaction, in
+       PostClientFlow. caller.principal is the verified Apigee developer app name (never the API
+       key). The usage.*_fields fragments come from JS-Usage-Context (run by this shared flow):
+       each is empty or ends with a comma. Never logs request or response bodies, so SSE streams
+       are never buffered and sensitive payloads never enter gateway logs. -->
   <CloudLogging>
     <LogName>projects/{organization.name}/logs/esmeralda-apigee-interactions</LogName>
     <Message contentType="application/json">{
-  "event": "apigee.gateway.interaction",
-  "proxy": "{apiproxy.name}",
-  "revision": "{apiproxy.revision}",
-  "verb": "{request.verb}",
-  "path": "{escapeJSON(proxy.pathsuffix)}",
-  "status": "{message.status.code}",
-  "fault": "{fault.name}",
-  "traceparent": "{request.header.traceparent}",
-  "apigee_message_id": "{messageid}",
-  "consumer_app": "{consumer.app.name}",
-  "caller_identity": "{caller.identity}",
-  "caller_issuer": "{caller.issuer}",
-  "gen_ai.request.model": "{firstnonnull(llm.model,'gemini-2.5-flash')}",
-  "gen_ai.usage.input_tokens": "{firstnonnull(llm.promptTokenCount,'0')}",
-  "gen_ai.usage.output_tokens": "{firstnonnull(llm.candidatesTokenCount,'0')}",
-  "gen_ai.usage.thinking_tokens": "{firstnonnull(llm.thoughtsTokenCount,'0')}",
-  "gen_ai.usage.total_tokens": "{firstnonnull(llm.totalTokenCount,'0')}",
-  "quota": {
-    "allowed": "{ratelimit.LTQ-enforce.allowed.count}",
-    "used": "{ratelimit.LTQ-enforce.used.count}",
-    "available": "{ratelimit.LTQ-enforce.available.count}",
-    "exceeded": "{ratelimit.LTQ-enforce.exceed.count}"
-  },
-  "latency_timestamps": {
-    "client_received_start_ms": "{client.received.start.timestamp}",
-    "target_sent_start_ms": "{target.sent.start.timestamp}",
-    "target_received_end_ms": "{target.received.end.timestamp}",
-    "gateway_responded_ms": "{system.timestamp}"
-  }
+  "schema": "esmeralda.usage",
+  "schema_version": 1,
+  "event": "gateway.request",
+  "source": "gateway",
+  "timestamp": "{usage.timestamp}",
+  {usage.trace_fields}{usage.caller_fields}{usage.workload_fields}{usage.gen_ai_fields}{usage.outcome_fields}"gateway": {"product": "apigee", "name": "{apiproxy.name}"},
+  "dimensions": {},
+  "latency_ms": {firstnonnull(usage.latency_ms,'0')}
 }</Message>
     <ResourceType>api</ResourceType>
   </CloudLogging>

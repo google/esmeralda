@@ -37,6 +37,23 @@ overrides:
         ai-coe-mortgage-specialist: {}
       observability:
         usage_sources: [gateway]
+    # Apigee model gateway (llm-gateway proxy, env.yaml governance.capabilities.model_gateway =
+    # "apigee"): the agents send their Gemini calls to https://apigee.<domain>/llm. Declaring it here
+    # registers the host in the Agent Registry with these agents as its only roles/iap.egressor
+    # members, and the same callers are the proxy's allowlist (layer-5 apigee llm-gateway unit).
+    # Declare it exactly in the environments with model_gateway = "apigee" (make test-guards checks).
+    llm-gateway:
+      kind: http
+      description: Apigee model gateway (llm-gateway proxy) the agents send their Gemini calls through.
+      owner_team: platform
+      deploy: { managed: false, endpoint: "https://apigee.{domain}/llm" }
+      gateway: apigee
+      serving: { token: id }
+      callers:
+        cx-mortgage-orchestrator: {}
+        ai-coe-mortgage-specialist: {}
+      observability:
+        usage_sources: [gateway]
 # Examples:
 # overrides:
 #   targets:
