@@ -95,14 +95,13 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-preflight: ## Run preflight checklist to validate active GCP project, credentials, and billing status
-	@chmod +x ./scripts/preflight.sh
-	@./scripts/preflight.sh
+preflight: ## Workstation preflight check before bootstrap or a deploy (alias of doctor: Python, tools, env file, ADC token, uv.lock, local states): ENV=<env>
+	@$(ESM) doctor --env $(ENV)
 
 hooks: ## Install the git hooks (.githooks: pre-commit sensitive scan, pre-push uv.lock check)
 	@git config core.hooksPath .githooks && echo "🪝 Git hooks installed (.githooks: pre-commit sensitive scan, pre-push uv.lock check)"
 
-bootstrap: preflight ## Setup local python virtual environments and sync workspace dependencies via uv
+bootstrap: ## Check uv, sync the workspace with uv, install the git hooks, then run the preflight check (esmeralda doctor)
 	@echo "📦 Bootstrapping local monorepo environment with uv..."
 	@if ! command -v uv &>/dev/null; then \
 		echo "❌ uv is not installed. Please install uv first (e.g., 'curl -LsSf https://astral.sh/uv/install.sh | sh')."; \
@@ -110,6 +109,7 @@ bootstrap: preflight ## Setup local python virtual environments and sync workspa
 	fi
 	@uv sync --all-packages --all-extras
 	@$(MAKE) --no-print-directory hooks
+	@$(MAKE) --no-print-directory preflight || echo "⚠️  Fix the failed checks above before deploying (re-run: make preflight ENV=$(ENV))."
 	@echo "✅ Environment bootstrapped successfully! To activate the environment, run: source .venv/bin/activate"
 
 test-agents: ## Fast execution for agent unit tests only
@@ -307,7 +307,7 @@ TARGET_NAME ?=
 status: ## Show git branch/SHA, active worktrees, local state units, image tags/digests, and deployed outputs: ENV=<env>
 	@uv run esmeralda status --env $(ENV)
 
-doctor: ## Workstation preflight check (tools, billing env var, ADC token, uv.lock, local states): ENV=<env>
+doctor: ## Workstation preflight check (Python, tools, billing env var, ADC token, uv.lock, local states): ENV=<env>
 	@uv run esmeralda doctor --env $(ENV)
 
 units: ## List Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence: ENV=<env>

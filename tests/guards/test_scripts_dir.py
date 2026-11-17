@@ -35,7 +35,6 @@ README = SCRIPTS_DIR / "README.md"
 # path under scripts/ -> why it is still a script (and what it becomes).
 ALLOWED: dict[str, str] = {
     "README.md": "what each script is for and who calls it",
-    "preflight.sh": "make preflight / bootstrap; to be replaced by esmeralda doctor",
     "vm/gateway_probes.sh": "gateway probes of esmeralda verify; runs ON the test VM over IAP SSH (no checkout or venv there)",
     "vm/partner_load.sh": "make load-test-partner; installs and runs Locust ON the test VM over IAP SSH",
 }

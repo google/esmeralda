@@ -389,10 +389,51 @@ def test_cli_apply_timeout_defaults_to_900s_and_is_configurable(ops_checkout, mo
 # ------------------------------------------------------------------------------------------
 
 
+def _fake_version(binary, args, cwd):
+    return "3.12.3" if binary.endswith("python3") else "1.9.0"
+
+
+def test_cli_doctor_fails_on_too_old_python_or_terraform(ops_checkout, monkeypatch, capsys):
+    versions = {"python3": "3.9.18", "terraform": "1.4.6"}
+    monkeypatch.setattr(repo, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(repo, "_which_outside_venv", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(repo, "_tool_version", lambda binary, args, cwd: versions.get(binary.rsplit("/", 1)[-1], "2.0"))
+    monkeypatch.setattr(repo, "_check_adc", lambda root: (True, "ADC token available"))
+    monkeypatch.setattr(repo, "_check_uv_lock", lambda root: (True, "ok"))
+
+    assert cli.main(["doctor", "--env", "dev", "--json"]) == 1
+    by_name = {c["name"]: c for c in json.loads(capsys.readouterr().out)["checks"]}
+    assert by_name["tool:python3"]["status"] == "fail" and "needs >= 3.10" in by_name["tool:python3"]["detail"]
+    assert by_name["tool:terraform"]["status"] == "fail" and "needs >= 1.5" in by_name["tool:terraform"]["detail"]
+
+    versions.update(python3="3.10.0", terraform="installed")  # unparseable versions are not judged
+    assert cli.main(["doctor", "--env", "dev", "--json"]) == 0
+
+
+def test_below_minimum():
+    assert repo._below_minimum("python3", "3.9") == "needs >= 3.10"
+    assert repo._below_minimum("python3", "3.10.1") == ""
+    assert repo._below_minimum("terraform", "1.14.0") == ""
+    assert repo._below_minimum("jq", "1.0") == ""
+
+
+def test_python_check_ignores_the_active_venv(tmp_path, monkeypatch):
+    """`uv run` puts the workspace venv first on PATH; doctor judges the workstation's python3."""
+    venv, system = tmp_path / "venv", tmp_path / "system"
+    for d in (venv / "bin", system):
+        d.mkdir(parents=True)
+        (d / "python3").write_text("#!/bin/sh\n")
+        (d / "python3").chmod(0o755)
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setattr(repo, "tool_env", lambda: {"PATH": f"{venv / 'bin'}:{system}"})
+    assert repo._which_outside_venv("python3") == str(system / "python3")
+
+
 def test_cli_doctor_warns_on_missing_billing_and_passes_when_required_ok(ops_checkout, monkeypatch, capsys):
     monkeypatch.delenv("ESMERALDA_BILLING_ACCOUNT", raising=False)
     monkeypatch.setattr(repo, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(repo, "_tool_version", lambda binary, args, cwd: "1.9.0")
+    monkeypatch.setattr(repo, "_tool_version", _fake_version)
+    monkeypatch.setattr(repo, "_which_outside_venv", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(repo, "_check_adc", lambda root: (True, "ADC token available"))
     monkeypatch.setattr(repo, "_check_uv_lock", lambda root: (True, "uv.lock is in sync"))
 
@@ -417,7 +458,8 @@ def test_cli_doctor_reports_env_file_source_without_values(ops_checkout, tmp_pat
     monkeypatch.delenv("ESMERALDA_BILLING_ACCOUNT", raising=False)
     monkeypatch.setenv("ESMERALDA_ORG_ID", "from-shell")
     monkeypatch.setattr(repo, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(repo, "_tool_version", lambda binary, args, cwd: "1.9.0")
+    monkeypatch.setattr(repo, "_tool_version", _fake_version)
+    monkeypatch.setattr(repo, "_which_outside_venv", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(repo, "_check_adc", lambda root: (True, "ADC token available"))
     monkeypatch.setattr(repo, "_check_uv_lock", lambda root: (True, "uv.lock is in sync"))
 
@@ -457,7 +499,8 @@ def test_cli_doctor_reports_env_file_source_without_values(ops_checkout, tmp_pat
 
 def test_cli_doctor_exits_nonzero_when_required_check_fails(ops_checkout, monkeypatch, capsys):
     monkeypatch.setattr(repo, "which", lambda name: None if name == "terragrunt" else f"/usr/bin/{name}")
-    monkeypatch.setattr(repo, "_tool_version", lambda binary, args, cwd: "1.9.0")
+    monkeypatch.setattr(repo, "_tool_version", _fake_version)
+    monkeypatch.setattr(repo, "_which_outside_venv", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(repo, "_check_adc", lambda root: (False, "missing ADC"))
     monkeypatch.setattr(repo, "_check_uv_lock", lambda root: (True, "ok"))
 

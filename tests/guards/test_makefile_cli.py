@@ -79,6 +79,7 @@ CLI_ALIASES = {
     "serve",
     "lock",
     "lock-check",
+    "preflight",
 }
 
 _TARGET_RE = re.compile(r"^([A-Za-z0-9_.-]+):(?!=)")
