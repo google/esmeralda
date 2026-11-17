@@ -36,6 +36,7 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda deploy <unit>... | --layer N | --all [--env dev|prd] [--allow-destroy] [--dry-run] [--json]``
 * ``esmeralda destroy --env dev --confirm dev [--dry-run] [--json]``
 * ``esmeralda build <agents|services|images|package|<image>> [--tag T] [--skip-tests] [--dry-run] [--verify]``
+* ``esmeralda lock [PKG...] [--dry-run] | esmeralda lock --check``
 * ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified DATE] [--dry-run]] [--json]``
 * ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
@@ -62,8 +63,8 @@ from typing import Any
 from esmeralda import certs
 
 USAGE = (
-    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,deploy,destroy,build,release,verify,logs,"
-    "contracts,guard,catalog} ...  "
+    "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,deploy,destroy,build,lock,release,verify,"
+    "logs,contracts,guard,catalog} ...  "
     "(esmeralda run -- <command> [args...])"
 )
 
@@ -396,6 +397,34 @@ def _format_build(data: dict[str, Any]) -> str:
             lines.extend(f"      | {line}" for line in image.get("tail") or [])
     if not data.get("dry_run"):
         lines.append("✅ All images built and pushed!" if data.get("ok") else "❌ Build failed.")
+    return "\n".join(lines)
+
+
+def _format_lock_check(data: dict[str, Any]) -> str:
+    icons = {"ok": "✅", "skipped": "⚠️ ", "stale": "❌", "error": "❌"}
+    return f"{icons.get(data.get('status', ''), '•')} {data.get('detail', '')}"
+
+
+def _format_lock(data: dict[str, Any]) -> str:
+    if data.get("dry_run"):
+        lines = [f"📝 Files sent to Cloud Build: {', '.join(data.get('files') or [])}"]
+        if data.get("note"):
+            lines.append(f"⚠️  {data['note']}")
+        lines.append("cloudbuild.yaml:")
+        lines += [f"  {line}" for line in data.get("cloudbuild_yaml", "").splitlines()]
+        lines += [f"$ {cmd}" for cmd in data.get("commands") or []]
+        return "\n".join(lines)
+    if data.get("error"):
+        return f"❌ {data['error']}"
+    lines = []
+    if data.get("check"):
+        lines.append(_format_lock_check(data["check"]))
+    if data.get("exit_code"):
+        lines.append("❌ The new uv.lock does not pass the offline check: review it (git diff uv.lock).")
+    elif data.get("changed"):
+        lines.append("✅ uv.lock updated. Review it (git diff uv.lock) and commit it.")
+    else:
+        lines.append("✅ uv.lock was already up to date.")
     return "\n".join(lines)
 
 
@@ -772,6 +801,19 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
             print(json.dumps(data, indent=2) if args.json else release.format_status(data))
             return 0
 
+        if args.cmd == "lock":
+            from esmeralda.ops import lock
+
+            if args.check:
+                if args.packages:
+                    raise OpsError("--check takes no packages")
+                data = lock.check(root)
+                print(json.dumps(data, indent=2) if args.json else _format_lock_check(data))
+                return 0 if data["status"] in ("ok", "skipped") else 1
+            data = lock.lock(root, args.packages, cicd_dir=args.cicd_dir, dry_run=args.dry_run, timeout=args.timeout)
+            print(json.dumps(data, indent=2) if args.json else _format_lock(data))
+            return int(data["exit_code"])
+
         if args.cmd == "doctor":
             data = repo.doctor(root, args.env)
             print(json.dumps(data, indent=2) if args.json else _format_doctor(data))
@@ -1039,6 +1081,26 @@ def _parser() -> argparse.ArgumentParser:
         "--cicd-dir", help="layer-0 unit directory (default: this checkout, or the main checkout's for a worktree)"
     )
     _add_common_ops_flags(build_p, with_env=True)
+
+    lock_p = sub.add_parser(
+        "lock",
+        help="regenerate uv.lock against public PyPI in Cloud Build (from your working copy), or --check it offline",
+    )
+    lock_p.add_argument(
+        "packages", nargs="*", metavar="PKG", help="also upgrade these packages (NAME or NAME==VERSION)"
+    )
+    lock_p.add_argument(
+        "--check", action="store_true",
+        help="offline check only: fail if uv.lock is out of date with the pyproject.toml files (no Cloud Build)",
+    )
+    lock_p.add_argument("--dry-run", action="store_true", help="print the files, Cloud Build config and commands")
+    lock_p.add_argument(
+        "--timeout", type=_positive_seconds, default=1200.0, help="seconds allowed for the Cloud Build (default: 1200)"
+    )
+    lock_p.add_argument(
+        "--cicd-dir", help="layer-0 unit directory (default: this checkout, or the main checkout's for a worktree)"
+    )
+    _add_common_ops_flags(lock_p, with_env=False)
 
     release_p = sub.add_parser("release", help="promote a verified dev build by digest, or show the release manifest")
     release_sub = release_p.add_subparsers(dest="release_cmd", required=True)

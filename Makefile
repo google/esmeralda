@@ -43,7 +43,7 @@ SOURCE ?=
 VERIFIED ?= $(shell date -u +%F)
 
 # uv: always install exactly what uv.lock says and never re-resolve locally. The lock is generated
-# against public PyPI by `make lock` (scripts/uv_lock.sh, runs in Cloud Build); re-locking on a machine
+# against public PyPI by `make lock` (`esmeralda lock`, runs in Cloud Build); re-locking on a machine
 # with a different package index (e.g. a corporate proxy) would rewrite every URL in uv.lock.
 export UV_FROZEN := 1
 
@@ -145,10 +145,10 @@ test-apigee: ## Offline unit and policy conformance tests for Apigee capability 
 test-all: lock-check test test-guards test-terraform test-gateway-unit test-apigee ## Run the uv.lock check, Python unit tests, repo guards, Terraform validation, Envoy gateway harness, and Apigee policy tests
 
 lock: ## Regenerate uv.lock against public PyPI (in Cloud Build) from your working copy; PKG="a b==1.2" also upgrades those
-	@bash scripts/uv_lock.sh $(PKG)
+	@$(ESM) lock $(PKG) $(CICD_FLAG)
 
 lock-check: ## Fail if uv.lock is out of date with the pyproject.toml files (offline; also the git pre-push hook)
-	@bash scripts/check_lock.sh
+	@$(ESM) lock --check
 
 test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for corporate-email..."

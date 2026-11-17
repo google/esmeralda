@@ -509,27 +509,11 @@ def _check_adc(root: Path) -> tuple[bool, str]:
 
 
 def _check_uv_lock(root: Path) -> tuple[bool, str]:
-    lock_file = root / "uv.lock"
-    if not lock_file.is_file():
-        return False, "uv.lock not found in repository root"
-    if not (root / "pyproject.toml").is_file() or not which("uv"):
-        return True, "uv.lock present"
-    try:
-        res = subprocess.run(
-            ["uv", "lock", "--check"],
-            cwd=root,
-            env=tool_env(),
-            capture_output=True,
-            text=True,
-            timeout=30,
-            stdin=subprocess.DEVNULL,
-            check=False,
-        )
-        if res.returncode == 0:
-            return True, "uv.lock is in sync with pyproject.toml"
-        return False, "uv.lock is out of sync with pyproject.toml (run `make lock`)"
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"uv lock --check failed: {exc}"
+    """The same offline check as ``esmeralda lock --check`` (``esmeralda.ops.lock.check``)."""
+    from esmeralda.ops import lock
+
+    result = lock.check(root)
+    return result["status"] in ("ok", "skipped"), result["detail"]
 
 
 def _check_local_state_dir(root: Path, env: str) -> tuple[bool, str]:

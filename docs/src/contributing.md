@@ -154,11 +154,12 @@ would rewrite every URL in `uv.lock`. The Makefile sets
 `UV_FROZEN=1`, so `uv` only installs what `uv.lock` says; to change the lock,
 use `make lock`.
 
-**`make lock`** sends your local `pyproject.toml` files and `uv.lock` to Cloud
-Build (CI/CD project), runs `uv lock` there against public PyPI, streams the
-log and writes the new `uv.lock` into your working copy. Nothing is pushed:
-review the diff and commit it yourself. It needs `gcloud` access to the CI/CD
-project.
+**`make lock`** (`esmeralda lock`) sends your local `pyproject.toml` files and
+`uv.lock` to Cloud Build (CI/CD project), runs `uv lock` there against public
+PyPI, streams the log and writes the new `uv.lock` into your working copy.
+Nothing is pushed: review the diff and commit it yourself. It needs `gcloud`
+access to the CI/CD project (`esmeralda lock --dry-run` shows what it would
+run).
 
 **How updates happen:**
 
@@ -171,9 +172,10 @@ project.
 **Guards against a stale lock:**
 
 * **git pre-push hook** (installed by `make bootstrap`, in `.githooks/`): runs
-  `make lock-check` and blocks the push if `uv.lock` is out of date with the
-  `pyproject.toml` files. The check is offline and takes milliseconds.
-* **`make test-all`** runs the same check.
+  `esmeralda lock --check` (as `make lock-check`) and blocks the push if
+  `uv.lock` is out of date with the `pyproject.toml` files. The check is
+  offline, against the public index, and takes milliseconds.
+* **`make test-all`** and **`esmeralda doctor`** run the same check.
 * The **uv.lock check** workflow runs it on every PR, for anyone without the
   hook.
 

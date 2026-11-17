@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
-# Blocks a push whose uv.lock is out of date with the pyproject.toml files.
-# Installed by `make bootstrap` (git config core.hooksPath .githooks). Bypass once with --no-verify.
-exec scripts/check_lock.sh
+# Blocks a push whose uv.lock is out of date with the pyproject.toml files (offline check, see
+# esmeralda.ops.lock). Installed by `make bootstrap` / `make hooks` (git config core.hooksPath .githooks).
+# Bypass once with --no-verify.
+if ! command -v uv >/dev/null 2>&1; then
+  echo "⚠️  uv not found: skipping the uv.lock check (CI will still run it)." >&2
+  exit 0
+fi
+exec uv run --frozen --package esmeralda esmeralda lock --check
