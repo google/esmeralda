@@ -18,7 +18,7 @@ Historically, teams tried two flawed workarounds:
 **Layer 2 solves this cleanly with three building blocks owned by NetOps in `esm-<env>-net-host-<sfx>`:**
 * **One Shared VPC (`vpc-esmeralda-shared-<env>`):** Every workload project (`mcps`, `gateway`, `ai-coe-agents`, `cx-agents`, `governance`) attaches to this single network as a Service Project. Cloud Run MCP servers join the `core` subnet (`10.0.1.0/24`) directly via **Direct VPC Egress**—zero connector VMs required.
 * **Private Service Connect (PSC) Network Attachments (`10.11.0.0/24`):** In Layer 4, the Central Agent Gateway plugs a virtual network interface (`agw-egress-na-<env>`) into Layer 2's `psc-interface` subnet, creating a single, governed private bridge from Google's managed agent runtime into the Shared VPC.
-* **Private Cloud DNS (`esmeralda.internal.`) & Reserved Entry Point VIP (`10.0.1.2`):** Layer 2 reserves the internal load balancer IP (`ilb-esmeralda-vip-<env>`) and maps `*.esmeralda.internal` to it. When an agent calls `https://legacy-dms.esmeralda.internal/mcp`, DNS peering resolves that hostname to `10.0.1.2`, and traffic flows entirely over private internal IPs.
+* **Private Cloud DNS (`esmeralda.internal.`) & Reserved Entry Point VIP:** Layer 2 reserves the internal load balancer IP (`ilb-esmeralda-vip-<env>`, a free address in the `core` subnet) and maps `*.esmeralda.internal` to it. When an agent calls `https://legacy-dms.esmeralda.internal/mcp`, DNS peering resolves that hostname to the entry point VIP (`<entrypoint-ip>`), and traffic flows entirely over private internal IPs. Read the VIP of an environment with `uv run esmeralda status --env <env> --unit layer-2-networking --output entrypoint_address`.
 
 * **Module:** [`infrastructure/modules/2-networking/`](../../../infrastructure/modules/2-networking/main.tf)
 * **Live config:** `infrastructure/live/<env>/layer-2-networking/`
@@ -33,7 +33,7 @@ Historically, teams tried two flawed workarounds:
 | **Single Shared VPC in `net-host` + Attached Service Projects** | Multi-VPC Peering mesh across 6 projects | Centralizes CIDR planning, firewall rules, and Cloud NAT under NetOps (`esm-<env>-net-host-<sfx>`) while letting spoke projects run Cloud Run and load balancers on shared subnets via `roles/compute.networkUser`. |
 | **PSC Network Attachment (`psc-interface` subnet) for Agent Egress** | Public HTTPS endpoints or per-engine VPC peering | Gives the Layer 4 Central Agent Gateway a single, auditable private entry point (`10.11.0.0/24`) into the Shared VPC so tenant-hosted agents reach `*.esmeralda.internal` with zero public IPs. |
 | **Cloud Run Direct VPC Egress (`core` subnet)** | Legacy Serverless VPC Access Connector VMs | Eliminates hourly VM connector charges and `/28` throughput bottlenecks; Cloud Run instances draw IPs directly from `sb-esmeralda-core-<env>` (`10.0.1.0/24`). |
-| **Layer 2 Owns the Entry Point VIP (`10.0.1.2`) and `*.esmeralda.internal` DNS** | Creating the IP and DNS records inside Layer 5 gateway modules | Decouples the stable internal address (`*.esmeralda.internal` → `10.0.1.2`) from the Layer 5 ingress implementation, so switching or upgrading gateway backends never changes DNS or IP addresses. |
+| **Layer 2 Owns the Entry Point VIP and `*.esmeralda.internal` DNS** | Creating the IP and DNS records inside Layer 5 gateway modules | Decouples the stable internal address (`*.esmeralda.internal` → `<entrypoint-ip>`, layer-2 output `entrypoint_address`) from the Layer 5 ingress implementation, so switching or upgrading gateway backends never changes DNS or IP addresses. |
 
 ---
 
@@ -93,6 +93,8 @@ flowchart TD
 | **`sb-esmeralda-psc-interface-<env>`** | `10.11.0.0/24` | Subnet for PSC network attachments (Private Google Access on). | The Agent Gateway attachment `agw-egress-na-<env>` (Layer 4). |
 | **`sql-peering-range-<env>`** | `/16` (Google-allocated) | Private Services Access (PSA) range peered with `servicenetworking.googleapis.com`. | Private Cloud SQL PostgreSQL instance in `esm-<env>-ai-coe-agents-<sfx>`. |
 
+These CIDR blocks are the blueprint's design values: they are set as `ip_cidr_range` on each subnet in [`main.tf`](../../../infrastructure/modules/2-networking/main.tf) (§2) and are the same in every environment. Change them there to fit your own IP plan; with `byo_networking = true` your existing subnets are used instead. Addresses allocated inside them (the entry point VIP, Cloud Run instances) are picked at apply time: read them from the layer outputs, never from these docs.
+
 Also created: Cloud Router `cr-esmeralda-nat-<env>` with Cloud NAT `nat-esmeralda-outbound-<env>` (all subnets), and firewall rules `allow-iap-ssh-<env>` (IAP range `35.235.240.0/20` → TCP 22) and `allow-psc-interface-ingress-<env>` (from `10.11.0.0/24`).
 
 ---
@@ -133,8 +135,7 @@ When `enable_psc_interface = true` (the default), the same identities also get `
 ---
 
 ### 5. Optional & Legacy Resources
-* **Secure Web Proxy (SWP):** the module can deploy an SWP at `10.0.1.100` (`enable_secure_web_proxy`), but dev and prd set it to `false`. Agent egress control is done by the Agent Gateway instead.
-* **`internal.gateway.` zone:** a second private zone with placeholder records (`*` → `10.0.1.200`, `swp` → `10.0.1.100`) is still created when `enable_psc_interface = true`. Current services use `*.esmeralda.internal`.
+* **Secure Web Proxy (SWP):** the module can deploy an SWP at `10.0.1.100` (`enable_secure_web_proxy`, address fixed in [`main.tf`](../../../infrastructure/modules/2-networking/main.tf) §4 and reported by the `secure_web_proxy_ip` output), but dev and prd set it to `false`. Agent egress control is done by the Agent Gateway instead.
 * **Brownfield:** with `byo_networking = true`, the VPC, subnets, NAT and firewall rules are skipped, and `existing_vpc_id` / `existing_subnet_id` from `env.yaml` are used instead.
 
 ---

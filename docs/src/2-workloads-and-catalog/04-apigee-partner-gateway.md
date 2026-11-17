@@ -24,9 +24,9 @@ Before diving into the proxy bundles, it is important to see how **Apigee X**, *
 
 | Layer / Component | Traffic Direction | Primary Role | What It Enforces |
 | :--- | :--- | :--- | :--- |
-| **1. Apigee X** (`partner.esmeralda.internal` / `10.0.1.3`) | **North–South (External / Partner Ingress)** | **Commercial & Partner API Management** | • Verifies partner API Keys / OAuth tokens (`VerifyAPIKey`) against tiered **API Products** (`bronze`, `silver`, `gold`)<br>• Enforces **agent & MCP tool exposure allowlists** (`kvm-partner-agents`, `kvm-partner-mcp`)<br>• Enforces per-partner **LLM Token Quotas** (`<LLMTokenQuota>` `EnforceOnly` + `CountOnly` → `HTTP 429`)<br>• Emits per-partner **Monetization & Token Analytics** (`DataCapture` + `PostClientFlow` `MessageLogging`) |
+| **1. Apigee X** (`partner.esmeralda.internal`, served on the entry point VIP) | **North–South (External / Partner Ingress)** | **Commercial & Partner API Management** | • Verifies partner API Keys / OAuth tokens (`VerifyAPIKey`) against tiered **API Products** (`bronze`, `silver`, `gold`)<br>• Enforces **agent & MCP tool exposure allowlists** (`kvm-partner-agents`, `kvm-partner-mcp`)<br>• Enforces per-partner **LLM Token Quotas** (`<LLMTokenQuota>` `EnforceOnly` + `CountOnly` → `HTTP 429`)<br>• Emits per-partner **Monetization & Token Analytics** (`DataCapture` + `PostClientFlow` `MessageLogging`) |
 | **2. GEAP Agent Identity & Auth Manager** (`agents.global.org-<ORG>.system.id.goog`) | **End-to-End Cryptographic Identity** | **Workload & Delegated Human Identity** | • Assigns each Reasoning Engine a unique X.509 **SPIFFE ID (`principal://`)**<br>• Brokers **3-Legged OAuth (3LO)** end-user tokens (`X-Esmeralda-User-Token`) so downstream MCP tools can verify which human user authorized the call (`esmeralda.mcp_authz`) |
-| **3. GEAP Central Agent Gateway** (`10.200.0.2`) | **East–West (Internal Agent Egress)** | **Zero-Trust Runtime Policy Enforcement** | • Enforces **Agent Registry** destination allowlists<br>• Enforces per-target **IAP `roles/iap.egressor`** policies on each Agent Registry entry: only `cx-mortgage-orchestrator` is listed on `ai-coe-mortgage-specialist`, and only `ai-coe-mortgage-specialist` on the MCP servers (A2A calls through the generic Vertex AI endpoint are a known gap, see [Security & IAM](../1-platform-foundations/03-security-iam-and-telemetry.md#4-three-identity-delegation-per-target-spiffe-governance))<br>• Evaluates **Semantic Governance (Natural Language Constraints, NLC)** and optional **Model Armor** on unary MCP tool calls |
+| **3. GEAP Central Agent Gateway** (Google-managed; PSC attachment `agw-egress-na-<env>`) | **East–West (Internal Agent Egress)** | **Zero-Trust Runtime Policy Enforcement** | • Enforces **Agent Registry** destination allowlists<br>• Enforces per-target **IAP `roles/iap.egressor`** policies on each Agent Registry entry: only `cx-mortgage-orchestrator` is listed on `ai-coe-mortgage-specialist`, and only `ai-coe-mortgage-specialist` on the MCP servers (A2A calls through the generic Vertex AI endpoint are a known gap, see [Security & IAM](../1-platform-foundations/03-security-iam-and-telemetry.md#4-three-identity-delegation-per-target-spiffe-governance))<br>• Evaluates **Semantic Governance (Natural Language Constraints, NLC)** and optional **Model Armor** on unary MCP tool calls |
 
 ---
 
@@ -38,10 +38,10 @@ When an external partner app calls `https://partner.esmeralda.internal/partner/v
 sequenceDiagram
     autonumber
     participant Partner as External Partner App
-    participant EP as Entrypoint HTTPS ALB<br/>(partner.esmeralda.internal / 10.0.1.3)
+    participant EP as Entrypoint HTTPS ALB<br/>(partner.esmeralda.internal)
     participant Apigee as Apigee X Runtime<br/>(partner-agents proxy)
     participant Orch as cx-mortgage-orchestrator<br/>(SPIFFE Identity #1)
-    participant AGW as Central Agent Gateway (10.200.0.2)<br/>(UAP/IAP + Semantic NLC)
+    participant AGW as Central Agent Gateway<br/>(UAP/IAP + Semantic NLC)
     participant Spec as ai-coe-mortgage-specialist<br/>(SPIFFE Identity #2 + 3LO)
     participant MCP as Cloud Run MCP Servers<br/>(DMS, Income, Email)
 
@@ -74,8 +74,8 @@ How does traffic get from our Shared VPC into Apigee X's Google-managed tenant p
 ```mermaid
 flowchart LR
     subgraph SharedVPC["Shared VPC (esm-<env>-net-host-<sfx>)"]
-        DNS["Cloud DNS Private Zone<br/>partner.esmeralda.internal -> 10.0.1.3"]
-        ALB["Entrypoint Internal HTTPS ALB<br/>(ilb-esmeralda-partner-rule-<env>)"]
+        DNS["Cloud DNS Private Zone<br/>*.esmeralda.internal -> entry point VIP"]
+        ALB["Entrypoint Internal HTTPS ALB<br/>(ilb-esmeralda-rule-<env>, host partner.esmeralda.internal)"]
         PSCNEG["Regional PSC NEG<br/>(neg-apigee-psc-<env>)"]
     end
 
@@ -87,7 +87,7 @@ flowchart LR
 
     subgraph Targets["Downstream Targets"]
         VAI["Vertex AI Agent Runtime<br/>(us-central1-aiplatform.googleapis.com)"]
-        MCPS["Internal Entrypoint (10.0.1.2)<br/>-> Cloud Run MCP Servers"]
+        MCPS["Internal Entrypoint<br/>-> Cloud Run MCP Servers"]
     end
 
     DNS -.-> ALB
@@ -102,8 +102,8 @@ flowchart LR
    * Provisions (or adopts via `byo = true`) the `google_apigee_organization` and regional `google_apigee_instance` in `esm-<env>-gateway-<sfx>`.
    * Creates the Apigee environment `esmeralda-<env>` (configurable tier: `BASE`, `INTERMEDIATE`, or `COMPREHENSIVE`) and environment group `envgroup-esmeralda-<env>` listening on `partner.esmeralda.internal`.
    * Creates a regional **Private Service Connect (PSC) NEG** (`neg-apigee-psc-<env>`) pointing to `google_apigee_instance.apigee_instance.service_attachment`, wrapped in a regional `INTERNAL_MANAGED` HTTPS backend service (`backend-apigee-gateway-<env>`).
-2. **Entry Point Partner VIP (`10.0.1.3`):**
-   * When `partner_access = "apigee"` in `env.yaml`, the Layer 5 `entrypoint` unit attaches `backend-apigee-gateway-<env>` to the URL map for `partner.esmeralda.internal`, injects `Host: partner.esmeralda.internal` via `custom_request_headers`, and exposes the dedicated partner forwarding rule on `10.0.1.3:443` (`partner_ip_address`).
+2. **Partner host on the entry point:**
+   * When `partner_access = "apigee"` in `env.yaml`, the Layer 5 `entrypoint` unit adds a `partner.esmeralda.internal` host rule to its URL map with `backend-apigee-gateway-<env>` as the backend. There is no separate partner IP or forwarding rule: `partner.esmeralda.internal` matches the `*.esmeralda.internal` record and reaches the same entry point VIP and forwarding rule (`ilb-esmeralda-rule-<env>`, port 443) as every other host. Read that VIP with `uv run esmeralda status --env <env> --unit layer-2-networking --output entrypoint_address`.
 3. **Southbound to the entry point (`apigee/capabilities/partner-mcp`):**
    * A PSC service attachment (`sa-esmeralda-entrypoint-apigee-<env>`, NAT subnet `sb-esmeralda-psc-nat-apigee-<env>` from `psc_nat_cidr`) publishes the entry point forwarding rule; the Apigee endpoint attachment `ea-esmeralda-mcp-<env>` connects to it, and the target server `ts-esmeralda-mcp` reaches it as `apigee-southbound.<domain>` (private zone `apigee-southbound-<env>` in the Shared VPC + Apigee DNS peering zone `dz-esmeralda-mcp-<env>`; the Apigee service agent gets `roles/dns.peer` on the host project). The unit runs after `entrypoint` (Terragrunt `dependencies`), so there is no cycle with the northbound path. `partner-agents` keeps calling Vertex AI directly (`ts-esmeralda-entrypoint`).
 
@@ -329,7 +329,7 @@ governance = {
   capabilities = {
     egress_allowlist = "agent_gateway" # Internal East-West governed by Central Agent Gateway
     content_safety   = "agent_gateway" # Model Armor + Semantic Governance (NLC)
-    partner_access   = "apigee"        # Enables partner-agents, partner-mcp, and partner VIP (10.0.1.3)
+    partner_access   = "apigee"        # Enables partner-agents, partner-mcp, and the partner.<domain> host rule on the entry point
     token_quota      = "apigee"        # Enables token-quota shared flow (LLMTokenQuota)
     usage_metering   = "apigee"        # Enables usage-metering shared flow & DataCollectors
     cross_cloud      = "apigee"        # Required with partner_access: deploys the cross-cloud shared flow the partner proxies call
@@ -370,7 +370,7 @@ uv run esmeralda apply layer-5-workloads/entrypoint --env dev
 ESMERALDA_TEST_QUOTA_EXHAUSTION=1 uv run esmeralda verify --env dev --partner
 ```
 
-`uv run esmeralda verify --env dev --partner` (backed by [`scripts/test_partner.sh`](../../../scripts/test_partner.sh)) executes the live probes from the private test VM against `https://partner.esmeralda.internal` (`10.0.1.3`):
+`uv run esmeralda verify --env dev --partner` (backed by [`scripts/test_partner.sh`](../../../scripts/test_partner.sh)) executes the live probes from the private test VM against `https://partner.esmeralda.internal` (the entry point VIP, layer-2 output `entrypoint_address`):
 
 1. **Probe 1 (`HTTP 401`):** Unauthenticated partner request (no `x-api-key`) is rejected by `VAK-Partner-Key`.
 2. **Probe 2 (`HTTP 403`):** Partner request with a valid API key attempting to call internal specialist `/partner/v1/agents/ai-coe-mortgage-specialist:streamQuery` is blocked by `JS-Validate-Agent`.
