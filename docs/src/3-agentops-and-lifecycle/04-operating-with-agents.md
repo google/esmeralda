@@ -48,7 +48,7 @@ Every operational subcommand accepts `--repo PATH` (defaults to `$ESMERALDA_REPO
 | CLI Command | `make` Target | What It Does |
 | :--- | :--- | :--- |
 | `esmeralda status [--env dev\|prd] [--unit <unit>] [--json]` | `make status ENV=dev` | Shows git branch, HEAD SHA, dirty/clean state, active git worktrees, local state units in `infrastructure/live/.local_states/<env>`, image tags/digests vs HEAD, and deployed unit outputs (entry point IP/domain, gateways, agent engine IDs, MCP URIs). |
-| `esmeralda doctor [--env dev\|prd] [--json]` | `make doctor ENV=dev` | Preflight check: verifies required tools (`git`, `uv`, `terraform`, `terragrunt`, `gcloud`, `jq`), `ESMERALDA_BILLING_ACCOUNT` (warns if unset), ADC token availability, `uv.lock` frozen check, and local state readability. Exits `1` if required checks fail. |
+| `esmeralda doctor [--env dev\|prd] [--json]` | `make doctor ENV=dev` | Preflight check: verifies required tools (`git`, `uv`, `terraform`, `terragrunt`, `gcloud`, `jq`), `ESMERALDA_BILLING_ACCOUNT` (warns if unset), ADC token availability, `uv.lock` check (offline, as `esmeralda lock --check`), and local state readability. Exits `1` if required checks fail. |
 | `esmeralda units [--env dev\|prd] [--layer 0..5] [--json]` | `make units ENV=dev` | Lists all Terragrunt units for `<env>`, their layer (`0..5`), dependencies, whether enabled or excluded in `env.yaml`, and whether local state exists. |
 | `esmeralda plan <unit\|--all> [--env dev\|prd] [--json]` | `make plan [UNIT=...] ENV=dev` | Runs `terragrunt plan -lock=false` on a unit (full path like `layer-5-workloads/entrypoint` or short name `entrypoint`) or `--all` enabled units, and prints the resource change summary (`to add`, `to change`, `to destroy`, `to replace`). |
 | `esmeralda apply <unit> [--env dev\|prd] [--allow-destroy] [--json]` | `make apply UNIT=... ENV=dev [ALLOW_DESTROY=1]` | Plans `<unit>` to a planfile first, inspects the plan for `destroy` or `replace` actions, **refuses to apply with exit code `2` if `destroy > 0` or `replace > 0` unless `--allow-destroy` is passed**, and otherwise applies the saved planfile. |
@@ -199,7 +199,7 @@ Because Esmeralda is a public reference blueprint—and because enterprise teams
 
 * **`.githooks/pre-commit`**: runs `uv run --frozen --package esmeralda esmeralda guard --staged` on staged diffs and file paths, blocking accidental commits of customer names, internal URLs, real GCP project suffixes, billing account IDs, `.env` files, or Terraform state files.
 * **`.githooks/commit-msg`**: runs `uv run --frozen --package esmeralda esmeralda guard --message-file "$1"` to ensure commit messages stay clean of internal markers or bug IDs.
-* **`.githooks/pre-push`**: runs `scripts/check_lock.sh` to verify `uv.lock` is in sync before any branch is pushed.
+* **`.githooks/pre-push`**: runs `uv run --frozen --package esmeralda esmeralda lock --check` (offline) to verify `uv.lock` is in sync before any branch is pushed.
 * **Full repository scan**: `make guard` (or `uv run esmeralda guard --all`) scans every tracked file in the repository on demand.
 
 You can also add local, untracked regex patterns (one case-insensitive regex per line, `#` comments) to `$(git rev-parse --git-common-dir)/info/sensitive-patterns` or point `ESMERALDA_SENSITIVE_PATTERNS_FILE` at a local file outside the repository. To bypass the hook once for a reviewed false positive, set `SKIP_SENSITIVE_SCAN=1`.
