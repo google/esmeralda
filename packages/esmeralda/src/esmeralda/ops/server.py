@@ -157,7 +157,7 @@ def build_server(root: Path | None = None) -> Any:
     @guarded
     def test_gateway(env: Env) -> dict[str, Any]:
         """Probe every gateway route host through the entry point from the test VM
-        (scripts/test_gateway.sh): per-host probe kind, HTTP code and ok."""
+        (IAP SSH, scripts/vm/gateway_probes.sh): per-host probe kind, HTTP code and ok."""
         return runtime.test_gateway(repo_root(), env, timeout=TIMEOUTS["test_gateway"] - 30)
 
     @tool("agent_logs")

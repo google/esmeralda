@@ -383,7 +383,7 @@ Add it to the client's MCP configuration. Start the client from the repository r
 | `list_units(env)` | Every Terragrunt unit with `deployed` and its managed resource count | |
 | `plan_unit(env, unit)` | `changes`, `counts` (add/change/destroy/replace/read), one line per changed resource (`+`, `~`, `-/+`, `-`, `<=`) with the changed attribute names and replacement causes, changed outputs, drift | `terragrunt plan -lock=false`; the plan file goes to `.esmeralda/plans/` (gitignored). Nothing is applied |
 | `query_agent(env, agent, message)` | `passed`, the answer, agents involved, tool calls, tool errors, tokens, seconds | The same path as `make query AGENT=<agent> TARGET=remote` (`esmeralda.query.run` with the unit's `engine_id`) |
-| `test_gateway(env)` | `passed`, entry point, one entry per host: probe kind, HTTP code, `ok`, stale DNS, error | Runs `scripts/test_gateway.sh` (IAP SSH to the test VM) |
+| `test_gateway(env)` | `passed`, entry point, one entry per host: probe kind, HTTP code, `ok`, stale DNS, error | Resolves the test VM and the catalog routes, then runs `scripts/vm/gateway_probes.sh` on the test VM (IAP SSH) |
 | `agent_logs(env, agent, since="30m", severity="WARNING", limit=50)` | Entries `{time, severity, message, count?}`, newest first | Cloud Logging for the agent's Reasoning Engine. Tracebacks are collapsed to their exception line, repeated messages (numbers and ids masked) are merged with a `count`, messages are cut to 300 characters |
 | `describe_contracts()` | The gateway adapter contract and the `gateways` block (from the [ingress gateways guide](../2-workloads-and-catalog/01-ingress-gateways.md)), plus each env's current `gateways` block and gateway units | |
 

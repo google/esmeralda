@@ -288,8 +288,8 @@ deploy-gateway: ## Deploy the built-in direct backends (gateways/direct; re-run 
 deploy-entrypoint: ## Deploy the internal entry point (URL map, HTTPS proxy, forwarding rule) after the gateways
 	@$(ESM) deploy entrypoint $(DEPLOY_FLAGS)
 
-test-gateway: ## Probe every catalog host through the entry point from the test VM (IAP SSH), incl. a real orchestrator query: ENV=<env>
-	@bash scripts/test_gateway.sh $(ENV)
+test-gateway: ## Probe every catalog host through the entry point from the test VM (IAP SSH), incl. the on-VM query probe (esmeralda verify --skip-query): ENV=<env>
+	@$(ESM) verify --skip-query --env $(ENV)
 
 test-partner: ## Run partner front-door conformance checks (401 unauth, 403/404 agent/MCP scope, SSE TTFB + answer, 429 quota): ENV=<env>
 	@uv run esmeralda verify --partner --env $(ENV)

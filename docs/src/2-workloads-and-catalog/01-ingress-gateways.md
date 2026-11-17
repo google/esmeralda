@@ -284,7 +284,7 @@ uv run esmeralda verify --env dev
 make test-gateway ENV=dev
 ```
 
-[`scripts/test_gateway.sh`](../../../scripts/test_gateway.sh) (also invoked by `uv run esmeralda verify`) reads the test VM details, the Layer 2 entry point IP, the Layer 3 internal Root CA certificate, and the entry point's `routes` output from Terragrunt. It connects to the test VM over IAP SSH and probes every catalog host with full TLS verification:
+`make test-gateway` is `uv run esmeralda verify --skip-query --env dev`: the route probes without the workstation-side agent queries. The CLI (`esmeralda.ops.testvm`) reads the test VM details, the Layer 2 entry point IP, the Layer 3 internal Root CA certificate, and the entry point's `routes` output from the unit outputs. It then sends [`scripts/vm/gateway_probes.sh`](../../../scripts/vm/gateway_probes.sh) to the test VM over IAP SSH, which probes every catalog host with full TLS verification:
 
 | Probe Kind | Request Sent | Pass Criteria |
 | :--- | :--- | :--- |
