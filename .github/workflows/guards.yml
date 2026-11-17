@@ -1,0 +1,98 @@
+# Runs the repository guards on every PR and push to main, with no cloud credentials:
+#   - `esmeralda guard`: the public-repository sensitive-content scan (secrets, key material, state/tfvars/.env
+#     files, internal markers) on every tracked file, on each new commit's diff and message, and on the PR
+#     title and description (the squash commit message), i.e. what the pre-commit and commit-msg hooks check;
+#   - `esmeralda catalog resolve --check`: catalog/.resolved/<env>.json is up to date with catalog/;
+#   - `make lock-check`: uv.lock matches every pyproject.toml (the pre-push hook);
+#   - `make test-guards`: repository hygiene, governance and security contract tests (offline, needs tofu).
+# Meant to be a required status check on main.
+name: Guards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited] # edited: re-scan a changed title or description
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: guards-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1" # install exactly what uv.lock says, never re-lock
+  SKIP_SENSITIVE_SCAN: "0" # the local hook bypass never applies in CI
+
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the per-commit scan needs the PR's commits
+          persist-credentials: false
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: "1.13.9"
+          tofu_wrapper: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.30" # keep in sync with the uv image in apps/services/*/Dockerfile
+          enable-cache: false
+
+      - name: esmeralda guard --all (every tracked file)
+        run: uv run --frozen --package esmeralda esmeralda guard --all
+
+      # Every new commit is published with the branch, even if a later commit removes what it added.
+      - name: esmeralda guard on each new commit (diff + message)
+        if: ${{ !cancelled() }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "${BASE_SHA}" ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "No base commit to compare with: scanning ${HEAD_SHA} only."
+            commits="${HEAD_SHA}"
+          else
+            commits="$(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}")"
+          fi
+          rc=0
+          for sha in ${commits}; do
+            echo "::group::${sha}"
+            git log -1 --format=%B "${sha}" > "${RUNNER_TEMP}/commit-msg"
+            uv run --frozen --package esmeralda esmeralda guard --message-file "${RUNNER_TEMP}/commit-msg" || rc=1
+            if git cat-file -e "${sha}^" 2>/dev/null; then
+              uv run --frozen --package esmeralda esmeralda guard --diff "${sha}^..${sha}" || rc=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${rc}"
+
+      # The title and description become the squash-merge commit message.
+      - name: esmeralda guard on the PR title and description
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n\n%s\n' "${PR_TITLE}" "${PR_BODY}" > "${RUNNER_TEMP}/pr-message"
+          uv run --frozen --package esmeralda esmeralda guard --message-file "${RUNNER_TEMP}/pr-message"
+
+      - name: esmeralda catalog resolve --check (every env)
+        if: ${{ !cancelled() }}
+        run: uv run --frozen --package esmeralda esmeralda catalog resolve --env all --check
+
+      - name: make lock-check
+        if: ${{ !cancelled() }}
+        run: make lock-check
+
+      - name: make test-guards
+        if: ${{ !cancelled() }}
+        run: make test-guards TF=tofu

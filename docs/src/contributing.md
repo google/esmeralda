@@ -66,6 +66,29 @@ workflow runs it, and validates the sandbox Terraform, on every PR and push to
 `pyproject.toml` or `uv.lock`. (`make test-gateway` is a different target: it
 probes a deployed environment's routes from the test VM.)
 
+### Repository guards in CI
+
+The **Guards** workflow (`.github/workflows/guards.yml`) runs on every PR and
+push to `main`, with no cloud credentials, and is meant to be a required status
+check. It runs:
+
+* `esmeralda guard --all` on every tracked file, `esmeralda guard --diff` and
+  `--message-file` on each new commit, and `--message-file` on the PR title and
+  description (they become the squash commit message). This is what the
+  pre-commit and commit-msg hooks check locally; since every pushed commit is
+  public, a secret added in one commit and removed in a later one still fails
+  the PR.
+* `esmeralda catalog resolve --env all --check` (`catalog/.resolved/` is up to date).
+* `make lock-check` and `make test-guards` (offline, with OpenTofu).
+
+To reproduce it locally:
+
+```bash
+uv run --frozen esmeralda guard --diff origin/main...HEAD
+uv run --frozen esmeralda catalog resolve --env all --check
+make lock-check test-guards
+```
+
 If you changed agent or MCP code, also exercise it locally (`--local-mcp` starts
 and stops the three MCP servers on ports 8001-8003 for you):
 
