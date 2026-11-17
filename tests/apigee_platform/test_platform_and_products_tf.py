@@ -171,7 +171,7 @@ def test_products_creates_mcp_tool_scoping_quota_attributes_and_secrets() -> Non
 
     assert 'resource "google_apigee_developer" "developer"' in main_tf
     assert 'resource "google_apigee_developer_app" "consumer"' in main_tf
-    assert 'name  = "owner_identity"' in main_tf
+    assert re.search(r"owner_identity\s*=\s*each\.value\.owner_identity", main_tf)
 
     assert 'resource "google_secret_manager_secret" "consumer_key"' in main_tf
     assert 'secret_id = "apigee-consumer-key-${each.key}-${var.environment}"' in main_tf

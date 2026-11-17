@@ -36,6 +36,12 @@ Compared to baseline Apigee proxy configurations, these bundles enforce the foll
 9. **Strict Southbound TLS Verification**: Every `HTTPTargetConnection` enables TLS with certificate validation (`<SSLInfo><Enabled>true</Enabled><Enforce>true</Enforce><IgnoreValidationErrors>false</IgnoreValidationErrors></SSLInfo>`).
 10. **Body-Free `esmeralda.usage` Records (`ML-interaction`)**: Attached in `PostClientFlow`, `ML-interaction` emits one record per request that validates against the usage event contract (`contracts/usage-event.schema.json`): `schema`, `schema_version`, `event` (`gateway.request`, or `llm.call` for `llm-gateway`), `source: "gateway"`, `caller.principal` (verified app, cross-cloud `iss#sub` or agent identity; never the API key), `gen_ai.usage.*`, `trace_id` from `traceparent`, `latency_ms`, and an empty `dimensions`. `JS-Usage-Context` (`usage-context.js`, identical in every bundle) computes the values a message template can't (timestamp, latency, outcome, optional fragments) and also runs in a `DefaultFaultRule`, so rejected requests are recorded. It never logs `request.content` or `response.content`.
 
+## Bundle Revisions
+
+Each capability module zips its bundle with `data "archive_file"` and uploads a new proxy or shared flow revision whenever the zip's MD5 changes (`detect_md5hash`). The zip records file modes, so every `archive_file` pins `output_file_mode = "0644"`: the MD5, and therefore the revision, changes only when the bundle content changes, whichever checkout (clone, worktree, CI runner, umask) runs the plan. `tests/guards/test_apigee_bundle_drift_guards.py` enforces this.
+
+A new revision of a proxy replaces its `google_apigee_environment_api_revision_deployment` (`-/+`), which briefly undeploys the proxy while the new revision deploys. Plan bundle changes for a maintenance window in production.
+
 ## Offline Validation
 
 Run the offline policy and JavaScript conformance test suite from the repository root:
