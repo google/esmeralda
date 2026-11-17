@@ -39,7 +39,7 @@ ALLOWED: dict[str, str] = {
     "uv_lock.sh": "make lock (uv lock in Cloud Build); to be ported to the CLI",
     "preflight.sh": "make preflight / bootstrap; to be replaced by esmeralda doctor",
     "with_local_mcp.sh": "make serve; to be replaced by the CLI's local MCP runner",
-    "test_gateway.sh": "esmeralda verify gateway probes; its VM half runs on the test VM over IAP SSH",
+    "vm/gateway_probes.sh": "gateway probes of esmeralda verify; runs ON the test VM over IAP SSH (no checkout or venv there)",
     "test_partner.sh": "esmeralda verify --partner; to be ported to the CLI (the VM side is tests/partner/probe.py)",
     "partner_env.sh": "test VM / entry point / CA / partner key resolution sourced by the partner scripts",
     "partner_load_test.sh": "make load-test-partner; its VM half runs Locust on the test VM over IAP SSH",

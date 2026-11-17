@@ -793,9 +793,9 @@ def test_parse_gateway_output():
 
 
 def test_test_gateway_summary(checkout, monkeypatch):
-    (checkout / "scripts").mkdir()
-    (checkout / "scripts" / "test_gateway.sh").write_text("")
-    monkeypatch.setattr(repo, "run", lambda cmd, **_: subprocess.CompletedProcess(cmd, 1, GATEWAY_OUTPUT, ""))
+    monkeypatch.setattr(
+        runtime, "run_gateway_probes", lambda root, env, **_: subprocess.CompletedProcess([], 1, GATEWAY_OUTPUT, "")
+    )
     result = runtime.test_gateway(checkout, "dev")
     assert result["passed"] is False and result["ok"] == 2 and result["failed"] == 1
     assert result["error"] == "❌ Some routes failed through the entry point (see above)."

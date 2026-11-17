@@ -75,6 +75,7 @@ CLI_ALIASES = {
     "logs",
     "guard",
     "test-partner",
+    "test-gateway",
 }
 
 _TARGET_RE = re.compile(r"^([A-Za-z0-9_.-]+):(?!=)")

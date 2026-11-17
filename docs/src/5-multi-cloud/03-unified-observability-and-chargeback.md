@@ -235,7 +235,7 @@ Each decision is one JSON log line (`jsonPayload.event = "esmeralda.caller_decis
 
 ### 5.5 Proving it: `esmeralda verify`
 
-On top of the route probes, `scripts/test_gateway.sh` (run by `esmeralda verify`) runs two attribution probes from the test VM:
+On top of the route probes, `esmeralda verify` runs two attribution probes from the test VM ([`scripts/vm/gateway_probes.sh`](../../../scripts/vm/gateway_probes.sh)):
 
 * **Unregistered caller:** the probe identity `sa-probe-unregistered-<env>` is in no catalog entry and holds no role. The test VM can only mint its tokens. It calls every MCP and A2A host and must get `403`, in both `deny` and `flag`, because IAM and the Agent Gateway reject it before any caller guard. The probe reads the effective policy from the resolved catalog. If a host ever let the identity through to its guard, `deny` still requires `403`. Under `flag`, the call may succeed but must stay unattributed, and the probe warns that the IAM grant shouldn't exist.
 * **Declared mismatch:** the test VM declares another team's cost centre on every guarded MCP host. It must get `403` under `reject`, or `2xx` billed to its own team under `bill_own_team`.

@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 from esmeralda import cli
-from esmeralda.ops import envfile, guard, logs, repo
+from esmeralda.ops import envfile, guard, logs, repo, runtime
 
 ENGINE = "projects/demo-cx/locations/us-central1/reasoningEngines/123"
 DIGEST = "us-central1-docker.pkg.dev/demo/repo/legacy-dms@sha256:" + "ab" * 32
@@ -475,14 +475,14 @@ def test_cli_doctor_exits_nonzero_when_required_check_fails(ops_checkout, monkey
 
 
 def test_cli_verify_probe_and_skip_query(ops_checkout, monkeypatch, capsys):
-    (ops_checkout / "scripts").mkdir(exist_ok=True)
-    (ops_checkout / "scripts" / "test_gateway.sh").write_text("")
     gw_out = (
         "🔎 Probing 2 host(s) through the entry point 10.0.1.3 (*.example.internal) from test-vm-dev...\n"
         "  ✅ legacy-dms.example.internal                        mcp   HTTP 200\n"
         "  ❌ broken.example.internal                            a2a   HTTP 502\n"
     )
-    monkeypatch.setattr(repo, "run", lambda cmd, **_: subprocess.CompletedProcess(cmd, 1, gw_out, ""))
+    monkeypatch.setattr(
+        runtime, "run_gateway_probes", lambda root, env, **_: subprocess.CompletedProcess([], 1, gw_out, "")
+    )
 
     # Filtering to the healthy probe + --skip-query passes:
     assert cli.main(["verify", "--env", "dev", "--probe", "legacy-dms", "--skip-query", "--json"]) == 0
@@ -495,7 +495,9 @@ def test_cli_verify_probe_and_skip_query(ops_checkout, monkeypatch, capsys):
 
     # When test_gateway fails before probing any host (0 ok, 0 failed), verify surfaces the fatal error:
     fatal_out = "❌ No test VM outputs in infrastructure/live/dev/layer-5-workloads/test-vm.\n"
-    monkeypatch.setattr(repo, "run", lambda cmd, **_: subprocess.CompletedProcess(cmd, 1, "", fatal_out))
+    monkeypatch.setattr(
+        runtime, "run_gateway_probes", lambda root, env, **_: subprocess.CompletedProcess([], 1, "", fatal_out)
+    )
     assert cli.main(["verify", "--env", "dev", "--skip-query", "--json"]) == 1
     fatal_data = json.loads(capsys.readouterr().out)
     assert "No test VM outputs in infrastructure/live/dev/layer-5-workloads/test-vm" in fatal_data["steps"][0]["detail"]

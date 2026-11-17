@@ -18,19 +18,23 @@
 from the agent unit's ``engine_id`` output, ``agent.yaml`` from ``apps/agents/<agent>``, then
 ``esmeralda.query.run(..., engine=...)``, with the report captured instead of printed.
 
-``test_gateway`` runs ``scripts/test_gateway.sh <env>`` and parses its per-host lines.
+``test_gateway`` resolves the test VM and the catalog routes (``esmeralda.ops.testvm``), runs
+``scripts/vm/gateway_probes.sh`` on the VM over IAP SSH and parses its per-host lines.
 """
 
 from __future__ import annotations
 
 import io
+import json
+import os
 import re
+import subprocess
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
-from esmeralda.ops import repo
+from esmeralda.ops import repo, testvm
 from esmeralda.ops.repo import OpsError
 
 AGENTS_DIR = Path("apps/agents")
@@ -113,7 +117,7 @@ _PARTNER_PROBE = re.compile(
 
 
 def parse_gateway_output(text: str) -> dict[str, Any]:
-    """Per-host results from the output of ``scripts/test_gateway.sh``."""
+    """Per-host results from the output of the gateway probes (``run_gateway_probes``)."""
     hosts, entry = [], {}
     for raw in text.splitlines():
         line = _ANSI.sub("", raw)
@@ -137,6 +141,95 @@ def parse_gateway_output(text: str) -> dict[str, Any]:
     return {"entry_point": entry, "hosts": hosts}
 
 
+GATEWAY_PROBES = Path("scripts/vm/gateway_probes.sh")
+QUERY_ENV_VAR = "TEST_GATEWAY_QUERY"
+
+
+def gateway_routes(root: Path, env: str) -> list[dict[str, str]]:
+    """``host``/``probe``/``token``/``backend`` of every catalog host (entry point ``routes`` output)."""
+    l5_dir = testvm.env_rel(env, "layer-5-workloads")
+    routes = testvm.outputs(root, env, "layer-5-workloads/entrypoint").get("routes")
+    if not isinstance(routes, dict):
+        raise OpsError(
+            f"No routes output in {l5_dir}/entrypoint. Deploy the entry point first (make deploy-entrypoint ENV={env})."
+        )
+    keys = ("host", "probe", "token", "backend")
+    found = [{k: "null" if route.get(k) is None else testvm.text(route[k]) for k in keys} for route in routes.values()]
+    if not found:
+        raise OpsError(f"The entry point serves no host (catalog in {testvm.env_rel(env, 'env.yaml')}).")
+    return found
+
+
+def attribution_vars(root: Path, env: str, routes: list[dict[str, str]]) -> dict[str, str]:
+    """Inputs of the verified attribution probes (``catalog/.resolved/<env>.json`` ``attribution``).
+
+    * unregistered caller: the layer-3 probe identity (in no catalog entry) calls every mcp/a2a host;
+    * declared mismatch: the test VM declares a cost centre of another team on every MCP host whose
+      caller guard is on.
+    """
+    try:
+        resolved = json.loads((root / "catalog" / ".resolved" / f"{env}.json").read_text())
+        attribution = (resolved.get("attribution") if isinstance(resolved, dict) else None) or {}
+    except (OSError, ValueError):
+        attribution = {}
+    policy = attribution.get("policy") or {}
+    teams = [t for t in attribution.get("principal_teams") or [] if isinstance(t, dict)]
+    vm_teams = [t for t in teams if t.get("caller") == "test-vm"]
+    vm_ccs = {cc for t in vm_teams for cc in t.get("cost_centers") or []}
+    others = [t for t in teams if t.get("caller") != "test-vm"]
+    foreign = [cc for t in others for cc in t.get("cost_centers") or [] if cc not in vm_ccs]
+
+    def guarded(host: str) -> bool:
+        unit = f"layer-5-workloads/services/{host.split('.')[0]}"
+        return testvm.text(testvm.outputs(root, env, unit).get("caller_guard")) == "true"
+
+    guarded_hosts = [r["host"] for r in routes if r["probe"] == "mcp" and guarded(r["host"])]
+    return {
+        "PROBE_SA": testvm.text(testvm.outputs(root, env, testvm.SECURITY_UNIT).get("probe_unregistered_sa_email")),
+        "MISMATCH_MODE": testvm.text(policy.get("declared_mismatch")) or "reject",
+        "UNMAPPED_MODE": testvm.text(policy.get("unmapped_caller")) or "deny",
+        "VM_TEAM": testvm.text(vm_teams[0].get("team")) if vm_teams else "",
+        "FOREIGN_CC": testvm.text(foreign[0]) if foreign else "",
+        "GUARDED_HOSTS": "".join(f" {h}" for h in guarded_hosts),
+    }
+
+
+def run_gateway_probes(root: Path, env: str, *, timeout: float = 300.0) -> subprocess.CompletedProcess[str]:
+    """Resolves the test VM and the catalog routes, then runs ``scripts/vm/gateway_probes.sh`` on the VM.
+
+    The output keeps the format ``parse_gateway_output`` reads: a ``Probing`` header, one line per
+    probe, then a final ``✅``/``❌`` line (a resolution error is a single ``❌`` line, exit 1).
+    """
+    script = root / GATEWAY_PROBES
+    if not script.is_file():
+        raise OpsError(f"{GATEWAY_PROBES} not found in this checkout")
+    cmd = ["gateway-probes", env]
+    try:
+        vm = testvm.resolve(root, env)
+        routes = gateway_routes(root, env)
+        message = os.environ.get(QUERY_ENV_VAR) or DEFAULT_VERIFY_MESSAGE
+        query_body = {"class_method": "async_stream_query", "input": {"user_id": "test-gateway", "message": message}}
+        variables = {
+            "ENTRY_IP": vm.entry_ip,
+            "ROUTES": "\n".join(f"{r['host']} {r['probe']} {r['token']} {r['backend']}" for r in routes),
+            "CA_PEM": vm.ca_pem,
+            "QUERY_BODY": json.dumps(query_body, separators=(",", ":"), ensure_ascii=False),
+            **attribution_vars(root, env, routes),
+        }
+    except OpsError as exc:
+        return subprocess.CompletedProcess(cmd, 1, "", f"❌ {exc}\n")
+    header = (
+        f"🔎 Probing {len(routes)} host(s) through the entry point {vm.entry_ip} (*.{vm.domain}) from {vm.name}...\n"
+    )
+    result = testvm.run(vm, script.read_text(), vars=variables, timeout=timeout)
+    if result.returncode == 0:
+        return subprocess.CompletedProcess(
+            cmd, 0, header + result.stdout + "✅ Every route answered through the entry point.\n", result.stderr
+        )
+    stderr = result.stderr + "❌ Some routes failed through the entry point (see above).\n"
+    return subprocess.CompletedProcess(cmd, result.returncode, header + result.stdout, stderr)
+
+
 def test_gateway(
     root: Path,
     env: str,
@@ -145,11 +238,8 @@ def test_gateway(
     timeout: float = 300.0,
 ) -> dict[str, Any]:
     repo.env_dir(root, env)
-    script = root / "scripts" / "test_gateway.sh"
-    if not script.is_file():
-        raise OpsError(f"{script.relative_to(root)} not found in this checkout")
     started = time.monotonic()
-    result = repo.run(["bash", str(script), env], cwd=root, timeout=timeout, what="scripts/test_gateway.sh")
+    result = run_gateway_probes(root, env, timeout=timeout)
     parsed = parse_gateway_output(result.stdout + "\n" + result.stderr)
     hosts = parsed["hosts"]
     if probe:
