@@ -18,10 +18,17 @@ sources:
       - teams
       - external
 
-  # Inventory from Agent Registry (agents, MCP servers, endpoints). Extension point, not implemented yet.
+  # Discovered inventory from Agent Registry (agents, MCP servers, endpoints, including what the
+  # runtimes register automatically). Never compiled: a catalog file adopts an entry only with a
+  # deploy.registry pin. What Esmeralda registers itself is excluded at fetch time.
+  # `esmeralda catalog fetch --env <env> --source agent-registry` writes snapshots/agent-registry/<env>.json.
   - name: agent-registry
     type: agent_registry
     enabled: false
+    options:
+      projects: [governance, ai_coe_agents, cx_agents, mcps]   # aliases of layer-1 <alias>_project_id
+      # names: { "<registry id>": loan-helper }   # catalog name for an entry (default: derived)
+      # exclude: ["urn:agent:googleapis.com:*"]   # registry ids to skip (default: Google's global agents)
 
   # Team attribution from the labels of the environment's projects (attribution only: never callers,
   # teams or cost centres). `esmeralda catalog fetch --env <env> --source project-labels` writes

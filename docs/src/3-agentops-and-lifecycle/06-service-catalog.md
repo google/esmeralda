@@ -315,7 +315,8 @@ schema: esmeralda.catalog
 schema_version: 1
 sources:
   - { name: catalog-files,   type: files, paths: [teams.yaml, policy.yaml, teams, external] }
-  - { name: agent-registry,  type: agent_registry, enabled: false }   # extension point
+  - { name: agent-registry,  type: agent_registry, enabled: false,    # see "Agent Registry" below
+      options: { projects: [governance, ai_coe_agents, cx_agents, mcps] } }
   - { name: project-labels,  type: project_labels, enabled: false,    # see "Project labels" below
       options: { team_label: team, cost_center_label: cost-center } }
 environments_dir: environments
@@ -333,7 +334,7 @@ resolved_dir: .resolved
 | :--- | :--- | :--- |
 | `files` | built in, the default | catalog YAML under `catalog/` |
 | `project_labels` | built in, disabled in this repo | labels of the environment's projects (`gcloud projects describe`) |
-| `agent_registry` | extension point: enabling it fails with a clear "not implemented" error | — |
+| `agent_registry` | built in, disabled in this repo | agents, MCP servers and endpoints of Agent Registry (`gcloud alpha agent-registry ... list`) |
 
 **Discovery never grants; adoption is a repo review.** The merge rules hold for every source:
 
@@ -441,7 +442,8 @@ uv run esmeralda catalog show --env dev --inventory                # discovered 
 - **Drift.** `catalog diff` reports discovered entries no catalog file adopts, external values a
   catalog file shadows or `environments/<env>.yaml` overrides, source data that disagrees with the
   catalog files (`label_mismatch`), and optional sources without a snapshot; `--live` adds the
-  entries that changed in the live source since the snapshot.
+  entries that changed in the live source since the snapshot and, for Agent Registry, the `missing`
+  entries Esmeralda registers that the live registry doesn't list.
 
 An adapter for a live system subclasses `SnapshotSource` and implements `fetch()` (plus
 `layer_from_entries()` when its entries aren't `{id, name, inventory}`, and `placeholders()`):
@@ -509,4 +511,44 @@ Attribution metadata from the labels of the environment's projects, never author
     cost_center_label: cost-center
     team_map: { appdev-tools: platform }                      # label value -> catalog team
     cost_center_map: { central-developer-tools: cc-platform } # label value -> catalog cost centre
+```
+
+### Agent Registry (`agent_registry`)
+
+Discovered inventory, never authorization.
+
+- **Fetch.** `catalog fetch --env <env> --source agent-registry` lists the `agents`, `mcpServers`
+  and `endpoints` of the Agent Registry of the projects in `options.projects` (aliases of the
+  layer-1 `<alias>_project_id` outputs; default `[governance]`) with read-only
+  `gcloud alpha agent-registry ... list`, in `options.location` (default: the environment's region).
+  That includes what the runtimes register automatically: Agent Runtime engines, Cloud Run services
+  and GKE workloads registered as agents or MCP servers. Each entry keeps its registry id, a catalog
+  name, the kind (`a2a`, `mcp`, `http`, or `model` for hosts in `options.model_hosts`), the
+  description, the first `https` interface as `deploy.endpoint`, the interfaces, the A2A skills
+  (informational, never a `tools` grant) and the runtime resource. Project ids and numbers, the
+  region and the entry point domain become placeholders; runtime identities are dropped.
+- **No loop.** What Esmeralda registers itself is excluded at fetch time: entries backed by an Agent
+  Registry service of `catalog/.resolved/<env>.json` (deployed targets, `external_targets`,
+  `google_apis`), the runtime's own `core-gapi-services*` entries and the Agent Runtime engines of
+  the deployed agents (their units' `engine_id`). Google's global agents
+  (`urn:agent:googleapis.com:*`) are skipped by default (`options.exclude`).
+- **Names.** The catalog name is the registry service id, or the display name in lower case with
+  `-` separators. `options.names` maps a registry id to another name. An invalid name or two entries
+  with the same name fail the fetch; names never get an automatic suffix.
+- **Resolve.** Every entry is a discovered `inventory` entry: listed by `catalog show --inventory`
+  and as `discovered` by `catalog diff`, **never compiled** (no IAM, no Agent Gateway policy, no
+  registry write, no allowlist). To put one under enforcement, a team adds a catalog file with
+  `deploy.registry: { source: agent-registry, id: <registry id> }` and its callers, reviewed like any
+  other grant. An inventory entry named like an unpinned catalog target fails the resolve, and so
+  does a pin whose id the snapshot doesn't hold. With `project_labels` listed after it, discovered
+  entries get the `owner_team` of their runtime project.
+- **Drift.** `catalog diff --env <env> --live` also lists `missing` entries: the ones
+  `.resolved/<env>.json` registers that the live registry doesn't list.
+
+```yaml
+- name: agent-registry
+  type: agent_registry
+  options:
+    projects: [governance, ai_coe_agents, cx_agents, mcps]
+    names: { "<registry id>": loan-helper }
 ```

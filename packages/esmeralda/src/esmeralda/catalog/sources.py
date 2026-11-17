@@ -22,10 +22,8 @@ The resolver merges the layers in the order ``sources.yaml`` lists them (see
   It must be the first enabled source, and it is the only one that may set authorization data.
 * ``project_labels`` (:mod:`esmeralda.catalog.adapters.project_labels`): team attribution from
   project labels, read from a snapshot.
-
-Extension points (registered, not implemented yet):
-
-* ``agent_registry``: inventory of agents / MCP servers / endpoints from Agent Registry.
+* ``agent_registry`` (:mod:`esmeralda.catalog.adapters.agent_registry`): discovered inventory of
+  agents / MCP servers / endpoints from Agent Registry, read from a snapshot.
 
 Adapters for other systems (Backstage, a CMDB, ...) subclass :class:`Source` and call
 :func:`register_source`; adapters that read a live system subclass
@@ -225,25 +223,6 @@ class FilesSource(Source):
         if "policy" in doc:
             problems += _merge_policy(layer.policy, doc["policy"], label)
         return problems
-
-
-class _NotImplementedSource(Source):
-    phase = ""
-
-    def load(self) -> Layer:
-        raise NotImplementedError(
-            f"catalog source type '{self.type_name}' ({self.name}) is an extension point and is not implemented "
-            f"yet{self.phase}. Set 'enabled: false' for it in catalog/sources.yaml, or register an adapter with "
-            "esmeralda.catalog.register_source."
-        )
-
-
-@register_source("agent_registry")
-class AgentRegistrySource(_NotImplementedSource):
-    """Inventory (agents, MCP servers, endpoints) from Agent Registry. Planned: report each registry
-    entry as inventory; a catalog file adopts one only with a ``deploy.registry`` pin."""
-
-    phase = " (planned with the catalog sources phase)"
 
 
 def source_name(spec: dict[str, Any], index: int) -> str:

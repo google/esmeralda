@@ -589,11 +589,10 @@ def test_override_is_validated(repo):
     assert "unknown caller 'ghost'" in _problems(repo)
 
 
-def test_stub_sources_are_extension_points(repo):
+def test_enabled_network_source_without_its_snapshot_names_the_fetch_command(repo):
     path = repo / "catalog/sources.yaml"
     path.write_text(path.read_text().replace("type: agent_registry\n    enabled: false", "type: agent_registry"))
-    with pytest.raises(NotImplementedError, match="agent_registry"):
-        catalog.resolve(repo, "dev")
+    assert "esmeralda catalog fetch --env dev --source agent-registry" in _problems(repo)
 
 
 def test_registered_adapter_never_merges_into_a_target_by_name(repo, monkeypatch):
@@ -615,9 +614,10 @@ def test_registered_adapter_never_merges_into_a_target_by_name(repo, monkeypatch
 
     path = repo / "catalog/sources.yaml"
     text = path.read_text().replace(
-        "  # Inventory from Agent Registry",
-        "  - name: inventory\n    type: test_inventory\n\n  # Inventory from Agent Registry",
+        "  # Discovered inventory from Agent Registry",
+        "  - name: inventory\n    type: test_inventory\n\n  # Discovered inventory from Agent Registry",
     )
+    assert "type: test_inventory" in text
     path.write_text(text)
     assert "inventory: may not set targets.legacy-dms: " in _problems(repo)
     assert "never by name" in _problems(repo)

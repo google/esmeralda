@@ -25,7 +25,8 @@
   environment, source data that disagrees with the catalog files (``label_mismatch``: project
   labels vs declared teams, cost centres and owners; listed whatever the policy), optional sources
   without a snapshot and, with ``live``, live entries that differ from the committed snapshot
-  (never written).
+  and what the live system is missing compared with the compiled catalog (``missing``: for Agent
+  Registry, entries Esmeralda registers that the registry doesn't list); never written.
 """
 
 from __future__ import annotations
@@ -211,5 +212,7 @@ def diff_catalog(root: Path, env: str, *, live: bool = False) -> dict[str, Any]:
                         "live_drift", src.name, f"{src.snapshot_label()}#{entry_id}",
                         f"{change} in the live source since the snapshot: run `{fetch_command(env, src.name)}` "
                         "and review the change"))
+            for f in src.live_findings():
+                findings.append(_finding(f["kind"], src.name, f["subject"], f["detail"]))
     findings.sort(key=lambda f: (f["kind"], f["source"] or "", f["subject"], f["detail"]))
     return {"env": env, "live": live, "findings": findings}

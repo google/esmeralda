@@ -459,6 +459,12 @@ class SnapshotSource(Source):
         """Literals to replace with placeholders at fetch time (adapters read them from layer outputs)."""
         return Placeholders()
 
+    def live_findings(self) -> list[dict[str, str]]:
+        """Hook for ``catalog diff --live``, called after :meth:`fetch_snapshot`: what the live
+        system is missing compared with the compiled catalog, as ``{"kind", "subject", "detail"}``
+        rows (report only, never written). Default: none."""
+        return []
+
     def fetch(self) -> list[dict[str, Any]]:
         """Read the live system (network, read-only) and return its entries, each with a stable ``id``.
 
