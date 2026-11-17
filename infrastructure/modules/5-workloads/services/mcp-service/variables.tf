@@ -113,6 +113,17 @@ variable "extra_env_vars" {
   default     = {}
 }
 
+variable "otlp_endpoint" {
+  description = "OTLP collector endpoint the service exports traces and metrics to (OTEL_EXPORTER_OTLP_ENDPOINT, e.g. http://<host>:4317), taken from the output of a collector unit Terraform deploys. Empty (default): the variable is not set and the service exports straight to the Google Cloud Telemetry API (telemetry.googleapis.com) with its own identity."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.otlp_endpoint == "" || can(regex("^https?://[^/\\s]+(/.*)?$", var.otlp_endpoint))
+    error_message = "otlp_endpoint must be empty (export to the Google Cloud Telemetry API) or an http(s):// URL of a collector Terraform deploys."
+  }
+}
+
 variable "secret_env_vars" {
   description = "Optional Secret Manager environment variable references injected into the Cloud Run container"
   type = map(object({

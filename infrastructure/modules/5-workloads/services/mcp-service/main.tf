@@ -46,6 +46,11 @@ locals {
   ]
   effective_custom_audiences = length(var.custom_audiences) > 0 ? var.custom_audiences : local.default_custom_audiences
 
+  # OTLP export target (otel_setup.py in the image): unset by default, so the service exports traces
+  # and metrics straight to the Google Cloud Telemetry API with its own identity. Set only when a
+  # collector that Terraform deploys exists (otlp_endpoint from that unit's output).
+  otlp_env = var.otlp_endpoint == "" ? {} : { OTEL_EXPORTER_OTLP_ENDPOINT = var.otlp_endpoint }
+
   # Catalog caller guard (caller_guard.py in the image): the catalog-compiled allowlist of this
   # target (catalog/.resolved/<env>.json attribution.allowlists) with its `<unit>:<output>`
   # references replaced by identity_refs values (agents call out with their own Agent Identity, so
@@ -170,16 +175,12 @@ resource "google_cloud_run_v2_service" "service" {
       }
 
       env {
-        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-        value = "http://collector.telemetry.internal:4317"
-      }
-      env {
         name  = "ENVIRONMENT"
         value = var.environment
       }
 
       dynamic "env" {
-        for_each = merge(var.extra_env_vars, local.caller_guard_env)
+        for_each = merge(local.otlp_env, var.extra_env_vars, local.caller_guard_env)
         content {
           name  = env.key
           value = env.value

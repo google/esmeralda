@@ -97,3 +97,9 @@ variable "registry_description" {
   description = "Description of the MCP server's Agent Registry entry, compiled from the catalog (catalog/.resolved/<env>.json catalog.<name>.description)"
   type        = string
 }
+
+variable "otlp_endpoint" {
+  description = "OTLP collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) from a collector unit Terraform deploys; empty (default) exports straight to the Google Cloud Telemetry API. Validated in ../mcp-service."
+  type        = string
+  default     = ""
+}

@@ -52,6 +52,9 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "telemetry.googleapis.com",
+    # Trace ingestion behind the Telemetry API: without it the MCP servers' OTLP span export is
+    # denied (PERMISSION_DENIED, "Cloud Trace API has not been used in project ...").
+    "cloudtrace.googleapis.com",
     "cloudbuild.googleapis.com",
     "agentregistry.googleapis.com"
   ]
