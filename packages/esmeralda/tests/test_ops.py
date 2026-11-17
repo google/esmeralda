@@ -363,6 +363,55 @@ locals {
     assert infra.unit_enabled(checkout, "dev", "layer-5-workloads/apigee/capabilities/token-quota") is False
 
 
+def test_frontends_block_and_frontend_unit_enabled(checkout):
+    env_yaml = checkout / "infrastructure/live/dev/env.yaml"
+    unit = "layer-5-workloads/frontends/esmeralda-ui"
+    (checkout / "infrastructure/live/dev" / unit).mkdir(parents=True, exist_ok=True)
+    (checkout / "infrastructure/live/dev" / unit / "terragrunt.hcl").write_text("")
+    base = env_yaml.read_text()
+
+    # No frontends block: off.
+    assert repo.frontends_block(checkout, "dev") == {}
+    assert infra.unit_enabled(checkout, "dev", unit) is False
+
+    env_yaml.write_text(
+        base
+        + """
+locals {
+  frontends = {
+    # esmeralda_ui = { enabled = true }  (a comment never enables it)
+    esmeralda_ui = {
+      enabled       = false
+      host          = "console"
+      iap_accessors = ["group:viewers@example.com"]
+    }
+  }
+}
+"""
+    )
+    assert repo.frontends_block(checkout, "dev") == {"esmeralda_ui": {"enabled": False, "host": "console"}}
+    assert infra.unit_enabled(checkout, "dev", unit) is False
+
+    env_yaml.write_text(env_yaml.read_text().replace("enabled       = false", "enabled       = true"))
+    assert repo.frontends_block(checkout, "dev")["esmeralda_ui"]["enabled"] is True
+    assert infra.unit_enabled(checkout, "dev", unit) is True
+
+
+_FRONTEND_ENVS = [e for e in ("dev", "prd") if (REPO_ROOT / "infrastructure/live" / e / "env.yaml").is_file()]
+
+
+@pytest.mark.skipif(not _FRONTEND_ENVS, reason="real infrastructure/live not available")
+@pytest.mark.parametrize("env", _FRONTEND_ENVS)
+def test_frontend_unit_follows_real_env_yaml(env):
+    """The console is off by default; the CLI agrees with the unit's exclude block."""
+    unit = "layer-5-workloads/frontends/esmeralda-ui"
+    assert (REPO_ROOT / "infrastructure/live" / env / unit / "terragrunt.hcl").is_file()
+    expected = bool(repo.frontends_block(REPO_ROOT, env).get("esmeralda_ui", {}).get("enabled"))
+    assert infra.unit_enabled(REPO_ROOT, env, unit) is expected
+    if env == "prd":
+        assert expected is False
+
+
 # ---- Apigee capability units vs the real repository ----------------------------------------
 
 _REAL_LIVE = REPO_ROOT / "infrastructure" / "live"

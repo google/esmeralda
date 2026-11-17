@@ -16,7 +16,8 @@
 
 * ``build_images`` submits each image to Cloud Build in the shared CI/CD project, pushed to the
   shared dev repository as ``:<tag>`` (default ``dev-latest``) and ``:dev-<gitsha>``. The project,
-  repository, builder service account and source bucket come from the layer-0 outputs.
+  repository, builder service account and source bucket come from the layer-0 outputs. Images with a
+  ``dockerfile`` (the console) submit the repository root instead of their own directory.
 * ``verify_images`` runs ``scripts/verify_images.sh`` (running digest == expected digest).
 * ``release`` runs ``scripts/promote_release.sh`` (promotion by digest + ``release/<env>.yaml``).
 * ``build_package`` builds the standalone ``esmeralda-platform`` wheel and sdist into ``dist/``.
@@ -51,6 +52,7 @@ CICD_UNIT = Path("infrastructure/live/shared/layer-0-cicd")
 CICD_STATE = Path("infrastructure/live/.local_states/shared/layer-0-cicd/terraform.tfstate")
 CICD_DIR_ENV = "CICD_DIR"
 BUILD_CONFIG = ".cloudbuild/build-image.yaml"
+REPO_ROOT_BUILD_CONFIG = ".cloudbuild/build-image-repo-root.yaml"  # images with a ``dockerfile``
 DEFAULT_TAG = "dev-latest"
 LOG_DIR = Path(".esmeralda/build-logs")  # under the repo root; gitignored
 TEST_TARGETS = ("lock-check", "test", "test-terraform")  # what `make build-agents` runs first
@@ -58,13 +60,19 @@ TEST_TARGETS = ("lock-check", "test", "test-terraform")  # what `make build-agen
 
 @dataclass(frozen=True)
 class Image:
-    """One image: build context, image name, uv package to lock (optional), library wheel (optional)."""
+    """One image: build context, image name, uv package to lock (optional), library wheel (optional).
+
+    ``dockerfile`` (optional): the image builds from the repository root (``context`` is ``.``, the
+    upload is filtered by the root ``.gcloudignore``) with this Dockerfile and BuildKit, through
+    ``REPO_ROOT_BUILD_CONFIG``; the Dockerfile exports its requirements from ``uv.lock`` itself.
+    """
 
     name: str
     context: str
     package: str | None = None
     wheel: str | None = None
     aliases: tuple[str, ...] = ()
+    dockerfile: str | None = None
 
 
 # Same order as the Makefile's build-services / build-agents targets.
@@ -88,21 +96,30 @@ AGENTS = (
     ),
     Image("cx-mortgage-orchestrator", "apps/agents/cx-mortgage-orchestrator", "cx-mortgage-orchestrator", "esmeralda"),
 )
-GROUPS = {"services": SERVICES, "agents": AGENTS, "images": SERVICES + AGENTS}
-TARGETS = ("agents", "services", "images", "package")
+FRONTENDS = (
+    Image(
+        "esmeralda-ui",
+        ".",
+        aliases=("ui", "console", "frontend-esmeralda-ui"),
+        dockerfile="apps/frontends/esmeralda-ui/Dockerfile",
+    ),
+)
+ALL_IMAGES = SERVICES + AGENTS + FRONTENDS
+GROUPS = {"services": SERVICES, "agents": AGENTS, "frontends": FRONTENDS, "images": ALL_IMAGES}
+TARGETS = ("agents", "services", "frontends", "images", "package")
 
 
 def image_names() -> list[str]:
-    return [img.name for img in SERVICES + AGENTS]
+    return [img.name for img in ALL_IMAGES]
 
 
 def select(target: str) -> list[list[Image]]:
     """The images to build for ``target``, as batches (built concurrently within a batch)."""
     if target == "images":
-        return [list(SERVICES), list(AGENTS)]
+        return [list(SERVICES), list(AGENTS), list(FRONTENDS)]
     if target in GROUPS:
         return [list(GROUPS[target])]
-    for img in SERVICES + AGENTS:
+    for img in ALL_IMAGES:
         if target == img.name or target in img.aliases:
             return [[img]]
     raise OpsError(
@@ -234,17 +251,20 @@ def image_commands(img: Image, settings: BuildSettings, *, tag: str, sha: str) -
             ["uv", "build", "--package", img.wheel, "--wheel", "--out-dir", f"{img.context}/dist", "--quiet"]
         )
     p = settings.project
+    substitutions = f"_IMAGE={img.name},_REPOSITORY_URL={settings.repository_url},_TAG={tag},_SHA_TAG=dev-{sha}"
+    if img.dockerfile:
+        substitutions += f",_DOCKERFILE={img.dockerfile}"
     commands.append(
         [
             "gcloud",
             "builds",
             "submit",
             img.context,
-            f"--config={BUILD_CONFIG}",
+            f"--config={REPO_ROOT_BUILD_CONFIG if img.dockerfile else BUILD_CONFIG}",
             f"--project={p}",
             f"--service-account=projects/{p}/serviceAccounts/{settings.builder_sa}",
             f"--gcs-source-staging-dir=gs://{settings.source_bucket}/source",
-            f"--substitutions=_IMAGE={img.name},_REPOSITORY_URL={settings.repository_url},_TAG={tag},_SHA_TAG=dev-{sha}",
+            f"--substitutions={substitutions}",
         ]
     )
     return commands
@@ -328,11 +348,11 @@ def build_images(
     jobs: int | None = None,
     test_runner: Callable[[Path], int] = run_tests,
 ) -> dict[str, Any]:
-    """Builds ``target`` (``agents``, ``services``, ``images`` or one image) with Cloud Build.
+    """Builds ``target`` (``agents``, ``services``, ``frontends``, ``images`` or one image) with Cloud Build.
 
     Images in a batch build concurrently (``jobs``, default: the batch size, as ``make -j``);
-    ``images`` builds the services, then the agents. Agent builds run the offline tests first
-    unless ``skip_tests``. Stops after the first batch with a failure.
+    ``images`` builds the services, then the agents, then the frontends. Agent builds run the offline
+    tests first unless ``skip_tests``. Stops after the first batch with a failure.
     """
     batches = select(target)
     tag = tag or os.environ.get("BUILD_TAG") or DEFAULT_TAG

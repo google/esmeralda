@@ -1,0 +1,40 @@
+# .cloudbuild/build-image-repo-root.yaml
+# Env-neutral image build for images whose Dockerfile needs the repository root as its context
+# (the console, apps/frontends/esmeralda-ui: it reads uv.lock, packages/, catalog/ and contracts/).
+# Same tags and push as build-image.yaml; the only differences are `-f ${_DOCKERFILE}` and BuildKit,
+# which applies the <Dockerfile>.dockerignore next to the Dockerfile. The upload itself is filtered by
+# the root .gcloudignore. No `uv export` beforehand: the Dockerfile exports from uv.lock itself.
+#
+# Invoked by `esmeralda build esmeralda-ui` in the shared layer-0 CI/CD project, e.g.:
+#   gcloud builds submit . --config=.cloudbuild/build-image-repo-root.yaml \
+#     --substitutions=_IMAGE=esmeralda-ui,_REPOSITORY_URL=<dev repo url>,_TAG=dev-latest,_SHA_TAG=dev-<gitsha>,_DOCKERFILE=apps/frontends/esmeralda-ui/Dockerfile
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+    args:
+      - 'build'
+      - '-f'
+      - '${_DOCKERFILE}'
+      - '-t'
+      - '${_REPOSITORY_URL}/${_IMAGE}:${_TAG}'
+      - '-t'
+      - '${_REPOSITORY_URL}/${_IMAGE}:${_SHA_TAG}'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push'
+    args: ['push', '--all-tags', '${_REPOSITORY_URL}/${_IMAGE}']
+
+substitutions:
+  _IMAGE: ''
+  _REPOSITORY_URL: ''
+  _TAG: 'dev-latest'
+  _SHA_TAG: 'dev-unknown'
+  _DOCKERFILE: ''
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true

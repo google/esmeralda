@@ -41,7 +41,43 @@ def ui_package(monkeypatch):
 
 def test_ui_requires_local(capsys):
     assert cli.main(["ui", "--repo", str(REPO_ROOT)]) == 2
-    assert "--local" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "--local" in err and "--url" in err
+
+
+def test_ui_url_and_local_are_exclusive(capsys):
+    assert cli.main(["ui", "--url", "--local", "--repo", str(REPO_ROOT)]) == 2
+    assert "not both" in capsys.readouterr().err
+
+
+def test_ui_url_prints_the_frontend_output(monkeypatch, capsys):
+    from esmeralda.ops import infra, repo
+
+    seen = []
+
+    def output(root, env, unit, name):
+        seen.append((env, unit, name))
+        return "https://console.esmeralda.internal/"
+
+    monkeypatch.setattr(repo, "output", output)
+    monkeypatch.setattr(infra, "unit_enabled", lambda root, env, unit: True)
+    assert cli.main(["ui", "--url", "--env", "dev", "--repo", str(REPO_ROOT)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "https://console.esmeralda.internal/"
+    assert "IAP" in captured.err
+    assert seen == [("dev", "layer-5-workloads/frontends/esmeralda-ui", "url")]
+
+
+@pytest.mark.parametrize(("enabled", "hint"), [(False, "enable frontends.esmeralda_ui"), (True, "esmeralda deploy")])
+def test_ui_url_without_a_deployed_console(monkeypatch, capsys, enabled, hint):
+    from esmeralda.ops import infra, repo
+
+    monkeypatch.setattr(repo, "output", lambda root, env, unit, name: None)
+    monkeypatch.setattr(infra, "unit_enabled", lambda root, env, unit: enabled)
+    assert cli.main(["ui", "--url", "--env", "prd", "--repo", str(REPO_ROOT)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert hint in captured.err
 
 
 def test_demo_and_bigquery_are_exclusive():

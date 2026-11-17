@@ -28,3 +28,8 @@ output "routes" {
     }
   }
 }
+
+output "frontends" {
+  description = "Frontend hosts served by the entry point (label => FQDN), behind IAP; not probed by `make test-gateway`"
+  value       = { for label, id in var.frontend_hosts : label => "${label}.${var.domain}" }
+}

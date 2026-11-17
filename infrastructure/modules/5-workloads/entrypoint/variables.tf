@@ -130,3 +130,14 @@ variable "host_rules" {
     error_message = "Every value of gateways.host_rules in env.yaml must be direct or one of gateways.enabled."
   }
 }
+
+variable "frontend_hosts" {
+  description = "Enabled human-facing frontends (env.yaml frontends, modules/5-workloads/frontends/*): host label => regional INTERNAL_MANAGED backend service ID (IAP on). Served as <label>.<domain>, outside the service catalog and the gateway probes"
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for label, id in var.frontend_hosts : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", label)) && id != null && id != ""])
+    error_message = "frontend_hosts keys are host labels (lowercase letters, digits, hyphens) and every value a non-empty backend service ID."
+  }
+}

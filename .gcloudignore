@@ -1,0 +1,40 @@
+# .gcloudignore (repository root)
+# Read only by repository-root uploads: `esmeralda build esmeralda-ui` runs
+# `gcloud builds submit .` with .cloudbuild/build-image-repo-root.yaml. The other images submit their
+# own directory (apps/...), which this file does not affect.
+#
+# Allowlist: upload only what apps/frontends/esmeralda-ui/Dockerfile copies. Inside the build, its
+# Dockerfile.dockerignore filters the context again. Keep both in sync with the Dockerfile's COPY lines.
+/*
+!/pyproject.toml
+!/uv.lock
+!/packages/
+!/apps/
+!/catalog/
+!/contracts/
+
+# Never upload local builds, caches, state or secrets from the folders above.
+node_modules/
+dist/
+build/
+.venv/
+.venv*
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.esmeralda/
+.terragrunt-cache/
+.env
+.env.*
+*.tfvars
+*.tfvars.json
+*.tfstate
+*.tfstate.*
+*.pem
+*.crt
+certs/
+requirements.lock
+mcp_registry.json

@@ -8,6 +8,8 @@
 #     Runtime);
 #   - an adapter (bring-your-own gateway under modules/5-workloads/gateways/<name>, e.g. envoy):
 #     one backend service for every host sent to it.
+# It also serves the enabled frontends (modules/5-workloads/frontends/*, e.g. the console) as
+# <label>.<domain>, each on its own IAP-protected backend service (var.frontend_hosts).
 # The pieces that must outlive the backends live in lower layers:
 #   - layer 2: the reserved internal IP and the <domain> / *.<domain> A records
 #   - layer 3: the <domain> + *.<domain> certificate, signed by the internal Root CA
@@ -104,7 +106,28 @@ resource "google_compute_region_url_map" "entrypoint" {
     }
   }
 
+  # --- frontends (env.yaml frontends): one host + path matcher each, IAP on their backend service ---
+  dynamic "host_rule" {
+    for_each = var.frontend_hosts
+    content {
+      hosts        = ["${host_rule.key}.${var.domain}"]
+      path_matcher = "fe-${host_rule.key}"
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = var.frontend_hosts
+    content {
+      name            = "fe-${path_matcher.key}"
+      default_service = path_matcher.value
+    }
+  }
+
   lifecycle {
+    precondition {
+      condition     = length(setintersection(keys(var.frontend_hosts), concat(keys(var.catalog), keys(local.rules)))) == 0
+      error_message = "A frontend host label (env.yaml frontends.*.host) collides with a catalog host or a gateways.host_rules host: pick another label."
+    }
     precondition {
       condition     = alltrue([for name, backend in local.routing : backend != "direct" || contains(keys(var.direct_hosts), name)])
       error_message = "Every catalog host served by direct needs a direct backend: check that the gateways/direct unit maps its catalog unit."

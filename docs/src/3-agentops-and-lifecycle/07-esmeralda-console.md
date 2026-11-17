@@ -15,9 +15,8 @@ BigQuery already know, in one place:
 | **Traces** | Recent traced requests and the waterfall of one request: each hop's gateway and workload records, tokens, caller verification and status | BigQuery `vw_usage_billable` and `usage_events` ([2.5](05-usage-telemetry-contract.md)) |
 
 > [!NOTE]
-> This page covers the app and running it locally. Deploying it (a Terraform unit behind the private
-> entry point with IAP, a least-privilege service account, and the image promoted by digest) comes in a
-> follow-up.
+> The console is **off by default** in every environment. Deploying it ([section 4](#4-deploying-it))
+> takes one `env.yaml` switch and an existing viewer group of your organization.
 
 ---
 
@@ -91,7 +90,89 @@ proxies `/api` to it:
 npm run dev --prefix apps/frontends/esmeralda-ui/web
 ```
 
-## 4. API
+## 4. Deploying it
+
+The Terraform unit `layer-5-workloads/frontends/esmeralda-ui` (module
+`infrastructure/modules/5-workloads/frontends/esmeralda-ui`) runs the console on Cloud Run in the
+**gateway project**, next to the entry point. The console is a caller-side front end, not a catalog
+target, so it lives under `frontends/` and not in the MCP tools project.
+
+```mermaid
+flowchart LR
+    U["Viewer (private network)"] -->|"HTTPS console.&lt;domain&gt;"| EP["Entry point (internal ALB)"]
+    EP -->|"IAP: viewer group?"| BS["Backend service (serverless NEG)"]
+    BS -->|"IAP service agent = only run.invoker"| CR["Cloud Run esmeralda-ui-&lt;env&gt; (internal + LB ingress)"]
+    CR -->|"dataViewer on 2 datasets + jobUser"| BQ["BigQuery telemetry views"]
+```
+
+| Aspect | How it is deployed |
+| :--- | :--- |
+| **Exposure** | Cloud Run ingress `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`: no public endpoint. The entry point serves it as `console.<domain>` (the existing `*.<domain>` DNS record and certificate cover it), so viewers need private network reach to the entry point (VPN, Interconnect or a host in the VPC) and must trust the internal Root CA. |
+| **Authentication** | IAP on the console's regional backend service. IAP uses its Google-managed OAuth client, which admits identities of your organization. The app verifies the IAP JWT on every request; its expected audience (`ESMERALDA_UI_IAP_AUDIENCE`) is computed from the backend service by Terraform. |
+| **Access** | `roles/iap.httpsResourceAccessor` on that backend service for **existing groups only** (`iap_accessors`). Terraform rejects `allUsers`, `allAuthenticatedUsers`, `user:` and service accounts; `domain:` needs `allow_domain_accessors = true`. Esmeralda never creates groups: the group owner manages membership. An apply with no accessor fails instead of revoking everyone. |
+| **Invocation** | Only the IAP service agent holds `roles/run.invoker` on the service, so nothing that bypasses IAP can call it (`invoker_iam_disabled` exists as a fallback; the app still rejects requests without a valid IAP JWT). |
+| **Identity and data** | Dedicated service account `sa-esmeralda-ui-<env>` with `roles/bigquery.dataViewer` on the telemetry dataset and on the usage dataset (the views read its landing tables) and `roles/bigquery.jobUser` on the governance project. No project-wide viewer, no logging access, no Secret Manager. It is registered as the catalog caller `esmeralda-ui` (team `platform`) and calls no target yet. |
+| **Image** | `esmeralda build esmeralda-ui` (part of `esmeralda build images`) builds it from the repository root; deployments pin the digest (dev: the tag resolved at plan time; prd: `release/prd.yaml`, written by `esmeralda release promote`), and `esmeralda build --verify` checks the running digest. |
+
+### Enable it
+
+1. Pick (or have your directory admin create) a group for console viewers, for example
+   `esmeralda-console-viewers@example.com`, and add the people who need the console.
+2. In `infrastructure/live/<env>/env.yaml`:
+
+    ```hcl
+    frontends = {
+      esmeralda_ui = {
+        enabled                = true
+        host                   = "console"
+        iap_accessors          = ["group:esmeralda-console-viewers@example.com"]
+        allow_domain_accessors = false
+      }
+    }
+    ```
+
+    To keep the group out of the repository, leave `iap_accessors = []` and set
+    `ESMERALDA_UI_IAP_ACCESSORS=group:<email>` (comma-separated for several) in the user-local env file
+    (`~/.config/esmeralda/env`). Use one stable group for everyone who applies, so access doesn't depend on
+    who ran the last apply.
+
+3. Build the image (if the environment has none yet), then deploy the unit and the entry point:
+
+    ```bash
+    uv run esmeralda build esmeralda-ui
+    uv run esmeralda deploy frontends/esmeralda-ui entrypoint --env dev
+    uv run esmeralda ui --url --env dev
+    ```
+
+4. Open the printed URL from a network that reaches the entry point. Members of the group sign in;
+   everyone else gets IAP's access-denied page.
+
+For `prd`, promote a verified dev build first (`esmeralda release promote`), so the console runs the
+promoted digest from `release/prd.yaml`.
+
+> [!IMPORTANT]
+> **Viewers outside your organization.** Domain Restricted Sharing (`iam.allowedPolicyMemberDomains`)
+> decides which identities may hold IAM grants, and Esmeralda doesn't work around it. For partners or
+> auditors, either have your directory admins add them to the viewer group under your own
+> external-member policy, or configure IAP with Identity Platform (external identities) outside this
+> module.
+
+## 5. Operating it (runbook)
+
+| Task | How |
+| :--- | :--- |
+| Find the URL | `uv run esmeralda ui --url --env <env>` (from the checkout that holds the state, or `--repo <checkout>`) |
+| Grant or revoke access | Change the group's membership. No apply needed. |
+| Change the viewer group | Edit `iap_accessors` (or `ESMERALDA_UI_IAP_ACCESSORS`), then `uv run esmeralda apply frontends/esmeralda-ui --env <env>` |
+| Roll out a new build | `uv run esmeralda build esmeralda-ui`, then `uv run esmeralda apply frontends/esmeralda-ui --env dev` (the plan shows the new digest); prd: promote, merge `release/prd.yaml`, apply |
+| Check the running image | `uv run esmeralda build --verify --env <env>` |
+| Logs | Cloud Run service `esmeralda-ui-<env>` in the gateway project (the BFF logs errors server-side only; the browser gets generic messages) |
+| `401` from the app behind IAP | The audience doesn't match: compare `ESMERALDA_UI_IAP_AUDIENCE` (unit output `iap_audience`) with the **Signed Header JWT Audience** of the backend service on the IAP page, and set `iap_audience_override` if they differ |
+| `403` from IAP | The viewer is not in an `iap_accessors` group (membership can take a few minutes to apply) |
+| Data views show an error | Check that the layer-4 views exist and that the service account still holds the two dataset grants |
+| Turn it off | Set `enabled = false`, apply the `entrypoint` (removes the host), then destroy the unit's resources with Terraform from the checkout that holds its state |
+
+## 6. API
 
 All endpoints are `GET`, read-only, and need an identity (except `/healthz`):
 
@@ -107,15 +188,15 @@ All endpoints are `GET`, read-only, and need an identity (except `/healthz`):
 
 Every data response carries `source`: `bigquery` or `demo`.
 
-## 5. Configuration
+## 7. Configuration
 
-The BFF reads `ESMERALDA_UI_*` environment variables (the image sets the paths; the deployment sets
+The BFF reads `ESMERALDA_UI_*` environment variables (the image sets the paths; the Terraform unit sets
 the rest):
 
 | Variable | Meaning |
 | :--- | :--- |
 | `ESMERALDA_UI_MODE` | `cloud` (default; IAP required) or `local` (fixed local identity, loopback only) |
-| `ESMERALDA_UI_IAP_AUDIENCE` | Expected `aud` of the IAP JWT: `/projects/<number>/global/backendServices/<id>` behind a load balancer. Required in cloud mode |
+| `ESMERALDA_UI_IAP_AUDIENCE` | Expected `aud` of the IAP JWT: `/projects/<number>/<location>/backendServices/<id>` of the backend service behind the load balancer (computed by the unit). Required in cloud mode |
 | `ESMERALDA_UI_ENV` | Catalog environment (default `dev`) |
 | `ESMERALDA_UI_CATALOG_ROOT` | Directory holding `catalog/` and `contracts/` (baked into the image) |
 | `ESMERALDA_UI_BQ_PROJECT`, `ESMERALDA_UI_BQ_DATASET` | Project and dataset of the usage views; both or neither |
@@ -123,7 +204,7 @@ the rest):
 | `ESMERALDA_UI_DEMO` | `true` for synthetic data (badged); off by default |
 | `ESMERALDA_UI_STATIC_DIR` | Built web bundle (baked into the image) |
 
-## 6. Tests
+## 8. Tests
 
 ```bash
 make test-ui-api
@@ -134,4 +215,7 @@ make test-ui
 headers, parameterized queries against a fake BigQuery client, trace ID validation, catalog fail-closed,
 no usage emission, `openapi.json` drift). `make test-ui` adds the web checks: strict `tsc --noEmit`,
 Vitest with Testing Library (including the generated types drift check), and the production build. The
-Console GitHub Actions workflow runs both on every change to the app.
+Console GitHub Actions workflow runs both on every change to the app. `tests/guards/test_frontend_guards.py`
+(part of `make test-guards`) checks the deployment: no public Cloud Run ingress anywhere, IAP on every
+frontend backend service, the `iap_accessors` validation (evaluated with Terraform), no Cloud Identity
+groups, and the console service account's role list.

@@ -4,7 +4,7 @@ Local rules for Terraform modules and Terragrunt units. The root `AGENTS.md` sti
 
 ## Layout
 
-- `modules/<n>-<layer>/`: Terraform modules (`main.tf`, `variables.tf`, `outputs.tf`, optional `versions.tf`). Layer 5 is split into `5-workloads/{services,agents,gateways,entrypoint,apihub}/<name>/`.
+- `modules/<n>-<layer>/`: Terraform modules (`main.tf`, `variables.tf`, `outputs.tf`, optional `versions.tf`). Layer 5 is split into `5-workloads/{services,agents,gateways,entrypoint,frontends,apihub}/<name>/` (`frontends/` holds human-facing consoles behind IAP on the entry point: internal ingress only, groups-only access, least-privilege service account; `tests/guards/test_frontend_guards.py`).
 - `live/root.hcl`: included by every unit. Generates `provider.tf` (google + google-beta, region from `env.yaml`) and `backend.tf`.
 - `live/<env>/env.yaml`: per-env settings (prefix, region, state backend, BYO toggles, images, `gateways`, monitoring). `live/shared/env.yaml` serves L0.
 - `live/<env>/layer-*/.../terragrunt.hcl`: one unit per module instance. `dev` and `prd` have the same unit tree; keep them in sync.

@@ -177,6 +177,32 @@ def governance_block(root: Path, env: str) -> dict[str, Any]:
     }
 
 
+def frontends_block(root: Path, env: str) -> dict[str, dict[str, Any]]:
+    """The ``frontends = { <name> = { enabled = ..., host = "..." } }`` block of env.yaml, parsed.
+
+    Returns ``{name: {"enabled": bool, "host": str | None}}`` (``{}`` when the block is absent).
+    """
+    text = re.sub(r"#.*", "", env_locals(root, env))
+    start_match = re.search(r"^\s*frontends\s*=\s*\{", text, re.MULTILINE)
+    if not start_match:
+        return {}
+    depth = 1
+    idx = start_match.end()
+    while idx < len(text) and depth > 0:
+        if text[idx] == "{":
+            depth += 1
+        elif text[idx] == "}":
+            depth -= 1
+        idx += 1
+    body = text[start_match.end() : idx - 1]
+    out: dict[str, dict[str, Any]] = {}
+    for name, inner in re.findall(r"([\w-]+)\s*=\s*\{([^{}]*)\}", body, re.DOTALL):
+        enabled = re.search(r"\benabled\s*=\s*(true|false)", inner)
+        host = re.search(r'\bhost\s*=\s*"([^"]*)"', inner)
+        out[name] = {"enabled": bool(enabled and enabled.group(1) == "true"), "host": host.group(1) if host else None}
+    return out
+
+
 # ------------------------------------------------------------------------------------------
 # state and outputs
 # ------------------------------------------------------------------------------------------

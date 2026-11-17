@@ -75,7 +75,7 @@ def workload_order(root: Path, env: str) -> list[str]:
     """Enabled layer-5 units in Terragrunt ``run --all`` order, ``iap-egress`` last.
 
     Terragrunt groups units by dependency depth (a unit runs after all its dependencies) and sorts
-    each group by path; excluded units (``env.yaml`` gateways / governance) are skipped.
+    each group by path; excluded units (``env.yaml`` gateways / governance / frontends) are skipped.
     """
     units = [u for u in repo.units(root, env) if u.startswith(f"{WORKLOADS}/") and infra.unit_enabled(root, env, u)]
     inside = set(units)
@@ -122,7 +122,9 @@ def unit_steps(root: Path, env: str, names: list[str]) -> list[Step]:
     for name in names:
         unit, _ = infra.locate_unit(root, env, name)
         if unit != infra.CICD_UNIT and not infra.unit_enabled(root, env, unit):
-            raise OpsError(f"Unit {unit} is excluded in {env}/env.yaml (gateways / governance): enable it first")
+            raise OpsError(
+                f"Unit {unit} is excluded in {env}/env.yaml (gateways / governance / frontends): enable it first"
+            )
         if unit not in resolved:
             resolved.append(unit)
     order = [infra.CICD_UNIT, *FOUNDATIONS.values(), *workload_order(root, env)]

@@ -133,8 +133,12 @@ def apigee_capability_key(hcl_path: Path, unit: str) -> tuple[str, str | None]:
 
 
 def unit_enabled(root: Path, env: str, unit: str) -> bool:
-    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks, ``gateways``, and ``governance``)."""
+    """Whether ``unit`` is enabled in ``env.yaml`` (checks ``exclude`` blocks, ``gateways``, ``governance`` and ``frontends``)."""
     hcl_path = repo.env_dir(root, env) / unit / repo.UNIT_FILE
+    if unit.startswith("layer-5-workloads/frontends/"):
+        # `frontends = { <name with underscores> = { enabled = true } }`; off when absent.
+        name = unit.rsplit("/", 1)[-1].replace("-", "_")
+        return bool((repo.frontends_block(root, env).get(name) or {}).get("enabled", False))
     if unit.startswith("layer-5-workloads/apigee/"):
         gov = repo.governance_block(root, env)
         if gov:
