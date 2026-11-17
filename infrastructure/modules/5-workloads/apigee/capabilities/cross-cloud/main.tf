@@ -67,6 +67,9 @@ data "archive_file" "bundle" {
   type        = "zip"
   source_dir  = local.bundle_root
   output_path = "${path.module}/.terraform/tmp/cross-cloud.zip"
+  # The zip records each file's Unix mode: pin it so output_md5 (and the Apigee revision) only
+  # changes with content, whatever the checkout's umask.
+  output_file_mode = "0644"
 }
 
 resource "google_apigee_sharedflow" "cross_cloud" {

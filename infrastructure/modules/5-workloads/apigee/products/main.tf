@@ -115,14 +115,17 @@ resource "google_apigee_developer_app" "consumer" {
   api_products    = [for p in each.value.products : google_apigee_api_product.product[p].name]
   status          = "approved"
 
-  attributes {
-    name  = "owner_identity"
-    value = each.value.owner_identity
-  }
-
-  attributes {
-    name  = "display_name"
-    value = each.value.display_name
+  # `attributes` is an ordered list and Apigee returns it sorted by name. A map iterates in lexical
+  # key order, so the config always matches what Apigee reads back (no perpetual reorder diff).
+  dynamic "attributes" {
+    for_each = {
+      display_name   = each.value.display_name
+      owner_identity = each.value.owner_identity
+    }
+    content {
+      name  = attributes.key
+      value = attributes.value
+    }
   }
 
   lifecycle {
