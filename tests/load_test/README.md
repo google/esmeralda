@@ -66,7 +66,7 @@ The script speaks the ADK query API (`:query`, `:streamQuery`), so it targets AD
 
 [`partner_load_test.py`](./partner_load_test.py) sends partner traffic to `https://partner.<domain>` with the partner API key, so every request goes through the `partner-agents` and `partner-mcp` proxies. Its traffic mix is the scenario catalog [`tests/partner/scenarios.py`](../partner/scenarios.py), the same catalog behind `esmeralda verify --partner`: real orchestrator questions about Julian Sterling over SSE, plus deliberate rejections (no key, unknown key, internal specialist, restricted MCP tool). Expected rejections count as successes under their scenario name; SSE scenarios also report time to first event and total stream time.
 
-The partner host only resolves inside the VPC, so [`scripts/partner_load_test.sh`](../../scripts/partner_load_test.sh) runs Locust on the test VM over IAP SSH (installing it there on first use with `uv`, which needs outbound HTTPS from the VM) and copies the CSV and HTML reports back to `tests/load_test/.results/partner/`:
+The partner host only resolves inside the VPC, so `make load-test-partner` (`esmeralda.ops.partner_load`) runs Locust on the test VM over IAP SSH with [`scripts/vm/partner_load.sh`](../../scripts/vm/partner_load.sh) (installing it there on first use with `uv`, which needs outbound HTTPS from the VM) and copies the CSV and HTML reports back to `tests/load_test/.results/partner/`:
 
 ```bash
 make load-test-partner ENV=dev                       # 2 users, 5 minutes

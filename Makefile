@@ -376,7 +376,7 @@ PARTNER_USERS ?= 2
 PARTNER_DURATION ?= 5m
 
 load-test-partner: ## Locust load test THROUGH the Apigee partner front door, run from the test VM: [USERS=2] [DURATION=5m] [INCLUDE_QUOTA=1] ENV=dev (results in tests/load_test/.results/partner)
-	@bash scripts/partner_load_test.sh $(ENV) \
+	@uv run --package esmeralda python -m esmeralda.ops.partner_load $(ENV) \
 		--users $(if $(filter command line environment,$(origin USERS)),$(USERS),$(PARTNER_USERS)) \
 		--duration $(if $(filter command line environment,$(origin DURATION)),$(DURATION),$(PARTNER_DURATION)) \
 		$(if $(filter 1 true,$(INCLUDE_QUOTA)),--include-quota,)
