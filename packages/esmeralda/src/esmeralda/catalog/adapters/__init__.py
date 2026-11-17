@@ -17,11 +17,13 @@
 Importing this package registers them (``esmeralda.catalog`` does it on import):
 
 * ``project_labels`` (:mod:`.project_labels`): team attribution from project labels.
+* ``agent_registry`` (:mod:`.agent_registry`): discovered inventory from Agent Registry.
 
 Each adapter is a :class:`esmeralda.catalog.snapshot.SnapshotSource`: ``esmeralda catalog fetch``
 calls its ``fetch()`` (read-only, through :mod:`._live`), ``resolve`` reads only the snapshot.
 """
 
+from esmeralda.catalog.adapters.agent_registry import AgentRegistrySource
 from esmeralda.catalog.adapters.project_labels import ProjectLabelsSource
 
-__all__ = ["ProjectLabelsSource"]
+__all__ = ["AgentRegistrySource", "ProjectLabelsSource"]

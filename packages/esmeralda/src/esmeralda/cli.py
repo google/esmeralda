@@ -1231,7 +1231,9 @@ def _parser() -> argparse.ArgumentParser:
         help="drift findings: discovered entries, shadowed or overridden external values, label mismatches, "
         "missing snapshots (exit 3 when there are findings)",
     )
-    diff_p.add_argument("--live", action="store_true", help="also compare each live source with its snapshot (network)")
+    diff_p.add_argument("--live", action="store_true",
+                        help="also compare each live source with its snapshot, and list registry entries Esmeralda "
+                        "registers that are missing live (network)")
     _add_common_ops_flags(diff_p, with_env=True)
 
     return parser
