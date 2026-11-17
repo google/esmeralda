@@ -22,7 +22,7 @@ Throughout the documentation, we follow a single real-world scenario (**Julian S
     * **[1.1 Two Teams, Two Agents — Orchestration vs. Specialization (ADK & A2A)](./2-workloads-and-catalog/03-ai-agents-and-database.md)** — Why `cx-mortgage-orchestrator` (Google ADK) and `ai-coe-mortgage-specialist` (A2A) live in separate team GCP projects, run as BYOC on Vertex AI Agent Runtime with SPIFFE Agent Identity, and use a private Cloud SQL task store.
     * **[1.2 Wrapping Enterprise Systems as MCP Tool Servers](./2-workloads-and-catalog/02-mcp-tool-servers.md)** — Turning `legacy-dms`, `income-verification`, and `corporate-email` into private Cloud Run FastMCP microservices with `tools.json` registration and end-to-end caller/user claims verification.
     * **[1.3 The Private Front Door & Pluggable Gateways](./2-workloads-and-catalog/01-ingress-gateways.md)** — Why `*.esmeralda.internal` uses an internal HTTPS load balancer with built-in `direct` routing by default (zero proxy VMs) and how Envoy or Apigee X adapters plug in per host.
-    * **[1.4 Partner API Management & Token Monetization with Apigee X](./2-workloads-and-catalog/04-apigee-partner-gateway.md)** — Complete deep dive into how Apigee X (`partner.esmeralda.internal` / `10.0.1.3`) works: PSC NEG plumbing, tiered API Products (`bronze`, `silver`, `gold`), `partner-agents` and `partner-mcp` proxy policies, two-phase `<LLMTokenQuota>` enforcement (`EnforceOnly` + SSE `EventFlow` `CountOnly`), and how Apigee hands off to GEAP Agent Identity and the Central Agent Gateway.
+    * **[1.4 Partner API Management & Token Monetization with Apigee X](./2-workloads-and-catalog/04-apigee-partner-gateway.md)** — Complete deep dive into how Apigee X (`partner.esmeralda.internal`, on the entry point) works: PSC NEG plumbing, tiered API Products (`bronze`, `silver`, `gold`), `partner-agents` and `partner-mcp` proxy policies, two-phase `<LLMTokenQuota>` enforcement (`EnforceOnly` + SSE `EventFlow` `CountOnly`), and how Apigee hands off to GEAP Agent Identity and the Central Agent Gateway.
 
 ??? abstract "2. Governance, Identity & AgentOps (Layer 4)"
     *Best for CISOs, SecOps, Governance Leads, FinOps, and SRE / Platform Operators.*
@@ -115,7 +115,7 @@ To make every architectural concept concrete, we trace a single real-world reque
 flowchart LR
     subgraph NS["1. North–South Front Door (Layer 5)"]
         Partner["External Partner / B2B App<br/>(API Key / OAuth + 3LO Token)"]
-        Apigee["Apigee X Partner Front Door<br/>(partner.esmeralda.internal / 10.0.1.3)<br/>API Products • LLMTokenQuota • Metering"]
+        Apigee["Apigee X Partner Front Door<br/>(partner.esmeralda.internal on the entry point)<br/>API Products • LLMTokenQuota • Metering"]
         Caller["Internal Loan Officer / CLI<br/>(esmeralda query)"]
     end
 
@@ -126,13 +126,13 @@ flowchart LR
     end
 
     subgraph Gov["3. East–West Zero-Trust Control Plane (Layer 4)"]
-        AGW["GEAP Central Agent Gateway (10.200.0.2)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor (optional)"]
+        AGW["GEAP Central Agent Gateway<br/>(Google-managed • PSC egress)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor (optional)"]
         Gemini["Gemini 3.7 Flash<br/>(Vertex AI API)"]
         FinOps["Central Telemetry & FinOps Hub<br/>(OTel Baggage • BigQuery Chargeback Views)"]
     end
 
     subgraph EastWest["4. Private Entry Point & MCP Tools (Layer 5)"]
-        EP["Internal HTTPS Entry Point<br/>(*.esmeralda.internal / 10.0.1.2)<br/>Built-in direct routing (optional Envoy)"]
+        EP["Internal HTTPS Entry Point<br/>(*.esmeralda.internal • reserved VIP)<br/>Built-in direct routing (optional Envoy)"]
         DMS["legacy-dms<br/>(Cloud Run FastMCP)"]
         Inc["income-verification<br/>(Cloud Run FastMCP)"]
         Email["corporate-email<br/>(Cloud Run FastMCP)"]
@@ -163,11 +163,11 @@ flowchart LR
 sequenceDiagram
     autonumber
     actor User as Loan Officer / Partner App
-    participant Apigee as Apigee X (10.0.1.3)<br/>(Optional Partner Front Door)
+    participant Apigee as Apigee X<br/>(Optional Partner Front Door)
     participant Orch as cx-mortgage-orchestrator<br/>(CX Team, SPIFFE Identity #1)
-    participant AGW as Central Agent Gateway (10.200.0.2)<br/>(UAP/IAP + Semantic NLC + Model Armor, optional)
+    participant AGW as Central Agent Gateway<br/>(UAP/IAP + Semantic NLC + Model Armor, optional)
     participant Gemini as Gemini 3.7 Flash<br/>(Vertex AI API)
-    participant EP as Entry Point (10.0.1.2)<br/>(*.esmeralda.internal, direct)
+    participant EP as Entry Point<br/>(*.esmeralda.internal, direct)
     participant Spec as ai-coe-mortgage-specialist<br/>(AI CoE Team, SPIFFE Identity #2)
     participant MCP as MCP Tool Servers<br/>(Cloud Run FastMCP)
     participant FinOps as Central Governance<br/>(Log Sinks & BigQuery)

@@ -136,7 +136,7 @@ Follow Julian Sterling's request through the five subsections of Section 1:
    * How the `*.esmeralda.internal` entry point routes traffic with the built-in `direct` backend (zero extra proxy VMs).
    * How teams can plug in **Envoy** or **Apigee X** via `gateways` in `env.yaml` and migrate hosts one at a time without touching agent code.
 4. **[1.4 Partner API Management & Token Monetization with Apigee X](./04-apigee-partner-gateway.md)**
-   * Step-by-step walkthrough of how Apigee X (`partner.esmeralda.internal` / `10.0.1.3`) exposes curated agents (`partner-agents`) and MCP tools (`partner-mcp`) to external B2B partners.
+   * Step-by-step walkthrough of how Apigee X (`partner.esmeralda.internal`, served on the entry point) exposes curated agents (`partner-agents`) and MCP tools (`partner-mcp`) to external B2B partners.
    * How `VerifyAPIKey`, KVM allowlists, two-phase `<LLMTokenQuota>` (`EnforceOnly` + SSE `EventFlow` `CountOnly`), and `PostClientFlow` analytics work end-to-end with GEAP Agent Identity and the Central Agent Gateway.
 5. **[1.5 One Gateway per Hop](./05-gateway-per-hop.md)**
    * Which gateway handles each hop by default (entry point, Central Agent Gateway, Apigee X, Envoy, API Gateway model routing), and when to choose an alternative.
