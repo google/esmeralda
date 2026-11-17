@@ -44,6 +44,11 @@ inputs = {
   governance_config            = try(local.env.governance, {})
   model_armor_config           = try(local.env.governance.model_armor, {})
 
+  # Off in prd while verified attribution is off (env.yaml attribution.caller_guard = false): guarded
+  # workloads can't verify their callers yet, so the unattributed-usage alerts would page on normal
+  # traffic. Turn it on together with the caller guard. Also drives the iap-egress gateway alert.
+  alert_on_unattributed_usage = false
+
   # Envoy ingress gateway alerts (5xx ratio, token fetch failures) when envoy is in gateways.enabled
   ingress_gateway_service_name = contains(local.env_vars.locals.gateways.enabled, "envoy") ? "envoy-gateway-${local.env_vars.locals.environment}" : ""
 
