@@ -305,7 +305,7 @@ uv run esmeralda deploy --layer 5 --env prd --dry-run
 How does Layer 4 observe all of these decoupled projects without giving developers direct access to production databases or raw infrastructure logs? Esmeralda uses a **hub-and-spoke telemetry model** (covered in full in [2.3 FinOps, Telemetry & Cross-Team Chargeback](./03-centralized-monitoring-and-dashboards.md)):
 
 * **Spoke Sources**:
-  * **MCP Tool Servers** on Cloud Run emit structured HTTP request logs and export OpenTelemetry metrics to the Cloud Telemetry API (`telemetry.googleapis.com`).
+  * **MCP Tool Servers** on Cloud Run emit structured HTTP request logs and export OpenTelemetry traces and metrics straight to the Cloud Telemetry API (`telemetry.googleapis.com`), with no collector in between.
   * **AI Agent Reasoning Engines** emit single-line JSON events (`genai_token_consumption`, `mcp_tool_execution`) to `stdout` alongside OpenTelemetry trace spans enriched with `caller.project_id` and `caller.agent_name` baggage.
   * **Central Agent Gateway** records every outbound allow/deny decision (`logName:"gateway_requests"`) directly in the governance project.
 * **Central Governance Hub (`esm-<env>-governance-<sfx>`)**:

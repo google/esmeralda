@@ -39,6 +39,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "corporate-email")
 
+# Default OTLP target: the Google Cloud Telemetry API, authenticated with the service's own identity.
+GOOGLE_TELEMETRY_ENDPOINT = "telemetry.googleapis.com:443"
+
 
 def _get_channel_credentials() -> grpc.ChannelCredentials:
     """Create gRPC channel credentials using Application Default Credentials."""
@@ -48,6 +51,19 @@ def _get_channel_credentials() -> grpc.ChannelCredentials:
         grpc.ssl_channel_credentials(),
         grpc.metadata_call_credentials(AuthMetadataPlugin(credentials=credentials, request=request)),
     )
+
+
+def _exporter_kwargs() -> dict:
+    """Arguments of the OTLP span and metric exporters.
+
+    OTEL_EXPORTER_OTLP_ENDPOINT, when set (only by Terraform, to a collector it deploys), wins:
+    plaintext gRPC for http://, TLS for https://, no Google credentials (the collector authenticates
+    upstream). Unset or empty: the Google Cloud Telemetry API with Application Default Credentials.
+    """
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    if not endpoint:
+        return {"endpoint": GOOGLE_TELEMETRY_ENDPOINT, "credentials": _get_channel_credentials()}
+    return {"endpoint": endpoint, "insecure": endpoint.startswith("http://")}
 
 
 def _get_project_id() -> str:
@@ -61,26 +77,16 @@ def init_telemetry() -> trace.Tracer:
     project_id = _get_project_id()
     gcp_resource = GoogleCloudResourceDetector().detect()
     resource = Resource.create({"service.name": SERVICE_NAME, "gcp.project_id": project_id}).merge(gcp_resource)
-    channel_creds = _get_channel_credentials()
+    exporter_kwargs = _exporter_kwargs()
 
     # Traces
     provider = TracerProvider(resource=resource)
-    provider.add_span_processor(
-        BatchSpanProcessor(
-            OTLPSpanExporter(
-                endpoint="telemetry.googleapis.com:443",
-                credentials=channel_creds,
-            )
-        )
-    )
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(**exporter_kwargs)))
     trace.set_tracer_provider(provider)
 
     # Metrics
     reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(
-            endpoint="telemetry.googleapis.com:443",
-            credentials=channel_creds,
-        ),
+        OTLPMetricExporter(**exporter_kwargs),
         export_interval_millis=60000,
     )
     metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))

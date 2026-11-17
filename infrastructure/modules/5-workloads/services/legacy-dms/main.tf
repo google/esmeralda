@@ -21,6 +21,7 @@ module "mcp_service" {
   caller_allowlist         = var.caller_allowlist
   identity_refs            = var.identity_refs
   extra_allowed_callers    = var.extra_allowed_callers
+  otlp_endpoint            = var.otlp_endpoint
 }
 
 moved {

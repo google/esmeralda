@@ -92,6 +92,10 @@ inputs = {
   # Agent Registry entry description, compiled from the catalog (why it exists, then its callers).
   registry_description  = try(local.env_vars.locals.catalog[local.name].description, "")
 
+  # OTLP export target (env.yaml telemetry.otlp_endpoint): empty = straight to the Google Cloud
+  # Telemetry API with the service's own identity. Set it only to a collector Terraform deploys.
+  otlp_endpoint = try(local.env_vars.locals.telemetry.otlp_endpoint, "")
+
   # roles/run.invoker, from the catalog callers: each agent caller's Agent Identity principal (a
   # `<unit>:agent_identity_principal` reference, resolved through identity_refs below); the service
   # accounts of the other callers (apigee-partner-mcp: the Apigee proxy runtime service account, only

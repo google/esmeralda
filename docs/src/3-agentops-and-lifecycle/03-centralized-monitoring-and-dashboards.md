@@ -141,6 +141,12 @@ flowchart TD
 > [!NOTE]
 > The list is explicit on purpose. A `dataset.*` wildcard view takes the schema of the newest table, so one auto-created table missing a column would break `usage_events`. And BigQuery only clusters on top-level columns, while every usage field sits under `jsonPayload`, so the landing tables are partitioned but not clustered.
 
+### MCP Server Traces and Metrics (OTLP Export)
+
+The MCP servers (`apps/services/*/otel_setup.py`) export OpenTelemetry traces and metrics over OTLP/gRPC straight to the Google Cloud Telemetry API (`telemetry.googleapis.com:443`), authenticated as their own workload service account (`roles/telemetry.writer`, `roles/cloudtrace.agent`, `roles/monitoring.metricWriter`). No collector sits in between. `legacy-dms` exports metrics only (its span exporter is off). Their usage records (`esmeralda.usage`, written by the caller guard) go to stdout and Cloud Logging, independent of OTLP.
+
+To send this telemetry through an OpenTelemetry Collector instead, deploy the collector with Terraform and pass its endpoint to the service units as `otlp_endpoint` (`telemetry.otlp_endpoint` in `env.yaml`, or the collector unit's output). Only then does the `mcp-service` module set `OTEL_EXPORTER_OTLP_ENDPOINT`: `http://` means plaintext gRPC, `https://` means TLS, and no Google credentials are attached (the collector authenticates upstream). With `otlp_endpoint` empty (the default in `dev` and `prd`), the variable is not set. `make test-guards` (`tests/guards/test_otlp_endpoint_guards.py`) fails on a literal OTLP endpoint in a module, a unit, an `env.yaml` or a service's telemetry setup.
+
 ### 7-Year Regulatory Coldline Archival
 * **Bucket Name**: `esmeralda-telemetry-archive-<governance_project_id>`
 * **Storage Class**: `COLDLINE`
