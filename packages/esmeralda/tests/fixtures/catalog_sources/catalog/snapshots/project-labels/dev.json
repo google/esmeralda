@@ -1,0 +1,38 @@
+{
+  "entries": [
+    {
+      "id": "ai_coe_agents",
+      "labels": {
+        "cost-center": "cc-ai-coe",
+        "team": "ai-coe"
+      }
+    },
+    {
+      "id": "cx_agents",
+      "labels": {
+        "cost-center": "cc-cx-br",
+        "team": "cx"
+      }
+    },
+    {
+      "id": "gateway",
+      "labels": {
+        "cost-center": "cc-platform",
+        "team": "platform"
+      }
+    },
+    {
+      "id": "mcps",
+      "labels": {
+        "cost-center": "central-developer-tools",
+        "team": "appdev-tools"
+      }
+    }
+  ],
+  "environment": "dev",
+  "fetched_by": "esmeralda catalog fetch --env dev --source project-labels",
+  "schema": "esmeralda.catalog.snapshot",
+  "schema_version": 1,
+  "source": "project-labels",
+  "type": "project_labels"
+}

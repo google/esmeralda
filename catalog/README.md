@@ -75,8 +75,9 @@ needs no network. This repository enables no external source and commits no snap
 
 The resolver:
 
-1. merges the enabled sources of `sources.yaml` in order. Only the `files` source is implemented;
-   `agent_registry` and `project_labels` are extension points (`enabled: false`), and other adapters
+1. merges the enabled sources of `sources.yaml` in order. `files` is the default; `project_labels`
+   (team attribution from project labels) is implemented but disabled here, `agent_registry` is an
+   extension point (`enabled: false`), and other adapters
    (Backstage, a CMDB) register with `esmeralda.catalog.register_source`. Inside `files`, an entry
    or a policy leaf defined twice fails. `files` comes first and is the only source that may set
    authorization data (callers and grants, identities, policy, teams and cost centres,

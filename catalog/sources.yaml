@@ -23,10 +23,18 @@ sources:
     type: agent_registry
     enabled: false
 
-  # Team attribution from project labels (e.g. team, cost-center). Extension point, not implemented yet.
+  # Team attribution from the labels of the environment's projects (attribution only: never callers,
+  # teams or cost centres). `esmeralda catalog fetch --env <env> --source project-labels` writes
+  # snapshots/project-labels/<env>.json; resolve reads only that snapshot. Keep it after the
+  # inventory sources: it fills owner_team of the entries they report.
   - name: project-labels
     type: project_labels
     enabled: false
+    options:
+      team_label: team
+      cost_center_label: cost-center
+      # team_map: { appdev-tools: platform }   # label value -> catalog team (default: same name)
+      # cost_center_map: {}                    # label value -> catalog cost centre (default: same)
 
 environments_dir: environments
 resolved_dir: .resolved

@@ -20,11 +20,12 @@ The resolver merges the layers in the order ``sources.yaml`` lists them (see
 
 * ``files``: YAML documents under ``catalog/`` (the demo default, owned per team via CODEOWNERS).
   It must be the first enabled source, and it is the only one that may set authorization data.
+* ``project_labels`` (:mod:`esmeralda.catalog.adapters.project_labels`): team attribution from
+  project labels, read from a snapshot.
 
 Extension points (registered, not implemented yet):
 
 * ``agent_registry``: inventory of agents / MCP servers / endpoints from Agent Registry.
-* ``project_labels``: team attribution from project labels.
 
 Adapters for other systems (Backstage, a CMDB, ...) subclass :class:`Source` and call
 :func:`register_source`; adapters that read a live system subclass
@@ -95,6 +96,24 @@ class Source:
 
     def load(self) -> Layer:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def complete(self, layer: Layer, merged: Layer) -> Layer:
+        """Hook called at merge time with a copy of what the earlier sources merged (``merged``).
+
+        A source whose contributions depend on catalog entries (for example project labels, which
+        fill ``owner_team`` only on inventory entries an earlier source reported and only for teams
+        the catalog files declare) returns them here. The result goes through the same capability
+        checks as :meth:`load`'s layer. Default: ``layer`` unchanged.
+        """
+        return layer
+
+    def findings(self, document: dict[str, Any]) -> list[dict[str, str]]:
+        """Hook: where this source's data disagrees with the resolved catalog (after the environment
+        overrides), as ``{"kind", "subject", "detail"}`` rows. ``policy.attribution.label_mismatch``
+        decides whether they fail the resolve (``fail``) or are warnings (``warn``); ``esmeralda
+        catalog diff`` always lists them. Default: none.
+        """
+        return []
 
 
 SOURCE_TYPES: dict[str, type[Source]] = {}
@@ -223,15 +242,6 @@ class _NotImplementedSource(Source):
 class AgentRegistrySource(_NotImplementedSource):
     """Inventory (agents, MCP servers, endpoints) from Agent Registry. Planned: report each registry
     entry as inventory; a catalog file adopts one only with a ``deploy.registry`` pin."""
-
-    phase = " (planned with the catalog sources phase)"
-
-
-@register_source("project_labels")
-class ProjectLabelsSource(_NotImplementedSource):
-    """Team attribution from project labels (e.g. ``team``, ``cost-center``). Planned: map projects to
-    teams declared in catalog files (``teams.<team>.projects``) and fill ``owner_team`` of discovered
-    inventory. Labels never create teams, never extend ``cost_centers`` and never override files."""
 
     phase = " (planned with the catalog sources phase)"
 

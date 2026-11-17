@@ -316,7 +316,8 @@ schema_version: 1
 sources:
   - { name: catalog-files,   type: files, paths: [teams.yaml, policy.yaml, teams, external] }
   - { name: agent-registry,  type: agent_registry, enabled: false }   # extension point
-  - { name: project-labels,  type: project_labels, enabled: false }   # extension point
+  - { name: project-labels,  type: project_labels, enabled: false,    # see "Project labels" below
+      options: { team_label: team, cost_center_label: cost-center } }
 environments_dir: environments
 resolved_dir: .resolved
 ```
@@ -328,8 +329,11 @@ resolved_dir: .resolved
 | Teams and cost centres in project labels or finance systems | `project_labels` maps projects to the teams declared in `files` (attribution only) |
 | Backstage, a CMDB or another catalog | A custom adapter |
 
-`agent_registry` and `project_labels` are registered extension points. Enabling one today fails
-with a clear "not implemented" error.
+| Source type | Status | Reads (read-only) |
+| :--- | :--- | :--- |
+| `files` | built in, the default | catalog YAML under `catalog/` |
+| `project_labels` | built in, disabled in this repo | labels of the environment's projects (`gcloud projects describe`) |
+| `agent_registry` | extension point: enabling it fails with a clear "not implemented" error | — |
 
 **Discovery never grants; adoption is a repo review.** The merge rules hold for every source:
 
@@ -435,8 +439,9 @@ uv run esmeralda catalog show --env dev --inventory                # discovered 
   `catalog fetch` command to run. With `options: { optional: true }` it is a warning and an empty
   layer instead, until a catalog file adopts one of its entries: then the snapshot is required.
 - **Drift.** `catalog diff` reports discovered entries no catalog file adopts, external values a
-  catalog file shadows or `environments/<env>.yaml` overrides, and optional sources without a
-  snapshot; `--live` adds the entries that changed in the live source since the snapshot.
+  catalog file shadows or `environments/<env>.yaml` overrides, source data that disagrees with the
+  catalog files (`label_mismatch`), and optional sources without a snapshot; `--live` adds the
+  entries that changed in the live source since the snapshot.
 
 An adapter for a live system subclasses `SnapshotSource` and implements `fetch()` (plus
 `layer_from_entries()` when its entries aren't `{id, name, inventory}`, and `placeholders()`):
@@ -467,3 +472,41 @@ class CmdbSource(SnapshotSource):
 The repository's `sources.yaml` keeps every network source disabled and commits no real
 snapshot; the tests use synthetic snapshots under
 `packages/esmeralda/tests/fixtures/catalog_sources/`.
+
+### Project labels (`project_labels`)
+
+Attribution metadata from the labels of the environment's projects, never authorization.
+
+- **Fetch.** `catalog fetch --env <env> --source project-labels` reads the projects named by the
+  `<alias>_project_id` outputs of `layer-1-projects` (or the `options.projects` list of
+  `{alias, output: <unit>:<output>}`) with a read-only `gcloud projects describe`. The snapshot has
+  one entry per project, keyed by its **alias** (`gateway`, `mcps`, ...), with only the configured
+  label keys (`team_label`, default `team`; `cost_center_label`, default `cost-center`). Project ids,
+  numbers, the parent and every other label are dropped.
+- **Resolve.** Each labelled project goes into `teams.<team>.projects` of the catalog team its
+  `team` label maps to (`team_map` maps label values to catalog teams; same name by default), unless
+  the catalog files already declare that team's projects or the project. An inventory entry another
+  source reported without an `owner_team` gets the team of the project in its `runtime_resource`
+  (`{project:<alias>}`); list `project-labels` after the inventory sources. `.resolved/<env>.json`
+  then carries `attribution.project_teams` rows (`{project, team}`, the key to attribute
+  project-level infrastructure cost from the billing export) and the field provenance.
+- **Labels never create teams, never extend `cost_centers` and never override catalog files.**
+  Anyone with project IAM can edit a label outside code review, so a disagreement is a
+  `label_mismatch` finding: a label that maps to no catalog team, a `cost-center` label (through
+  `cost_center_map`) outside the team's declared `cost_centers`, a project the catalog files give to
+  another team, a declared `owner_team` that differs from its project's label.
+  `policy.attribution.label_mismatch` makes findings fail the resolve (`fail`, the default) or
+  print them as warnings (`warn`, accepted only in `flag_environments`). `catalog diff` lists them
+  either way.
+- `catalog show --env <env> --provenance` lists the teams with their projects and where each came
+  from.
+
+```yaml
+- name: project-labels
+  type: project_labels
+  options:
+    team_label: team
+    cost_center_label: cost-center
+    team_map: { appdev-tools: platform }                      # label value -> catalog team
+    cost_center_map: { central-developer-tools: cc-platform } # label value -> catalog cost centre
+```
