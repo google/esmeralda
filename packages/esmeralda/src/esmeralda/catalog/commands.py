@@ -22,8 +22,10 @@
   leaves every snapshot unchanged. Fetching the same live state twice gives the same bytes.
 * :func:`diff_catalog` (offline unless ``live``): findings a reviewer should look at: discovered
   entries no catalog file adopts, external values shadowed by catalog files or overridden by the
-  environment, optional sources without a snapshot and, with ``live``, live entries that differ
-  from the committed snapshot (never written).
+  environment, source data that disagrees with the catalog files (``label_mismatch``: project
+  labels vs declared teams, cost centres and owners; listed whatever the policy), optional sources
+  without a snapshot and, with ``live``, live entries that differ from the committed snapshot
+  (never written).
 """
 
 from __future__ import annotations
@@ -180,8 +182,8 @@ def _finding(kind: str, source: str | None, subject: str, detail: str) -> dict[s
 
 def diff_catalog(root: Path, env: str, *, live: bool = False) -> dict[str, Any]:
     """Drift findings for ``env`` (empty list: nothing to review). Offline unless ``live``."""
-    resolved = resolve(root, env)
-    findings: list[dict[str, Any]] = []
+    resolved = resolve(root, env, strict_findings=False)
+    findings: list[dict[str, Any]] = [dict(f) for f in resolved.findings]
     for warning in resolved.warnings:
         findings.append(_finding("missing_snapshot", warning.split(":", 1)[0], "snapshot", warning))
     for row in inventory_rows(resolved):

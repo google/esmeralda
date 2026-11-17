@@ -518,6 +518,11 @@ def _format_catalog_show(data: dict[str, Any]) -> str:
                 f"   • {c['caller']:<28} {c['identity']:<16} via {c.get('gateway') or '-':<13} "
                 f"pays: {pays.get('team')} {', '.join(pays.get('cost_centers') or [])}{extra}{enforced}"
             )
+    for team in data.get("teams") or []:
+        projects = f" projects={', '.join(team['projects'])}" if team.get("projects") else ""
+        lines.append(f"👥 {team['team']} (cost centres {', '.join(team.get('cost_centers') or []) or '-'}){projects}")
+        if team.get("provenance"):
+            lines += _format_provenance(team["provenance"])
     return "\n".join(lines)
 
 
@@ -635,6 +640,8 @@ def _catalog_sources_cmd(args: argparse.Namespace, root: Path) -> int:
 def _print_warnings(resolved: Any) -> None:
     for warning in getattr(resolved, "warnings", None) or []:
         print(f"⚠️  {warning}", file=sys.stderr)
+    for f in getattr(resolved, "findings", None) or []:  # only present under label_mismatch: warn
+        print(f"⚠️  [{f['kind']}] {f['source']}: {f['subject']}: {f['detail']}", file=sys.stderr)
 
 
 def _catalog(args: argparse.Namespace) -> int:
@@ -1202,7 +1209,8 @@ def _parser() -> argparse.ArgumentParser:
     show_p.add_argument("--target", help="only this target")
     show_p.add_argument("--caller", help="only what this caller can call")
     show_p.add_argument("--provenance", action="store_true",
-                        help="also show where each entry and external field came from")
+                        help="also show where each entry and external field came from (and the teams with their "
+                        "projects)")
     show_p.add_argument("--inventory", action="store_true",
                         help="show the discovered inventory (external entries no catalog file adopts; never compiled)")
     _add_common_ops_flags(show_p, with_env=True)
@@ -1219,8 +1227,8 @@ def _parser() -> argparse.ArgumentParser:
     _add_common_ops_flags(fetch_p, with_env=True)
     diff_p = catalog_sub.add_parser(
         "diff",
-        help="drift findings: discovered entries, shadowed or overridden external values, missing snapshots "
-        "(exit 3 when there are findings)",
+        help="drift findings: discovered entries, shadowed or overridden external values, label mismatches, "
+        "missing snapshots (exit 3 when there are findings)",
     )
     diff_p.add_argument("--live", action="store_true", help="also compare each live source with its snapshot (network)")
     _add_common_ops_flags(diff_p, with_env=True)

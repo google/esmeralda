@@ -451,6 +451,8 @@ def merge_layers(loaded: list[tuple[Source, Layer]]) -> MergeResult:
             merger.merge_files(layer)
         else:
             externals[source.name] = caps
+            layer = source.complete(layer, copy.deepcopy(merger.acc))
+            layer.source = source.name
             merger.merge_external(source, layer, caps)
     if not merger.problems:
         merger.adopt(externals, files_sources)

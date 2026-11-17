@@ -41,9 +41,11 @@ who may call them, through which gateway, and who pays. It is defined by
 External sources (Agent Registry, project labels, Backstage, custom adapters) are read from
 committed snapshots (:class:`SnapshotSource`, ``catalog/snapshots/<source>/<env>.json``) that
 ``esmeralda catalog fetch`` writes; resolving never touches the network
-(:mod:`esmeralda.catalog.snapshot`, :mod:`esmeralda.catalog.commands`).
+(:mod:`esmeralda.catalog.snapshot`, :mod:`esmeralda.catalog.commands`). The built-in adapters for
+live systems live in :mod:`esmeralda.catalog.adapters` (``project_labels``).
 """
 
+from esmeralda.catalog import adapters  # noqa: F401  (registers the built-in live-source adapters)
 from esmeralda.catalog.resolver import (
     GOOGLE_APIS,
     CatalogError,

@@ -196,7 +196,9 @@ class Resolved:
 
     ``origins`` maps ``(section, name)`` to where the entry came from (a repo path for files);
     ``adopted`` maps each target adopted through a ``deploy.registry`` pin to its source;
-    ``warnings`` are non-fatal notes (an optional source resolved without its snapshot).
+    ``warnings`` are non-fatal notes (an optional source resolved without its snapshot);
+    ``findings`` are where a source's data disagrees with the catalog files (``{kind, source,
+    subject, detail}``, see :meth:`Source.findings`), kept when ``label_mismatch`` is ``warn``.
     """
 
     env: str
@@ -204,6 +206,7 @@ class Resolved:
     origins: dict[tuple[str, str], str] = field(default_factory=dict)
     adopted: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    findings: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def teams(self) -> dict[str, Any]:
@@ -475,6 +478,14 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
         if name not in teams:
             problems.append(f"{where('profiles', name)}: unknown team '{name}' (register it in catalog/teams.yaml)")
 
+    project_owner: dict[str, str] = {}
+    for name in sorted(teams):
+        for alias in teams[name].get("projects") or []:
+            if alias in project_owner:
+                problems.append(f"{where('teams', name)}: project '{alias}' is also a project of team "
+                                f"'{project_owner[alias]}' (one team per project, for infra-cost attribution)")
+            project_owner.setdefault(alias, name)
+
     for name, caller in callers.items():
         if caller["team"] not in teams:
             problems.append(f"{where('callers', name)}: unknown team '{caller['team']}'")
@@ -665,10 +676,13 @@ def _check_optional_snapshots(loaded: list[tuple[Source, Layer]]) -> list[str]:
     return problems
 
 
-def resolve(root: Path, env: str) -> Resolved:
+def resolve(root: Path, env: str, *, strict_findings: bool = True) -> Resolved:
     """Merge the sources, apply the environment overrides and defaults, and validate.
 
     Offline by construction: external sources are read from their committed snapshots only.
+    Source findings (:meth:`Source.findings`) fail the resolve under ``policy.attribution
+    .label_mismatch: fail``; with ``strict_findings=False`` (``catalog diff``) they are only
+    reported in :attr:`Resolved.findings`.
     """
     schema = load_schema(root)
     sources_doc = _sources_doc(root, schema)
@@ -719,8 +733,18 @@ def resolve(root: Path, env: str) -> Resolved:
     problems = _check_references(doc, origins) + _check_attribution(doc, env)
     if problems:
         raise CatalogError(problems)
+    findings = [
+        {"kind": f["kind"], "source": source.name, "subject": f["subject"], "detail": f["detail"]}
+        for source in sources
+        for f in source.findings(doc)
+    ]
+    if findings and strict_findings and attribution_policy(doc["policy"])["label_mismatch"] != "warn":
+        raise CatalogError([f"{f['source']}: {f['subject']}: {f['detail']}" for f in findings] + [
+            "policy.attribution.label_mismatch is 'fail': fix the catalog files or the labels, or set "
+            f"'warn' (only in flag_environments); `esmeralda catalog diff --env {env}` lists every finding"
+        ])
     adopted = {name: src for name, src in merged.adopted.items() if name in doc["targets"]}
-    return Resolved(env=env, document=doc, origins=origins, adopted=adopted, warnings=warnings)
+    return Resolved(env=env, document=doc, origins=origins, adopted=adopted, warnings=warnings, findings=findings)
 
 
 # ------------------------------------------------------------------------------------------
@@ -1075,7 +1099,8 @@ def compile_attribution(resolved: Resolved) -> dict[str, Any]:
     """The ``attribution`` block of ``catalog/.resolved/<env>.json``.
 
     ``policy`` (``unmapped_caller``, ``declared_mismatch``), ``principal_teams`` (the table rows),
-    ``shared_principals`` and ``allowlists`` (per guarded target). Also checks that every identity
+    ``shared_principals`` and ``allowlists`` (per guarded target), plus ``project_teams`` when teams
+    list projects (:func:`compile_project_teams`). Also checks that every identity
     the catalog lets through a gateway or IAM grant can be attributed: allowed implies attributable.
     """
     policy = attribution_policy(resolved.policy)
@@ -1096,12 +1121,27 @@ def compile_attribution(resolved: Resolved) -> dict[str, Any]:
                 problems.append(f"catalog.{target}: caller '{caller}' gets an IAM grant but has no principal_teams row")
     if problems:
         raise CatalogError(problems)
-    return {
+    out = {
         "policy": {k: policy[k] for k in ("unmapped_caller", "declared_mismatch")},
         "principal_teams": rows,
         "shared_principals": [shared] if shared else [],
         "allowlists": compile_caller_allowlists(resolved),
     }
+    project_teams = compile_project_teams(resolved)
+    if project_teams:  # omitted when no team lists projects, so such catalogs compile as before
+        out["project_teams"] = project_teams
+    return out
+
+
+def compile_project_teams(resolved: Resolved) -> list[dict[str, str]]:
+    """``attribution.project_teams``: one ``{project, team}`` row per project alias of
+    ``teams.<team>.projects`` (declared in catalog files or filled from project labels), the key
+    to attribute project-level infrastructure cost (billing export) to catalog teams."""
+    return [
+        {"project": alias, "team": team}
+        for team in sorted(resolved.teams)
+        for alias in sorted(resolved.teams[team].get("projects") or [])
+    ]
 
 
 def resolved_path(root: Path, env: str) -> Path:
@@ -1257,7 +1297,8 @@ def show(
 
     ``ingress`` is env.yaml's ``gateways`` block (default backend + host_rules): the entry-point
     backend of each deployed host. ``provenance`` adds, per target, where the entry and each
-    externally contributed field came from.
+    externally contributed field came from and, without a target or caller filter, the teams with
+    their projects (:func:`team_rows`).
     """
     if target and target not in resolved.targets:
         raise CatalogError(f"unknown target '{target}' (known: {', '.join(sorted(resolved.targets))})")
@@ -1333,4 +1374,18 @@ def show(
         "env": resolved.env,
         "policy": resolved.policy.get("attribution", {}),
         "targets": rows,
+        **({"teams": team_rows(resolved)} if provenance and not target and not caller else {}),
     }
+
+
+def team_rows(resolved: Resolved) -> list[dict[str, Any]]:
+    """Teams with their cost centres, projects and provenance (``catalog show --provenance``)."""
+    return [
+        {
+            "team": name,
+            "cost_centers": list(team.get("cost_centers") or []),
+            "projects": list(team.get("projects") or []),
+            "provenance": entry_provenance(resolved, "teams", name),
+        }
+        for name, team in sorted(resolved.teams.items())
+    ]
