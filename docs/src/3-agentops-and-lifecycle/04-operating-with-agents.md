@@ -108,6 +108,8 @@ uv run esmeralda deploy --layer 5 --env dev --dry-run
 uv run esmeralda deploy --layer 5 --env dev
 ```
 
+A dry run plans each unit against the deployed outputs of the units it depends on, so it needs those units applied. On a fresh environment only layers 0 and 1 can be planned: a later unit fails with "a dependency of this unit has not been applied yet". Deploy the first time layer by layer (`esmeralda deploy --layer N`), which still plans every unit before applying it.
+
 ---
 
 ## 4. End-to-End Verification & Log Triage (`verify`, `query`, `logs`)
