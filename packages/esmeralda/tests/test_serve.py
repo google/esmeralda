@@ -124,6 +124,50 @@ def test_serve_web_is_adk_only(a2a_dir):
         serve.serve(AgentConfig.load(a2a_dir), web=True)
 
 
+def test_serve_adk_as_child_returns_its_exit_code(tmp_path, monkeypatch):
+    (tmp_path / "agent.yaml").write_text("name: x\nframework: google-adk\n")
+    calls = []
+    monkeypatch.setattr(serve.os, "execvp", lambda *a: pytest.fail("must not exec"))
+    monkeypatch.setattr(serve, "run_child", lambda cmd, cwd: calls.append((cmd, cwd)) or 3)
+    config = AgentConfig.load(tmp_path)
+    assert serve.serve(config, port=9002, replace_process=False) == 3
+    assert calls[0][0][:2] == ["adk", "api_server"] and "9002" in calls[0][0] and calls[0][1] == config.directory
+
+
+def test_run_child_exit_code():
+    assert serve.run_child([sys.executable, "-c", "raise SystemExit(4)"], cwd=".") == 4
+
+
+def test_run_child_stops_the_child_on_ctrl_c(monkeypatch):
+    class Proc:
+        signals: list = []
+
+        def __init__(self, *a, **k):
+            self.returncode = None
+            self.waits = 0
+
+        def wait(self, timeout=None):
+            self.waits += 1
+            if self.waits == 1:
+                raise KeyboardInterrupt  # Ctrl+C while serving
+            if self.returncode is None:
+                raise serve.subprocess.TimeoutExpired("adk", timeout)  # ignores SIGINT and SIGTERM
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def send_signal(self, sig):
+            Proc.signals.append(sig)
+            if sig == serve.signal.SIGKILL:
+                self.returncode = -9
+
+    monkeypatch.setattr(serve.subprocess, "Popen", Proc)
+    with pytest.raises(KeyboardInterrupt):
+        serve.run_child(["adk"], cwd=".", stop_timeout=0.01)
+    assert Proc.signals == [serve.signal.SIGTERM, serve.signal.SIGKILL]
+
+
 def test_cli_serve_without_agent_yaml(tmp_path, capsys):
     assert cli.main(["serve", "--agent-dir", str(tmp_path)]) == 2
     assert "agent.yaml" in capsys.readouterr().err

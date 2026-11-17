@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
+import subprocess
 from typing import Any
 
 from esmeralda.config import AgentConfig
@@ -236,8 +238,14 @@ def serve(
     local: bool = False,
     web: bool = False,
     otel_to_cloud: bool = False,
-) -> None:
-    """Serves the agent. ADK agents replace this process with ``adk``; A2A agents run uvicorn."""
+    replace_process: bool = True,
+) -> int:
+    """Serves the agent until it stops; returns its exit code.
+
+    ADK agents replace this process with ``adk`` (``replace_process=False`` runs ``adk`` as a child
+    instead, so the caller can clean up afterwards, e.g. stop local MCP servers); A2A agents run
+    uvicorn in this process.
+    """
     port = port or default_port()
     if local:
         config.apply_local_env()
@@ -251,9 +259,38 @@ def serve(
         import uvicorn
 
         uvicorn.run(a2a_server(config, otel_to_cloud=otel_to_cloud), host=host, port=port)
-        return
+        return 0
 
     command = adk_command(config, host=host, port=port, web=web, otel_to_cloud=otel_to_cloud)
+    if not replace_process:
+        logger.info("run %s", " ".join(command))
+        return run_child(command, cwd=config.directory)
     logger.info("exec %s", " ".join(command))
     os.chdir(config.directory)
     os.execvp(command[0], command)
+    return 0  # unreachable: execvp only returns by raising
+
+
+CHILD_STOP_TIMEOUT = 10.0
+
+
+def run_child(command: list[str], *, cwd: Any, stop_timeout: float = CHILD_STOP_TIMEOUT) -> int:
+    """Runs ``command`` in the foreground and returns its exit code.
+
+    On Ctrl+C the child (same process group) gets SIGINT from the terminal too: it is given
+    ``stop_timeout`` seconds to exit, then SIGTERM, then SIGKILL, and the ``KeyboardInterrupt`` is
+    re-raised so the caller's cleanup runs.
+    """
+    proc = subprocess.Popen(command, cwd=cwd)
+    try:
+        return proc.wait()
+    except KeyboardInterrupt:
+        for sig in (None, signal.SIGTERM, signal.SIGKILL):
+            if sig is not None and proc.poll() is None:
+                proc.send_signal(sig)
+            try:
+                proc.wait(timeout=stop_timeout)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        raise

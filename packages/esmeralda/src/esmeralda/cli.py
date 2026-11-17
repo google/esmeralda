@@ -19,7 +19,8 @@ Container & agent runtime commands:
   root CA, then replaces itself with the server command (``exec``), so the server keeps PID 1 and
   receives signals directly.
 * ``esmeralda serve [options]``: serves an agent (ADK API server or A2A server) the same way locally
-  and in the container. ``--local`` applies ``local_env`` from ``agent.yaml``.
+  and in the container. ``--local`` applies ``local_env`` from ``agent.yaml``; ``--local-mcp`` also
+  runs the agent's local MCP servers while it serves (``esmeralda.local_mcp``).
 * ``esmeralda query [options] MESSAGE``: queries an agent (ADK or A2A) in-process, on a running
   server (``--url``) or on Agent Runtime (``--engine``), and exits non-zero if the run failed.
   ``--local-mcp`` starts the agent's local MCP servers for an in-process run (``esmeralda.local_mcp``).
@@ -150,18 +151,41 @@ def _serve(args: argparse.Namespace) -> int:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     try:
         config = AgentConfig.load(args.agent_dir)
-        serve.serve(
-            config,
+        options = dict(
             host=args.host,
             port=args.port,
-            local=args.local,
+            local=args.local or args.local_mcp,
             web=args.web,
             otel_to_cloud=args.otel_to_cloud,
         )
+        if args.local_mcp:
+            return _serve_with_local_mcp(config, options)
+        return serve.serve(config, **options)
     except (FileNotFoundError, ValueError) as exc:
         print(f"❌ {exc}", file=sys.stderr)
         return 2
-    return 0
+
+
+def _serve_with_local_mcp(config: Any, options: dict[str, Any]) -> int:
+    """``serve --local-mcp``: the agent's local MCP servers up for as long as the server runs.
+
+    ``local_mcp`` is imported here only: it is a development helper that agent images never load.
+    """
+    from esmeralda import local_mcp, serve
+
+    try:
+        with local_mcp.sigterm_as_interrupt():
+            servers = local_mcp.servers_for(config.local_env)
+            if not servers:
+                print("ℹ️  agent.yaml local_env points at no local MCP server: nothing to start", file=sys.stderr)
+            with local_mcp.running(local_mcp.find_root(config.directory), servers):
+                return serve.serve(config, replace_process=False, **options)
+    except local_mcp.LocalMcpError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        return 130
 
 
 def _resolve_root(repo_arg: str | None) -> Path:
@@ -853,6 +877,12 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="0.0.0.0", help="bind address (default: 0.0.0.0)")
     serve.add_argument("--port", type=int, default=None, help="port (default: $PORT or 8080)")
     serve.add_argument("--local", action="store_true", help="apply local_env from agent.yaml (workstation runs)")
+    serve.add_argument(
+        "--local-mcp",
+        action="store_true",
+        help="workstation run (implies --local): start the agent's local MCP servers (agent.yaml local_env ports, "
+        "127.0.0.1) and stop them when the server stops",
+    )
     serve.add_argument("--web", action="store_true", help="ADK dev UI instead of the API server (ADK agents)")
     serve.add_argument("--otel-to-cloud", action="store_true", help="export traces and logs to Google Cloud")
 

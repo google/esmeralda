@@ -185,9 +185,9 @@ query: ## Query an agent: AGENT=<dir under apps/agents> [QUERY="..."] [TARGET=lo
 
 PORT ?= 8080
 
-serve: ## Serve an agent locally exactly as in the container: AGENT=<dir under apps/agents> [PORT=8080] [WEB=1 for the ADK dev UI]
+serve: ## Serve an agent locally exactly as in the container, with its local MCP servers up: AGENT=<dir under apps/agents> [PORT=8080] [WEB=1 for the ADK dev UI]
 	@[ -n "$(AGENT)" ] || { echo "❌ Set AGENT=<agent directory under apps/agents>, e.g. AGENT=cx-mortgage-orchestrator"; exit 1; }
-	@scripts/with_local_mcp.sh uv run --package $(AGENT) esmeralda serve --agent-dir apps/agents/$(AGENT) --local --port $(PORT) $(if $(WEB),--web)
+	@uv run --package $(AGENT) esmeralda serve --agent-dir apps/agents/$(AGENT) --local-mcp --port $(PORT) $(if $(WEB),--web)
 
 # ==============================================================================
 # End-to-end tests of a deployed environment (engine IDs from the unit outputs)
