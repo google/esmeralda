@@ -56,6 +56,9 @@ locals {
 
 inputs = {
   project_id                = dependency.projects.outputs.ai_coe_agents_project_id
+  # Optional organization ID (ESMERALDA_ORG_ID): the trust domain of a project under a folder uses it
+  # instead of the folder lookup (resourcemanager.folders.get).
+  org_id = lookup(local.env_vars.locals, "org_id", "")
   governance_project_id     = dependency.projects.outputs.governance_project_id
   central_events_dataset_id = "esmeralda_telemetry_logs_${local.env_vars.environment}"
   environment               = local.env_vars.locals.environment

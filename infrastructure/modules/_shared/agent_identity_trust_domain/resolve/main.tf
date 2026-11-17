@@ -13,7 +13,8 @@
 # The google_project data source returns an empty org_id (and a folder_id) for a project whose parent
 # is a folder, so for such a project the organization comes from the folder. A project under a
 # folder always belongs to an organization: if none can be resolved, fail instead of falling back to
-# the project-scoped pool (which does not exist for such a project).
+# the project-scoped pool (which does not exist for such a project). An org_id input (ESMERALDA_ORG_ID)
+# takes the place of the folder's organization, so no folder lookup is needed.
 
 terraform {
   required_version = ">= 1.5.0"
@@ -43,7 +44,7 @@ variable "folder_organization" {
 }
 
 variable "org_id" {
-  description = "Optional organization ID (numeric, or organizations/<n>), used only for a project under a folder whose organization the folder lookup did not return."
+  description = "Optional organization ID (numeric, or organizations/<n>; ESMERALDA_ORG_ID). For a project under a folder it is used instead of the folder's organization (the parent module then skips the folder lookup)."
   type        = string
   default     = ""
 }
@@ -57,8 +58,8 @@ locals {
   resolved_org_id = (
     local.project_org_id != "" ? local.project_org_id :
     !local.in_folder ? "" :
-    local.folder_organization != "" ? local.folder_organization :
-    local.fallback_org_id
+    local.fallback_org_id != "" ? local.fallback_org_id :
+    local.folder_organization
   )
 
   scope        = local.resolved_org_id != "" ? "org-${local.resolved_org_id}" : "proj-${var.project_number}"
@@ -76,7 +77,7 @@ output "trust_domain" {
 
   precondition {
     condition     = !local.in_folder || local.resolved_org_id != ""
-    error_message = "Agent Identity trust domain: project number ${var.project_number} is in folder ${var.project_folder_id}, but the organization of that folder could not be resolved. Grant the deployer resourcemanager.folders.get on the folder (or pass org_id to the module). Refusing to fall back to the project-scoped pool, which does not exist for a project in an organization."
+    error_message = "Agent Identity trust domain: project number ${var.project_number} is in folder ${var.project_folder_id}, but the organization of that folder could not be resolved. Set ESMERALDA_ORG_ID (org_id in env.yaml) to the organization ID, or grant the identity running Terraform resourcemanager.folders.get on the folder and its parent folders (for example roles/browser). Refusing to fall back to the project-scoped pool, which does not exist for a project in an organization."
   }
 
   precondition {

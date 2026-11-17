@@ -621,7 +621,11 @@ def _env_checks() -> list[dict[str, Any]]:
             "status": "ok",
             "required": False,
             "source": origin,
-            "detail": where.get(origin, "unset (optional)"),
+            "detail": where.get(
+                origin,
+                "unset (optional: for agent projects under a folder, the Agent Identity trust domain then "
+                "looks up the folder's organization, which needs resourcemanager.folders.get on the folder chain)",
+            ),
         }
     )
     origin = envfile.source("ESMERALDA_ALERT_EMAIL", env_file=found)

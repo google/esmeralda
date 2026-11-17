@@ -92,3 +92,59 @@ run "project_without_organization" {
     error_message = "Wrong trust domain for a project with no organization: ${output.trust_domain}"
   }
 }
+
+# ESMERALDA_ORG_ID set: no folder lookup (no resourcemanager.folders.get needed), org_id is used.
+run "project_under_a_folder_with_org_id" {
+  command = apply
+
+  variables {
+    org_id = "1234567890"
+  }
+
+  override_data {
+    target = data.google_project.this
+    values = {
+      number    = "444"
+      org_id    = ""
+      folder_id = "555"
+    }
+  }
+
+  assert {
+    condition     = length(data.google_folder.parent) == 0
+    error_message = "With org_id given, the folder must not be looked up."
+  }
+
+  assert {
+    condition     = output.trust_domain == "agents.global.org-1234567890.system.id.goog"
+    error_message = "Wrong trust domain for a project under a folder with org_id: ${output.trust_domain}"
+  }
+}
+
+# Org-parented project with org_id set: unchanged (its own organization, no folder lookup).
+run "project_under_the_organization_with_org_id" {
+  command = apply
+
+  variables {
+    org_id = "organizations/999"
+  }
+
+  override_data {
+    target = data.google_project.this
+    values = {
+      number    = "555"
+      org_id    = "1234567890"
+      folder_id = ""
+    }
+  }
+
+  assert {
+    condition     = length(data.google_folder.parent) == 0
+    error_message = "No folder lookup for a project whose parent is the organization."
+  }
+
+  assert {
+    condition     = output.trust_domain == "agents.global.org-1234567890.system.id.goog"
+    error_message = "An org-parented project must keep its own organization: ${output.trust_domain}"
+  }
+}

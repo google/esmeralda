@@ -7,7 +7,9 @@
 #
 # google_project.org_id is set only when the organization is the project's direct parent. For a
 # project under a folder (folder_id in env.yaml) it is empty, so the organization is looked up from
-# the folder (lookup_organization walks nested folders up to the organization).
+# the folder (lookup_organization walks nested folders up to the organization), which needs
+# resourcemanager.folders.get on the folder chain. When org_id is given (ESMERALDA_ORG_ID, read as
+# org_id in env.yaml), the folder lookup is skipped and org_id is used instead.
 
 terraform {
   required_version = ">= 1.5.0"
@@ -23,8 +25,13 @@ data "google_project" "this" {
   project_id = var.project_id
 }
 
+locals {
+  org_id_given = trimspace(var.org_id) != ""
+}
+
+# Only for a project under a folder, and only when org_id is not given.
 data "google_folder" "parent" {
-  count               = data.google_project.this.org_id == "" && data.google_project.this.folder_id != "" ? 1 : 0
+  count               = data.google_project.this.org_id == "" && data.google_project.this.folder_id != "" && !local.org_id_given ? 1 : 0
   folder              = "folders/${data.google_project.this.folder_id}"
   lookup_organization = true
 }

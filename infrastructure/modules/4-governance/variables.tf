@@ -162,6 +162,12 @@ variable "agent_project_ids" {
   description = "List of agent project IDs (A2A and Root) that run AI agents and Reasoning Engines."
 }
 
+variable "org_id" {
+  type        = string
+  default     = ""
+  description = "Optional organization ID (ESMERALDA_ORG_ID). For an agent project under a folder, its Agent Identity trust domain uses it instead of looking up the folder's organization (which needs resourcemanager.folders.get)."
+}
+
 variable "google_api_endpoints" {
   type = map(object({
     api              = string

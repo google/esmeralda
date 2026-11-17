@@ -146,7 +146,7 @@ The entry point VIP is reserved by Layer 2 in the core subnet: GCP picks a free 
 | [`jq`](https://jqlang.org/download/) | any | Parsing Terraform outputs in the `make` targets (`build-images`, `deploy-all`) and `scripts/` (`esmeralda verify`) |
 | `git`, `make`, `bash` | any | Checkout, `make` targets and helper scripts |
 
-`uv run esmeralda doctor --env dev` checks that these tools are on your `PATH`. Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID` and `ESMERALDA_ALERT_EMAIL`, the address that receives the governance alerts) and review `infrastructure/live/<env>/env.yaml`.
+`uv run esmeralda doctor --env dev` checks that these tools are on your `PATH`. Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID` and `ESMERALDA_ALERT_EMAIL`, the address that receives the governance alerts) and review `infrastructure/live/<env>/env.yaml`. If your projects sit under a folder (`folder_id`), set `ESMERALDA_ORG_ID`, or give the identity running Terraform `resourcemanager.folders.get` on the folder chain (for example `roles/browser`) so the Agent Identity trust domain can resolve the organization.
 
 #### 1. Using the `esmeralda` CLI (Recommended)
 

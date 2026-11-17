@@ -82,6 +82,12 @@ variable "agent_project_ids" {
   default     = []
 }
 
+variable "org_id" {
+  type        = string
+  description = "Optional organization ID (ESMERALDA_ORG_ID). For an agent project under a folder, its Agent Identity trust domain uses it instead of looking up the folder's organization."
+  default     = ""
+}
+
 variable "google_api_endpoints" {
   type = map(object({
     api              = string

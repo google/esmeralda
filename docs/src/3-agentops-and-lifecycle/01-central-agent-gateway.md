@@ -176,10 +176,19 @@ principalSet://agents.global.org-<ORG_ID>.system.id.goog/attribute.platformConta
 **Esmeralda:**
 - Role grants and `roles/iap.egressor` live in [3-security/agent_identity.tf](../../../infrastructure/modules/3-security/agent_identity.tf).
 - Because CX agents and AI CoE agents run in separate projects, each team's agents form their own `principalSet`.
-- The trust domain is built in one place, the shared module [`_shared/agent_identity_trust_domain`](../../../infrastructure/modules/_shared/agent_identity_trust_domain/main.tf), which layers 3, 4 and 5 call:
-  - a project in an organization, whether its parent is the organization or a folder (`folder_id` in `env.yaml`), gets `agents.global.org-<ORG_ID>.system.id.goog`. The project's own `org_id` field is empty when its parent is a folder, so the module looks up the organization of that folder (through nested folders too); the deployer needs `resourcemanager.folders.get` on it;
+- The trust domain is built in one place, the shared module [`_shared/agent_identity_trust_domain`](../../../infrastructure/modules/_shared/agent_identity_trust_domain/main.tf), which layer 3 security, the layer 4 agent gateway and both layer 5 agent modules call, each with the same optional `org_id` (`ESMERALDA_ORG_ID`):
+  - a project whose parent is the organization gets `agents.global.org-<ORG_ID>.system.id.goog` from its own `org_id` field (`ESMERALDA_ORG_ID` is ignored);
+  - a project under a folder (`folder_id` in `env.yaml`) also gets `agents.global.org-<ORG_ID>.system.id.goog`, but its own `org_id` field is empty. With `ESMERALDA_ORG_ID` set, the module uses it and reads no folder. Without it, the module looks up the organization of the folder (through nested folders too), so the identity running Terraform needs `resourcemanager.folders.get` on the parent folder and every folder above it, for example `roles/browser` or Folder Viewer (`roles/resourcemanager.folderViewer`) on the top folder;
   - a project with no organization gets `agents.global.proj-<PROJECT_NUMBER>.system.id.goog`;
-  - a project under a folder whose organization can't be resolved fails the plan with a clear error, instead of falling back to the project-scoped pool (which doesn't exist for that project).
+  - a project under a folder whose organization can't be resolved fails the plan, instead of falling back to the project-scoped pool (which doesn't exist for that project):
+
+    ```text
+    Agent Identity trust domain: project number <PROJECT_NUMBER> is in folder <FOLDER_ID>, but the organization
+    of that folder could not be resolved. Set ESMERALDA_ORG_ID (org_id in env.yaml) to the organization ID, or
+    grant the identity running Terraform resourcemanager.folders.get on the folder and its parent folders ...
+    ```
+
+    Without the folder permission, the plan can also stop earlier at the folder lookup itself, with a `403` (`resourcemanager.folders.get` denied) on `data.google_folder.parent`. Either way, the fix is to set `ESMERALDA_ORG_ID` in the [user-local env file](../4-esmeralda-library/guide.md#terragrunt-variables-user-local-env-file) (`gcloud projects get-ancestors <PROJECT_ID>` lists the organization ID) or to grant the folder permission.
 
 ### 3.3 Agent Registry
 
@@ -648,7 +657,8 @@ The layers deploy in order (`uv run esmeralda deploy --all --env <env>`, or `mak
 | `Network is unreachable` | Code overrides DNS or sockets, or uses a proxy variable | Remove the override; let normal DNS and the runtime redirection work |
 | `HTTP 498` / session or token errors at start-up, or `Egress request is not authorized ... unregistered in the Agent Registry` | A Google API the agent calls isn't declared (so not registered or not granted to it) | Add the API to the agent's catalog `google_apis` (or the policy baseline), regenerate `catalog/.resolved/<env>.json`, apply layer 4 then the `iap-egress` unit |
 | Layer 4: `Error waiting for Creating AgentConnectivityTemplate ... Config validation failed` | The Agent Gateway service agent can't read the network attachment or list the DNS zones of the peering target network (the field violations are in the operation: `GET https://networkservices.googleapis.com/v1beta1/projects/<GOV>/locations/<REGION>/operations`) | Layer 4 grants both (section 3.6). If a grant was made outside Terraform or just now, wait a few minutes for IAM propagation and apply again |
-| Layer 3, 4 or 5: `Identity Pool does not exist (.../workloadIdentityPools/agents.global.proj-<n>.system.id.goog)` | A trust domain was built from the project's `org_id`, which is empty for a project under a folder | Fixed in the shared trust domain module (section 3.2), which takes the organization from the parent folder |
+| Layer 3, 4 or 5: `Identity Pool does not exist (.../workloadIdentityPools/agents.global.proj-<n>.system.id.goog)` | A trust domain was built from the project's `org_id`, which is empty for a project under a folder | Fixed in the shared trust domain module (section 3.2), which takes the organization from `ESMERALDA_ORG_ID` or the parent folder |
+| Layer 3, 4 or 5 plan: `Agent Identity trust domain: project number <n> is in folder <f>, but the organization of that folder could not be resolved`, or a `403` on `data.google_folder.parent` | Project under a folder, `ESMERALDA_ORG_ID` unset, and the identity running Terraform lacks `resourcemanager.folders.get` on the folder chain | Set `ESMERALDA_ORG_ID` in the user-local env file (`esmeralda doctor` shows whether it's set), or grant `roles/browser` (or Folder Viewer) on the top folder (section 3.2) |
 
 ---
 

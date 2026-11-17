@@ -413,6 +413,7 @@ chmod 600 ~/.config/esmeralda/env
 - **Format:** plain `KEY=VALUE` lines and `#` comments, so the CLI and make read it the same way. Only `ESMERALDA_*` keys. The CLI also tolerates `export ` and quotes, but make would keep the quotes, so `esmeralda doctor` warns about them and about other keys.
 - **Precedence:** a variable already set in the environment (or on the `make` command line) wins over the file.
 - **Privacy:** values are never printed. `esmeralda doctor` reports where each variable comes from (`env`, `env-file` or `missing`) and warns if the file is accessible by group or others.
+- **`ESMERALDA_ORG_ID`:** the numeric organization ID (`gcloud projects get-ancestors <PROJECT_ID>` lists it). It matters when the projects sit under a folder (`folder_id` in `env.yaml`): layers 3, 4 and 5 take the Agent Identity trust domain's organization from it. When it's unset, they look up the folder's organization instead, and the identity running Terraform needs `resourcemanager.folders.get` on the parent folder chain (for example `roles/browser` or Folder Viewer on the top folder); without either, the plan fails with `the organization of that folder could not be resolved` (see [Agent Identity](../3-agentops-and-lifecycle/01-central-agent-gateway.md#32-agent-identity-spiffe)). Projects directly under the organization ignore it.
 
 > [!WARNING]
 > Never commit this file or copy it into the repository: billing account and organization ids and the alert address are environment specifics.

@@ -96,6 +96,58 @@ def test_principal_builders_use_the_shared_module(path: pathlib.Path):
     assert (path.parent / CALLERS[path]).resolve() == SHARED.resolve()
 
 
+def _shared_module_blocks(text: str) -> list[str]:
+    """Bodies of the module blocks that call the shared trust domain module."""
+    blocks = re.findall(r'module "[^"]+" \{\n(.*?)\n\}', text, flags=re.S)
+    return [b for b in blocks if "_shared/agent_identity_trust_domain" in b]
+
+
+@pytest.mark.parametrize("path", sorted(CALLERS), ids=lambda p: p.relative_to(MODULES).as_posix())
+def test_principal_builders_pass_org_id(path: pathlib.Path):
+    """Every call passes org_id (ESMERALDA_ORG_ID), so resolution is the same in every layer."""
+    blocks = _shared_module_blocks(path.read_text())
+    assert blocks, f"{path} calls no shared trust domain module"
+    for block in blocks:
+        assert re.search(r"^\s*org_id\s+= var\.org_id$", block, flags=re.M), block
+    variables = (path.parent / "variables.tf").read_text()
+    assert re.search(r'variable "org_id" \{[^}]*default\s+= ""', variables, flags=re.S), path.parent
+
+
+# Live units whose module computes a trust domain, and how they read org_id from env.yaml.
+_UNITS = {
+    "layer-3-security": 'org_id      = lookup(local.env_vars.locals, "org_id", "")',
+    "layer-4-governance": 'org_id = lookup(local.env, "org_id", "")',
+    "layer-5-workloads/agents/cx-mortgage-orchestrator": 'org_id = lookup(local.env_vars.locals, "org_id", "")',
+    "layer-5-workloads/agents/ai-coe-mortgage-specialist": 'org_id = lookup(local.env_vars.locals, "org_id", "")',
+}
+
+
+@pytest.mark.parametrize("env", ["dev", "prd"])
+@pytest.mark.parametrize("unit", sorted(_UNITS))
+def test_live_units_pass_org_id(env: str, unit: str):
+    hcl = REPO_ROOT / "infrastructure/live" / env / unit / "terragrunt.hcl"
+    assert _UNITS[unit] in hcl.read_text(), f"{hcl} must pass org_id from env.yaml"
+
+
+def test_governance_wires_org_id_to_the_agent_gateway():
+    main = (MODULES / "4-governance/main.tf").read_text()
+    gateway = re.search(r'module "agent_gateway" \{\n(.*?)\n\}', main, flags=re.S)
+    assert gateway and re.search(r"^\s*org_id\s+= var\.org_id$", gateway.group(1), flags=re.M)
+    assert 'variable "org_id"' in (MODULES / "4-governance/variables.tf").read_text()
+
+
+def test_env_yaml_reads_org_id_from_the_env_file():
+    for env in ("dev", "prd"):
+        text = (REPO_ROOT / "infrastructure/live" / env / "env.yaml").read_text()
+        assert re.search(r'org_id\s+= get_env\("ESMERALDA_ORG_ID", ""\)', text), env
+
+
+def test_shared_module_skips_the_folder_lookup_when_org_id_is_given():
+    main = _code(SHARED / "main.tf")
+    assert 'org_id_given = trimspace(var.org_id) != ""' in main
+    assert "!local.org_id_given ? 1 : 0" in main
+
+
 def test_shared_module_resolves_the_organization_of_a_folder():
     main = _code(SHARED / "main.tf")
     assert 'data "google_folder" "parent"' in main
@@ -149,11 +201,28 @@ def test_project_under_a_folder_uses_the_folder_organization(tmp_path: pathlib.P
         "project_org_id": "",
         "project_folder_id": "555",
         "folder_organization": "organizations/1234567890",
-        "org_id": "999",
     }
     res, out = _resolve(tmp_path, tfvars)
     assert res.returncode == 0, res.stdout + res.stderr
-    # The folder lookup wins over the optional org_id input.
+    assert out["trust_domain"] == "agents.global.org-1234567890.system.id.goog"
+
+
+def test_project_under_a_folder_prefers_the_org_id_input(tmp_path: pathlib.Path):
+    """ESMERALDA_ORG_ID set: it is used for a project under a folder (the folder lookup is skipped)."""
+    tfvars = {"project_number": "111", "project_folder_id": "555", "org_id": "1234567890"}
+    res, out = _resolve(tmp_path, tfvars)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert out["trust_domain"] == "agents.global.org-1234567890.system.id.goog"
+    # Even if a folder organization were passed, the explicit org_id wins.
+    res, out = _resolve(tmp_path / "both", {**tfvars, "folder_organization": "organizations/999"})
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert out["trust_domain"] == "agents.global.org-1234567890.system.id.goog"
+
+
+def test_project_under_the_organization_ignores_the_org_id_input(tmp_path: pathlib.Path):
+    """Org-parented projects (dev, prd) keep their own organization, whatever ESMERALDA_ORG_ID says."""
+    res, out = _resolve(tmp_path, {"project_number": "111", "project_org_id": "1234567890", "org_id": "999"})
+    assert res.returncode == 0, res.stdout + res.stderr
     assert out["trust_domain"] == "agents.global.org-1234567890.system.id.goog"
 
 
@@ -177,6 +246,9 @@ def test_folder_without_resolvable_organization_fails(tmp_path: pathlib.Path):
     res, _ = _resolve(tmp_path, {"project_number": "111", "project_folder_id": "555"})
     assert res.returncode != 0
     assert "is in folder 555, but the organization of that folder could not be resolved" in _text(res)
+    # The error tells the operator both ways out.
+    assert "Set ESMERALDA_ORG_ID" in _text(res)
+    assert "resourcemanager.folders.get" in _text(res)
 
 
 def test_non_numeric_organization_fails(tmp_path: pathlib.Path):

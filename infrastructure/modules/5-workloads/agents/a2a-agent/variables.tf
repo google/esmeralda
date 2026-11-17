@@ -3,6 +3,12 @@ variable "project_id" {
   type        = string
 }
 
+variable "org_id" {
+  description = "Optional organization ID (ESMERALDA_ORG_ID). For a project under a folder, the Agent Identity trust domain uses it instead of looking up the folder's organization (which needs resourcemanager.folders.get)."
+  type        = string
+  default     = ""
+}
+
 variable "region" {
   description = "The region where the Reasoning Engine is deployed"
   type        = string

@@ -53,7 +53,7 @@ variable "region" {
 }
 
 variable "org_id" {
-  description = "The GCP Organization ID (numeric string). Optional: the Agent Identity trust domain takes the organization from the project ancestry and uses this only as a fallback."
+  description = "Optional GCP Organization ID (numeric string; ESMERALDA_ORG_ID). For an agent project under a folder, the Agent Identity trust domain uses it instead of looking up the folder's organization (which needs resourcemanager.folders.get). Empty: the organization comes from the project ancestry."
   type        = string
   default     = ""
 }
