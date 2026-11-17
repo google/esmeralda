@@ -169,7 +169,7 @@ curl -s --cacert /tmp/root-ca.pem -X POST https://${HOST}/mcp \
     -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "search_documents", "arguments": {"applicant_last_name": "Sterling", "document_type": "tax_return"}}, "id": 1}' | jq .
 ```
 
-You can also use the helper script `scripts/test_mcp_on_vm.sh` (`--service`, `--method`, `--params`) to run the same check.
+To run the automated MCP `initialize` probe for one host only (from the same test VM, with the same TLS checks), use `uv run esmeralda verify --env dev --probe legacy-dms`.
 
 ---
 

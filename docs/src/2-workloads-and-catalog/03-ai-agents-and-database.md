@@ -156,19 +156,24 @@ make test-gateway ENV=dev
 
 #### 3. Direct A2A Verification from the Private Test VM
 
-To inspect the raw Agent Card and A2A JSON-RPC payload inside the Shared VPC:
+`uv run esmeralda verify --env dev --probe ai-coe-mortgage-specialist` runs the automated A2A probe for the specialist host only: from the test VM, it verifies TLS against Esmeralda's internal Root CA and fetches the Agent Card through `https://ai-coe-mortgage-specialist.esmeralda.internal`. For a full message round trip, use `make query AGENT=ai-coe-mortgage-specialist TARGET=remote ENV=dev` (above).
+
+To inspect the raw Agent Card yourself inside the Shared VPC (copy the internal Root CA to the VM first, as shown in [1.3 Entry Point → Verification and Runbook](./01-ingress-gateways.md#verification-and-runbook)):
 
 ```bash
 CX_PROJ=$(cd infrastructure/live/dev/layer-1-projects && terragrunt output -raw cx_agents_project_id)
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap \
-  --command="bash -s" < scripts/test_a2a_through_gateway.sh
+gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap
 
-# If the specialist host is routed through an adapter (e.g. Envoy), pass an ID token instead:
-gcloud compute ssh test-vm-dev --zone=us-central1-f --project=$CX_PROJ --tunnel-through-iap \
-  --command="TOKEN_KIND=id bash -s" < scripts/test_a2a_through_gateway.sh
+# Inside the VM: the built-in direct backend (Agent Runtime) takes an OAuth2 access token
+HOST=ai-coe-mortgage-specialist.esmeralda.internal
+TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" | jq -r .access_token)
+# If the host is routed through an adapter (e.g. Envoy), use an ID token for the host instead:
+# TOKEN=$(curl -s -H "Metadata-Flavor: Google" \
+#   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://${HOST}")
+
+curl -s --cacert /tmp/root-ca.pem -H "Authorization: Bearer ${TOKEN}" https://${HOST}/v1/card | jq .
 ```
-
-The script verifies TLS against Esmeralda's internal Root CA (`/tmp/root-ca.pem`), fetches `/v1/card`, and sends an A2A message through `https://ai-coe-mortgage-specialist.esmeralda.internal`.
 
 ---
 

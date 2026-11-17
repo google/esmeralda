@@ -26,7 +26,8 @@ assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls `ai-coe-mortg
 | `packages/esmeralda/` | Runtime library shared by agents: `esmeralda run/serve/query`, auth, MCP/A2A clients, telemetry |
 | `infrastructure/modules/` | Terraform modules, one folder per layer (`0-cicd` … `5-workloads`) |
 | `infrastructure/live/` | Terragrunt units: `root.hcl`, `shared/layer-0-cicd`, `<env>/env.yaml` + `<env>/layer-*` (envs: `dev`, `prd`) |
-| `scripts/` | Helpers called by Make targets (lock, preflight, gateway probes, image checks, promotion) |
+| `scripts/` | Shell helpers behind CLI commands and Make targets (lock, preflight, gateway probes, image checks, promotion); see `scripts/README.md`. New logic goes into the `esmeralda` CLI |
+| `release/` | GitOps release manifest `prd.yaml` (image digests), written by `esmeralda release promote`; see `release/README.md` |
 | `docs/` | MkDocs site: `mkdocs.yml`, `src/` (pages), `hooks/` (Make Targets page generated from the Makefile) |
 | `tests/load_test/` | Locust load test (`make load-test`) |
 | `.cloudbuild/`, `.github/`, `.githooks/` | Image build config, Docs + uv.lock workflows, pre-push lock check |
