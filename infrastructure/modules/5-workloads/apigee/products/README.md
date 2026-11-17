@@ -29,6 +29,6 @@ uv run esmeralda plan apigee/products --env dev
 uv run esmeralda apply apigee/products --env dev --allow-destroy
 ```
 
-The plan replaces the consumer's `google_apigee_developer_app` (Apigee issues a new key) and its `google_secret_manager_secret_version` (the new key becomes `latest`, the version holding the old key is destroyed). The old key stops working as soon as the app is replaced, so callers that read `latest` from Secret Manager (such as `scripts/test_partner.sh` and `esmeralda verify --partner`) pick up the new key on their next run. Callers that cached the key (for example `ESMERALDA_PARTNER_API_KEY` in a local env file) must be updated.
+The plan replaces the consumer's `google_apigee_developer_app` (Apigee issues a new key) and its `google_secret_manager_secret_version` (the new key becomes `latest`, the version holding the old key is destroyed). The old key stops working as soon as the app is replaced, so callers that read `latest` from Secret Manager (such as `esmeralda verify --partner` and `make load-test-partner`) pick up the new key on their next run. Callers that cached the key (for example `ESMERALDA_PARTNER_API_KEY` in a local env file) must be updated.
 
 A keeper's first apply never rotates: adding a consumer, or upgrading an environment to a module version with keepers, creates them without replacing any app. Analytics and attribution key on the app name, which does not change.

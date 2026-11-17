@@ -33,7 +33,7 @@ output "consumer_key_secret_names" {
 }
 
 output "partner_consumer_key_secret_id" {
-  description = "Secret Manager secret resource ID for the partner-smoke-test consumer key (used by scripts/test_partner.sh)."
+  description = "Secret Manager secret resource ID for the partner-smoke-test consumer key (used by esmeralda verify --partner)."
   value = try(
     google_secret_manager_secret.consumer_key["partner-smoke-test"].id,
     try(values(google_secret_manager_secret.consumer_key)[0].id, null)

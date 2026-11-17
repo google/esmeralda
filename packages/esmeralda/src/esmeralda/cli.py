@@ -1043,7 +1043,7 @@ def _parser() -> argparse.ArgumentParser:
     verify.add_argument(
         "--partner",
         action="store_true",
-        help="run Apigee partner front-door conformance probes (scripts/test_partner.sh)",
+        help="run Apigee partner front-door conformance probes from the test VM (tests/partner/probe.py)",
     )
     verify.add_argument(
         "--model-armor",

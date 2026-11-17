@@ -18,6 +18,5 @@ Terraform `local-exec` helpers are not here: they live next to the modules in
 | `preflight.sh` | Workstation tool, credential and billing checklist | `make preflight` (and `make bootstrap`) |
 | `with_local_mcp.sh` | Starts the local MCP servers around a command, then stops them | `make serve` |
 | `vm/gateway_probes.sh` | Runs **on the test VM**: probes every catalog host through the entry point, plus the verified attribution probes (the CLI resolves the inputs in Python, `esmeralda.ops.testvm`) | `esmeralda verify` (and its MCP tool), `make test-gateway` |
-| `test_partner.sh` | Apigee partner front-door conformance checks (offline bundle checks, or live probes from the VM) | `esmeralda verify --partner` (`make test-partner`) |
-| `partner_env.sh` | Sourced helper: resolves the test VM, entry point, internal CA and partner key | `test_partner.sh`, `partner_load_test.sh` |
+| `partner_env.sh` | Sourced helper: resolves the test VM, entry point, internal CA and partner key | `partner_load_test.sh` |
 | `partner_load_test.sh` | Runs the partner Locust load test on the test VM and copies the reports back | `make load-test-partner` |

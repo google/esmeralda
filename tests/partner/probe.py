@@ -14,8 +14,9 @@
 
 """Live partner conformance probes, driven by ``scenarios.py`` (stdlib only).
 
-``scripts/test_partner.sh <env>`` copies this file and ``scenarios.py`` to the test VM and runs
-``python3 probe.py`` there. It sends every catalog scenario that has a ``probe`` number to
+``esmeralda verify --partner --env <env>`` (``esmeralda.ops.runtime.run_partner_probes``) copies
+this file and ``scenarios.py`` to the test VM and runs ``python3 probe.py`` there. It sends every
+catalog scenario that has a ``probe`` number to
 ``https://$PARTNER_HOST`` (TCP to ``$PARTNER_ENTRY_IP``, TLS SNI and ``Host`` = the partner host,
 like ``curl --resolve``), verified against ``$PARTNER_CA_FILE``, and prints one line per probe::
 

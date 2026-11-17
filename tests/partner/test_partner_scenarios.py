@@ -26,7 +26,6 @@ from partner_testlib import PARTNER_DIR, REPO_ROOT, load
 
 sc = load("scenarios", PARTNER_DIR / "scenarios.py")
 PROXIES_DIR = REPO_ROOT / "apps" / "apigee" / "proxies"
-TEST_PARTNER_SH = REPO_ROOT / "scripts" / "test_partner.sh"
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
@@ -139,9 +138,13 @@ def test_catalog_is_stdlib_only() -> None:
         }, (path.name, imported)
 
 
-def test_test_partner_sh_runs_the_catalog() -> None:
-    """The live probes come from the catalog: the script ships probe.py + scenarios.py to the VM."""
-    script = TEST_PARTNER_SH.read_text()
-    assert "scenarios.py" in script and "probe.py" in script
-    remote = script.split("REMOTE_EOF", 1)[1]
-    assert "curl " not in remote, "live probes belong in tests/partner/scenarios.py, not in curl calls"
+def test_verify_partner_ships_the_catalog() -> None:
+    """The live probes come from the catalog: the CLI ships probe.py + scenarios.py to the VM."""
+    from esmeralda.ops import runtime
+
+    assert {REPO_ROOT / p for p in runtime.PARTNER_FILES.values()} == {
+        PARTNER_DIR / "scenarios.py",
+        PARTNER_DIR / "probe.py",
+    }
+    assert 'python3 "${WORK}/probe.py"' in runtime.PARTNER_REMOTE
+    assert "curl " not in runtime.PARTNER_REMOTE, "live probes belong in tests/partner/scenarios.py, not in curl calls"

@@ -23,6 +23,10 @@ outputs (nothing hardcoded):
 * the entry point IP and private domain (``layer-2-networking``);
 * the internal Root CA certificate (public; Secret Manager secret from ``layer-3-security``).
 
+``apigee_env(root, env)`` tells whether the Apigee partner front door is deployed, and
+``partner_key(root, env)`` returns the partner API key (``$ESMERALDA_PARTNER_API_KEY``, else the
+``apigee/products`` consumer key secret).
+
 ``run(vm, payload, vars=..., files=...)`` sends ``payload`` (bash) to the VM on stdin, after one
 shell-quoted ``NAME=value`` line per variable and one ``<NAME>_B64=<base64>`` line per file. The VM
 has no checkout or virtual environment: everything the payload needs travels in it. Secrets go
@@ -45,6 +49,9 @@ from esmeralda.ops.repo import OpsError
 VM_UNITS = ("layer-5-workloads/test-vm", "layer-5-workloads/services/test-vm")
 NETWORKING_UNIT = "layer-2-networking"
 SECURITY_UNIT = "layer-3-security"
+APIGEE_PLATFORM_UNIT = "layer-5-workloads/apigee/platform"
+APIGEE_PRODUCTS_UNIT = "layer-5-workloads/apigee/products"
+PARTNER_KEY_VAR = "ESMERALDA_PARTNER_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -122,6 +129,26 @@ def resolve(root: Path, env: str) -> TestVM:
     if not ca_secret:
         raise OpsError("No internal_ca_secret_id output in layer 3.")
     return TestVM(env, name, zone, project, entry_ip, domain, secret(ca_secret))
+
+
+def apigee_env(root: Path, env: str) -> str:
+    """The Apigee environment name, or "" when Apigee is not deployed in ``env``."""
+    if not (repo.env_dir(root, env) / APIGEE_PLATFORM_UNIT).is_dir():
+        return ""
+    return text(outputs(root, env, APIGEE_PLATFORM_UNIT).get("apigee_env_name"))
+
+
+def partner_key(root: Path, env: str) -> str:
+    """``$ESMERALDA_PARTNER_API_KEY`` (environment or env file), else the apigee/products consumer key secret."""
+    key = repo.tool_env().get(PARTNER_KEY_VAR, "")
+    if key:
+        return key
+    secret_id = text(outputs(root, env, APIGEE_PRODUCTS_UNIT).get("partner_consumer_key_secret_id"))
+    if secret_id:
+        key = secret(secret_id)
+    if not key:
+        raise OpsError(f"Set {PARTNER_KEY_VAR} or deploy {APIGEE_PRODUCTS_UNIT}.")
+    return key
 
 
 def payload(script: str, *, vars: dict[str, str] | None = None, files: dict[str, Path] | None = None) -> str:

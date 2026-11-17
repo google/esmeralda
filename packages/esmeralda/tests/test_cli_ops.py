@@ -504,23 +504,33 @@ def test_cli_verify_probe_and_skip_query(ops_checkout, monkeypatch, capsys):
 
 
 def test_cli_verify_partner(ops_checkout, monkeypatch, capsys):
-    (ops_checkout / "scripts").mkdir(exist_ok=True)
-    (ops_checkout / "scripts" / "test_partner.sh").write_text("")
     pt_out = (
-        "🧪 Running offline partner front-door conformance checks (5 probes)...\n"
-        "  ✅ Probe 1 (Unauthenticated -> 401): VerifyAPIKey enforced in PreFlow\n"
-        "  ✅ Probe 2 (Unallowlisted agent -> 403/404): Internal specialists blocked\n"
-        "✅ Partner conformance checks passed (offline mode).\n"
+        "🔎 Running live partner conformance probes against https://partner.example.internal (10.0.1.3) from vm...\n"
+        "  ✅ Probe 1 (Unauthenticated -> 401): HTTP 401\n"
+        "  ✅ Probe 2 (Unallowlisted agent -> 403/404): HTTP 404\n"
+        "✅ All live partner front-door conformance probes passed!\n"
     )
-    monkeypatch.setattr(repo, "run", lambda cmd, **_: subprocess.CompletedProcess(cmd, 0, pt_out, ""))
+    monkeypatch.setattr(
+        runtime, "run_partner_probes", lambda root, env, **_: subprocess.CompletedProcess([], 0, pt_out, "")
+    )
 
     assert cli.main(["verify", "--partner", "--env", "dev", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["passed"] is True and data["partner"]["ok"] == 2 and data["partner"]["mode"] == "offline"
+    assert data["passed"] is True and data["partner"]["ok"] == 2 and data["partner"]["mode"] == "live"
     assert len(data["steps"]) == 2
 
     assert cli.main(["verify", "--partner", "--env", "dev"]) == 0
     assert "Verification passed" in capsys.readouterr().out
+
+    # Apigee not deployed: nothing to probe, one step with the notice.
+    notice = "ℹ️  Apigee is disabled in dev (no live state in x): no live probes (make test-apigee checks it offline).\n"
+    monkeypatch.setattr(
+        runtime, "run_partner_probes", lambda root, env, **_: subprocess.CompletedProcess([], 0, notice, "")
+    )
+    assert cli.main(["verify", "--partner", "--env", "dev", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["partner"]["mode"] == "offline" and data["partner"]["probes"] == []
+    assert [(s["step"], s["passed"], s["detail"]) for s in data["steps"]] == [("partner", True, notice.strip())]
 
 
 def test_cli_logs_supports_agent_and_mcp_service(ops_checkout, monkeypatch, capsys):
