@@ -64,6 +64,7 @@ data "google_project" "current" {
 module "trust_domain" {
   source     = "../../../_shared/agent_identity_trust_domain"
   project_id = var.project_id
+  org_id     = var.org_id
 }
 
 resource "google_bigquery_dataset_iam_member" "agent_bq_writer" {

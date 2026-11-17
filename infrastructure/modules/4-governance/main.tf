@@ -106,6 +106,7 @@ module "agent_gateway" {
   model_armor_timeout_ms    = var.model_armor_config.gateway_timeout_ms
   agent_invoker_sa_emails   = var.agent_invoker_sa_emails
   agent_project_ids         = var.agent_project_ids
+  org_id                    = var.org_id
   google_api_endpoints      = var.google_api_endpoints
   enable_agent_gateway      = var.enable_agent_gateway
   internal_root_ca_pem      = var.internal_root_ca_pem

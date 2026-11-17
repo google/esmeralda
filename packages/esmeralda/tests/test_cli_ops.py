@@ -439,6 +439,13 @@ def test_cli_doctor_reports_env_file_source_without_values(ops_checkout, tmp_pat
     assert check["status"] == "warn"
     assert "quoted values for ESMERALDA_BILLING_ACCOUNT" in check["detail"] and "OTHER_KEY" in check["detail"]
 
+    # ESMERALDA_ORG_ID unset: still ok (optional), with the folder permission hint.
+    monkeypatch.delenv("ESMERALDA_ORG_ID", raising=False)
+    assert cli.main(["doctor", "--env", "dev", "--json"]) == 0
+    org = {c["name"]: c for c in json.loads(capsys.readouterr().out)["checks"]}["env:ESMERALDA_ORG_ID"]
+    assert org["status"] == "ok" and org["source"] == "missing"
+    assert "resourcemanager.folders.get" in org["detail"]
+
     path.write_text(f"ESMERALDA_BILLING_ACCOUNT={secret}\n")
     path.chmod(0o640)
     assert cli.main(["doctor", "--env", "dev", "--json"]) == 0

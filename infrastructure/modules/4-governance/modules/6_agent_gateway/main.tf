@@ -421,6 +421,7 @@ module "agent_project_trust_domain" {
   source     = "../../../_shared/agent_identity_trust_domain"
   for_each   = toset(var.agent_project_ids)
   project_id = each.value
+  org_id     = var.org_id
 }
 
 locals {

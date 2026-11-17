@@ -67,6 +67,9 @@ inputs = {
     dependency.projects.outputs.ai_coe_agents_project_id,
     dependency.projects.outputs.cx_agents_project_id
   ]
+  # Optional organization ID (ESMERALDA_ORG_ID): the trust domain of an agent project under a folder
+  # uses it instead of the folder lookup (resourcemanager.folders.get).
+  org_id = lookup(local.env, "org_id", "")
 
   # Google API entries of the Agent Registry: only the APIs the catalog declares (google_apis).
   google_api_endpoints = local.env.catalog_google_apis
