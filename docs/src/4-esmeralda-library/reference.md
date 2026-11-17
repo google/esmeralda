@@ -393,7 +393,7 @@ esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE | --local-mcp] 
 Without `--url` or `--engine`, the agent runs in-process with `env` + `local_env` applied. Exit codes: `0` passed, `1` failed run, `2` usage or configuration error.
 
 ```text
-esmeralda serve [--agent-dir DIR] [--host HOST] [--port PORT] [--local] [--web] [--otel-to-cloud]
+esmeralda serve [--agent-dir DIR] [--host HOST] [--port PORT] [--local | --local-mcp] [--web] [--otel-to-cloud]
 ```
 
 | Option | Default | Description |
@@ -402,10 +402,11 @@ esmeralda serve [--agent-dir DIR] [--host HOST] [--port PORT] [--local] [--web] 
 | `--host` | `0.0.0.0` | Bind address |
 | `--port` | `$PORT`, else `8080` | Port |
 | `--local` | off | Apply `local_env` (workstation runs). Without it, only `env` is applied, as defaults |
+| `--local-mcp` | off | `--local`, plus the local MCP servers up while the agent serves: starts the servers whose `localhost:<port>` URLs are in `local_env` (as `query --local-mcp`), and stops them when the server stops, also on Ctrl+C. Servers already running are reused and left running. Exit code `1` if a server doesn't start |
 | `--web` | off | ADK dev UI (`adk web`) instead of the API server. ADK agents only |
 | `--otel-to-cloud` | off | Export traces and logs to Google Cloud (`--otel_to_cloud` for ADK; the GCP exporters for A2A) |
 
-ADK agents: replaces itself with `adk api_server <dir> --host --port --no-reload --gemini_enterprise_app_name agent [--otel_to_cloud]`. A2A agents: runs uvicorn with `esmeralda.serve.a2a_server(config)`. Exit code `2` for a usage or configuration error.
+ADK agents: replaces itself with `adk api_server <dir> --host --port --no-reload --gemini_enterprise_app_name agent [--otel_to_cloud]` (with `--local-mcp`, runs it as a child process instead, so the MCP servers can be stopped afterwards). A2A agents: runs uvicorn with `esmeralda.serve.a2a_server(config)`. Exit code `2` for a usage or configuration error.
 
 ```text
 esmeralda mcp [--repo PATH]

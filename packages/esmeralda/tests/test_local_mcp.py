@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""esmeralda.local_mcp and ``esmeralda query --local-mcp``: start, readiness and teardown of the
-local MCP servers, with subprocesses and health checks faked (no ports, no network)."""
+"""esmeralda.local_mcp, ``esmeralda query --local-mcp`` and ``esmeralda serve --local-mcp``: start,
+readiness and teardown of the local MCP servers, with subprocesses and health checks faked (no ports,
+no network)."""
 
 from __future__ import annotations
 
 import io
+import os
 import signal
 import subprocess
 import sys
@@ -280,3 +282,67 @@ def test_query_local_mcp_fails_cleanly_when_a_server_does_not_start(fake, checko
     assert cli.main(["query", "--agent-dir", str(checkout_agent), "--local-mcp", "hello"]) == 1
     assert not ran
     assert "exited with code 3" in capsys.readouterr().err
+
+
+# ---- esmeralda serve --local-mcp ---------------------------------------------------------------
+
+
+@pytest.fixture
+def served(monkeypatch):
+    """Captures the child server ``serve --local-mcp`` runs instead of exec'ing it."""
+    from esmeralda import serve
+
+    calls = []
+
+    def run_child(cmd, cwd):
+        calls.append({"cmd": cmd, "cwd": cwd, "EMAIL_MCP_URL": os.environ.get("EMAIL_MCP_URL")})
+        return 0
+
+    monkeypatch.setattr(serve, "run_child", run_child)
+    monkeypatch.setattr(serve.os, "execvp", lambda *a: pytest.fail("serve --local-mcp must not exec"))
+    return calls
+
+
+def test_parser_serve_local_mcp_flag():
+    parser = cli._parser()
+    assert parser.parse_args(["serve", "--local-mcp"]).local_mcp is True
+    assert parser.parse_args(["serve"]).local_mcp is False
+
+
+def test_serve_local_mcp_runs_the_server_with_its_mcp_servers_up(fake, served, checkout_agent):
+    assert cli.main(["serve", "--agent-dir", str(checkout_agent), "--local-mcp", "--port", "8099"]) == 0
+    assert served[0]["cmd"][:2] == ["adk", "api_server"] and "8099" in served[0]["cmd"]
+    assert served[0]["EMAIL_MCP_URL"] == "http://localhost:8001/mcp"  # --local-mcp implies --local
+    ports = sorted(int(p.cmd[p.cmd.index("--port") + 1]) for p in fake["procs"])
+    assert ports == [8001, 8003]
+    assert len(fake["killed"]) == 2 and not fake["up"]  # stopped once the server exited
+
+
+def test_serve_local_mcp_stops_servers_when_interrupted(fake, served, checkout_agent, monkeypatch, capsys):
+    from esmeralda import serve
+
+    def interrupted(cmd, cwd):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(serve, "run_child", interrupted)
+    assert cli.main(["serve", "--agent-dir", str(checkout_agent), "--local-mcp"]) == 130
+    assert len(fake["killed"]) == 2 and not fake["up"]
+
+
+def test_serve_local_mcp_fails_cleanly_when_a_server_does_not_start(fake, served, checkout_agent, capsys):
+    fake["exit_code"] = 3
+    assert cli.main(["serve", "--agent-dir", str(checkout_agent), "--local-mcp"]) == 1
+    assert not served
+    assert "exited with code 3" in capsys.readouterr().err
+
+
+def test_cli_and_serve_do_not_load_local_mcp():
+    """Agent images run ``esmeralda run``/``serve``: the development-only module stays unloaded."""
+    code = (
+        "import sys\n"
+        "from esmeralda import cli, serve\n"
+        "cli._parser().parse_args(['serve', '--local'])\n"
+        "assert 'esmeralda.local_mcp' not in sys.modules, 'esmeralda.local_mcp was imported'\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

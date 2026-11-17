@@ -133,9 +133,10 @@ build-my-agent: ## Build and push my agent image
 |---|---|---|
 | `--otel-to-cloud` | Yes: exports traces and logs to Google Cloud | Usually not |
 | `--local` | No | Yes: applies `local_env` from `agent.yaml` |
+| `--local-mcp` | No | Yes: `--local`, plus the agent's local MCP servers while it serves (stopped afterwards) |
 | `--port` | `$PORT` (default 8080) | Any |
 
-Locally, `make serve` adds `--local` and starts the local MCP servers:
+Locally, `make serve` runs `esmeralda serve --local-mcp`:
 
 ```bash
 make serve AGENT=ai-coe-mortgage-specialist            # A2A server on :8080
