@@ -87,7 +87,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	test-e2e serve deploy-cicd deploy-projects deploy-networking deploy-security \
 	query deploy-foundations deploy-governance build-ai-coe-mortgage-specialist build-cx-mortgage-orchestrator build-agents \
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy \
-	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
+	build-services build-ui build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
 	verify test-release promote test-governance-chaos load-test load-test-partner docs-serve docs-build clean preflight \
 	status doctor units plan apply logs guard hooks build-package ui test-ui test-ui-api
@@ -264,7 +264,10 @@ build-service-envoy: ## Build and push the Envoy gateway image (digest-pinned up
 build-services: ## Build all MCP service + Envoy gateway images concurrently
 	@$(ESM) build services $(BUILD_FLAGS)
 
-build-images: build-services build-agents ## Build every image deployed by Layer 5
+build-ui: ## Build and push the Esmeralda console image (repository-root context, deployed only when frontends.esmeralda_ui is enabled)
+	@$(ESM) build esmeralda-ui $(BUILD_FLAGS)
+
+build-images: build-services build-agents build-ui ## Build every image deployed by Layer 5
 
 # ==============================================================================
 # Layer 5: workloads (agents -> MCP services -> gateways -> entry point -> IAP egress), Terragrunt DAG order

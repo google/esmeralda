@@ -24,3 +24,14 @@ callers:
     team: platform
     description: Platform operators (break-glass and manual queries).
     identity: { type: group, id: platform-ops@example.com }
+
+  # The read-only Esmeralda console's runtime service account (layer-5-workloads/frontends/esmeralda-ui,
+  # gateway project). Registered so whatever it calls is attributable to the platform team. It calls
+  # no target yet, so nothing is compiled for it (no grant, no principal_teams row). Its own cost
+  # centre (cc-platform-console) is added to the platform team together with the first target that
+  # lists it, as that target's grant: { cost_centers: [cc-platform-console] }. Adding it to the team
+  # now would widen what every other platform caller may declare.
+  esmeralda-ui:
+    team: platform
+    description: Read-only Esmeralda console (BFF runtime service account); calls no target yet.
+    identity: { type: service_account, ref: "layer-5-workloads/frontends/esmeralda-ui:service_account_email" }

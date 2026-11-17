@@ -27,6 +27,7 @@ Container & agent runtime commands:
   plans, agent queries, gateway probes and agent logs (see ``esmeralda.ops``).
 * ``esmeralda ui --local [--demo | --bigquery] [--port 8090]``: the read-only console (catalog, FinOps
   and audit, traces) on 127.0.0.1, served by the ``esmeralda-ui`` backend package.
+  ``esmeralda ui --url [--env dev|prd]`` prints the deployed console's (private, IAP) URL.
 
 Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda status [--env dev|prd] [--unit <unit> [--output <name>]] [--json]``
@@ -36,7 +37,7 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda apply <unit> [--env dev|prd] [--allow-destroy] [--json]``
 * ``esmeralda deploy <unit>... | --layer N | --all [--env dev|prd] [--allow-destroy] [--dry-run] [--json]``
 * ``esmeralda destroy --env dev --confirm dev [--dry-run] [--json]``
-* ``esmeralda build <agents|services|images|package|<image>> [--tag T] [--skip-tests] [--dry-run] [--verify]``
+* ``esmeralda build <agents|services|frontends|images|package|<image>> [--tag T] [--skip-tests] [--dry-run] [--verify]``
 * ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified YYYY-MM-DD]]``
 * ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
@@ -167,6 +168,37 @@ def _serve(args: argparse.Namespace) -> int:
 
 
 UI_APP_DIR = Path("apps/frontends/esmeralda-ui")
+UI_UNIT = "layer-5-workloads/frontends/esmeralda-ui"
+
+
+def _ui_url(args: argparse.Namespace) -> int:
+    """``esmeralda ui --url``: the deployed console's URL, from the frontend unit's outputs."""
+    from esmeralda.ops import infra, repo
+    from esmeralda.ops.repo import OpsError
+
+    try:
+        root = _resolve_root(getattr(args, "repo", None))
+        url = repo.output(root, args.env, UI_UNIT, "url")
+        enabled = infra.unit_enabled(root, args.env, UI_UNIT)
+    except OpsError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 2
+    if not url:
+        hint = (
+            f"deploy it: esmeralda deploy {UI_UNIT} entrypoint --env {args.env}"
+            if enabled
+            else f"enable frontends.esmeralda_ui in infrastructure/live/{args.env}/env.yaml, then deploy {UI_UNIT} "
+            "and the entrypoint"
+        )
+        print(f"❌ No deployed console in {args.env} (no output url in {UI_UNIT}): {hint}.", file=sys.stderr)
+        return 1
+    print(url)
+    print(
+        "ℹ️  Private URL: open it from a network that reaches the entry point (VPN, Interconnect or a host in the "
+        "VPC that trusts the internal Root CA), signed in as a member of a viewer group (IAP).",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def _ui(args: argparse.Namespace) -> int:
@@ -178,10 +210,15 @@ def _ui(args: argparse.Namespace) -> int:
     from esmeralda.ops import repo
     from esmeralda.ops.repo import OpsError
 
+    if getattr(args, "url", False):
+        if args.local:
+            print("❌ Use either --url (the deployed console) or --local, not both.", file=sys.stderr)
+            return 2
+        return _ui_url(args)
     if not args.local:
         print(
-            "❌ Only `esmeralda ui --local` is available: the deployed console (IAP, internal ingress) comes with "
-            "its Terraform unit.",
+            "❌ Use `esmeralda ui --local` (console on 127.0.0.1) or `esmeralda ui --url --env <env>` (URL of the "
+            "deployed console, behind IAP on the private entry point).",
             file=sys.stderr,
         )
         return 2
@@ -946,11 +983,18 @@ def _parser() -> argparse.ArgumentParser:
     mcp = sub.add_parser("mcp", help="read-only MCP server (stdio) to operate this checkout")
     mcp.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO, else the checkout containing cwd)")
 
-    ui = sub.add_parser("ui", help="run the read-only Esmeralda console locally (--local): catalog, FinOps, traces")
+    ui = sub.add_parser(
+        "ui", help="the read-only Esmeralda console: run it locally (--local) or print the deployed URL (--url)"
+    )
     ui.add_argument(
         "--local",
         action="store_true",
         help="run the console backend and built web on 127.0.0.1 with a fixed, labelled local dev identity",
+    )
+    ui.add_argument(
+        "--url",
+        action="store_true",
+        help="print the deployed console's URL (frontends/esmeralda-ui output; private, behind IAP)",
     )
     ui_data = ui.add_mutually_exclusive_group()
     ui_data.add_argument(

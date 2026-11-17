@@ -22,6 +22,10 @@ TAG="$(env_local container_tag)"
 REPO_KIND="$(env_local image_repository)"
 # Gateways listed in `gateways = { enabled = [...] }` (env.yaml)
 ENABLED_GATEWAYS="$(awk '/^  gateways[[:space:]]*=/{f=1} f && /enabled/{print; exit}' "${LIVE_DIR}/env.yaml")"
+# The `frontends = { ... }` block of env.yaml (comments and whitespace stripped), e.g.
+# frontends={esmeralda_ui={enabled=true}}; empty when absent (every frontend off).
+FRONTENDS="$(awk '/^  frontends[[:space:]]*=/{f=1} f{sub(/#.*/, ""); print; o+=gsub(/\{/, "{"); c+=gsub(/\}/, "}"); if (o > 0 && o == c) exit}' "${LIVE_DIR}/env.yaml" | tr -d ' \t\n')"
+UI_ENABLED_RE='esmeralda_ui=\{[^}]*enabled=true'
 
 MANIFEST="release/${ENV_NAME}.yaml"
 if [ -f "${MANIFEST}" ]; then
@@ -95,6 +99,10 @@ check_cloud_run "income-verification-${ENV_NAME}" "${MCPS_PROJECT}" income-verif
 check_cloud_run "legacy-dms-${ENV_NAME}"          "${MCPS_PROJECT}" legacy-dms
 if [[ "${ENABLED_GATEWAYS}" == *'"envoy"'* ]]; then
   check_cloud_run "envoy-gateway-${ENV_NAME}" "${GATEWAY_PROJECT}" envoy-gateway
+fi
+# The console (layer-5-workloads/frontends/esmeralda-ui), only when frontends.esmeralda_ui.enabled.
+if [[ "${FRONTENDS}" =~ ${UI_ENABLED_RE} ]]; then
+  check_cloud_run "esmeralda-ui-${ENV_NAME}" "${GATEWAY_PROJECT}" esmeralda-ui
 fi
 check_engine "cx-mortgage-orchestrator"   "${ORCH_ENGINE}" cx-mortgage-orchestrator
 check_engine "ai-coe-mortgage-specialist" "${SPEC_ENGINE}" ai-coe-mortgage-specialist

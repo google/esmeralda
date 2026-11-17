@@ -62,7 +62,9 @@ ENV_YAML="${REPO_ROOT}/infrastructure/live/${ENV_NAME}/env.yaml"
 MANIFEST="${REPO_ROOT}/release/${ENV_NAME}.yaml"
 [[ -f "${ENV_YAML}" ]] || { echo "❌ No ${ENV_YAML}" >&2; exit 1; }
 
-# Every Layer 5 image built by `make build-images` (Envoy gateway + 3 MCP services + 2 agents).
+# Every Layer 5 image built by `esmeralda build images` (Envoy gateway + 3 MCP services + 2 agents +
+# the console). Optional workloads (Envoy, the console) are promoted too, so enabling one in prd needs
+# no new release.
 IMAGES=(
   "envoy-gateway"
   "legacy-dms"
@@ -70,6 +72,7 @@ IMAGES=(
   "corporate-email"
   "ai-coe-mortgage-specialist"
   "cx-mortgage-orchestrator"
+  "esmeralda-ui"
 )
 
 manifest_get() { "${MANIFEST_TOOL[@]}" get --manifest "${MANIFEST}" "$@" 2>/dev/null || true; }

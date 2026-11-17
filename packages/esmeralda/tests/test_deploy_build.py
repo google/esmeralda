@@ -398,11 +398,49 @@ def test_select_targets_and_aliases():
     assert [[i.name for i in b] for b in build.select("images")] == [
         ["income-verification-api", "corporate-email", "legacy-dms", "envoy-gateway"],
         ["ai-coe-mortgage-specialist", "cx-mortgage-orchestrator"],
+        ["esmeralda-ui"],
     ]
     assert [i.name for i in build.select("envoy")[0]] == ["envoy-gateway"]
     assert [i.name for i in build.select("income-verification")[0]] == ["income-verification-api"]
+    for alias in ("esmeralda-ui", "ui", "console", "frontend-esmeralda-ui", "frontends"):
+        assert [[i.name for i in b] for b in build.select(alias)] == [["esmeralda-ui"]]
+    assert "frontends" in build.TARGETS and build.image_names()[-1] == "esmeralda-ui"
     with pytest.raises(OpsError, match="Unknown build target"):
         build.select("nope")
+
+
+def test_esmeralda_ui_builds_from_the_repo_root_with_its_dockerfile():
+    (img,) = build.select("esmeralda-ui")[0]
+    commands = [" ".join(c) for c in build.image_commands(img, S, tag="dev-latest", sha="abc1234")]
+    # One command: no uv export (the Dockerfile exports from uv.lock), no wheel, the repository root.
+    assert commands == [
+        "gcloud builds submit . --config=.cloudbuild/build-image-repo-root.yaml --project=P "
+        "--service-account=projects/P/serviceAccounts/SA --gcs-source-staging-dir=gs://BUCKET/source "
+        "--substitutions=_IMAGE=esmeralda-ui,_REPOSITORY_URL=REPO,_TAG=dev-latest,_SHA_TAG=dev-abc1234,"
+        "_DOCKERFILE=apps/frontends/esmeralda-ui/Dockerfile"
+    ]
+    assert img.package is None and img.wheel is None
+
+
+def test_repo_root_build_files_exist_and_match_the_dockerfile():
+    root = Path(__file__).resolve().parents[3]
+    (img,) = build.select("esmeralda-ui")[0]
+    dockerfile = root / img.dockerfile
+    assert dockerfile.is_file() and (root / f"{img.dockerfile}.dockerignore").is_file()
+    config = (root / build.REPO_ROOT_BUILD_CONFIG).read_text()
+    assert "${_DOCKERFILE}" in config and "DOCKER_BUILDKIT=1" in config and "--all-tags" in config
+    # The root .gcloudignore (repo-root uploads only) re-includes every top-level path the Dockerfile copies.
+    ignore = (root / ".gcloudignore").read_text().splitlines()
+    assert "/*" in ignore
+    copied = {
+        part.split("/")[0]
+        for line in dockerfile.read_text().splitlines()
+        if line.startswith("COPY ") and "--from=" not in line
+        for part in line.split()[1:-1]
+    }
+    assert copied == {"pyproject.toml", "uv.lock", "packages", "apps", "catalog", "contracts"}
+    for top in copied:
+        assert f"!/{top}" in ignore or f"!/{top}/" in ignore, f".gcloudignore does not re-include {top}"
 
 
 def test_resolve_cicd_dir_explicit_env_main_checkout_and_local(checkout, monkeypatch, tmp_path):
@@ -469,7 +507,8 @@ def test_build_images_runs_tests_then_services_then_agents(checkout, fake_subpro
         c[-1].split(",")[0].removeprefix("--substitutions=_IMAGE=") for c in calls if c[:2] == ["gcloud", "builds"]
     ]
     assert set(submitted[:4]) == {"income-verification-api", "corporate-email", "legacy-dms", "envoy-gateway"}
-    assert set(submitted[4:]) == {"ai-coe-mortgage-specialist", "cx-mortgage-orchestrator"}
+    assert set(submitted[4:6]) == {"ai-coe-mortgage-specialist", "cx-mortgage-orchestrator"}
+    assert submitted[6:] == ["esmeralda-ui"]
     assert all("_TAG=dev-env-tag" in c[-1] for c in calls if c[:2] == ["gcloud", "builds"])
     assert (checkout / build.LOG_DIR / "legacy-dms.log").is_file()
 

@@ -97,6 +97,16 @@ class RenderTest(unittest.TestCase):
     def test_prerelease_version_ok(self):
         self.assertIn('version: "v1.2.3-rc1"', _render(version="v1.2.3-rc1"))
 
+    def test_every_promoted_image_round_trips(self):
+        # Same list as IMAGES in scripts/promote_release.sh (the console included).
+        script = (Path(__file__).resolve().parents[1] / "promote_release.sh").read_text()
+        block = script.split("IMAGES=(", 1)[1].split(")", 1)[0]
+        names = [line.strip().strip('"') for line in block.splitlines() if line.strip()]
+        self.assertIn("esmeralda-ui", names)
+        self.assertIn("envoy-gateway", names)
+        images = {name: D1 for name in names}
+        self.assertEqual(rm.parse(_render(images=images))["images"], images)
+
 
 class ParseImagesTest(unittest.TestCase):
     def test_pairs(self):

@@ -86,6 +86,19 @@ dependency "apigee" {
   mock_outputs_merge_strategy_with_state  = "shallow"
 }
 
+# --- Frontends (modules/5-workloads/frontends/*): each outputs backend_service_id + host_label ---
+
+dependency "esmeralda_ui" {
+  config_path = "../frontends/esmeralda-ui"
+  enabled     = try(local.env_vars.locals.frontends.esmeralda_ui.enabled, false)
+  mock_outputs = {
+    backend_service_id = "projects/mock/regions/us-central1/backendServices/mock-esmeralda-ui"
+    host_label         = "console"
+  }
+  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_merge_strategy_with_state  = "shallow"
+}
+
 inputs = {
   project_id  = dependency.projects.outputs.gateway_project_id
   environment = local.env_vars.locals.environment
@@ -125,4 +138,10 @@ inputs = {
     try(local.env_vars.locals.governance.apigee.enabled, false) && try(local.env_vars.locals.governance.capabilities.model_gateway, "none") == "apigee" ? { "apigee" = "apigee" } : {},
     local.gateways.host_rules
   )
+
+  # Enabled frontends (env.yaml frontends): host label => backend service (IAP on). A disabled
+  # dependency is never read.
+  frontend_hosts = try(local.env_vars.locals.frontends.esmeralda_ui.enabled, false) ? {
+    (dependency.esmeralda_ui.outputs.host_label) = dependency.esmeralda_ui.outputs.backend_service_id
+  } : {}
 }
