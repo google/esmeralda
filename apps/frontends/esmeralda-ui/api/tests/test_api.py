@@ -29,7 +29,7 @@ from esmeralda_ui.app import create_app
 from esmeralda_ui.auth import IAP_HEADER
 from esmeralda_ui.demo import DEMO_TRACE_ID
 
-BQ = {"bq_project": "esm-dev-governance-abcd", "bq_dataset": "esmeralda_telemetry_logs_dev"}
+BQ = {"bq_project": "example-telemetry-project", "bq_dataset": "esmeralda_telemetry_logs_dev"}
 
 
 @pytest.fixture
@@ -82,7 +82,7 @@ def test_usage_query_is_parameterized_and_capped(cloud_settings, keypair, auth):
     ]
 
     (sql, config, job) = fake.jobs[0]
-    assert "`esm-dev-governance-abcd.esmeralda_telemetry_logs_dev.vw_monthly_agent_chargeback`" in sql
+    assert "`example-telemetry-project.esmeralda_telemetry_logs_dev.vw_monthly_agent_chargeback`" in sql
     assert "@billing_month" in sql and "@team" in sql
     assert "cx" not in sql.replace("cx-", "")  # the value is a parameter, not in the text
     assert "2026" not in sql
@@ -173,7 +173,7 @@ def test_invalid_usage_filters_are_422(cloud_settings, keypair, auth, query):
 
 
 def test_bigquery_failure_is_generic_503(cloud_settings, keypair, auth):
-    fake = FakeBigQueryClient(error=RuntimeError("Access Denied: Project esm-dev-governance-abcd"))
+    fake = FakeBigQueryClient(error=RuntimeError("Access Denied: Project example-telemetry-project"))
     response = make_client(cloud_settings(**BQ), keypair, fake).get("/api/audit", headers=auth)
     assert response.status_code == 503
     assert response.json() == {"error": "data source unavailable"}

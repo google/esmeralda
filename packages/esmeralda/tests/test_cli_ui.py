@@ -67,7 +67,7 @@ def test_local_demo_binds_loopback_with_labelled_identity(ui_package, monkeypatc
 
 def test_local_bigquery_uses_explicit_project_and_default_dataset(ui_package, monkeypatch):
     monkeypatch.delenv("K_SERVICE", raising=False)
-    argv = ["ui", "--local", "--bigquery", "--bq-project", "esm-dev-governance-abcd", "--repo", str(REPO_ROOT)]
+    argv = ["ui", "--local", "--bigquery", "--bq-project", "example-telemetry-project", "--repo", str(REPO_ROOT)]
     assert cli.main(argv) == 0
     [(settings, _, _)] = ui_package
     assert settings.data_source == "bigquery"
