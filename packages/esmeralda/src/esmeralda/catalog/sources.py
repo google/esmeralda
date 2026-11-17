@@ -27,7 +27,10 @@ Extension points (registered, not implemented yet):
 * ``project_labels``: team attribution from project labels.
 
 Adapters for other systems (Backstage, a CMDB, ...) subclass :class:`Source` and call
-:func:`register_source`. Discovery never grants: a non-``files`` source may only contribute
+:func:`register_source`; adapters that read a live system subclass
+:class:`esmeralda.catalog.snapshot.SnapshotSource` instead, so that ``esmeralda catalog fetch``
+writes a reviewed snapshot and resolving reads only that snapshot (no network). Discovery never
+grants: a non-``files`` source may only contribute
 inventory (``Layer.inventory``) and attribution metadata, within the capabilities of its type
 (``CAPABILITIES``, capped in code by :data:`esmeralda.catalog.merge.MAX_EXTERNAL_CAPABILITIES`).
 Callers, grants, identities, policy, teams and their cost centres stay in catalog files.
@@ -62,6 +65,8 @@ class Layer:
     policy: dict[str, Any] = field(default_factory=dict)
     inventory: dict[str, dict[str, Any]] = field(default_factory=dict)
     origins: dict[tuple[str, str], str] = field(default_factory=dict)
+    # Non-fatal notes for the user (for example an optional source whose snapshot is missing).
+    warnings: list[str] = field(default_factory=list)
 
     def section(self, name: str) -> dict[str, dict[str, Any]]:
         return getattr(self, name)
@@ -79,12 +84,14 @@ class Source:
     type_name = ""
     CAPABILITIES: dict[str, Any] | None = None
 
-    def __init__(self, *, name: str, catalog_dir: Path, root: Path, schema: dict[str, Any], spec: dict[str, Any]):
+    def __init__(self, *, name: str, catalog_dir: Path, root: Path, schema: dict[str, Any], spec: dict[str, Any],
+                 env: str | None = None):
         self.name = name
         self.catalog_dir = catalog_dir
         self.root = root
         self.schema = schema
         self.spec = spec
+        self.env = env  # the environment being resolved (snapshot sources read catalog/snapshots/<name>/<env>.json)
 
     def load(self) -> Layer:  # pragma: no cover - interface
         raise NotImplementedError
@@ -229,20 +236,29 @@ class ProjectLabelsSource(_NotImplementedSource):
     phase = " (planned with the catalog sources phase)"
 
 
-def build_sources(root: Path, catalog_dir: Path, schema: dict[str, Any], sources_doc: dict[str, Any]) -> list[Source]:
-    built = []
-    for i, spec in enumerate(sources_doc["sources"]):
-        if spec.get("enabled", True) is False:
-            continue
-        type_name = spec["type"]
-        cls = SOURCE_TYPES.get(type_name)
-        if cls is None:
-            known = ", ".join(sorted(SOURCE_TYPES))
-            raise CatalogError(
-                f"catalog/sources.yaml: sources[{i}]: unknown source type '{type_name}' (known: {known})"
-            )
-        name = spec.get("name") or f"{type_name}-{i}"
-        built.append(cls(name=name, catalog_dir=catalog_dir, root=root, schema=schema, spec=spec))
+def source_name(spec: dict[str, Any], index: int) -> str:
+    return spec.get("name") or f"{spec['type']}-{index}"
+
+
+def build_source(root: Path, catalog_dir: Path, schema: dict[str, Any], spec: dict[str, Any], index: int,
+                 env: str | None = None) -> Source:
+    """The :class:`Source` for one sources.yaml entry (enabled or not)."""
+    type_name = spec["type"]
+    cls = SOURCE_TYPES.get(type_name)
+    if cls is None:
+        known = ", ".join(sorted(SOURCE_TYPES))
+        raise CatalogError(f"catalog/sources.yaml: sources[{index}]: unknown source type '{type_name}' "
+                           f"(known: {known})")
+    return cls(name=source_name(spec, index), catalog_dir=catalog_dir, root=root, schema=schema, spec=spec, env=env)
+
+
+def build_sources(root: Path, catalog_dir: Path, schema: dict[str, Any], sources_doc: dict[str, Any],
+                  env: str | None = None) -> list[Source]:
+    built = [
+        build_source(root, catalog_dir, schema, spec, i, env)
+        for i, spec in enumerate(sources_doc["sources"])
+        if spec.get("enabled", True) is not False
+    ]
     if not built:
         raise CatalogError("catalog/sources.yaml: no enabled source")
     return built

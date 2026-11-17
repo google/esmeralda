@@ -415,7 +415,7 @@
         "type": {"type": "string", "description": "files | agent_registry | project_labels | <registered adapter>"},
         "enabled": {"type": "boolean", "default": true},
         "paths": {"$ref": "#/$defs/strings", "description": "files: paths relative to the catalog directory"},
-        "options": {"type": "object"}
+        "options": {"type": "object", "description": "Source-type options. Snapshot sources: snapshot (path under catalog/, default snapshots/{source}/{env}.json), optional (a missing snapshot is a warning while no catalog file adopts one of the source's entries), fields (narrow the source's capabilities)."}
       },
       "additionalProperties": false
     },
@@ -461,7 +461,26 @@
         "schema": true,
         "schema_version": true,
         "environment": {"$ref": "#/$defs/name"},
-        "sources": {"type": "array", "items": {"type": "string"}},
+        "sources": {
+          "description": "The merged sources, in order, then the environment overrides file: a name, or {name, type, snapshot, sha256} for a source read from a snapshot (sha256 of the snapshot file, null when an optional source has none).",
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {"type": "string"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "type", "snapshot", "sha256"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "type": {"type": "string"},
+                  "snapshot": {"type": "string"},
+                  "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+                }
+              }
+            ]
+          }
+        },
         "teams": {"$ref": "#/$defs/teams_map"},
         "profiles": {"type": "object", "additionalProperties": {"$ref": "#/$defs/team_profile"}},
         "callers": {"$ref": "#/$defs/callers_map"},

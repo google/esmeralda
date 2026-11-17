@@ -9,8 +9,10 @@ them.
 |---|---|
 | [`usage-event.schema.json`](usage-event.schema.json) | `esmeralda.usage`: one usage record (model call, tool call, agent invocation, gateway request) |
 | [`examples/`](examples/) | One valid record per event type, with synthetic data |
+| [`catalog.schema.json`](catalog.schema.json) | `esmeralda.catalog`: catalog source documents and the resolved catalog (`esmeralda catalog resolve`) |
+| [`catalog-snapshot.schema.json`](catalog-snapshot.schema.json) | `esmeralda.catalog.snapshot`: what `esmeralda catalog fetch` read from one external catalog source for one environment, normalized (`catalog/snapshots/<source>/<env>.json`) |
 
-`catalog.schema.json` (`esmeralda.catalog`) joins this folder in a later step.
+The catalog schemas are read from this folder by the resolver (`esmeralda.catalog`).
 
 ## Versioning
 

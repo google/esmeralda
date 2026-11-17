@@ -395,3 +395,75 @@ Then add `- { name: my-cmdb, type: my_cmdb, options: {...} }` to `sources.yaml` 
 source. To put one of those entries under enforcement, a team adds a catalog file for it with the
 pin `deploy.registry: { source: my-cmdb, id: <id> }` and the callers it allows, and that change goes
 through review like any other grant.
+
+### Snapshots and `catalog fetch`
+
+A source that reads a live system (Agent Registry, project labels, Backstage, an API) is read in two
+steps, so resolving the catalog never needs the network:
+
+1. `esmeralda catalog fetch` calls the adapter (network, read-only on the source), normalizes what
+   it returns and writes a **snapshot**: `catalog/snapshots/<source>/<env>.json`
+   (`contracts/catalog-snapshot.schema.json`; `options.snapshot` changes the path). The snapshot is
+   committed and reviewed like any other catalog change, so every external change reaches the
+   catalog through a pull request.
+2. `esmeralda catalog resolve` (including `--check` in CI) and `catalog show` read only the
+   snapshot. They never open a network socket, and the same tree always gives the same bytes. The
+   resolved catalog lists each snapshot source as `{name, type, snapshot, sha256}`, so a changed
+   snapshot shows up in its diff.
+
+```bash
+uv run esmeralda catalog sources --env dev                         # sources, capabilities, snapshot path, sha256, entries
+uv run esmeralda catalog fetch --env dev --source all --dry-run    # what a fetch would change; writes nothing
+uv run esmeralda catalog fetch --env dev --source my-cmdb          # refresh one snapshot (exit 2: source unreachable)
+uv run esmeralda catalog diff --env dev                            # findings for review (exit 3 when there are any)
+uv run esmeralda catalog diff --env dev --live                     # also live vs snapshot (network, never written)
+uv run esmeralda catalog show --env dev --provenance               # where each entry and external field came from
+uv run esmeralda catalog show --env dev --inventory                # discovered entries, never compiled
+```
+
+- **Normalized and reproducible.** A fetch sorts entries by id and mapping keys, drops volatile
+  fields (`etag`, `createTime`, `updateTime`, ...) and writes no timestamp: fetching the same live
+  state twice gives the same bytes. Two entries with the same id or derived name fail the fetch;
+  they are never ordered or suffixed.
+- **No environment literals.** Project ids and numbers, the organization id, the domain and the
+  region become placeholders: `{project:<alias>}`, `{project_number:<alias>}`, `{org}`, `{domain}`,
+  `{region}` (aliases are layer-1 output names; units substitute them back at apply time, as
+  `iap-egress` does for `{domain}`). A snapshot that still holds a raw 12-digit project number, an
+  organization id, an email or IAM member, or a token-like string is refused by `catalog fetch`
+  and by `esmeralda guard`.
+- **Missing snapshot.** An enabled source without its snapshot fails the resolve with the
+  `catalog fetch` command to run. With `options: { optional: true }` it is a warning and an empty
+  layer instead, until a catalog file adopts one of its entries: then the snapshot is required.
+- **Drift.** `catalog diff` reports discovered entries no catalog file adopts, external values a
+  catalog file shadows or `environments/<env>.yaml` overrides, and optional sources without a
+  snapshot; `--live` adds the entries that changed in the live source since the snapshot.
+
+An adapter for a live system subclasses `SnapshotSource` and implements `fetch()` (plus
+`layer_from_entries()` when its entries aren't `{id, name, inventory}`, and `placeholders()`):
+
+```python
+from esmeralda.catalog import Placeholders, SnapshotSource, SourceUnreachable, register_source
+
+@register_source("my_cmdb")
+class CmdbSource(SnapshotSource):
+    CAPABILITIES = {"inventory": ["*"], "targets": ["description"]}
+
+    def placeholders(self) -> Placeholders:
+        return Placeholders(domain=..., projects={"apps": ...})   # from layer outputs
+
+    def fetch(self) -> list[dict]:
+        try:
+            items = read_export(self.spec.get("options", {}))     # your client, read-only
+        except OSError as exc:
+            raise SourceUnreachable(f"{self.name}: {exc}") from exc
+        return [
+            {"id": item.id, "name": item.name,
+             "inventory": {"kind": "http", "description": item.description,
+                           "deploy": {"endpoint": item.url}, "registry": {"id": item.id}}}
+            for item in items
+        ]
+```
+
+The repository's `sources.yaml` keeps every network source disabled and commits no real
+snapshot; the tests use synthetic snapshots under
+`packages/esmeralda/tests/fixtures/catalog_sources/`.

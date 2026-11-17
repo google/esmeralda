@@ -65,7 +65,13 @@ uv run esmeralda catalog resolve --env all --write          # regenerate catalog
 uv run esmeralda catalog resolve --env all --check          # exit 1 when a generated file is stale
 uv run esmeralda catalog show --env dev                     # who can call what, via which gateway, who pays
 uv run esmeralda catalog show --env dev --caller test-vm    # what one caller can call
+uv run esmeralda catalog sources --env dev                  # sources, capabilities, snapshots
+uv run esmeralda catalog diff --env dev                     # drift findings for review (exit 3 when any)
 ```
+
+External sources are read from committed snapshots (`snapshots/<source>/<env>.json`, written by
+`esmeralda catalog fetch --env <env> --source <name>`), never from the live system, so resolving
+needs no network. This repository enables no external source and commits no snapshot.
 
 The resolver:
 
@@ -168,6 +174,7 @@ Snippet for the repository's `.github/CODEOWNERS` (team handles are placeholders
 /catalog/external/          @example-org/platform @example-org/security
 /catalog/policy.yaml        @example-org/platform @example-org/security
 /catalog/sources.yaml       @example-org/platform @example-org/security
+/catalog/snapshots/         @example-org/platform @example-org/security
 /catalog/teams.yaml         @example-org/platform
 /catalog/environments/      @example-org/platform
 /catalog/.resolved/         @example-org/platform
