@@ -1,0 +1,17 @@
+# Build context filter for apps/frontends/esmeralda-ui/Dockerfile (the context is the repository root).
+# Everything is excluded, then only what the image needs is let back in.
+*
+!pyproject.toml
+!uv.lock
+!packages/esmeralda
+!apps/**/pyproject.toml
+!apps/frontends/esmeralda-ui/api/src
+!apps/frontends/esmeralda-ui/web
+!catalog
+!contracts
+
+**/__pycache__
+**/*.pyc
+apps/frontends/esmeralda-ui/web/node_modules
+apps/frontends/esmeralda-ui/web/dist
+packages/esmeralda/tests

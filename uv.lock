@@ -13,6 +13,7 @@ members = [
     "cx-mortgage-orchestrator",
     "esmeralda",
     "esmeralda-monorepo",
+    "esmeralda-ui",
     "income-verification-api",
     "legacy-dms",
 ]
@@ -779,6 +780,42 @@ docs = [
     { name = "mkdocs", specifier = ">=1.6.1,<2" },
     { name = "mkdocs-material", specifier = ">=9.7,<10" },
 ]
+
+[[package]]
+name = "esmeralda-ui"
+version = "0.1.0"
+source = { editable = "apps/frontends/esmeralda-ui/api" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "esmeralda" },
+    { name = "fastapi" },
+    { name = "google-auth" },
+    { name = "google-cloud-bigquery" },
+    { name = "requests" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=43" },
+    { name = "esmeralda", editable = "packages/esmeralda" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "google-auth", specifier = ">=2.61" },
+    { name = "google-cloud-bigquery", specifier = ">=3.25" },
+    { name = "httpx", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "requests", specifier = ">=2.32" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+    { name = "uvicorn", specifier = ">=0.30" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "exceptiongroup"

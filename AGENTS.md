@@ -23,6 +23,7 @@ assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls `ai-coe-mortg
 |---|---|
 | `apps/agents/<agent>/` | Agent packages: `agent.yaml` (framework, env, `local_env`, agent card), `agent/`, `tests/`, `Dockerfile` |
 | `apps/services/<svc>/` | FastMCP servers (`corporate-email`, `income-verification`, `legacy-dms`) + `tools.json`; `envoy/` is the digest-pinned Envoy adapter image |
+| `apps/frontends/esmeralda-ui/` | Read-only console: `api/` (FastAPI BFF over the `esmeralda` package, workspace member `esmeralda-ui`), `web/` (React + TypeScript + Vite, npm lockfile), `openapi.json` contract (`esmeralda ui --local`, `make test-ui`) |
 | `packages/esmeralda/` | Runtime library shared by agents: `esmeralda run/serve/query`, auth, MCP/A2A clients, telemetry |
 | `infrastructure/modules/` | Terraform modules, one folder per layer (`0-cicd` … `5-workloads`) |
 | `infrastructure/live/` | Terragrunt units: `root.hcl`, `shared/layer-0-cicd`, `<env>/env.yaml` + `<env>/layer-*` (envs: `dev`, `prd`) |

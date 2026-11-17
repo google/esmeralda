@@ -413,6 +413,12 @@ esmeralda mcp [--repo PATH]
 
 Read-only MCP server on stdio (`fastmcp`). The repository root is `--repo`, else `ESMERALDA_REPO`, else the checkout containing the working directory (the first parent with `infrastructure/live/root.hcl`). Exit code `2` when there is no checkout or `fastmcp` is not installed. Tools: see [Operating a checkout from an agent](guide.md#operating-a-checkout-from-an-agent-esmeralda-mcp).
 
+```text
+esmeralda ui --local [--demo | --bigquery [--bq-project P] [--bq-dataset D]] [--port 8090] [--env dev] [--repo PATH]
+```
+
+The read-only [Esmeralda console](../3-agentops-and-lifecycle/07-esmeralda-console.md) on `127.0.0.1` (catalog, FinOps and audit, traces), with a fixed local development identity that the UI labels. Its backend is the separate `esmeralda-ui` workspace package, imported only by this command. `--demo` serves synthetic data, badged "Demo data" in every view; `--bigquery` reads the env's BigQuery views with your Application Default Credentials (project: the env's governance project, dataset: `esmeralda_telemetry_logs_<env>`); with neither, the data views show an error state. Exit code `2` without `--local`, when the backend package is not installed, or on `K_SERVICE` (Cloud Run).
+
 ### Operational CLI subcommands
 
 Every operational subcommand accepts `--repo PATH` (defaults to `$ESMERALDA_REPO` or the git checkout root) and `--json` for machine-readable JSON output:
