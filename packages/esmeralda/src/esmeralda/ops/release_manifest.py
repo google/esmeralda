@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,16 +15,17 @@
 
 The manifest is the single source of truth for which image bytes an environment runs: one
 sha256 digest per image, plus where the release came from and when it was verified. Terragrunt
-reads it with yamldecode() (infrastructure/live/prd/env.yaml); scripts/promote_release.sh writes
-it; scripts/verify_images.sh compares running workloads against it.
+reads it with yamldecode() (infrastructure/live/prd/env.yaml); ``esmeralda release promote``
+(``esmeralda.ops.release.promote``) writes it; ``esmeralda build --verify``
+(``esmeralda.ops.release.verify_images``) compares running workloads against it.
 
-Standard library only (runs with any python3, outside the uv workspace).
+Standard library only. Also usable as a small CLI:
 
-  release_manifest.py write --out release/prd.yaml --version v1.1.0 --source-tag dev-abc1234 \\
-      --source-commit <sha> --verified-env dev --verified-date 2026-01-31 --verified-result PASS \\
-      --image envoy-gateway=sha256:... [--image ...]
-  release_manifest.py get --manifest release/prd.yaml --key version
-  release_manifest.py get --manifest release/prd.yaml --image envoy-gateway
+  python -m esmeralda.ops.release_manifest write --out release/prd.yaml --version v1.1.0 \\
+      --source-tag dev-abc1234 --source-commit <sha> --verified-env dev --verified-date 2026-01-31 \\
+      --verified-result PASS --image envoy-gateway=sha256:... [--image ...]
+  python -m esmeralda.ops.release_manifest get --manifest release/prd.yaml --key version
+  python -m esmeralda.ops.release_manifest get --manifest release/prd.yaml --image envoy-gateway
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ RESULTS = ("PASS",)
 
 HEADER = """\
 # Release manifest: the exact image bytes this environment deploys.
-# Written by `make promote VERSION=vX.Y.Z SOURCE=dev-<sha>` (scripts/promote_release.sh);
+# Written by `esmeralda release promote --version vX.Y.Z --source dev-<sha>` (make promote);
 # do not edit by hand. Merge it by PR, then deploy; roll back by reverting that PR.
 #
 # Schema (version 1):
@@ -172,6 +172,19 @@ def parse(text: str) -> dict:
     return data
 
 
+def load(path: Path) -> dict | None:
+    """The parsed manifest at ``path``, or None when there is no such file."""
+    return parse(path.read_text()) if path.is_file() else None
+
+
+def write(path: Path, text: str) -> None:
+    """Writes ``text`` to ``path`` atomically (temporary file + rename)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
+
+
 def _cmd_write(args: argparse.Namespace) -> int:
     text = render(
         version=args.version,
@@ -185,10 +198,7 @@ def _cmd_write(args: argparse.Namespace) -> int:
         repository=args.repository,
     )
     out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(out.suffix + ".tmp")
-    tmp.write_text(text)
-    tmp.replace(out)
+    write(out, text)
     print(f"wrote {out}")
     return 0
 

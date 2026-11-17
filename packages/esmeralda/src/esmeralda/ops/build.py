@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Image builds (Cloud Build), the image check, the package build, and release promotion.
+"""Image builds (Cloud Build) and the package build.
 
 * ``build_images`` submits each image to Cloud Build in the shared CI/CD project, pushed to the
   shared dev repository as ``:<tag>`` (default ``dev-latest``) and ``:dev-<gitsha>``. The project,
   repository, builder service account and source bucket come from the layer-0 outputs.
-* ``verify_images`` runs ``scripts/verify_images.sh`` (running digest == expected digest).
-* ``release`` runs ``scripts/promote_release.sh`` (promotion by digest + ``release/<env>.yaml``).
 * ``build_package`` builds the standalone ``esmeralda-platform`` wheel and sdist into ``dist/``.
+
+The running-image check and release promotion live in ``esmeralda.ops.release``; they use the
+same image list (``image_names``) and layer-0 resolution.
 
 Layer-0 resolution (``resolve_cicd_dir``): with the local backend the layer-0 state lives in the
 checkout that applied it, so a git worktree has none. When this checkout has no layer-0 state and
@@ -388,47 +389,6 @@ def build_images(
             return result
     result.update(ok=True, exit_code=0)
     return result
-
-
-# ------------------------------------------------------------------------------------------
-# scripts: image check and release promotion (output passes straight through)
-# ------------------------------------------------------------------------------------------
-
-
-def _script(root: Path, args: list[str]) -> int:
-    if not repo.which("bash"):
-        raise OpsError(f"bash not found on PATH: {repo.INSTALL_HINTS['bash']}")
-    return subprocess.run(["bash", *args], cwd=root, env=repo.tool_env(), check=False).returncode
-
-
-def verify_images_cmd(env: str) -> list[str]:
-    return ["bash", "scripts/verify_images.sh", env]
-
-
-def verify_images(root: Path, env: str) -> int:
-    """``scripts/verify_images.sh <env>``: every Layer 5 workload runs the expected digest."""
-    repo.env_dir(root, env)
-    return _script(root, verify_images_cmd(env)[1:])
-
-
-def release_cmd(
-    action: str, *, env: str = "prd", version: str | None = None, source: str | None = None, verified: str | None = None
-) -> list[str]:
-    cmd = ["bash", "scripts/promote_release.sh", action]
-    if action == "promote":
-        cmd += ["--version", version or "", "--source", source or ""]
-        if verified:
-            cmd += ["--verified", verified]
-    if env != "prd":
-        cmd += ["--env", env]
-    return cmd
-
-
-def release(root: Path, action: str, **kwargs: Any) -> int:
-    """``scripts/promote_release.sh status|promote ...`` (same output and ``release/<env>.yaml``)."""
-    if action not in ("status", "promote"):
-        raise OpsError(f"Unknown release action '{action}'")
-    return _script(root, release_cmd(action, **kwargs)[1:])
 
 
 # ------------------------------------------------------------------------------------------

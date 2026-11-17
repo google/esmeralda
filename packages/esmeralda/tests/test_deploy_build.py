@@ -12,26 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""``esmeralda deploy`` / ``destroy`` / ``build`` / ``release`` (Terragrunt, gcloud and scripts mocked)."""
+"""``esmeralda deploy`` / ``destroy`` / ``build`` / ``release`` (Terragrunt and gcloud mocked)."""
 
 from __future__ import annotations
 
+import datetime
 import json
 import subprocess
+import urllib.error
 import zipfile
 from pathlib import Path
 
 import pytest
 
 from esmeralda import cli
-from esmeralda.ops import build, deploy, envfile, infra, repo
+from esmeralda.ops import build, deploy, envfile, infra, release, repo
+from esmeralda.ops import release_manifest as rm
 from esmeralda.ops.repo import OpsError
 
 ENV_YAML = """
 locals {
   environment      = "dev"
+  region           = "us-central1"
   state_project    = ""
   state_bucket     = ""
+  image_repository = "dev"
+  container_tag    = "dev-latest"
   gateways = {
     enabled    = []
     default    = "direct"
@@ -73,6 +79,7 @@ LAYER5_ORDER = [
 CICD_OUTPUTS = {
     "cicd_project_id": "demo-cicd",
     "dev_repository_url": "us-central1-docker.pkg.dev/demo-cicd/containers",
+    "release_repository_url": "us-central1-docker.pkg.dev/demo-cicd/release",
     "builder_sa_email": "builder@demo-cicd.iam.gserviceaccount.com",
     "build_source_bucket": "demo-cicd-build-source",
 }
@@ -311,7 +318,7 @@ def test_deploy_dry_run_only_plans_and_flags_destructive_units(checkout, monkeyp
         *LAYER5_ORDER,
     ]
     verify = next(s for s in data["steps"] if s["kind"] == "verify-images")
-    assert verify["commands"] == ["bash scripts/verify_images.sh dev"]
+    assert verify["commands"] == ["esmeralda build --verify --env dev"]
 
 
 # ------------------------------------------------------------------------------------------
@@ -499,50 +506,294 @@ def test_build_stops_on_test_failure_and_after_a_failed_batch(checkout, fake_sub
 
 
 # ------------------------------------------------------------------------------------------
-# scripts: verify-images and release (same scripts, same arguments as the Makefile)
+# release: status, promote by digest, and the running-image check (gcloud mocked)
 # ------------------------------------------------------------------------------------------
 
-
-def test_release_and_verify_commands_match_the_makefile():
-    assert build.release_cmd("status") == ["bash", "scripts/promote_release.sh", "status"]
-    assert build.release_cmd("promote", version="v1.2.3", source="dev-abc1234", verified="2026-01-02") == [
-        "bash",
-        "scripts/promote_release.sh",
-        "promote",
-        "--version",
-        "v1.2.3",
-        "--source",
-        "dev-abc1234",
-        "--verified",
-        "2026-01-02",
-    ]
-    assert build.release_cmd("status", env="stg")[-2:] == ["--env", "stg"]
-    assert build.verify_images_cmd("dev") == ["bash", "scripts/verify_images.sh", "dev"]
+DEV_REPO = CICD_OUTPUTS["dev_repository_url"]
+REL_REPO = CICD_OUTPUTS["release_repository_url"]
+DIGESTS = {name: "sha256:" + f"{i:x}" * 64 for i, name in enumerate(build.image_names(), 1)}
+WHEN = datetime.datetime(2026, 2, 3, 4, 5, 6, tzinfo=datetime.timezone.utc)
 
 
-def test_cli_release_and_verify_run_the_scripts(checkout, fake_subprocess):
-    calls, _ = fake_subprocess
-    assert (
-        cli.main(["release", "promote", "--version", "v1.0.0", "--source", "dev-abc1234", "--verified", "2026-01-02"])
-        == 0
+class FakeCloud:
+    """Artifact Registry tags, Cloud Run services/revisions and Agent Runtime engines, in memory."""
+
+    def __init__(self) -> None:
+        self.tags: dict[str, str] = {}
+        self.services: dict[str, dict] = {}
+        self.revisions: dict[str, str] = {}
+        self.engines: dict[str, str] = {}
+        self.calls: list[list[str]] = []
+
+    def tag_source(self, source: str = "dev-abc1234") -> None:
+        for name, digest in DIGESTS.items():
+            self.tags[f"{DEV_REPO}/{name}:{source}"] = digest
+
+    def run(self, cmd, root, *, timeout=0.0):
+        self.calls.append(cmd)
+
+        def done(code=0, out="", err=""):
+            return subprocess.CompletedProcess(cmd, code, out, err)
+
+        if cmd[:5] == ["gcloud", "artifacts", "docker", "images", "describe"]:
+            digest = self.tags.get(cmd[5])
+            return done(0, digest + "\n") if digest else done(1, err="NOT_FOUND")
+        if cmd[:4] == ["gcloud", "container", "images", "add-tag"]:
+            self.tags[cmd[-1]] = cmd[-2].split("@", 1)[1]
+            return done()
+        if cmd[:4] == ["gcloud", "run", "services", "describe"]:
+            svc = self.services.get(cmd[4])
+            return done(0, json.dumps({"status": svc})) if svc is not None else done(1, err="NOT_FOUND")
+        if cmd[:4] == ["gcloud", "run", "revisions", "describe"]:
+            digest = self.revisions.get(cmd[4])
+            return done(0, f"{DEV_REPO}/x@{digest}\n") if digest else done(1)
+        if cmd[:3] == ["gcloud", "auth", "print-access-token"]:
+            return done(0, "token\n")
+        raise AssertionError(f"unexpected command {cmd}")
+
+    def http(self, url, token, *, timeout=0.0):
+        assert token == "token" and url.startswith("https://us-central1-aiplatform.googleapis.com/v1beta1/")
+        name = url.rsplit("/", 1)[-1]
+        if name not in self.engines:
+            raise urllib.error.URLError("404")
+        return {"spec": {"containerSpec": {"imageUri": self.engines[name]}}}
+
+    def add_tags(self) -> list[list[str]]:
+        return [c for c in self.calls if c[:4] == ["gcloud", "container", "images", "add-tag"]]
+
+
+@pytest.fixture
+def cloud(monkeypatch) -> FakeCloud:
+    fake = FakeCloud()
+    monkeypatch.setattr(release, "_run", fake.run)
+    monkeypatch.setattr(release, "_http_json", fake.http)
+    return fake
+
+
+def _promote(root, **kwargs):
+    kwargs = {"version": "v1.2.3", "source": "dev-abc1234", "verified": "2026-02-01", "echo": None, **kwargs}
+    return release.promote(root, now=lambda: WHEN, **kwargs)
+
+
+def test_release_images_are_the_build_images_and_each_has_one_workload():
+    assert release.images() == build.image_names()
+    assert sorted(w.image for w in release.WORKLOADS) == sorted(build.image_names())
+
+
+def test_promote_copies_by_digest_and_writes_the_manifest(checkout, cloud):
+    cloud.tag_source()
+    cloud.tags[f"{REL_REPO}/legacy-dms:v1.2.3"] = DIGESTS["legacy-dms"]  # an earlier partial run
+    lines: list[str] = []
+    data = _promote(checkout, echo=lines.append)
+    assert data["ok"] and data["manifest_changes"] == ["(new manifest)"]
+    statuses = {i["image"]: i["status"] for i in data["images"]}
+    assert statuses.pop("legacy-dms") == "exists" and set(statuses.values()) == {"copied"}
+    assert len(cloud.add_tags()) == len(DIGESTS) - 1
+    assert [
+        "gcloud", "container", "images", "add-tag", "--quiet",
+        f"{DEV_REPO}/envoy-gateway@{DIGESTS['envoy-gateway']}", f"{REL_REPO}/envoy-gateway:v1.2.3",
+    ] in cloud.add_tags()
+    assert f"✔️  legacy-dms:v1.2.3 already points at {DIGESTS['legacy-dms']} (no copy)" in lines
+    written = rm.parse((checkout / "release/prd.yaml").read_text())
+    assert written["images"] == DIGESTS
+    assert written["version"] == "v1.2.3" and written["source_tag"] == "dev-abc1234"
+    assert written["source_commit"] == "abc1234" and written["promoted_at"] == "2026-02-03T04:05:06Z"
+    assert written["verified"] == {"environment": "dev", "date": "2026-02-01", "result": "PASS"}
+
+
+def test_promote_again_is_a_no_op_apart_from_promoted_at(checkout, cloud):
+    cloud.tag_source()
+    _promote(checkout)
+    before = (checkout / "release/prd.yaml").read_text()
+    cloud.calls.clear()
+    data = release.promote(
+        checkout, version="v1.2.3", source="dev-abc1234", verified="2026-02-01", echo=None,
+        now=lambda: WHEN + datetime.timedelta(days=1),
     )
-    assert cli.main(["release", "status"]) == 0
-    assert cli.main(["build", "--verify", "--env", "dev"]) == 0
-    assert calls == [
-        [
-            "bash",
-            "scripts/promote_release.sh",
-            "promote",
-            "--version",
-            "v1.0.0",
-            "--source",
-            "dev-abc1234",
-            "--verified",
-            "2026-01-02",
-        ],
-        ["bash", "scripts/promote_release.sh", "status"],
-        ["bash", "scripts/verify_images.sh", "dev"],
+    assert data["manifest_changes"] == [] and cloud.add_tags() == []
+    assert {i["status"] for i in data["images"]} == {"exists"}
+    after = (checkout / "release/prd.yaml").read_text()
+    diff = [(a, b) for a, b in zip(before.splitlines(), after.splitlines(), strict=True) if a != b]
+    assert diff == [('promoted_at: "2026-02-03T04:05:06Z"', 'promoted_at: "2026-02-04T04:05:06Z"')]
+
+
+def test_promote_is_all_or_nothing(checkout, cloud):
+    cloud.tag_source()
+    cloud.tags[f"{REL_REPO}/cx-mortgage-orchestrator:v1.2.3"] = "sha256:" + "f" * 64
+    with pytest.raises(OpsError, match="already exists in the release repository.*bump the version"):
+        _promote(checkout)
+    assert cloud.add_tags() == [] and not (checkout / "release/prd.yaml").exists()
+
+    del cloud.tags[f"{REL_REPO}/cx-mortgage-orchestrator:v1.2.3"]
+    del cloud.tags[f"{DEV_REPO}/cx-mortgage-orchestrator:dev-abc1234"]
+    with pytest.raises(OpsError, match="cx-mortgage-orchestrator:dev-abc1234 not found in the dev repository"):
+        _promote(checkout)
+    assert cloud.add_tags() == [] and not (checkout / "release/prd.yaml").exists()
+
+
+def test_promote_rechecks_the_copy(checkout, cloud, monkeypatch):
+    cloud.tag_source()
+    original = cloud.run
+
+    def lossy(cmd, root, *, timeout=0.0):
+        result = original(cmd, root, timeout=timeout)
+        if cmd[:4] == ["gcloud", "container", "images", "add-tag"]:
+            cloud.tags[cmd[-1]] = "sha256:" + "e" * 64
+        return result
+
+    monkeypatch.setattr(release, "_run", lossy)
+    with pytest.raises(OpsError, match="after the copy, expected"):
+        _promote(checkout)
+    assert not (checkout / "release/prd.yaml").exists()
+
+
+def test_promote_dry_run_copies_and_writes_nothing(checkout, cloud):
+    cloud.tag_source()
+    lines: list[str] = []
+    data = _promote(checkout, dry_run=True, echo=lines.append)
+    assert data["dry_run"] and cloud.add_tags() == [] and not (checkout / "release/prd.yaml").exists()
+    assert {i["status"] for i in data["images"]} == {"would-copy"}
+    assert any("would change: (new manifest)" in line for line in lines)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"version": "1.2.3"}, "--version must look like vX.Y.Z"),
+        ({"source": "dev-latest"}, "immutable build tag"),
+        ({"verified": "02/01/2026"}, "--verified must be the date"),
+        ({"env": "nope"}, "Unknown env"),
+    ],
+)
+def test_promote_validates_input_before_any_call(checkout, cloud, kwargs, message):
+    with pytest.raises(OpsError, match=message):
+        _promote(checkout, **kwargs)
+    assert cloud.calls == []
+
+
+def test_release_status_with_and_without_a_manifest(checkout, cloud):
+    data = release.status(checkout)
+    assert data["release"] is None and data["repositories"] == {"dev": DEV_REPO, "release": REL_REPO}
+    text = release.format_status(data)
+    assert "<none> (units fall back to container_tag in prd/env.yaml)" in text and REL_REPO in text
+    cloud.tag_source()
+    _promote(checkout)
+    text = release.format_status(release.status(checkout))
+    assert "• Version            : v1.2.3" in text
+    assert "• Source             : dev-abc1234 (abc1234)" in text
+    assert f"    {'legacy-dms':<28} {DIGESTS['legacy-dms']}" in text
+
+
+def _deployed(checkout: Path, cloud: FakeCloud, *, digests: dict[str, str] | None = None) -> None:
+    """dev outputs for layer 1 and both agents, and every workload running ``digests``."""
+    digests = digests or DIGESTS
+    states = checkout / "infrastructure/live/.local_states/dev"
+    projects = {"mcps_project_id": "demo-mcps", "gateway_project_id": "demo-gateway"}
+    (states / "layer-1-projects/terraform.tfstate").write_text(_state(1, projects))
+    for agent in ("cx-mortgage-orchestrator", "ai-coe-mortgage-specialist"):
+        engine = f"projects/demo/locations/us-central1/reasoningEngines/{agent}"
+        (states / f"{W}/agents/{agent}/terraform.tfstate").write_text(_state(1, {"engine_id": engine}))
+        cloud.engines[agent] = f"{DEV_REPO}/{agent}@{digests[agent]}"
+    for w in release.WORKLOADS:
+        if w.kind == "cloud_run":
+            rev = f"{w.name}-dev-00001"
+            cloud.services[f"{w.name}-dev"] = {"traffic": [{"revisionName": rev, "percent": 100}]}
+            cloud.revisions[rev] = digests[w.image]
+
+
+def _manifest(checkout: Path, env: str, digests: dict[str, str]) -> None:
+    text = rm.render(
+        version="v9.9.9", source_tag="dev-abc1234", source_commit="abc1234", promoted_at=WHEN,
+        verified_env="dev", verified_date="2026-02-01", verified_result="PASS", images=digests,
+    )
+    rm.write(checkout / "release" / f"{env}.yaml", text)
+
+
+def test_verify_images_against_the_manifest(checkout, cloud):
+    _deployed(checkout, cloud)
+    _manifest(checkout, "dev", DIGESTS)
+    lines: list[str] = []
+    data = release.verify_images(checkout, "dev", echo=lines.append)
+    assert data["ok"] and data["exit_code"] == 0
+    assert data["expected_from"] == "release/dev.yaml (v9.9.9)"
+    # envoy is not in gateways.enabled: not checked
+    assert [w["workload"] for w in data["workloads"]] == [
+        "corporate-email-dev", "income-verification-dev", "legacy-dms-dev",
+        "cx-mortgage-orchestrator", "ai-coe-mortgage-specialist",
     ]
+    assert lines[0] == "🔎 Verifying running images for dev (release/dev.yaml (v9.9.9))..."
+    assert lines[1] == f"  ✅ {'corporate-email-dev':<28} {DIGESTS['corporate-email'][7:19]}"
+    assert lines[-1] == "✅ All workloads run release/dev.yaml (v9.9.9)."
+    describe = next(c for c in cloud.calls if c[:4] == ["gcloud", "run", "services", "describe"])
+    assert describe[4:7] == ["corporate-email-dev", "--project=demo-mcps", "--region=us-central1"]
+
+
+def test_verify_images_reports_mismatches_mixed_revisions_and_unlisted_images(checkout, cloud):
+    with_envoy = ENV_YAML.replace("enabled    = []", 'enabled    = ["envoy"]')
+    (checkout / "infrastructure/live/dev/env.yaml").write_text(with_envoy)
+    _deployed(checkout, cloud)
+    listed = {k: v for k, v in DIGESTS.items() if k != "envoy-gateway"}
+    _manifest(checkout, "dev", listed)
+    cloud.engines["ai-coe-mortgage-specialist"] = f"{DEV_REPO}/ai-coe-mortgage-specialist@sha256:{'0' * 64}"
+    cloud.services["legacy-dms-dev"] = {
+        "traffic": [{"revisionName": "legacy-dms-dev-00001", "percent": 50}, {"revisionName": "old", "percent": 50}]
+    }
+    cloud.revisions["old"] = "sha256:" + "9" * 64
+    del cloud.services["corporate-email-dev"]
+    lines: list[str] = []
+    data = release.verify_images(checkout, "dev", echo=lines.append)
+    assert not data["ok"] and data["exit_code"] == 1 and data["failures"] == 4
+    by_name = {w["workload"]: w for w in data["workloads"]}
+    assert by_name["legacy-dms-dev"]["running"] == "mixed"
+    assert by_name["corporate-email-dev"]["running"] == ""
+    assert by_name["envoy-gateway-dev"]["expected"] == "" and by_name["envoy-gateway-dev"]["running"]
+    assert by_name["income-verification-dev"]["ok"] and by_name["cx-mortgage-orchestrator"]["ok"]
+    assert f"running none, expected {DIGESTS['corporate-email']} (release/dev.yaml (v9.9.9))" in "\n".join(lines)
+    assert "expected <not listed>" in "\n".join(lines)
+    assert lines[-1] == (
+        "❌ 4 workload(s) are not running release/dev.yaml (v9.9.9). Re-run 'esmeralda deploy --layer 5 --env dev'."
+    )
+
+
+def test_verify_images_without_a_manifest_uses_the_container_tag(checkout, cloud):
+    _deployed(checkout, cloud)
+    for name, digest in DIGESTS.items():
+        cloud.tags[f"{DEV_REPO}/{name}:dev-latest"] = digest
+    cloud.services["legacy-dms-dev"] = {"traffic": [], "latestReadyRevisionName": "legacy-dms-dev-00001"}
+    data = release.verify_images(checkout, "dev", echo=None)
+    assert data["ok"] and data["expected_from"] == "tag :dev-latest" and data["manifest"] is None
+    assert [c[5] for c in cloud.calls if c[:3] == ["gcloud", "artifacts", "docker"]][0].endswith(":dev-latest")
+
+
+def test_cli_release_and_verify(checkout, cloud, capsys):
+    cloud.tag_source()
+    _deployed(checkout, cloud)
+    argv = ["release", "promote", "--version", "v1.0.0", "--source", "dev-abc1234", "--verified", "2026-01-02"]
+    assert cli.main([*argv, "--dry-run"]) == 0
+    assert not (checkout / "release/prd.yaml").exists()
+    assert cli.main(argv) == 0
+    assert "🎉 Promoted v1.0.0." in capsys.readouterr().out
+    assert cli.main(["release", "status", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["release"]["version"] == "v1.0.0"
+    assert cli.main(["build", "--verify", "--env", "dev"]) == 1  # no dev-latest tags: nothing expected
+    assert "workload(s) are not running tag :dev-latest" in capsys.readouterr().out
+    _manifest(checkout, "dev", DIGESTS)
+    assert cli.main(["build", "--verify", "--env", "dev", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    assert cli.main(["release", "promote", "--version", "nope", "--source", "dev-abc1234"]) == 2
+    assert "--version must look like vX.Y.Z" in capsys.readouterr().err
+
+
+def test_deploy_layer5_ends_with_the_running_image_check(checkout, cloud, monkeypatch):
+    monkeypatch.setattr(infra, "apply_unit", lambda *a, **k: {"exit_code": 0})
+    _deployed(checkout, cloud)
+    _manifest(checkout, "dev", DIGESTS)
+    progress: list[str] = []
+    steps = deploy.plan_steps(checkout, "dev", layers=[5])
+    data = deploy.deploy(checkout, "dev", steps, deploy.Options(progress=progress.append))
+    verify = data["steps"][-1]
+    assert data["ok"] and verify["kind"] == "verify-images" and verify["status"] == "passed"
+    assert len(verify["workloads"]) == 5 and "✅ All workloads run release/dev.yaml (v9.9.9)." in progress
 
 
 # ------------------------------------------------------------------------------------------

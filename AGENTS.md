@@ -26,7 +26,7 @@ assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls `ai-coe-mortg
 | `packages/esmeralda/` | Runtime library shared by agents: `esmeralda run/serve/query`, auth, MCP/A2A clients, telemetry |
 | `infrastructure/modules/` | Terraform modules, one folder per layer (`0-cicd` … `5-workloads`) |
 | `infrastructure/live/` | Terragrunt units: `root.hcl`, `shared/layer-0-cicd`, `<env>/env.yaml` + `<env>/layer-*` (envs: `dev`, `prd`) |
-| `scripts/` | Shell helpers behind CLI commands and Make targets (lock, preflight, gateway probes, image checks, promotion); see `scripts/README.md`. New logic goes into the `esmeralda` CLI |
+| `scripts/` | Shell helpers behind CLI commands and Make targets (lock, preflight, gateway probes); see `scripts/README.md`. New logic goes into the `esmeralda` CLI |
 | `release/` | GitOps release manifest `prd.yaml` (image digests), written by `esmeralda release promote`; see `release/README.md` |
 | `docs/` | MkDocs site: `mkdocs.yml`, `src/` (pages), `hooks/` (Make Targets page generated from the Makefile) |
 | `tests/load_test/` | Locust load test (`make load-test`) |
@@ -71,7 +71,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for status, planning, dep
 | `uv run esmeralda deploy <unit...\|--layer N\|--all> --env <env> [--dry-run]` | `make deploy-<layer\|unit\|all> ENV=<env>` | Applies each unit through the `apply` path (planfile + destroy guard), stops at the first failure; `--layer 5` ends with the running-image check, `--all` builds images before L5; `--dry-run` plans read-only |
 | `uv run esmeralda destroy --env dev --confirm dev` | `make destroy-all ENV=dev` | Destroys L5 → L1 unit by unit; refuses `prd`, never touches L0 |
 | `uv run esmeralda build <agents\|services\|images\|package\|image>` | `make build-<target>` | Runs the tests (agents), builds and pushes images tagged `:dev-latest` and `:dev-<gitsha>`; `build --verify --env <env>` (`make verify-images`) checks running digests |
-| `uv run esmeralda release status` / `release promote --version vX.Y.Z --source dev-<sha>` | `make status-release` / `make promote VERSION=… SOURCE=… VERIFIED=…` | Shows `release/prd.yaml`; copies a verified dev build by digest to the release repository and writes the manifest (no deploy) |
+| `uv run esmeralda release status` / `release promote --version vX.Y.Z --source dev-<sha> [--dry-run]` | `make status-release` / `make promote VERSION=… SOURCE=… VERIFIED=…` | Shows `release/prd.yaml`; copies a verified dev build by digest to the release repository and writes the manifest (no deploy) |
 | `uv run esmeralda verify --env <env>` | `make verify ENV=<env>` | Gateway conformance probes (`scripts/test_gateway.sh`) + Agent Registry egress policies (every entry lists exactly its compiled callers, none on the registry root) + remote specialist and orchestrator queries |
 | `uv run esmeralda verify --partner --env <env>` | `make test-partner ENV=<env>` | Apigee partner front-door conformance probes (`scripts/test_partner.sh`, offline or live) |
 | `uv run esmeralda verify --model-armor --env <env>` | — | Model Armor checks for `governance.model_armor`: injection through model calls, gateway `tools/call` inspection, long-call regression |

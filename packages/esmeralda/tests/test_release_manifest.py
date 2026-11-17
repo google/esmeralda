@@ -11,19 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Unit tests for scripts/release_manifest.py (stdlib unittest: `make test-release`)."""
+"""Unit tests for esmeralda.ops.release_manifest (the release/<env>.yaml writer and reader)."""
 
 import contextlib
 import datetime as dt
 import io
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import release_manifest as rm  # noqa: E402
+from esmeralda.ops import release_manifest as rm
 
 D1 = "sha256:" + "a" * 64
 D2 = "sha256:" + "b" * 64
@@ -132,6 +129,14 @@ class CliTest(unittest.TestCase):
 
     def test_get_missing_manifest(self):
         self.assertEqual(self._run("get", "--manifest", "/nonexistent/prd.yaml", "--key", "version")[0], 2)
+
+    def test_load_and_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release" / "prd.yaml"
+            self.assertIsNone(rm.load(path))
+            rm.write(path, _render())
+            self.assertEqual(rm.load(path)["version"], "v1.2.3")
+            self.assertFalse(Path(str(path) + ".tmp").exists())
 
     def test_write_rejects_bad_input(self):
         with tempfile.TemporaryDirectory() as tmp:
