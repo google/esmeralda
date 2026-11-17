@@ -370,7 +370,7 @@ uv run esmeralda apply layer-5-workloads/entrypoint --env dev
 ESMERALDA_TEST_QUOTA_EXHAUSTION=1 uv run esmeralda verify --env dev --partner
 ```
 
-`uv run esmeralda verify --env dev --partner` (backed by [`scripts/test_partner.sh`](../../../scripts/test_partner.sh)) executes the live probes from the private test VM against `https://partner.esmeralda.internal` (the entry point VIP, layer-2 output `entrypoint_address`):
+`uv run esmeralda verify --env dev --partner` resolves the test VM, the internal CA and the partner key (`ESMERALDA_PARTNER_API_KEY`, else the `apigee/products` consumer key secret) and executes the live probes from the private test VM against `https://partner.esmeralda.internal` (the entry point VIP, layer-2 output `entrypoint_address`). When Apigee is not deployed in the environment there is nothing to probe; the proxy bundles are checked offline by `make test-apigee`:
 
 1. **Probe 1 (`HTTP 401`):** Unauthenticated partner request (no `x-api-key`) is rejected by `VAK-Partner-Key`.
 2. **Probe 2 (`HTTP 403`):** Partner request with a valid API key attempting to call internal specialist `/partner/v1/agents/ai-coe-mortgage-specialist:streamQuery` is blocked by `JS-Validate-Agent`.

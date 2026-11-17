@@ -16,7 +16,7 @@
 # Locust load test THROUGH the Apigee partner front door (`make load-test-partner`).
 #
 # The partner host (partner.<domain>) is private, so Locust runs on the test VM (IAP SSH):
-#   1. resolves the VM, entry point, internal CA and partner key exactly like scripts/test_partner.sh;
+#   1. resolves the VM, entry point, internal CA and partner key like `esmeralda verify --partner`;
 #   2. sends tests/load_test/partner_load_test.py + tests/partner/scenarios.py to the VM and, on first
 #      use, installs Locust there in a cached venv with uv (needs outbound HTTPS to PyPI and the uv
 #      installer, e.g. through Cloud NAT);

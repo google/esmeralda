@@ -17,8 +17,8 @@
 Every request a partner can send through ``https://partner.<domain>`` is defined here once and
 used by:
 
-* ``tests/partner/probe.py`` (the live conformance probes behind ``scripts/test_partner.sh`` and
-  ``esmeralda verify --partner``): every scenario with ``probe`` set, in probe order;
+* ``tests/partner/probe.py`` (the live conformance probes behind ``esmeralda verify --partner``,
+  run on the test VM): every scenario with ``probe`` set, in probe order;
 * ``tests/load_test/partner_load_test.py`` (``make load-test-partner``): every scenario with
   ``weight > 0``, as a weighted Locust task (destructive ones only with ``--include-quota``).
 

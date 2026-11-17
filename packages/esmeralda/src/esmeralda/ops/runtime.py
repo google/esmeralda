@@ -275,7 +275,7 @@ def test_gateway(
 
 
 def parse_partner_output(text: str) -> dict[str, Any]:
-    """Per-probe results from the output of ``scripts/test_partner.sh``."""
+    """Per-probe results from the output of the partner probes (``run_partner_probes``)."""
     probes: list[dict[str, Any]] = []
     mode = "live"
     for raw in text.splitlines():
@@ -296,19 +296,74 @@ def parse_partner_output(text: str) -> dict[str, Any]:
     return {"mode": mode, "probes": probes}
 
 
+PARTNER_FILES = {"SCENARIOS": Path("tests/partner/scenarios.py"), "PROBE": Path("tests/partner/probe.py")}
+QUOTA_VAR = "ESMERALDA_TEST_QUOTA_EXHAUSTION"
+
+# Runs ON the test VM: writes the CA and the shipped catalog files, then runs probe.py (stdlib only).
+PARTNER_REMOTE = r"""set -euo pipefail
+WORK="$(mktemp -d)"
+trap 'rm -rf "${WORK}"' EXIT
+printf '%s\n' "${CA_PEM}" > "${WORK}/ca.pem"
+printf '%s' "${SCENARIOS_B64}" | base64 -d > "${WORK}/scenarios.py"
+printf '%s' "${PROBE_B64}" | base64 -d > "${WORK}/probe.py"
+PARTNER_CA_FILE="${WORK}/ca.pem"
+export PARTNER_ENTRY_IP PARTNER_HOST PARTNER_API_KEY PARTNER_CA_FILE ESMERALDA_TEST_QUOTA_EXHAUSTION
+python3 "${WORK}/probe.py"
+"""
+
+
+def run_partner_probes(root: Path, env: str, *, timeout: float = 300.0) -> subprocess.CompletedProcess[str]:
+    """Live partner front-door probes from the test VM, or an offline notice when Apigee is not deployed.
+
+    The live probes are the catalog's (``tests/partner/scenarios.py``, every scenario with a ``probe``
+    number), run by ``tests/partner/probe.py`` on the VM. The Apigee bundle invariants are offline
+    tests (``make test-apigee``).
+    """
+    cmd = ["partner-probes", env]
+    platform = testvm.env_rel(env, testvm.APIGEE_PLATFORM_UNIT)
+    offline = "the proxy bundles are checked offline by make test-apigee"
+    if not (repo.env_dir(root, env) / testvm.APIGEE_PLATFORM_UNIT).is_dir():
+        return subprocess.CompletedProcess(
+            cmd, 0, f"ℹ️  Apigee platform directory not deployed in {env}: no live probes ({offline}).\n", ""
+        )
+    if not testvm.apigee_env(root, env):
+        notice = f"ℹ️  Apigee is disabled in {env} (no live state in {platform}): no live probes ({offline}).\n"
+        return subprocess.CompletedProcess(cmd, 0, notice, "")
+    files = {key: root / path for key, path in PARTNER_FILES.items()}
+    missing = [str(path) for path in PARTNER_FILES.values() if not (root / path).is_file()]
+    if missing:
+        raise OpsError(f"{', '.join(missing)} not found in this checkout")
+    try:
+        vm = testvm.resolve(root, env)
+        key = testvm.partner_key(root, env)
+    except OpsError as exc:
+        return subprocess.CompletedProcess(cmd, 1, "", f"❌ {exc}\n")
+    host = f"partner.{vm.domain}"
+    header = f"🔎 Running live partner conformance probes against https://{host} ({vm.entry_ip}) from {vm.name}...\n"
+    variables = {
+        "PARTNER_ENTRY_IP": vm.entry_ip,
+        "PARTNER_HOST": host,
+        "PARTNER_API_KEY": key,
+        "CA_PEM": vm.ca_pem,
+        QUOTA_VAR: repo.tool_env().get(QUOTA_VAR) or "0",
+    }
+    result = testvm.run(vm, PARTNER_REMOTE, vars=variables, files=files, timeout=timeout)
+    stdout = header + result.stdout
+    if result.returncode == 0:
+        stdout += "✅ All live partner front-door conformance probes passed!\n"
+    return subprocess.CompletedProcess(cmd, result.returncode, stdout, result.stderr)
+
+
 def test_partner(
     root: Path,
     env: str,
     *,
     timeout: float = 300.0,
 ) -> dict[str, Any]:
-    """Runs ``scripts/test_partner.sh <env>`` (Apigee partner front-door conformance checks)."""
+    """Apigee partner front-door conformance probes (``run_partner_probes``), summarised."""
     repo.env_dir(root, env)
-    script = root / "scripts" / "test_partner.sh"
-    if not script.is_file():
-        raise OpsError(f"{script.relative_to(root)} not found in this checkout")
     started = time.monotonic()
-    result = repo.run(["bash", str(script), env], cwd=root, timeout=timeout, what="scripts/test_partner.sh")
+    result = run_partner_probes(root, env, timeout=timeout)
     parsed = parse_partner_output(result.stdout + "\n" + result.stderr)
     probes = parsed["probes"]
     passed = result.returncode == 0
@@ -321,6 +376,9 @@ def test_partner(
         "probes": probes,
         "seconds": round(time.monotonic() - started, 1),
     }
+    notices = [line.strip() for line in result.stdout.splitlines() if line.startswith("ℹ️")]
+    if notices:
+        summary["notice"] = notices[0]
     if not passed:
         text = f"{result.stderr}\n{result.stdout}"
         fatal = [line.strip() for line in _ANSI.sub("", text).splitlines() if line.strip().startswith("❌ ")]
@@ -429,7 +487,9 @@ async def verify(
                     "step": "partner",
                     "passed": bool(pt.get("passed")),
                     "seconds": pt.get("seconds", 0.0),
-                    "detail": pt.get("error") or f"{pt.get('ok', 0)} ok, {pt.get('failed', 0)} failed",
+                    "detail": pt.get("error")
+                    or pt.get("notice")
+                    or f"{pt.get('ok', 0)} ok, {pt.get('failed', 0)} failed",
                 }
             ]
         return {

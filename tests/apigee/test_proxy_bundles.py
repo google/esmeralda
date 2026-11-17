@@ -89,6 +89,32 @@ def test_every_proxy_requires_verify_api_key_in_preflow(proxy_name: str) -> None
         )
 
 
+def _preflow(proxy_name: str) -> list[tuple[str, str]]:
+    root = ET.parse(PROXIES_DIR / proxy_name / "apiproxy" / "proxies" / "default.xml").getroot()
+    return [
+        ((s.findtext("Name") or "").strip(), (s.findtext("Condition") or "").strip())
+        for s in root.findall("./PreFlow/Request/Step")
+    ]
+
+
+def test_partner_agents_blocks_agents_outside_the_allowlist() -> None:
+    """Partner probe 2: only cx-mortgage-orchestrator (or an `all` product) passes RF-Agent-Not-Allowed."""
+    steps = dict(_preflow("partner-agents"))
+    assert "RF-Agent-Not-Allowed" in steps, "partner-agents must run RF-Agent-Not-Allowed in its PreFlow"
+    condition = steps["RF-Agent-Not-Allowed"]
+    assert '!(proxy.pathsuffix MatchesPath "/cx-mortgage-orchestrator/**")' in condition
+    assert '!(proxy.pathsuffix MatchesPath "/cx-mortgage-orchestrator:*")' in condition
+
+
+def test_partner_mcp_enforces_the_tool_scope_before_forbidding() -> None:
+    """Partner probe 3: JS-Enforce-Tool-Scope sets mcp.tool.forbidden, then RF-Tool-Forbidden rejects the call."""
+    steps = _preflow("partner-mcp")
+    names = [name for name, _ in steps]
+    assert "JS-Enforce-Tool-Scope" in names and "RF-Tool-Forbidden" in names
+    assert names.index("JS-Enforce-Tool-Scope") < names.index("RF-Tool-Forbidden")
+    assert dict(steps)["RF-Tool-Forbidden"] == "mcp.tool.forbidden = true"
+
+
 @pytest.mark.parametrize("proxy_name", ["partner-agents", "partner-mcp"])
 def test_every_proxy_wires_cross_cloud_flow_callout_before_identity_check(proxy_name: str) -> None:
     """Every proxy must invoke FC-Cross-Cloud before RF-Key-Identity-Mismatch and AM-set-user-var."""

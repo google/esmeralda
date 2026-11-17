@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from esmeralda.ops import repo, runtime, testvm
+from esmeralda.ops import envfile, repo, runtime, testvm
 from esmeralda.ops.repo import OpsError
 
 PEM = "-----BEGIN CERTIFICATE-----\nMIIB'quoted' $HOME `x`\n-----END CERTIFICATE-----"
@@ -94,6 +94,10 @@ def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     probes.write_text("echo probes\n")
     monkeypatch.setattr(testvm, "secret", lambda secret_id, **_: PEM if secret_id == CA_SECRET else "")
     monkeypatch.delenv(runtime.QUERY_ENV_VAR, raising=False)
+    # No user env file and no partner variables from the developer's shell.
+    monkeypatch.setenv(envfile.ENV_FILE_VAR, str(tmp_path / "no-env-file"))
+    monkeypatch.delenv(testvm.PARTNER_KEY_VAR, raising=False)
+    monkeypatch.delenv(runtime.QUOTA_VAR, raising=False)
     return tmp_path
 
 
@@ -251,3 +255,133 @@ def test_gateway_probes_payload_is_valid_bash():
     if not shutil.which("bash") or not script.is_file():
         pytest.skip("needs bash and the repository's scripts/vm/gateway_probes.sh")
     subprocess.run(["bash", "-n", str(script)], check=True)
+
+
+# ---- partner front door (esmeralda verify --partner) ------------------------------------------
+
+KEY_SECRET = "projects/demo-apigee/secrets/partner-smoke-test-key"
+
+
+def _deploy_apigee(root: Path, *, apigee_env: str | None = "eval", key_secret: str | None = KEY_SECRET) -> None:
+    for unit in (testvm.APIGEE_PLATFORM_UNIT, testvm.APIGEE_PRODUCTS_UNIT):
+        unit_dir = root / repo.LIVE / "dev" / unit
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        (unit_dir / "terragrunt.hcl").write_text("")
+    _write_state(root, testvm.APIGEE_PLATFORM_UNIT, {"apigee_env_name": apigee_env} if apigee_env else {})
+    _write_state(root, testvm.APIGEE_PRODUCTS_UNIT, {"partner_consumer_key_secret_id": key_secret})
+    for path in runtime.PARTNER_FILES.values():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(f"# {path.name}\n")
+
+
+@pytest.fixture
+def secrets(monkeypatch):
+    values = {CA_SECRET: PEM, KEY_SECRET: "partner-key"}
+    monkeypatch.setattr(testvm, "secret", lambda secret_id, **_: values.get(secret_id, ""))
+    return values
+
+
+def test_apigee_env(checkout):
+    assert testvm.apigee_env(checkout, "dev") == ""  # no apigee/platform unit
+    _deploy_apigee(checkout, apigee_env=None)
+    assert testvm.apigee_env(checkout, "dev") == ""  # unit present, nothing deployed
+    _deploy_apigee(checkout)
+    assert testvm.apigee_env(checkout, "dev") == "eval"
+
+
+def test_partner_key_prefers_the_environment_then_the_secret(checkout, secrets, monkeypatch):
+    _deploy_apigee(checkout)
+    assert testvm.partner_key(checkout, "dev") == "partner-key"
+    monkeypatch.setenv(testvm.PARTNER_KEY_VAR, "from-env")
+    assert testvm.partner_key(checkout, "dev") == "from-env"
+    monkeypatch.delenv(testvm.PARTNER_KEY_VAR)
+    env_file = checkout / "env"
+    env_file.write_text(f"{testvm.PARTNER_KEY_VAR}=from-env-file\n")
+    monkeypatch.setenv(envfile.ENV_FILE_VAR, str(env_file))
+    assert testvm.partner_key(checkout, "dev") == "from-env-file"
+
+
+def test_partner_key_missing(checkout, secrets):
+    _deploy_apigee(checkout, key_secret=None)
+    with pytest.raises(OpsError, match="Set ESMERALDA_PARTNER_API_KEY or deploy layer-5-workloads/apigee/products"):
+        testvm.partner_key(checkout, "dev")
+
+
+def test_partner_probes_without_apigee_are_a_notice(checkout, monkeypatch):
+    monkeypatch.setattr(testvm, "run", lambda *a, **k: pytest.fail("must not reach the VM"))
+    result = runtime.run_partner_probes(checkout, "dev")
+    assert result.returncode == 0 and result.stdout.startswith("ℹ️  Apigee platform directory not deployed in dev")
+    _deploy_apigee(checkout, apigee_env=None)
+    summary = runtime.test_partner(checkout, "dev")
+    assert summary["passed"] is True and summary["mode"] == "offline" and summary["probes"] == []
+    assert summary["notice"].startswith("ℹ️  Apigee is disabled in dev")
+    assert "make test-apigee" in summary["notice"]
+
+
+def test_partner_probes_ship_the_catalog_to_the_vm(checkout, secrets, monkeypatch):
+    _deploy_apigee(checkout)
+    monkeypatch.setenv(runtime.QUOTA_VAR, "1")
+    seen = {}
+
+    def fake_run(vm, script, *, vars, files, timeout, **_):
+        seen.update(vm=vm, script=script, vars=vars, files=files)
+        return subprocess.CompletedProcess([], 0, "  ✅ Probe 1 (Unauthenticated -> 401): HTTP 401\n", "")
+
+    monkeypatch.setattr(testvm, "run", fake_run)
+    summary = runtime.test_partner(checkout, "dev")
+    assert seen["script"] == runtime.PARTNER_REMOTE
+    assert seen["vars"] == {
+        "PARTNER_ENTRY_IP": "10.0.1.3",
+        "PARTNER_HOST": "partner.example.internal",
+        "PARTNER_API_KEY": "partner-key",
+        "CA_PEM": PEM,
+        "ESMERALDA_TEST_QUOTA_EXHAUSTION": "1",
+    }
+    assert seen["files"] == {key: checkout / path for key, path in runtime.PARTNER_FILES.items()}
+    assert summary["passed"] is True and summary["mode"] == "live" and summary["ok"] == 1
+    assert summary["probes"] == [
+        {"probe": 1, "ok": True, "detail": "HTTP 401", "label": "Unauthenticated -> 401"},
+    ]
+
+
+def test_partner_probe_failures_and_resolution_errors(checkout, secrets, monkeypatch):
+    _deploy_apigee(checkout)
+    monkeypatch.setattr(
+        testvm, "run", lambda *a, **k: subprocess.CompletedProcess([], 1, "  ❌ Probe 4 (SSE): HTTP 504\n", "")
+    )
+    summary = runtime.test_partner(checkout, "dev")
+    assert summary["passed"] is False and summary["failed"] == 1 and summary["error"] == "❌ Probe 4 (SSE): HTTP 504"
+
+    _write_state(checkout, "layer-5-workloads/test-vm", {})
+    summary = runtime.test_partner(checkout, "dev")
+    assert summary["passed"] is False and summary["error"].startswith("❌ No test VM outputs")
+
+
+@pytest.mark.skipif(not shutil.which("bash"), reason="needs bash")
+def test_partner_remote_runs_probe_py_with_the_shipped_files(tmp_path):
+    """The VM half, run locally with a stub probe.py that prints what it got."""
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import os, pathlib\n"
+        "env = os.environ\n"
+        "print(env['PARTNER_HOST'], env['PARTNER_API_KEY'], env['ESMERALDA_TEST_QUOTA_EXHAUSTION'])\n"
+        "print(pathlib.Path(os.environ['PARTNER_CA_FILE']).read_text().strip() == os.environ.get('EXPECT', ''))\n"
+        "print((pathlib.Path(__file__).parent / 'scenarios.py').read_text().strip())\n"
+    )
+    scenarios = tmp_path / "scenarios.py"
+    scenarios.write_text("SCENARIOS = []\n")
+    script = testvm.payload(
+        runtime.PARTNER_REMOTE,
+        vars={
+            "PARTNER_ENTRY_IP": "10.0.1.3",
+            "PARTNER_HOST": "partner.example.internal",
+            "PARTNER_API_KEY": "k'ey",
+            "CA_PEM": "pem",
+            "ESMERALDA_TEST_QUOTA_EXHAUSTION": "0",
+        },
+        files={"SCENARIOS": scenarios, "PROBE": probe},
+    )
+    result = subprocess.run(
+        ["bash", "-s"], input="export EXPECT=pem\n" + script, capture_output=True, text=True, check=True
+    )
+    assert result.stdout.splitlines() == ["partner.example.internal k'ey 0", "True", "SCENARIOS = []"]

@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Shared helpers for the partner front-door scripts (sourced, not executed):
-#   scripts/test_partner.sh       live conformance probes (`esmeralda verify --partner`)
+# Shared helpers for the partner load test script (sourced, not executed; `esmeralda verify
+# --partner` resolves the same values in Python, esmeralda.ops.testvm):
 #   scripts/partner_load_test.sh  Locust load test through Apigee (`make load-test-partner`)
 #
 # Run from the repository root. `partner_resolve <env>` sets, from Terragrunt outputs (or the local
