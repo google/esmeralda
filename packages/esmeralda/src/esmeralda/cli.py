@@ -35,7 +35,7 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda deploy <unit>... | --layer N | --all [--env dev|prd] [--allow-destroy] [--dry-run] [--json]``
 * ``esmeralda destroy --env dev --confirm dev [--dry-run] [--json]``
 * ``esmeralda build <agents|services|images|package|<image>> [--tag T] [--skip-tests] [--dry-run] [--verify]``
-* ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified YYYY-MM-DD]]``
+* ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified DATE] [--dry-run]] [--json]``
 * ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
@@ -646,7 +646,7 @@ def _catalog(args: argparse.Namespace) -> int:
 
 
 def _ops_dispatch(args: argparse.Namespace) -> int:
-    from esmeralda.ops import build, contracts, deploy, guard, infra, logs, repo, runtime
+    from esmeralda.ops import build, contracts, deploy, guard, infra, logs, release, repo, runtime
     from esmeralda.ops.repo import OpsError
 
     try:
@@ -720,17 +720,33 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
                 code = int(data["exit_code"])
             if args.verify and code == 0:
                 if args.dry_run:
-                    print(f"$ {' '.join(build.verify_images_cmd(args.env))}")
+                    print(f"$ {' '.join(release.verify_images_cmd(args.env))}")
                 else:
-                    code = build.verify_images(root, args.env)
+                    data = release.verify_images(
+                        root, args.env, cicd_dir=args.cicd_dir, echo=None if args.json else print
+                    )
+                    if args.json:
+                        print(json.dumps(data, indent=2))
+                    code = int(data["exit_code"])
             return code
 
         if args.cmd == "release":
             if args.release_cmd == "promote":
-                return build.release(
-                    root, "promote", env=args.env, version=args.version, source=args.source, verified=args.verified
+                data = release.promote(
+                    root,
+                    version=args.version,
+                    source=args.source,
+                    verified=args.verified,
+                    env=args.env,
+                    dry_run=args.dry_run,
+                    echo=(lambda line: print(line, file=sys.stderr)) if args.json else print,
                 )
-            return build.release(root, "status", env=args.env)
+                if args.json:
+                    print(json.dumps(data, indent=2))
+                return int(data["exit_code"])
+            data = release.status(root, args.env)
+            print(json.dumps(data, indent=2) if args.json else release.format_status(data))
+            return 0
 
         if args.cmd == "doctor":
             data = repo.doctor(root, args.env)
@@ -980,7 +996,7 @@ def _parser() -> argparse.ArgumentParser:
     build_p.add_argument("--dry-run", action="store_true", help="print the commands instead of running them")
     build_p.add_argument(
         "--verify", action="store_true",
-        help="check every layer-5 workload runs the expected digest (scripts/verify_images.sh) for --env",
+        help="check every layer-5 workload runs the expected digest (release/<env>.yaml, else its tag) for --env",
     )
     build_p.add_argument("--jobs", type=int, help="concurrent builds per batch (default: all of the batch)")
     build_p.add_argument(
@@ -999,6 +1015,7 @@ def _parser() -> argparse.ArgumentParser:
     rel_status = release_sub.add_parser("status", help="show release/<env>.yaml and the shared repositories")
     rel_status.add_argument("--env", default="prd", help="release environment (default: prd)")
     rel_status.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
+    rel_status.add_argument("--json", action="store_true", help="output machine-readable JSON")
     rel_promote = release_sub.add_parser(
         "promote", help="copy every dev-<sha> image by digest to the release repository and write release/<env>.yaml"
     )
@@ -1006,7 +1023,12 @@ def _parser() -> argparse.ArgumentParser:
     rel_promote.add_argument("--source", required=True, help="immutable dev build tag, dev-<gitsha>")
     rel_promote.add_argument("--verified", help="date (YYYY-MM-DD) verify passed in dev on that build (default: today)")
     rel_promote.add_argument("--env", default="prd", help="release environment (default: prd)")
+    rel_promote.add_argument(
+        "--dry-run", action="store_true",
+        help="resolve and check every digest and show what would change; copy nothing, write nothing",
+    )
     rel_promote.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
+    rel_promote.add_argument("--json", action="store_true", help="output machine-readable JSON (progress on stderr)")
 
     verify = sub.add_parser(
         "verify",

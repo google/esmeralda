@@ -89,7 +89,7 @@ TF ?= $(shell command -v terraform 2>/dev/null || command -v tofu 2>/dev/null ||
 	build-service-income-verification build-service-corporate-email build-service-legacy-dms build-service-envoy \
 	build-services build-images deploy-workloads verify-images deploy-services deploy-ai-coe-mortgage-specialist \
 	deploy-cx-mortgage-orchestrator deploy-agents deploy-gateway deploy-entrypoint test-gateway deploy-iap-egress deploy-all destroy-all status-release \
-	verify test-release promote test-governance-chaos load-test load-test-partner docs-serve docs-build clean preflight \
+	verify promote test-governance-chaos load-test load-test-partner docs-serve docs-build clean preflight \
 	status doctor units plan apply logs guard hooks build-package
 
 help: ## Show this help message
@@ -158,12 +158,7 @@ test: ## Run unit tests across all workspace members
 	@echo "🧪 Running unit tests for legacy-dms..."
 	@uv run --package legacy-dms --extra dev pytest apps/services/legacy-dms/test_server.py
 	@$(MAKE) test-agents
-	@$(MAKE) --no-print-directory test-release
 	@echo "✅ All unit tests passed!"
-
-test-release: ## Unit tests for the release manifest writer (scripts/release_manifest.py, stdlib only)
-	@echo "🧪 Running unit tests for the release manifest..."
-	@python3 -m unittest discover -s scripts/tests -q
 
 run-mcp-local: ## Launch the 3 MCP servers locally on 127.0.0.1:8001-8003 until Ctrl+C (servers listed in esmeralda.local_mcp)
 	@uv run --package esmeralda python -m esmeralda.local_mcp

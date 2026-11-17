@@ -21,7 +21,8 @@ guard, apply the saved planfile), in the order the Makefile's ``deploy-*`` chain
   layer-0 state lives in the main checkout, unless ``--cicd-dir`` is explicit);
 * layers 1-4: ``layer-1-projects`` -> ``layer-2-networking`` -> ``layer-3-security`` -> ``layer-4-governance``;
 * layer 5: every enabled ``layer-5-workloads`` unit in Terragrunt's ``run --all`` order (dependency
-  depth, then path), with ``iap-egress`` always last; then ``scripts/verify_images.sh``;
+  depth, then path), with ``iap-egress`` always last; then the running-image check
+  (``release.verify_images``);
 * ``--all``: layer 0 -> 1-3 -> 4 -> image builds -> layer 5 (as ``make deploy-all``).
 
 It stops at the first failure or destroy-guard refusal and reports every step. ``dry_run`` plans
@@ -37,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from esmeralda.ops import build, infra, repo
+from esmeralda.ops import build, infra, release, repo
 from esmeralda.ops.repo import OpsError
 
 FOUNDATIONS = {1: "layer-1-projects", 2: "layer-2-networking", 3: "layer-3-security", 4: "layer-4-governance"}
@@ -196,11 +197,15 @@ def _build(root: Path, step: Step, opts: Options) -> dict[str, Any]:
 
 
 def _verify(root: Path, step: Step, opts: Options) -> dict[str, Any]:
-    cmd = build.verify_images_cmd(step.name)
+    cmd = release.verify_images_cmd(step.name)
     if opts.dry_run:
         return {"status": "dry-run", "commands": [" ".join(cmd)]}
-    code = build.verify_images(root, step.name)
-    return {"status": "passed" if code == 0 else "failed", "exit_code": code}
+    result = release.verify_images(root, step.name, cicd_dir=opts.cicd_dir, echo=opts.progress)
+    return {
+        "status": "passed" if result["ok"] else "failed",
+        "exit_code": result["exit_code"],
+        "workloads": result["workloads"],
+    }
 
 
 def deploy(root: Path, env: str, steps: list[Step], opts: Options) -> dict[str, Any]:
