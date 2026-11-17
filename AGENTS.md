@@ -26,7 +26,7 @@ assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls `ai-coe-mortg
 | `packages/esmeralda/` | Runtime library shared by agents: `esmeralda run/serve/query`, auth, MCP/A2A clients, telemetry |
 | `infrastructure/modules/` | Terraform modules, one folder per layer (`0-cicd` … `5-workloads`) |
 | `infrastructure/live/` | Terragrunt units: `root.hcl`, `shared/layer-0-cicd`, `<env>/env.yaml` + `<env>/layer-*` (envs: `dev`, `prd`) |
-| `scripts/` | Shell helpers behind CLI commands and Make targets (preflight) and payloads that run on the test VM (`scripts/vm/`); see `scripts/README.md`. New logic goes into the `esmeralda` CLI |
+| `scripts/` | Payloads that run on the test VM (`scripts/vm/`) and the shell helpers still behind Make targets; see `scripts/README.md`. New logic goes into the `esmeralda` CLI |
 | `release/` | GitOps release manifest `prd.yaml` (image digests), written by `esmeralda release promote`; see `release/README.md` |
 | `docs/` | MkDocs site: `mkdocs.yml`, `src/` (pages), `hooks/` (Make Targets page generated from the Makefile) |
 | `tests/load_test/` | Locust load test (`make load-test`) |
@@ -64,7 +64,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for status, planning, dep
 | Command | Make equivalent | What it proves |
 |---|---|---|
 | `uv run esmeralda status --env <env>` | `make status ENV=<env>` | Git branch/SHA, active worktrees, local state units, image tags/digests, and deployed environment outputs (`--unit <unit> --output <name>` prints one raw output value) |
-| `uv run esmeralda doctor --env <env>` | `make doctor ENV=<env>` | Workstation preflight check: required tools, user-local env file and the source of `ESMERALDA_BILLING_ACCOUNT` / `ESMERALDA_ORG_ID` / `ESMERALDA_ALERT_EMAIL`, ADC token, `uv.lock`, and local state readability |
+| `uv run esmeralda doctor --env <env>` | `make doctor ENV=<env>` (or `make preflight`) | Workstation preflight check: required tools (Python >= 3.10, Terraform >= 1.5), user-local env file and the source of `ESMERALDA_BILLING_ACCOUNT` / `ESMERALDA_ORG_ID` / `ESMERALDA_ALERT_EMAIL`, ADC token, `uv.lock`, and local state readability |
 | `uv run esmeralda units [--layer 0..5] --env <env>` | `make units ENV=<env>` | Lists Terragrunt units, layer, dependencies, enabled/excluded status, and local state presence |
 | `uv run esmeralda plan <unit\|--all> --env <env>` | `make plan [UNIT=<unit>] ENV=<env>` | Read-only `terragrunt plan -lock=false` summary (`to add`, `to change`, `to destroy`, `to replace`) |
 | `uv run esmeralda apply <unit> --env <env>` | `make apply UNIT=<unit> ENV=<env>` | Plans to a saved planfile, **enforces the destroy guard** (refuses `destroy > 0` without `--allow-destroy`), and applies |
@@ -79,7 +79,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for status, planning, dep
 | `uv run esmeralda logs <target> --env <env>` | `make logs TARGET_NAME=<target> ENV=<env>` | Recent Cloud Logging entries for an agent or MCP service (tracebacks collapsed, deduplicated) |
 | `uv run esmeralda contracts [--section ...]` | — | Prints architectural contracts (`entrypoint`, `gateway_adapter`, `agent_card`, `env_yaml`) |
 | `uv run esmeralda guard [--staged\|--diff <range>\|--all]` | `make guard` | Public-repository sensitive-content and forbidden-path scanner |
-| — | `make bootstrap` | Tools present (preflight), workspace synced with `uv`, `.githooks` installed |
+| — | `make bootstrap` | `uv` present, workspace synced with `uv`, `.githooks` installed, then `esmeralda doctor` (reported, not fatal) |
 | `uv run esmeralda lock [PKG...]` / `lock --check` | `make lock [PKG=…]` / `make lock-check` | Regenerates `uv.lock` against public PyPI in Cloud Build (written back for review, never committed); `--check`: `uv.lock` matches every `pyproject.toml` (offline) |
 | — | `make test-all` | `lock-check` + `test` + `test-guards` + `test-terraform` + `test-gateway-unit` + `test-apigee`: the offline gate before a PR |
 | — | `make docs-build` | Docs site builds in strict mode (broken links, anchors, nav fail), same as CI |

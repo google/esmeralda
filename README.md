@@ -146,14 +146,14 @@ The entry point VIP is reserved by Layer 2 in the core subnet: GCP picks a free 
 | [`jq`](https://jqlang.org/download/) | any | Parsing Terraform outputs in the `make` targets (`build-images`, `deploy-all`) and `scripts/` (`esmeralda verify`) |
 | `git`, `make`, `bash` | any | Checkout, `make` targets and helper scripts |
 
-`uv run esmeralda doctor --env dev` checks that these tools are on your `PATH`. Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID` and `ESMERALDA_ALERT_EMAIL`, the address that receives the governance alerts) and review `infrastructure/live/<env>/env.yaml`. If your projects sit under a folder (`folder_id`), set `ESMERALDA_ORG_ID`, or give the identity running Terraform `resourcemanager.folders.get` on the folder chain (for example `roles/browser`) so the Agent Identity trust domain can resolve the organization.
+`uv run esmeralda doctor --env dev` (or `make preflight`) checks that these tools are on your `PATH` (and Python >= 3.10, Terraform >= 1.5). Export your billing account (`ESMERALDA_BILLING_ACCOUNT`, and optionally `ESMERALDA_ORG_ID` and `ESMERALDA_ALERT_EMAIL`, the address that receives the governance alerts) and review `infrastructure/live/<env>/env.yaml`. If your projects sit under a folder (`folder_id`), set `ESMERALDA_ORG_ID`, or give the identity running Terraform `resourcemanager.folders.get` on the folder chain (for example `roles/browser`) so the Agent Identity trust domain can resolve the organization.
 
 #### 1. Using the `esmeralda` CLI (Recommended)
 
 The `esmeralda` CLI inspects your environment, validates contracts, runs local or remote agent queries, plans and applies infrastructure units with destroy-guard protection, and verifies every route end to end:
 
 ```bash
-uv run esmeralda doctor --env dev          # preflight checks (tools, auth, env.yaml)
+uv run esmeralda doctor --env dev          # preflight checks (tools, auth, env file, uv.lock, local state)
 uv run esmeralda status --env dev          # live status of layers, catalog hosts & gateways
 uv run esmeralda contracts                 # inspect gateway & catalog architectural contracts
 uv run esmeralda guard --all               # run security & hygiene guards across the repo
@@ -193,7 +193,8 @@ uv run esmeralda mcp
 The root `Makefile` covers bootstrap and offline tests, and keeps short aliases for the CLI (for example `make deploy-all ENV=dev` runs `esmeralda deploy --all --env dev`):
 
 ```bash
-make bootstrap                 # preflight checks + uv workspace sync
+make bootstrap                 # check uv, sync the uv workspace, install git hooks, then esmeralda doctor
+make preflight ENV=dev         # shortcut for: uv run esmeralda doctor --env dev
 make test-all                  # Python unit tests + Terraform validation + gateway harness
 make deploy-all ENV=dev        # shortcut for: uv run esmeralda deploy --all --env dev
 make test-e2e ENV=dev          # specialist, then orchestrator -> specialist through the gateway

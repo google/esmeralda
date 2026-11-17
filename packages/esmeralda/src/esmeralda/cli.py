@@ -965,7 +965,8 @@ def _parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser(
         "doctor",
-        help="preflight check: required tools, billing env var, ADC token, uv.lock, and local state readability",
+        help="preflight check (make preflight): required tools and versions, billing env var, ADC token, uv.lock, "
+        "and local state readability",
     )
     _add_common_ops_flags(doctor, with_env=True)
 

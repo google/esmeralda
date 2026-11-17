@@ -43,9 +43,16 @@ Esmeralda is a [`uv`](https://docs.astral.sh/uv/) workspace driven by the root
 a pull request, run at least:
 
 ```bash
-make bootstrap    # preflight checks + install all workspace packages with uv
+make bootstrap    # install all workspace packages with uv and the git hooks, then the preflight check (esmeralda doctor)
 make test-all     # Python unit tests (MCP services + both agents), `terraform validate` on every module and the Envoy gateway harness
 ```
+
+`make bootstrap` only needs `uv` to sync the workspace. The preflight check at
+the end (`make preflight`, an alias of `esmeralda doctor`) also looks for the
+deploy tools (Python >= 3.10, Terraform >= 1.5, Terragrunt, `gcloud`, `jq`),
+Application Default Credentials, the user-local env file and the `uv.lock`; a
+failed check is reported but doesn't undo the bootstrap. You only need those
+tools to deploy, not to run the offline tests.
 
 **Envoy for the gateway harness:** 1.40.x, the version the gateway image pins
 (at least 1.39: the Vertex AI routes need `gcp_authn` access tokens). On macOS,

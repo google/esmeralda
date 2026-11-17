@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -477,6 +478,34 @@ def _tool_version(binary: str, args: list[str], cwd: Path) -> str:
         return "installed"
 
 
+# Oldest supported version per tool (what the scripts, Terraform modules and Makefile need).
+MIN_VERSIONS: dict[str, tuple[int, ...]] = {"python3": (3, 10), "terraform": (1, 5)}
+
+
+def _below_minimum(name: str, version: str) -> str:
+    """``"needs >= X.Y"`` when ``version`` is parseable and older than ``MIN_VERSIONS[name]``, else ``""``."""
+    minimum = MIN_VERSIONS.get(name)
+    match = _VERSION_RE.fullmatch(version)
+    if not minimum or not match:
+        return ""
+    found = tuple(int(part) for part in match.group(1).split("."))
+    return f"needs >= {'.'.join(map(str, minimum))}" if found < minimum else ""
+
+
+def _which_outside_venv(binary: str) -> str | None:
+    """``which(binary)`` ignoring the active virtual environment (``uv run`` puts its ``bin`` first).
+
+    The ``python3`` that make recipes and scripts run is the workstation's, not the workspace venv's.
+    """
+    venv_bins = {Path(p).resolve() / "bin" for p in (os.environ.get("VIRTUAL_ENV"), sys.prefix) if p}
+    if sys.prefix == sys.base_prefix:
+        venv_bins.discard(Path(sys.prefix).resolve() / "bin")
+    path = os.pathsep.join(
+        entry for entry in tool_env()["PATH"].split(os.pathsep) if entry and Path(entry).resolve() not in venv_bins
+    )
+    return shutil.which(binary, path=path)
+
+
 def _check_adc(root: Path) -> tuple[bool, str]:
     adc_env = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     adc_path = (
@@ -631,6 +660,7 @@ def doctor(root: Path, env: str = "dev") -> dict[str, Any]:
 
     required_tools = [
         ("git", ["--version"]),
+        ("python3", ["--version"]),
         ("uv", ["--version"]),
         ("terraform", ["version"]),
         ("terragrunt", ["--version"]),
@@ -638,10 +668,18 @@ def doctor(root: Path, env: str = "dev") -> dict[str, Any]:
         ("jq", ["--version"]),
     ]
     for name, ver_args in required_tools:
-        resolved = which(name)
+        resolved = _which_outside_venv(name) if name == "python3" else which(name)
         if resolved:
             ver = _tool_version(resolved, ver_args, root)
-            checks.append({"name": f"tool:{name}", "status": "ok", "required": True, "detail": f"{ver} ({resolved})"})
+            too_old = _below_minimum(name, ver)
+            checks.append(
+                {
+                    "name": f"tool:{name}",
+                    "status": "fail" if too_old else "ok",
+                    "required": True,
+                    "detail": f"{ver} ({resolved})" + (f": {too_old}" if too_old else ""),
+                }
+            )
         else:
             checks.append(
                 {
