@@ -30,7 +30,7 @@ assistant: `cx-mortgage-orchestrator` (ADK, CX team project) calls `ai-coe-mortg
 | `release/` | GitOps release manifest `prd.yaml` (image digests), written by `esmeralda release promote`; see `release/README.md` |
 | `docs/` | MkDocs site: `mkdocs.yml`, `src/` (pages), `hooks/` (Make Targets page generated from the Makefile) |
 | `tests/load_test/` | Locust load test (`make load-test`) |
-| `.cloudbuild/`, `.github/`, `.githooks/` | Image build config, Docs + uv.lock workflows, pre-push lock check |
+| `.cloudbuild/`, `.github/`, `.githooks/` | Image build config; Guards (required on every PR), Docs, Gateway and uv.lock workflows; pre-commit/commit-msg guard and pre-push lock check hooks |
 
 ## Layers and dependencies
 
@@ -86,7 +86,7 @@ Prefer the `esmeralda` CLI (`uv run esmeralda --help`) for status, planning, dep
 
 ## Testing expectations
 
-1. **Offline first:** `make test-all` (and `make docs-build` when docs change) and `uv run esmeralda guard --staged` must pass before any commit, plan, or PR.
+1. **Offline first:** `make test-all` (and `make docs-build` when docs change) and `uv run esmeralda guard --staged` must pass before any commit, plan, or PR. The **Guards** workflow re-runs the guard (all files, each commit's diff and message, the PR title and description), `esmeralda catalog resolve --env all --check`, `make lock-check` and `make test-guards` on every PR.
 2. **Before an apply,** run `uv run esmeralda plan <unit> --env <env>` (or `uv run esmeralda apply <unit> --env <env>`, which plans first and enforces the destroy guard) and inspect the summary.
 3. **After an infra, gateway or agent change in a deployed env,** prove it end to end with `uv run esmeralda verify --env <env>` (which runs all gateway route probes plus real `ai-coe-mortgage-specialist` and `cx-mortgage-orchestrator` queries), and `uv run esmeralda verify --partner --env <env>` when partner front-door capabilities are modified. A routing or TLS-only check is not enough.
 
