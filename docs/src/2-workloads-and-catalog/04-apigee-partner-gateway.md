@@ -394,7 +394,7 @@ make load-test-partner ENV=dev USERS=1 DURATION=3m
 make load-test-partner ENV=dev INCLUDE_QUOTA=1   # adds quota exhaustion (burns the product quota)
 ```
 
-[`scripts/partner_load_test.sh`](../../../scripts/partner_load_test.sh) resolves the test VM, the entry point, the internal CA and the partner key the same way as `esmeralda verify --partner`, and runs [Locust](https://locust.io) **on the test VM** over IAP SSH, because `partner.esmeralda.internal` only resolves inside the VPC. On first use it installs Locust on the VM in a cached virtual environment with `uv`, which needs outbound HTTPS from the VM (for example through Cloud NAT). The CSV and HTML reports are copied back to `tests/load_test/.results/partner/` (gitignored).
+The CLI (`esmeralda.ops.partner_load`) resolves the test VM, the entry point, the internal CA and the partner key the same way as `esmeralda verify --partner`, and runs [Locust](https://locust.io) **on the test VM** over IAP SSH ([`scripts/vm/partner_load.sh`](../../../scripts/vm/partner_load.sh)), because `partner.esmeralda.internal` only resolves inside the VPC. On first use it installs Locust on the VM in a cached virtual environment with `uv`, which needs outbound HTTPS from the VM (for example through Cloud NAT). The CSV and HTML reports are copied back to `tests/load_test/.results/partner/` (gitignored).
 
 The traffic mix is the same scenario catalog as the conformance probes: one weighted Locust task per scenario with `weight > 0`. A request counts as a success when its status is in the scenario's expected set, so the deliberate `401` and `403` rejections show up as successes under their own names, next to the real orchestrator answers:
 

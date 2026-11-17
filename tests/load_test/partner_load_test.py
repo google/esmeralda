@@ -24,8 +24,9 @@ scenario with ``weight > 0`` (the destructive quota-exhaustion scenario only wit
 expected set, so the expected 401/403 rejections are successes, each under its own name. SSE
 scenarios also report time to first event and total stream time.
 
-``scripts/partner_load_test.sh`` runs this file from the private test VM, because the partner
-host only resolves inside the VPC. Configuration (never logged):
+``make load-test-partner`` (``esmeralda.ops.partner_load`` + ``scripts/vm/partner_load.sh``) runs
+this file from the private test VM, because the partner host only resolves inside the VPC.
+Configuration (never logged):
 
 * ``PARTNER_HOST``: ``partner.<domain>`` (TLS SNI and ``Host``)
 * ``PARTNER_ENTRY_IP``: the entry point address the host resolves to (``curl --resolve``)

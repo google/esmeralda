@@ -24,6 +24,7 @@ Every function returns a small JSON-serialisable dict, never raw Terraform or lo
 * ``runtime``: ``query_agent`` (Agent Runtime), ``test_gateway`` (probes from the test VM), and ``verify``;
 * ``testvm``: resolves the test VM, entry point and internal CA, and runs a bash payload on the VM
   over IAP SSH;
+* ``partner_load``: the partner load test (``make load-test-partner``): Locust on the test VM;
 * ``contracts``: ``describe_contracts`` (architectural contracts and ``gateways`` blocks);
 * ``guard``: ``run_guard`` (public-repository sensitive-content scanner);
 * ``server``: the read-only MCP server (stdio) exposing the read-only tools.
