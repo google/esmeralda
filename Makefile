@@ -120,8 +120,8 @@ test-agents: ## Fast execution for agent unit tests only
 	@uv run --package esmeralda --extra dev pytest packages/esmeralda/tests/
 	@echo "✅ Agent tests passed!"
 
-test-terraform: ## Run syntax validation for all Terraform modules (+ workload image digest pinning check)
-	@bash scripts/check_image_pinning.sh
+test-terraform: ## Run syntax validation for all Terraform modules (+ workload image digest pinning guard, tests/guards/test_image_pinning.py)
+	@uv run --package esmeralda --extra dev pytest tests/guards/test_image_pinning.py -q
 	@echo "🧪 Validating Terraform syntax across all infrastructure modules..."
 	@set -e; for d in $$(find infrastructure/modules -name main.tf -not -path '*/.terraform/*' -exec dirname {} \; | sort); do \
 		echo "→ $$d"; \
