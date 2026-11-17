@@ -72,7 +72,7 @@ flowchart LR
     end
 
     subgraph Gov["3. East–West Zero-Trust Control Plane (Layer 4)"]
-        AGW["GEAP Central Agent Gateway<br/>(Google-managed • PSC egress)<br/>• Agent Registry Allowlist<br/>• Per-Target UAP / IAP (roles/iap.egressor)<br/>• Semantic Governance (NLC) & Model Armor (optional)"]
+        AGW["GEAP Central Agent Gateway<br/>(Google-managed • PSC egress)<br/>• Agent Registry Allowlist<br/>• Per-Target IAP (roles/iap.egressor)<br/>• Model Armor (optional)"]
         Gemini["Gemini 3.7 Flash<br/>(Vertex AI API)"]
         FinOps["Central Telemetry & FinOps Hub<br/>(OTel Baggage • BigQuery Chargeback Views)"]
     end
@@ -92,7 +92,7 @@ flowchart LR
     Spec -->|"All outbound egress"| AGW
 
     AGW -->|"Authorized model call"| Gemini
-    AGW -->|"UAP + Semantic NLC verified"| EP
+    AGW -->|"Per-target IAP verified"| EP
 
     EP -->|"A2A (PSC NEG)"| Spec
     EP -->|"MCP + 3LO Claims"| DMS & Inc & Email
@@ -109,7 +109,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- |
 | **External / Partner API Plane** | **Apigee X** (`partner.esmeralda.internal`, served on the entry point VIP) | **North–South** | Authenticates external B2B partners (`VerifyAPIKey` / OAuth), curates exposed agents (`partner-agents`) and MCP tools (`partner-mcp`), enforces commercial `<LLMTokenQuota>` (`429`), and meters per-consumer token usage. |
 | **Workload & User Identity Plane** | **GEAP Agent Identity & Auth Manager** (`agents.global.org-<ORG>.system.id.goog`) | **End-to-End Identity** | Provisions a non-impersonatable X.509 **SPIFFE ID (`principal://`)** per Reasoning Engine and brokers **3-Legged OAuth (3LO)** end-user tokens (`X-Esmeralda-User-Token`) so tools can verify both *which agent* and *which human* initiated the action. |
-| **Internal Agent Egress Plane** | **GEAP Central Agent Gateway** (Google-managed; enters the VPC through the PSC attachment `agw-egress-na-<env>`) | **East–West** | Intercepts every outbound call an agent makes, enforcing **Agent Registry** allowlists, per-target **Unified Access Policies (UAP / IAP)**, **Semantic Governance (Natural Language Constraints, NLC)** against Confused Deputy tool calls, and optional **Model Armor** inspection (unary MCP tool calls and agent cards when enabled). |
+| **Internal Agent Egress Plane** | **GEAP Central Agent Gateway** (Google-managed; enters the VPC through the PSC attachment `agw-egress-na-<env>`) | **East–West** | Intercepts every outbound call an agent makes, enforcing **Agent Registry** allowlists, per-target **IAP egress** (`roles/iap.egressor`), and optional **Model Armor** inspection (unary MCP tool calls and agent cards when enabled). A **Semantic Governance (Natural Language Constraints, NLC)** policy manifest is built for a future enforcement point but is **not enforced**. |
 | **Private Service Routing Plane** | **Internal HTTPS Entry Point** (`*.esmeralda.internal` → `<entrypoint-ip>`) | **Private VPC Fabric** | Terminates internal TLS signed by the Layer 3 Root CA and routes each `*.esmeralda.internal` host directly to its Cloud Run serverless NEG or Agent Runtime PSC NEG (`direct` backend by default, or optional `envoy` / `apigee` adapters). |
 
 The entry point VIP is reserved by Layer 2 in the core subnet: GCP picks a free address unless you pin one with the networking module's `entrypoint_ip_address` variable. Every `*.esmeralda.internal` host, including `partner.esmeralda.internal`, resolves to it. To read it for an environment, run `uv run esmeralda status --env <env> --unit layer-2-networking --output entrypoint_address`.
@@ -123,7 +123,7 @@ The entry point VIP is reserved by Layer 2 in the core subnet: GCP picks a free 
 | :--- | :--- | :--- |
 | **Multi-Track Parallelism** | **Decoupled 6-Layer Architecture** | Modular Terragrunt progression—Shared CI/CD (`L0`), Projects (`L1`), Networking (`L2`), Security & PKI (`L3`), Governance (`L4`), and Workloads (`L5`)—allowing platform, security, tool, AI, and partner API teams to ship independently. |
 | **Cryptographic Identity** | **GEAP SPIFFE Identity & Auth Manager (3LO)** | Every Reasoning Engine runs with an attested SPIFFE identity (`principal://`) bound per target on the Central Agent Gateway (zero shared service accounts or org-wide wildcards), paired with Auth Manager 3LO user delegation and zero-latency MCP claims verification (`esmeralda.mcp_authz`). |
-| **Zero-Trust Governance** | **Central Agent Gateway, UAPs & Semantic NLC** | Google-managed egress control plane enforcing **Agent Registry** discovery, per-target **Unified Access Policies (UAPs)**, runtime **Semantic Governance (Natural Language Constraints)** to block Confused Deputy / SSN exfiltration attacks, and optional **Model Armor** (unary MCP tool calls and agent cards when enabled). |
+| **Zero-Trust Governance** | **Central Agent Gateway & Per-Target IAP** | Google-managed egress control plane enforcing **Agent Registry** discovery (deny by default), per-target **IAP egress** grants compiled from the catalog, and optional **Model Armor** (unary MCP tool calls and agent cards when enabled). **Semantic Governance (Natural Language Constraints)** is a published policy manifest only, not enforced yet. |
 | **Partner Monetization** | **Removable Apigee X Capability Modules** | Optional Layer 5 capability bundles (`partner-agents`, `partner-mcp`, `token-quota`, `usage-metering`, `cross-cloud`) and tiered API Products (`bronze`, `silver`, `gold`) toggled declaratively via `governance.capabilities` in `env.yaml`. |
 | **Multi-Agent & MCP Ecosystem** | **A2A Protocol & Serverless FastMCP** | The CX orchestrator (Google ADK) delegates underwriting over **A2A** to the AI CoE specialist, which invokes private Cloud Run **FastMCP** servers (`legacy-dms`, `income-verification`, `corporate-email`) at `https://<svc>.esmeralda.internal/mcp`. |
 | **Observability & FinOps** | **OpenTelemetry Baggage & BigQuery Chargeback** | Cross-project W3C baggage propagation (`BaggageSpanProcessor`), structured token telemetry, hub-and-spoke log sinks, automated BigQuery chargeback SQL views (`vw_monthly_agent_chargeback`), and Cloud Monitoring Golden Signals. |

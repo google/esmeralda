@@ -26,7 +26,7 @@ Before diving into the proxy bundles, it is important to see how **Apigee X**, *
 | :--- | :--- | :--- | :--- |
 | **1. Apigee X** (`partner.esmeralda.internal`, served on the entry point VIP) | **North–South (External / Partner Ingress)** | **Commercial & Partner API Management** | • Verifies partner API Keys / OAuth tokens (`VerifyAPIKey`) against tiered **API Products** (`bronze`, `silver`, `gold`)<br>• Enforces **agent & MCP tool exposure allowlists** (`kvm-partner-agents`, `kvm-partner-mcp`)<br>• Enforces per-partner **LLM Token Quotas** (`<LLMTokenQuota>` `EnforceOnly` + `CountOnly` → `HTTP 429`)<br>• Emits per-partner **Monetization & Token Analytics** (`DataCapture` + `PostClientFlow` `MessageLogging`) |
 | **2. GEAP Agent Identity & Auth Manager** (`agents.global.org-<ORG>.system.id.goog`) | **End-to-End Cryptographic Identity** | **Workload & Delegated Human Identity** | • Assigns each Reasoning Engine a unique X.509 **SPIFFE ID (`principal://`)**<br>• Brokers **3-Legged OAuth (3LO)** end-user tokens (`X-Esmeralda-User-Token`) so downstream MCP tools can verify which human user authorized the call (`esmeralda.mcp_authz`) |
-| **3. GEAP Central Agent Gateway** (Google-managed; PSC attachment `agw-egress-na-<env>`) | **East–West (Internal Agent Egress)** | **Zero-Trust Runtime Policy Enforcement** | • Enforces **Agent Registry** destination allowlists<br>• Enforces per-target **IAP `roles/iap.egressor`** policies on each Agent Registry entry: only `cx-mortgage-orchestrator` is listed on `ai-coe-mortgage-specialist`, and only `ai-coe-mortgage-specialist` on the MCP servers (A2A calls through the generic Vertex AI endpoint are a known gap, see [Security & IAM](../1-platform-foundations/03-security-iam-and-telemetry.md#4-three-identity-delegation-per-target-spiffe-governance))<br>• Evaluates **Semantic Governance (Natural Language Constraints, NLC)** and optional **Model Armor** on unary MCP tool calls |
+| **3. GEAP Central Agent Gateway** (Google-managed; PSC attachment `agw-egress-na-<env>`) | **East–West (Internal Agent Egress)** | **Zero-Trust Runtime Policy Enforcement** | • Enforces **Agent Registry** destination allowlists<br>• Enforces per-target **IAP `roles/iap.egressor`** policies on each Agent Registry entry: only `cx-mortgage-orchestrator` is listed on `ai-coe-mortgage-specialist`, and only `ai-coe-mortgage-specialist` on the MCP servers (A2A calls through the generic Vertex AI endpoint are a known gap, see [Security & IAM](../1-platform-foundations/03-security-iam-and-telemetry.md#4-three-identity-delegation-per-target-spiffe-governance))<br>• Runs optional **Model Armor** on unary MCP tool calls (the **Semantic Governance (NLC)** manifest is [not enforced yet](../3-agentops-and-lifecycle/04-capability-based-governance.md#4-stopping-the-confused-deputy-what-is-enforced-today-and-the-semantic-governance-nlc-manifest)) |
 
 ---
 
@@ -41,7 +41,7 @@ sequenceDiagram
     participant EP as Entrypoint HTTPS ALB<br/>(partner.esmeralda.internal)
     participant Apigee as Apigee X Runtime<br/>(partner-agents proxy)
     participant Orch as cx-mortgage-orchestrator<br/>(SPIFFE Identity #1)
-    participant AGW as Central Agent Gateway<br/>(UAP/IAP + Semantic NLC)
+    participant AGW as Central Agent Gateway<br/>(per-target IAP + Model Armor, optional)
     participant Spec as ai-coe-mortgage-specialist<br/>(SPIFFE Identity #2 + 3LO)
     participant MCP as Cloud Run MCP Servers<br/>(DMS, Income, Email)
 
@@ -55,7 +55,7 @@ sequenceDiagram
     AGW->>Spec: Route via Entrypoint direct PSC NEG
     Note over Spec: Attests SPIFFE Identity #2 + Auth Manager 3LO user claims
     Spec->>AGW: MCP tool calls (verify_applicant, search_documents)
-    Note over AGW: Verify SPIFFE Identity #2 + Semantic Governance (NLC)
+    Note over AGW: Verify SPIFFE Identity #2 holds roles/iap.egressor on each MCP server<br/>(+ Model Armor on tools/call when enabled)
     AGW->>MCP: Forward with verified identity + 3LO user claims
     MCP-->>Spec: Verified financial records ($185,000/yr)
     Spec-->>Orch: Underwriting assessment
@@ -328,7 +328,7 @@ governance = {
   }
   capabilities = {
     egress_allowlist = "agent_gateway" # Internal East-West governed by Central Agent Gateway
-    content_safety   = "agent_gateway" # Model Armor + Semantic Governance (NLC)
+    content_safety   = "agent_gateway" # Model Armor on Agent Gateway (governance.model_armor)
     partner_access   = "apigee"        # Enables partner-agents, partner-mcp, and the partner.<domain> host rule on the entry point
     token_quota      = "apigee"        # Enables token-quota shared flow (LLMTokenQuota)
     usage_metering   = "apigee"        # Enables usage-metering shared flow & DataCollectors
@@ -425,4 +425,4 @@ Each simulated user sends a synthetic end-user id (`x-esmeralda-partner-user` he
 
 ---
 
-**Next Section:** Now that we have seen how requests enter the platform—both internally via `direct` / `envoy` and externally via **Apigee X**—continue to **[2.0 Governance, Identity & AgentOps — Overview & Release Lifecycle](../3-agentops-and-lifecycle/index.md)** to see how the **Central Agent Gateway**, **SPIFFE Agent Identity**, and **Semantic Governance** govern every internal hop.
+**Next Section:** Now that we have seen how requests enter the platform—both internally via `direct` / `envoy` and externally via **Apigee X**—continue to **[2.0 Governance, Identity & AgentOps — Overview & Release Lifecycle](../3-agentops-and-lifecycle/index.md)** to see how the **Central Agent Gateway**, **SPIFFE Agent Identity**, and per-target IAP egress govern every internal hop.

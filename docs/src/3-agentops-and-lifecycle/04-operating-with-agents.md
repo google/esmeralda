@@ -208,6 +208,6 @@ You can also add local, untracked regex patterns (one case-insensitive regex per
 
 ## Where to Go Next: Section 3 (Platform Foundations) & Section 4 (`esmeralda` Library)
 
-In **Section 2**, we saw how Layer 4 surrounds our platform with a zero-trust **Central Agent Gateway** ([2.1](./01-central-agent-gateway.md)), enforces **Capability-Based & Semantic Governance (GEAP UAP/NLC)** ([2.2](./04-capability-based-governance.md)), attributes **FinOps token costs and Golden Signals across team projects** ([2.3](./03-centralized-monitoring-and-dashboards.md)), and empowers human operators and AI assistants with **safe Day-2 operations** ([2.4](./04-operating-with-agents.md)).
+In **Section 2**, we saw how Layer 4 surrounds our platform with a zero-trust **Central Agent Gateway** ([2.1](./01-central-agent-gateway.md)), enforces **Capability-Based Governance** with per-target access (the semantic NLC manifest is not enforced yet) ([2.2](./04-capability-based-governance.md)), attributes **FinOps token costs and Golden Signals across team projects** ([2.3](./03-centralized-monitoring-and-dashboards.md)), and empowers human operators and AI assistants with **safe Day-2 operations** ([2.4](./04-operating-with-agents.md)).
 
 Next, turn to **[3.0 Platform Foundations — Overview (Layers 1–3)](../1-platform-foundations/index.md)** to see how the cloud landing zone beneath the trust boundary is bootstrapped, or jump to **[4.0 The `esmeralda` Runtime & Operations Library](../4-esmeralda-library/index.md)** to explore the Python SDK and CLI.

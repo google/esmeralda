@@ -154,10 +154,11 @@ output "apigee_enabled" {
 
 output "effective_capability_routing" {
   value       = local.effective_capability_routing
-  description = "Resolved capability routing metadata including GEAP Semantic Governance (NLC) and Unified Access Policy (UAP) activation flags."
+  description = "Resolved capability routing metadata, including semantic_governance_enabled and uap_enforcement_enabled flags. Metadata only: semantic_governance_enabled does not turn on any enforcement (the NLC manifest is not enforced)."
 }
 
-# 8. Submodule 7: GEAP Semantic Governance Policies (Natural Language Constraints) & UAPs
+# 8. Submodule 7: Semantic Governance (Natural Language Constraints) policy manifest.
+# Manifest only: configures nothing on the Central Agent Gateway.
 module "semantic_governance" {
   source = "./modules/7_semantic_governance"
 
