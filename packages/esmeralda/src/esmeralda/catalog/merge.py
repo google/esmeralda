@@ -25,8 +25,11 @@ Discovery never grants; adoption is a repo review:
   the resolve with a message naming the source and the field. ``options.fields`` in sources.yaml may
   narrow a source, never widen it.
 * External sources report what they discovered as ``inventory`` (never compiled). A catalog file
-  adopts an inventory entry only through an explicit pin, ``deploy.registry: {source, id}``, never by
-  name; the adopted target then takes the inventory fields its source may fill, per field strategy:
+  adopts an inventory entry only through an explicit pin, never by name: ``deploy.registry:
+  {source, id}`` (any external source), or ``backstage: {source, ref}`` (a ``backstage`` source,
+  matched on the entity ref, case-insensitively). One file entry may carry both pins: that is how
+  two sources describing the same thing are joined. The adopted target then takes the inventory
+  fields its source may fill, per field strategy:
   ``strict`` (every contributor must agree, otherwise an error naming both) or ``first`` (the earlier
   contributor wins, files first; the loser is recorded as ``shadowed``).
 * Sources merge in sources.yaml order and entries in sorted ``(section, name)`` order, so the result
@@ -56,8 +59,8 @@ ANY = "*"
 # whole `callers` section and `policy` are authorization data too.
 AUTHORIZATION_FIELDS: dict[str, tuple[str, ...]] = {
     "targets": (
-        "callers", "identity", "user_credential", "deploy.unit", "deploy.managed", "deploy.registry", "serving",
-        "models", "google_apis", "gateway", "observability", "example",
+        "callers", "identity", "user_credential", "deploy.unit", "deploy.managed", "deploy.registry", "backstage",
+        "serving", "models", "google_apis", "gateway", "observability", "example",
     ),
     "teams": ("cost_centers", "external", "example"),
     "profiles": ("team", "repository_paths"),
@@ -185,16 +188,46 @@ def source_capabilities(source: Source) -> Capabilities | None:
 class MergeResult:
     layer: Layer
     provenance: dict[str, dict[str, Any]] = field(default_factory=dict)
-    adopted: dict[str, str] = field(default_factory=dict)  # target -> source name
+    adopted: dict[str, str] = field(default_factory=dict)  # target -> source of its first pin
+    adopted_by: dict[str, list[str]] = field(default_factory=dict)  # target -> sources of all its pins
+
+
+def entity_ref_key(ref: str) -> str:
+    """How a ``backstage`` pin is matched: Backstage entity refs compare case-insensitively."""
+    return ref.lower()
+
+
+def target_pins(target: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """``(field, source, id)`` of each adoption pin of a catalog file target."""
+    pins = []
+    registry = (target.get("deploy") or {}).get("registry")
+    if registry:
+        pins.append(("deploy.registry", registry["source"], registry["id"]))
+    backstage = target.get("backstage")
+    if backstage:
+        pins.append(("backstage", backstage["source"], backstage["ref"]))
+    return pins
 
 
 class _Merger:
-    def __init__(self) -> None:
+    def __init__(self, types: dict[str, str] | None = None) -> None:
         self.acc = Layer(source="resolved")
         self.provenance: dict[str, dict[str, Any]] = {}
         self.adopted: dict[str, str] = {}
+        self.adopted_by: dict[str, list[str]] = {}
         self.inventory_source: dict[str, str] = {}
+        # External entries a catalog file pins: kept apart from `inventory` (so they never clash by
+        # name with another source's entry) until adopt() merges them into their target.
+        self.pinned: dict[tuple[str, str], tuple[str, dict[str, Any], str]] = {}
+        self.types = types or {}
         self.problems: list[str] = []
+
+    def _pin_key(self, src: str, entry_id: str) -> tuple[str, str]:
+        return (src, entity_ref_key(entry_id) if self.types.get(src) == "backstage" else entry_id)
+
+    def _pin_index(self) -> set[tuple[str, str]]:
+        return {self._pin_key(src, entry_id) for target in self.acc.targets.values()
+                for _, src, entry_id in target_pins(target)}
 
     # -- files ----------------------------------------------------------------------------
 
@@ -325,6 +358,7 @@ class _Merger:
                 f"{src}: may not set targets.{name}: external sources report inventory, and a catalog file adopts "
                 f"an entry only through a pin (deploy.registry: {{source: {src}, id: ...}}), never by name"
             ]
+        pins = self._pin_index()
         for section in ("teams", "profiles", "inventory"):
             entries = layer.section(section)
             for name in sorted(entries):
@@ -339,7 +373,7 @@ class _Merger:
                 elif section == "profiles":
                     self._merge_profile(src, name, value, origin)
                 else:
-                    self._merge_inventory(src, name, value, origin, caps)
+                    self._merge_inventory(src, name, value, origin, caps, pins)
 
     def _merge_team(self, src: str, name: str, value: dict[str, Any], origin: str) -> None:
         if name not in self.acc.teams:
@@ -358,8 +392,19 @@ class _Merger:
             self.provenance[f"profiles.{name}"] = {"source": src, "origin": origin}
         self._merge_fields("profiles", name, self.acc.profiles[name], value, src, origin)
 
-    def _merge_inventory(self, src: str, name: str, value: dict[str, Any], origin: str, caps: Capabilities) -> None:
+    def _merge_inventory(self, src: str, name: str, value: dict[str, Any], origin: str, caps: Capabilities,
+                         pins: set[tuple[str, str]]) -> None:
         key = f"inventory.{name}"
+        entry_id = (value.get("registry") or {}).get("id")
+        if ANY in caps.get("inventory", frozenset()) and isinstance(entry_id, str) and \
+                self._pin_key(src, entry_id) in pins:
+            pin_key = self._pin_key(src, entry_id)
+            if pin_key in self.pinned:
+                self.problems.append(f"inventory.{name}: {src} reports id '{entry_id}' twice (also as "
+                                     f"inventory.{self.pinned[pin_key][0]})")
+                return
+            self.pinned[pin_key] = (name, _canonical(value), origin)
+            return
         if name in self.acc.inventory:
             if ANY in caps.get("inventory", frozenset()):
                 self.problems.append(f"{src}: inventory.{name}: also reported by {self.inventory_source[name]} "
@@ -390,32 +435,40 @@ class _Merger:
                                      f"inventory.{by_id[key]})")
                 continue
             by_id[key] = name
+        claimed: dict[tuple[str, str], str] = {}
         for target_name in sorted(self.acc.targets):
             target = self.acc.targets[target_name]
-            pin = (target.get("deploy") or {}).get("registry")
-            if not pin:
-                continue
             label = f"targets.{target_name} ({self.provenance[f'targets.{target_name}']['origin']})"
-            src, entry_id = pin["source"], pin["id"]
-            if src not in externals:
-                why = "a catalog files source" if src in files_sources else "not an enabled source"
-                self.problems.append(f"{label}: deploy.registry pins source '{src}', which is {why} in "
-                                     "catalog/sources.yaml")
-                continue
-            name = by_id.get((src, entry_id))
-            if name is None:
-                self.problems.append(f"{label}: deploy.registry pins id '{entry_id}' of source '{src}', which it "
-                                     f"doesn't report: re-fetch {src} or remove the pin (an adopted target never "
-                                     "resolves without its source entry)")
-                continue
-            entry = self.acc.inventory.pop(name)
-            origin = self.provenance.pop(f"inventory.{name}")["origin"]
-            for key in [k for k in self.provenance if k.startswith(f"inventory.{name}.")]:
-                del self.provenance[key]
-            del self.inventory_source[name]
-            self.adopted[target_name] = src
-            allowed = externals[src].get("targets", frozenset())
-            self._merge_fields("targets", target_name, target, entry, src, origin, only=allowed)
+            for pin_field, src, entry_id in target_pins(target):
+                if src not in externals:
+                    why = "a catalog files source" if src in files_sources else "not an enabled source"
+                    self.problems.append(f"{label}: {pin_field} pins source '{src}', which is {why} in "
+                                         "catalog/sources.yaml")
+                    continue
+                if pin_field == "backstage" and self.types.get(src) != "backstage":
+                    self.problems.append(f"{label}: backstage pins source '{src}', which is of type "
+                                         f"'{self.types.get(src)}', not backstage (use deploy.registry for it)")
+                    continue
+                key = self._pin_key(src, entry_id)
+                if key in claimed:
+                    self.problems.append(f"{label}: {pin_field} pins '{entry_id}' of source '{src}', which "
+                                         f"targets.{claimed[key]} already adopts (one catalog entry per source entry)")
+                    continue
+                claimed[key] = target_name
+                found = self.pinned.pop(key, None)
+                if found is None:
+                    self.problems.append(f"{label}: {pin_field} pins id '{entry_id}' of source '{src}', which it "
+                                         f"doesn't report: re-fetch {src} or remove the pin (an adopted target never "
+                                         "resolves without its source entry)")
+                    continue
+                _, entry, origin = found
+                self.adopted.setdefault(target_name, src)
+                self.adopted_by.setdefault(target_name, []).append(src)
+                allowed = externals[src].get("targets", frozenset())
+                if "unit" in (target.get("deploy") or {}):
+                    # A deployed target's endpoint is its entry point host: never filled from a source.
+                    allowed = frozenset(a for a in allowed if not _covered("deploy.endpoint", frozenset({a})))
+                self._merge_fields("targets", target_name, target, entry, src, origin, only=allowed)
 
     def check_names(self) -> None:
         for name in sorted(self.acc.inventory):
@@ -436,7 +489,7 @@ def merge_layers(loaded: list[tuple[Source, Layer]]) -> MergeResult:
     if not _is_files(first):
         raise CatalogError(f"catalog/sources.yaml: the first enabled source must be of type files (got "
                            f"'{first.type_name}' for '{first.name}'): catalog files hold the authorization data")
-    merger = _Merger()
+    merger = _Merger({source.name: source.type_name for source, _ in loaded})
     externals: dict[str, Capabilities] = {}
     files_sources: set[str] = set()
     names: set[str] = set()
@@ -459,7 +512,8 @@ def merge_layers(loaded: list[tuple[Source, Layer]]) -> MergeResult:
         merger.check_names()
     if merger.problems:
         raise CatalogError(merger.problems)
-    return MergeResult(layer=merger.acc, provenance=merger.provenance, adopted=merger.adopted)
+    return MergeResult(layer=merger.acc, provenance=merger.provenance, adopted=merger.adopted,
+                       adopted_by=merger.adopted_by)
 
 
 def _touched(patch: Any, parts: list[str]) -> bool:

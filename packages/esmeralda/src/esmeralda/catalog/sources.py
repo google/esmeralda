@@ -24,8 +24,11 @@ The resolver merges the layers in the order ``sources.yaml`` lists them (see
   project labels, read from a snapshot.
 * ``agent_registry`` (:mod:`esmeralda.catalog.adapters.agent_registry`): discovered inventory of
   agents / MCP servers / endpoints from Agent Registry, read from a snapshot.
+* ``backstage`` (:mod:`esmeralda.catalog.adapters.backstage`): discovered inventory and team
+  profile metadata from a Backstage software catalog, read from a snapshot (the reference adapter
+  for enterprise catalogs).
 
-Adapters for other systems (Backstage, a CMDB, ...) subclass :class:`Source` and call
+Adapters for other systems (a CMDB, API Hub, ...) subclass :class:`Source` and call
 :func:`register_source`; adapters that read a live system subclass
 :class:`esmeralda.catalog.snapshot.SnapshotSource` instead, so that ``esmeralda catalog fetch``
 writes a reviewed snapshot and resolving reads only that snapshot (no network). Discovery never
@@ -53,7 +56,7 @@ class Layer:
     """Entries contributed by one source, with where each one came from (for errors and provenance).
 
     ``inventory`` holds what an external source discovered, keyed by a deterministic name; a catalog
-    file adopts an inventory entry only through an explicit pin (``deploy.registry``).
+    file adopts an inventory entry only through an explicit pin (``deploy.registry``, ``backstage``).
     """
 
     source: str
@@ -110,6 +113,14 @@ class Source:
         overrides), as ``{"kind", "subject", "detail"}`` rows. ``policy.attribution.label_mismatch``
         decides whether they fail the resolve (``fail``) or are warnings (``warn``); ``esmeralda
         catalog diff`` always lists them. Default: none.
+        """
+        return []
+
+    def suggestions(self, document: dict[str, Any]) -> list[dict[str, str]]:
+        """Hook: hints for a human about the resolved catalog (after the environment overrides), as
+        ``{"kind", "subject", "detail"}`` rows, for example a dependency the source knows about that no
+        catalog file grants (``suggested_grant``). Never authorization and never a resolve failure:
+        only ``esmeralda catalog diff`` lists them. Default: none.
         """
         return []
 

@@ -224,6 +224,7 @@
         "runtime_resource": {"$ref": "#/$defs/runtime_resource"},
         "system": {"$ref": "#/$defs/name", "description": "Descriptive grouping (for example a Backstage System); never used for enforcement."},
         "registry": {"$ref": "#/$defs/registry_data"},
+        "backstage": {"$ref": "#/$defs/backstage_pin"},
         "example": {"$ref": "#/$defs/example"}
       }
     },
@@ -244,6 +245,16 @@
       "properties": {
         "source": {"type": "string", "minLength": 1},
         "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "backstage_pin": {
+      "description": "Adoption pin for a Backstage entity: this catalog file entry adopts the entity with this ref that the backstage source `source` (a name in sources.yaml) reports. Any target may carry it (a deployed one too: Backstage then fills only description and system); it may sit next to deploy.registry, which joins two sources describing the same thing. Never matched by name.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "ref"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "ref": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", "description": "Entity ref Kind:namespace/name, for example Component:default/loan-helper (compared case-insensitively)."}
       }
     },
     "registry_data": {
@@ -420,7 +431,7 @@
       "required": ["type"],
       "properties": {
         "name": {"type": "string"},
-        "type": {"type": "string", "description": "files | agent_registry | project_labels | <registered adapter>"},
+        "type": {"type": "string", "description": "files | agent_registry | project_labels | backstage | <registered adapter>"},
         "enabled": {"type": "boolean", "default": true},
         "paths": {"$ref": "#/$defs/strings", "description": "files: paths relative to the catalog directory"},
         "options": {"type": "object", "description": "Source-type options. Snapshot sources: snapshot (path under catalog/, default snapshots/{source}/{env}.json), optional (a missing snapshot is a warning while no catalog file adopts one of the source's entries), fields (narrow the source's capabilities)."}
