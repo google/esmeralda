@@ -29,7 +29,10 @@ who may call them, through which gateway, and who pays. It is defined by
    same file, read by the ``iap-egress`` units), so one caller entry drives both Cloud Run /
    Agent Runtime IAM and the gateway. :func:`compile_external_targets` lists the Agent Registry
    entries of non-example ``managed: false`` targets (``external_targets``), whose caller lists are
-   in ``iap_egress`` too. :func:`compile_google_apis` lists the Google API entries of the Agent
+   in ``iap_egress`` too. :func:`compile_adopted_targets` lists the governance registry entries of
+   adopted Agent Runtime agents (``adopted_targets``, only when a catalog file adopts one): the
+   gateway reads only the governance registry, so an adopted engine is re-registered there on URLs
+   derived from its runtime resource. :func:`compile_google_apis` lists the Google API entries of the Agent
    Registry (``google_apis``): the policy baseline plus each agent's declared ``google_apis``,
    registered by layer 4; an agent reaches only the Google APIs it declares (plus the baseline).
    :func:`compile_attribution` derives the verified attribution
@@ -53,6 +56,7 @@ from esmeralda.catalog.resolver import (
     GoogleApi,
     Resolved,
     check_resolved,
+    compile_adopted_targets,
     compile_attribution,
     compile_caller_allowlists,
     compile_external_targets,
@@ -60,10 +64,12 @@ from esmeralda.catalog.resolver import (
     compile_iap_egress,
     compile_principal_teams,
     compile_terraform,
+    engine_urls,
     render_hcl,
     render_resolved_file,
     resolve,
     resolved_path,
+    runtime_principal,
     show,
     write_resolved,
 )
@@ -81,6 +87,7 @@ __all__ = [
     "Source",
     "SourceUnreachable",
     "check_resolved",
+    "compile_adopted_targets",
     "compile_attribution",
     "compile_caller_allowlists",
     "compile_external_targets",
@@ -88,11 +95,13 @@ __all__ = [
     "compile_iap_egress",
     "compile_principal_teams",
     "compile_terraform",
+    "engine_urls",
     "register_source",
     "render_hcl",
     "render_resolved_file",
     "resolve",
     "resolved_path",
+    "runtime_principal",
     "show",
     "write_resolved",
 ]

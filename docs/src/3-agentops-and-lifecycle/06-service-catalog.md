@@ -367,12 +367,15 @@ resolved_dir: .resolved
 - External entries land in a separate `inventory` section of the resolved catalog. Inventory is
   shown but **never compiled**: no IAM, no Agent Gateway policy, no registry entry, no allowlist.
 - A catalog file adopts an inventory entry **only through a pin**, never by name:
-  `deploy: { managed: false, endpoint: ..., registry: { source: <source name>, id: <entry id> } }`,
-  or, for a Backstage entity, `backstage: { source: <source name>, ref: <Kind:namespace/name> }`.
+  `deploy: { managed: false, registry: { source: <source name>, id: <entry id> } }` (the source
+  fills the fields it may contribute when the file leaves them unset, `endpoint` included), or, for
+  a Backstage entity, `backstage: { source: <source name>, ref: <Kind:namespace/name> }`.
   One file entry may carry both pins: that is how an Agent Registry entry and a Backstage entity
   for the same agent are joined (without it, two sources that derive the same name fail the
   resolve). An inventory entry named like an unpinned target fails the resolve, and so does a pin
-  whose id the source doesn't report. Callers of an adopted target still come from the file.
+  whose id the source doesn't report. Callers of an adopted target still come from the file. What
+  an Agent Registry adoption compiles is described in
+  [Adopting a discovered agent](#adopting-a-discovered-agent).
 - **Field strategies.** `strict` fields (`kind`, `owner_team`, `deploy.endpoint`, `runtime`,
   `runtime_resource`, `registry.id`) must agree across sources, otherwise the resolve fails and
   names both origins. `first` fields (`description`, `system`, `registry.skills`, profile
@@ -560,9 +563,9 @@ Discovered inventory, never authorization.
   and as `discovered` by `catalog diff`, **never compiled** (no IAM, no Agent Gateway policy, no
   registry write, no allowlist). To put one under enforcement, a team adds a catalog file with
   `deploy.registry: { source: agent-registry, id: <registry id> }` and its callers, reviewed like any
-  other grant. An inventory entry named like an unpinned catalog target fails the resolve, and so
-  does a pin whose id the snapshot doesn't hold. With `project_labels` listed after it, discovered
-  entries get the `owner_team` of their runtime project.
+  other grant (see below). An inventory entry named like an unpinned catalog target fails the
+  resolve, and so does a pin whose id the snapshot doesn't hold. With `project_labels` listed after
+  it, discovered entries get the `owner_team` of their runtime project.
 - **Drift.** `catalog diff --env <env> --live` also lists `missing` entries: the ones
   `.resolved/<env>.json` registers that the live registry doesn't list.
 
@@ -573,6 +576,72 @@ Discovered inventory, never authorization.
     projects: [governance, ai_coe_agents, cx_agents, mcps]
     names: { "<registry id>": loan-helper }
 ```
+
+### Adopting a discovered agent
+
+An agent another team deployed on Agent Runtime registers itself in Agent Registry, so it shows up
+as discovered inventory after a `catalog fetch`. Its lifecycle in the catalog:
+
+| State | What the catalog holds | What the Agent Gateway does |
+| :--- | :--- | :--- |
+| **discovered** | an `inventory` entry in the snapshot | nothing is compiled; nobody is granted |
+| **adopted** | a catalog file pins the registry id | a governance registry entry for the engine, with an empty policy |
+| **granted** | the catalog file lists `callers` | exactly those callers may call the agent through the gateway |
+
+```yaml
+# catalog/teams/ai-coe/agents/loan-pricing.yaml (synthetic)
+schema: esmeralda.catalog
+schema_version: 1
+name: loan-pricing
+kind: a2a
+owner_team: ai-coe
+deploy:
+  managed: false
+  registry: { source: agent-registry, id: "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001" }
+callers:
+  cx-mortgage-orchestrator: {}
+```
+
+- **Fields.** The snapshot fills `deploy.endpoint`, `runtime`, `runtime_resource` and `description`
+  when the file leaves them unset. A field the file sets must equal the registry's value (strict),
+  except `description`, where the file wins. A pinned id missing from the snapshot fails the
+  resolve: re-fetch, or remove the adoption.
+- **Why Esmeralda registers the agent again.** Agent Runtime registers an engine in the Agent
+  Registry of the engine's own project, but the Agent Gateway reads only the governance registry
+  (layer 4), so a policy on that auto-registered entry would never be enforced. An adopted Agent
+  Runtime agent therefore compiles into `adopted_targets` in `.resolved/<env>.json`: the
+  `iap-egress` unit registers an agent entry in the governance registry (service id: the target
+  name; the description names the adopted registry id) on URLs derived only from the engine's
+  `runtime_resource`: the Vertex AI REST paths of that engine (`.../reasoningEngines/<id>/`,
+  `:query`, `:streamQuery`, for `v1` and `v1beta1`). The registry matches the longest URL prefix,
+  so these paths win over the host-level `{region}-aiplatform` Google API entry for that engine
+  only, and the entry's policy is `iap_egress.agents[<name>]`: exactly the listed callers, written
+  and read back by the same per-entry script as every other target, and checked by
+  `esmeralda verify` (`registry-egress`), which also checks the entry is registered on exactly
+  those URLs. Any other registry entry still holds no policy. A new entry takes a few minutes to
+  reach the gateway: until then, calls to the engine still match the host-level entry.
+- **An adopted agent as a caller.** When a target lists the adopted agent as a caller, its principal
+  is derived from the runtime resource (a pure function: the engine's Agent Identity,
+  `principal://{trust_domain:<alias>}/resources/aiplatform/projects/{project_number:<alias>}/locations/<location>/reasoningEngines/<id>`;
+  the `iap-egress` unit resolves the trust domain like the agent units do, `org_id` included). It
+  goes onto that target's gateway list and into `principal_teams` (with the adopted target's
+  `owner_team`), so every principal the gateway lets through stays attributable. An adopted agent
+  may call external and adopted targets; a deployed target would also need IAM grants and its caller
+  allowlist, which adopted agents don't get yet, so listing one there fails the resolve.
+- **Supported runtimes.** Only `agent_runtime` entries compile. Adopting a `cloud_run` or `gke`
+  entry fails the resolve with "not supported for adoption yet", so nothing is granted silently;
+  Cloud Run and GKE adoption are planned. A pinned entry the source reports without a runtime (a
+  manual registration, a CMDB endpoint) compiles as an external target, like an unpinned one. An
+  `example: true` adoption compiles nothing.
+- **Adopted agents as callers: external and adopted targets only.** Listing an adopted agent as a
+  caller of a deployed target (an Esmeralda MCP server or agent) fails the resolve for now.
+- **Removing an adoption** deletes the governance entry and its policy on the next `iap-egress`
+  apply; the engine falls back to the host-level entry, where calling it still needs Agent Runtime
+  IAM on its project.
+- **Future simplification.** With a management boundary (the governance project as management
+  project, the agent projects as members), auto-registered engines would roll up into the
+  governance registry, and the adoption could grant on the auto-registered entry itself instead of
+  registering a second one.
 
 ### Backstage (`backstage`)
 

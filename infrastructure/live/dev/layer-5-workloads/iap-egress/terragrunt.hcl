@@ -135,6 +135,15 @@ inputs = {
   external_targets = local.env_vars.locals.catalog_external_targets
   domain           = dependency.networking.outputs.entrypoint_domain
 
+  # Governance registry entries of adopted Agent Runtime agents (compiled; absent unless a catalog
+  # file adopts a registry entry). The engine's layer-1 project gives {project_number:<alias>} and
+  # the trust domain of its derived principal (org_id as for the agent units).
+  adopted_targets = local.env_vars.locals.catalog_adopted_targets
+  project_ids = {
+    for k, v in dependency.projects.outputs : trimsuffix(k, "_project_id") => v if endswith(k, "_project_id")
+  }
+  org_id = lookup(local.env_vars.locals, "org_id", "")
+
   # Values of the references the compiled lists use.
   identity_refs = merge(
     # layer-3-security:<name>_sa_email: the service accounts layer 3 creates.

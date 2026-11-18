@@ -38,11 +38,14 @@ REPO = Path(__file__).resolve().parents[3]
 HEADER = "schema: esmeralda.catalog\nschema_version: 1\n"
 COMPILED_BLOCKS = ("catalog", "external_targets", "google_apis", "iap_egress", "attribution")
 
-# A catalog file target adopted from the source named "registry" by an explicit pin (synthetic).
+# A catalog file target adopted from the source named "registry" by an explicit pin (synthetic). An
+# example: these tests cover the merge; a Cloud Run entry doesn't compile (adoption compiles Agent
+# Runtime entries only, see test_catalog_adoption.py).
 PINNED_TARGET = """\
 name: pricing-api
 kind: http
 owner_team: ai-coe
+example: true
 deploy:
   managed: false
   endpoint: https://pricing.example.com
@@ -289,10 +292,9 @@ def test_pin_adopts_and_fills_unset_inventory_fields(repo, adapter):
     assert resolved.provenance["targets.pricing-api.registry.skills"]["strategy"] == "first"
 
     compiled = _compiled(repo)
-    for block in ("catalog", "iap_egress", "attribution", "google_apis"):
+    for block in COMPILED_BLOCKS:
         assert compiled[block] == baseline[block], block  # adoption grants nothing by itself
-    assert compiled["external_targets"]["pricing-api"]["description"] == (
-        "Pricing API (from the registry). Used by: no caller declared.")
+    assert "pricing-api" not in compiled["external_targets"], "an adopted target is never an external target"
     data = json.loads(catalog.render_resolved_file(resolved))
     assert data["provenance"]["targets.pricing-api.runtime"]["source"] == "registry"
     assert data["inventory_summary"] == {"registry": {"adopted": 1, "discovered": 1}}
