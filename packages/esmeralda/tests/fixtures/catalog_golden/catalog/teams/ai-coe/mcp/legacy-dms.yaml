@@ -1,0 +1,12 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+name: legacy-dms
+kind: mcp
+description: MCP server over the legacy document management system (synthetic).
+owner_team: ai-coe
+deploy: { unit: services/legacy-dms }
+serving: { token: id, probe: mcp }
+callers:
+  ai-coe-mortgage-specialist: {}
+  test-vm: {}

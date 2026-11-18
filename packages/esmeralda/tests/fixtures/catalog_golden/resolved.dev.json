@@ -1,0 +1,518 @@
+{
+  "schema": "esmeralda.catalog",
+  "schema_version": 1,
+  "environment": "dev",
+  "sources": [
+    "catalog-files",
+    {
+      "name": "agent-registry",
+      "type": "agent_registry",
+      "snapshot": "catalog/snapshots/agent-registry/dev.json",
+      "sha256": "9eea7203689ca60419a6e91c5faadf484588b02367c94e2e3f7129ddc8712719"
+    },
+    {
+      "name": "backstage",
+      "type": "backstage",
+      "snapshot": "catalog/snapshots/backstage/dev.json",
+      "sha256": "cc6c8ff0f772c5f20f5e66b0a13af44ef043fb59f3e2116f20b9f67bdf8ebed7"
+    },
+    {
+      "name": "project-labels",
+      "type": "project_labels",
+      "snapshot": "catalog/snapshots/project-labels/dev.json",
+      "sha256": "7cf5ba10a017ed219ea9b8107052588ded24b2a49968fd8142a6476737067dcd"
+    },
+    "environments/dev.yaml"
+  ],
+  "teams": {
+    "ai-coe": {
+      "description": "AI Center of Excellence.",
+      "cost_centers": [
+        "cc-ai-coe"
+      ],
+      "projects": [
+        "ai_coe_agents"
+      ]
+    },
+    "cx": {
+      "description": "Customer experience.",
+      "cost_centers": [
+        "cc-cx-br"
+      ],
+      "projects": [
+        "cx_agents"
+      ]
+    },
+    "platform": {
+      "description": "Platform team.",
+      "cost_centers": [
+        "cc-platform"
+      ],
+      "projects": [
+        "gateway"
+      ]
+    }
+  },
+  "profiles": {
+    "ai-coe": {
+      "team": "ai-coe",
+      "description": "Builds the mortgage specialist and its MCP servers.",
+      "oncall": "ai-coe-oncall",
+      "repository_paths": [
+        "apps/agents/ai-coe-mortgage-specialist"
+      ],
+      "contacts": [
+        "#ai-coe-help"
+      ]
+    },
+    "cx": {
+      "team": "cx",
+      "contacts": [
+        "#cx-help"
+      ],
+      "description": "Customer experience squad (synthetic).",
+      "oncall": "cx-pager"
+    }
+  },
+  "callers": {
+    "test-vm": {
+      "team": "platform",
+      "description": "Private test VM that probes every catalog host.",
+      "identity": {
+        "type": "service_account",
+        "ref": "layer-3-security:test_vm_sa_email"
+      }
+    }
+  },
+  "targets": {
+    "ai-coe-mortgage-specialist": {
+      "kind": "a2a",
+      "description": "A2A mortgage underwriting specialist on Agent Runtime.",
+      "owner_team": "ai-coe",
+      "deploy": {
+        "unit": "agents/ai-coe-mortgage-specialist"
+      },
+      "serving": {
+        "token": "access",
+        "probe": "a2a"
+      },
+      "backstage": {
+        "source": "backstage",
+        "ref": "Component:default/ai-coe-mortgage-specialist"
+      },
+      "callers": {
+        "cx-mortgage-orchestrator": {
+          "cost_centers": [
+            "cc-cx-br"
+          ]
+        },
+        "test-vm": {}
+      },
+      "system": "mortgage",
+      "gateway": "direct",
+      "user_credential": {
+        "accept": false
+      },
+      "observability": {
+        "usage_sources": [
+          "workload"
+        ],
+        "content_capture": "none"
+      }
+    },
+    "cx-mortgage-orchestrator": {
+      "kind": "adk",
+      "description": "Customer-facing ADK mortgage orchestrator on Agent Runtime.",
+      "owner_team": "cx",
+      "deploy": {
+        "unit": "agents/cx-mortgage-orchestrator"
+      },
+      "serving": {
+        "token": "access",
+        "probe": "query",
+        "timeout": 600
+      },
+      "google_apis": [
+        "aiplatform"
+      ],
+      "gateway": "direct",
+      "user_credential": {
+        "accept": false
+      },
+      "observability": {
+        "usage_sources": [
+          "workload"
+        ],
+        "content_capture": "none"
+      }
+    },
+    "legacy-dms": {
+      "kind": "mcp",
+      "description": "MCP server over the legacy document management system (synthetic).",
+      "owner_team": "ai-coe",
+      "deploy": {
+        "unit": "services/legacy-dms"
+      },
+      "serving": {
+        "token": "id",
+        "probe": "mcp"
+      },
+      "callers": {
+        "ai-coe-mortgage-specialist": {},
+        "test-vm": {}
+      },
+      "gateway": "direct",
+      "user_credential": {
+        "accept": false
+      },
+      "observability": {
+        "usage_sources": [
+          "workload"
+        ],
+        "content_capture": "none"
+      }
+    },
+    "loan-helper": {
+      "kind": "a2a",
+      "owner_team": "ai-coe",
+      "deploy": {
+        "managed": false,
+        "endpoint": "https://loan-helper.{domain}/a2a",
+        "registry": {
+          "source": "agent-registry",
+          "id": "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001"
+        }
+      },
+      "backstage": {
+        "source": "backstage",
+        "ref": "Component:default/loan-helper"
+      },
+      "gateway": "agent_gateway",
+      "callers": {
+        "cx-mortgage-orchestrator": {}
+      },
+      "observability": {
+        "usage_sources": [
+          "gateway"
+        ],
+        "content_capture": "none"
+      },
+      "description": "Loan helper agent on Agent Runtime (synthetic).",
+      "registry": {
+        "id": "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+        "interfaces": [
+          {
+            "protocol_binding": "HTTP+JSON",
+            "url": "https://loan-helper.{domain}/a2a"
+          }
+        ],
+        "skills": [
+          "amortize",
+          "quote"
+        ]
+      },
+      "runtime": "agent_runtime",
+      "runtime_resource": "//aiplatform.googleapis.com/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001",
+      "system": "mortgage",
+      "user_credential": {
+        "accept": false
+      }
+    },
+    "pricing-api": {
+      "kind": "http",
+      "owner_team": "cx",
+      "deploy": {
+        "managed": false,
+        "endpoint": "https://pricing.example.com"
+      },
+      "backstage": {
+        "source": "backstage",
+        "ref": "API:default/pricing-api"
+      },
+      "gateway": "agent_gateway",
+      "callers": {
+        "ai-coe-mortgage-specialist": {}
+      },
+      "observability": {
+        "usage_sources": [
+          "gateway"
+        ],
+        "content_capture": "none"
+      },
+      "description": "Pricing REST API, described for dev.",
+      "system": "mortgage",
+      "user_credential": {
+        "accept": false
+      }
+    }
+  },
+  "policy": {
+    "attribution": {
+      "unmapped_caller": "deny",
+      "declared_mismatch": "reject",
+      "label_mismatch": "fail",
+      "flag_environments": [
+        "dev"
+      ]
+    },
+    "defaults": {
+      "gateway": "direct",
+      "user_credential": {
+        "accept": false
+      },
+      "observability": {
+        "usage_sources": [
+          "workload"
+        ],
+        "content_capture": "none"
+      }
+    },
+    "agent_gateway": {
+      "google_apis": {
+        "baseline": [
+          "telemetry"
+        ]
+      }
+    }
+  },
+  "inventory": {
+    "pricing-tools": {
+      "deploy": {
+        "endpoint": "https://pricing-tools.{domain}/mcp"
+      },
+      "description": "Pricing tools registered by hand by another team (synthetic).",
+      "kind": "mcp",
+      "registry": {
+        "id": "urn:mcpServer:projects-{project_number:governance}:projects:{project_number:governance}:locations:{region}:agentregistry:services:pricing-tools",
+        "interfaces": [
+          {
+            "protocol_binding": "JSONRPC",
+            "url": "https://pricing-tools.{domain}/mcp"
+          }
+        ]
+      }
+    },
+    "quote-bot": {
+      "description": "Quote bot on Cloud Run, registered automatically (synthetic).",
+      "kind": "a2a",
+      "registry": {
+        "id": "urn:agent:projects-{project_number:cx_agents}:projects:{project_number:cx_agents}:locations:{region}:run:services:quote-bot",
+        "skills": [
+          "quote"
+        ]
+      },
+      "runtime": "cloud_run",
+      "runtime_resource": "//run.googleapis.com/projects/{project:cx_agents}/locations/{region}/services/quote-bot",
+      "owner_team": "cx"
+    },
+    "rates-model": {
+      "deploy": {
+        "endpoint": "https://rates.example.com/v1"
+      },
+      "description": "Rate prediction model endpoint (synthetic).",
+      "kind": "model",
+      "owner_team": "platform",
+      "registry": {
+        "id": "Resource:default/rates-model"
+      }
+    }
+  },
+  "provenance": {
+    "callers.test-vm": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/platform/callers.yaml"
+    },
+    "inventory.pricing-tools": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:mcpServer:projects-{project_number:governance}:projects:{project_number:governance}:locations:{region}:agentregistry:services:pricing-tools"
+    },
+    "inventory.quote-bot": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:cx_agents}:projects:{project_number:cx_agents}:locations:{region}:run:services:quote-bot"
+    },
+    "inventory.quote-bot.owner_team": {
+      "source": "project-labels",
+      "origin": "snapshots/project-labels/dev.json#cx_agents",
+      "strategy": "strict"
+    },
+    "inventory.rates-model": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Resource:default/rates-model"
+    },
+    "profiles.ai-coe": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/team.yaml"
+    },
+    "profiles.ai-coe.contacts": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Group:default/ai-coe",
+      "strategy": "first"
+    },
+    "profiles.ai-coe.description": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/team.yaml",
+      "strategy": "first",
+      "shadowed": [
+        {
+          "source": "backstage",
+          "origin": "snapshots/backstage/dev.json#Group:default/ai-coe",
+          "value_hash": "02d11dd880a2c57b"
+        }
+      ]
+    },
+    "profiles.ai-coe.oncall": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/team.yaml",
+      "strategy": "first",
+      "shadowed": [
+        {
+          "source": "backstage",
+          "origin": "snapshots/backstage/dev.json#Group:default/ai-coe",
+          "value_hash": "0faef2e36180ffa3"
+        }
+      ]
+    },
+    "profiles.cx": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Group:default/cx-squad"
+    },
+    "profiles.cx.contacts": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Group:default/cx-squad",
+      "strategy": "first"
+    },
+    "profiles.cx.description": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Group:default/cx-squad",
+      "strategy": "first"
+    },
+    "profiles.cx.oncall": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Group:default/cx-squad",
+      "strategy": "first"
+    },
+    "targets.ai-coe-mortgage-specialist": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/agents/ai-coe-mortgage-specialist.yaml"
+    },
+    "targets.ai-coe-mortgage-specialist.description": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/agents/ai-coe-mortgage-specialist.yaml",
+      "strategy": "first",
+      "shadowed": [
+        {
+          "source": "backstage",
+          "origin": "snapshots/backstage/dev.json#Component:default/ai-coe-mortgage-specialist",
+          "value_hash": "dc3beb1fd9c0bd3b"
+        }
+      ]
+    },
+    "targets.ai-coe-mortgage-specialist.system": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Component:default/ai-coe-mortgage-specialist",
+      "strategy": "first"
+    },
+    "targets.cx-mortgage-orchestrator": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/cx/agents/cx-mortgage-orchestrator.yaml"
+    },
+    "targets.legacy-dms": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/mcp/legacy-dms.yaml"
+    },
+    "targets.loan-helper": {
+      "source": "catalog-files",
+      "origin": "catalog/teams/ai-coe/agents/loan-helper.yaml"
+    },
+    "targets.loan-helper.description": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "strategy": "first",
+      "shadowed": [
+        {
+          "source": "backstage",
+          "origin": "snapshots/backstage/dev.json#Component:default/loan-helper",
+          "value_hash": "08b0ecd1dfeb8be5"
+        }
+      ]
+    },
+    "targets.loan-helper.registry.id": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "strategy": "strict"
+    },
+    "targets.loan-helper.registry.interfaces": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "strategy": "strict"
+    },
+    "targets.loan-helper.registry.skills": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "strategy": "first"
+    },
+    "targets.loan-helper.runtime": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "strategy": "strict"
+    },
+    "targets.loan-helper.runtime_resource": {
+      "source": "agent-registry",
+      "origin": "snapshots/agent-registry/dev.json#urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "strategy": "strict"
+    },
+    "targets.loan-helper.system": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#Component:default/loan-helper",
+      "strategy": "first"
+    },
+    "targets.pricing-api": {
+      "source": "catalog-files",
+      "origin": "catalog/external/legacy/pricing-api.yaml"
+    },
+    "targets.pricing-api.description": {
+      "source": "environments/dev.yaml",
+      "origin": "environments/dev.yaml",
+      "strategy": "override",
+      "shadowed": [
+        {
+          "source": "backstage",
+          "origin": "snapshots/backstage/dev.json#API:default/pricing-api",
+          "value_hash": "eed3f919d0fbcb6c"
+        }
+      ]
+    },
+    "targets.pricing-api.system": {
+      "source": "backstage",
+      "origin": "snapshots/backstage/dev.json#API:default/pricing-api",
+      "strategy": "first"
+    },
+    "teams.ai-coe": {
+      "source": "catalog-files",
+      "origin": "catalog/teams.yaml"
+    },
+    "teams.ai-coe.projects": {
+      "source": "project-labels",
+      "origin": "snapshots/project-labels/dev.json#ai_coe_agents",
+      "strategy": "strict"
+    },
+    "teams.cx": {
+      "source": "catalog-files",
+      "origin": "catalog/teams.yaml"
+    },
+    "teams.cx.projects": {
+      "source": "project-labels",
+      "origin": "snapshots/project-labels/dev.json#cx_agents",
+      "strategy": "strict"
+    },
+    "teams.platform": {
+      "source": "catalog-files",
+      "origin": "catalog/teams.yaml"
+    },
+    "teams.platform.projects": {
+      "source": "project-labels",
+      "origin": "snapshots/project-labels/dev.json#gateway",
+      "strategy": "strict"
+    }
+  }
+}

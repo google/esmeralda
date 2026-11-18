@@ -1,0 +1,15 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+# A brownfield API that only Backstage knows about, adopted by its entity ref (never by name).
+# Backstage fills the system; environments/dev.yaml overrides the description.
+name: pricing-api
+kind: http
+owner_team: cx
+deploy: { managed: false, endpoint: "https://pricing.example.com" }
+backstage: { source: backstage, ref: API:default/pricing-api }
+gateway: agent_gateway
+callers:
+  ai-coe-mortgage-specialist: {}
+observability:
+  usage_sources: [gateway]

@@ -1,0 +1,11 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+environment: dev
+
+# An environment override beats every source: here the description Backstage gave the adopted
+# pricing-api (recorded as `override` in the provenance, with the Backstage value shadowed).
+overrides:
+  targets:
+    pricing-api:
+      description: Pricing REST API, described for dev.

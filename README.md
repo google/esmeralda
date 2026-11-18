@@ -221,6 +221,7 @@ Run `uv run esmeralda --help` or `make help` for the complete command reference.
   * [2.2 Capability-Based & Semantic Governance](docs/src/3-agentops-and-lifecycle/04-capability-based-governance.md)
   * [2.3 FinOps, Telemetry & Cross-Team Chargeback](docs/src/3-agentops-and-lifecycle/03-centralized-monitoring-and-dashboards.md)
   * [2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server](docs/src/3-agentops-and-lifecycle/04-operating-with-agents.md)
+  * [2.6 Service Catalog: Teams, Callers, Targets & Policy](docs/src/3-agentops-and-lifecycle/06-service-catalog.md) & [2.7 Catalog Sources (Agent Registry, Backstage, Project Labels)](docs/src/3-agentops-and-lifecycle/07-catalog-sources.md)
 * **[3. Platform Foundations (Layers 1–3)](docs/src/1-platform-foundations/index.md)**
   * [3.1 Projects, APIs & FinOps Isolation (Layer 1)](docs/src/1-platform-foundations/01-projects-and-finops.md)
   * [3.2 Private Networking, Shared VPC & DNS (Layer 2)](docs/src/1-platform-foundations/02-private-networking.md)

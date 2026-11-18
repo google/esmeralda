@@ -1,0 +1,31 @@
+# Golden multi-source catalog (synthetic test fixture): the four source types merged together.
+# packages/esmeralda/tests/test_catalog_golden.py resolves it and compares the output, byte for
+# byte, with the committed resolved.dev.json and catalog/.resolved/dev.json.
+schema: esmeralda.catalog
+schema_version: 1
+
+sources:
+  - name: catalog-files
+    type: files
+    paths: [teams.yaml, policy.yaml, teams, external]
+
+  - name: agent-registry
+    type: agent_registry
+    options:
+      projects: [governance, ai_coe_agents, cx_agents]
+
+  - name: backstage
+    type: backstage
+    options:
+      base_url: https://backstage.example.com
+      placeholders: [domain]
+
+  # After the inventory sources: it fills owner_team of the entries they report.
+  - name: project-labels
+    type: project_labels
+    options:
+      team_label: team
+      cost_center_label: cost-center
+
+environments_dir: environments
+resolved_dir: .resolved

@@ -1,0 +1,18 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+# One catalog entry joins two sources that describe the same agent: Agent Registry (runtime,
+# registry data, description) and Backstage (system). Callers come from this file only.
+name: loan-helper
+kind: a2a
+owner_team: ai-coe
+deploy:
+  managed: false
+  endpoint: "https://loan-helper.{domain}/a2a"
+  registry: { source: agent-registry, id: "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001" }
+backstage: { source: backstage, ref: Component:default/loan-helper }
+gateway: agent_gateway
+callers:
+  cx-mortgage-orchestrator: {}
+observability:
+  usage_sources: [gateway]

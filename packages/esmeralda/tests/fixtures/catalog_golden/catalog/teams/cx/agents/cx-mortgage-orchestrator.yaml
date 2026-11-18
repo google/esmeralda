@@ -1,0 +1,10 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+name: cx-mortgage-orchestrator
+kind: adk
+description: Customer-facing ADK mortgage orchestrator on Agent Runtime.
+owner_team: cx
+deploy: { unit: agents/cx-mortgage-orchestrator }
+serving: { token: access, probe: query, timeout: 600 }
+google_apis: [aiplatform]

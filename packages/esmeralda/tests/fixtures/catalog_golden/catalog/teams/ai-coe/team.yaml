@@ -1,0 +1,9 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+# team.yaml wins over the Backstage Group: its description and oncall shadow the Backstage ones.
+profile:
+  team: ai-coe
+  description: Builds the mortgage specialist and its MCP servers.
+  oncall: ai-coe-oncall
+  repository_paths: [apps/agents/ai-coe-mortgage-specialist]

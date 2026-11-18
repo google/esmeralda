@@ -1,0 +1,95 @@
+{
+  "entries": [
+    {
+      "id": "API:default/pricing-api",
+      "inventory": {
+        "deploy": {
+          "endpoint": "https://pricing.example.com"
+        },
+        "description": "Pricing REST API (synthetic).",
+        "kind": "http",
+        "owner_team": "cx",
+        "registry": {
+          "id": "API:default/pricing-api"
+        },
+        "system": "mortgage"
+      },
+      "name": "pricing-api"
+    },
+    {
+      "id": "Component:default/ai-coe-mortgage-specialist",
+      "inventory": {
+        "description": "Mortgage specialist, as Backstage describes it (synthetic).",
+        "kind": "a2a",
+        "owner_team": "ai-coe",
+        "registry": {
+          "id": "Component:default/ai-coe-mortgage-specialist"
+        },
+        "system": "mortgage"
+      },
+      "name": "ai-coe-mortgage-specialist"
+    },
+    {
+      "consumes": [
+        "API:default/pricing-api"
+      ],
+      "id": "Component:default/loan-helper",
+      "inventory": {
+        "deploy": {
+          "endpoint": "https://loan-helper.{domain}/a2a"
+        },
+        "description": "Loan helper agent, as Backstage describes it (synthetic).",
+        "kind": "a2a",
+        "owner_team": "ai-coe",
+        "registry": {
+          "id": "Component:default/loan-helper"
+        },
+        "system": "mortgage"
+      },
+      "name": "loan-helper"
+    },
+    {
+      "id": "Group:default/ai-coe",
+      "profile": {
+        "contacts": [
+          "#ai-coe-help"
+        ],
+        "description": "AI CoE, per Backstage.",
+        "oncall": "ai-coe-pager"
+      },
+      "team": "ai-coe"
+    },
+    {
+      "id": "Group:default/cx-squad",
+      "profile": {
+        "contacts": [
+          "#cx-help"
+        ],
+        "description": "Customer experience squad (synthetic).",
+        "oncall": "cx-pager"
+      },
+      "team": "cx"
+    },
+    {
+      "id": "Resource:default/rates-model",
+      "inventory": {
+        "deploy": {
+          "endpoint": "https://rates.example.com/v1"
+        },
+        "description": "Rate prediction model endpoint (synthetic).",
+        "kind": "model",
+        "owner_team": "platform",
+        "registry": {
+          "id": "Resource:default/rates-model"
+        }
+      },
+      "name": "rates-model"
+    }
+  ],
+  "environment": "dev",
+  "fetched_by": "esmeralda catalog fetch --env dev --source backstage",
+  "schema": "esmeralda.catalog.snapshot",
+  "schema_version": 1,
+  "source": "backstage",
+  "type": "backstage"
+}
