@@ -182,6 +182,8 @@ uv run esmeralda release status                      # current release/prd.yaml
 uv run esmeralda destroy --env dev --confirm dev     # layers 5 -> 1, never layer 0, refuses prd
 ```
 
+`--dry-run` plans each unit against the deployed outputs of the units it depends on. On a fresh environment it can only plan layers 0 and 1, so deploy the first time layer by layer: `esmeralda deploy` plans every unit before applying it.
+
 Coding agents can also inspect the workspace directly via the read-only MCP server:
 
 ```bash

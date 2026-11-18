@@ -748,6 +748,12 @@ _HINTS = [
         "never commit it), export it, or set it in the MCP client's env",
     ),
     (
+        r"is a dependency of .* but detected no outputs",
+        "a dependency of this unit has not been applied yet (Terragrunt found no outputs): apply the "
+        "dependency first (`esmeralda apply <unit>`). On a fresh environment `deploy --dry-run` can only "
+        "plan layers 0-1; deploy layer by layer",
+    ),
+    (
         r"permission[_ ]denied|\b403\b|does not have .*permission",
         "permission denied: check the active account (`gcloud auth list`) and its IAM roles on the project",
     ),
@@ -778,16 +784,34 @@ def hint(text: str) -> str | None:
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 # Terragrunt log prefix: "03:12:25.595 ERROR  " / "INFO   [unit] "
 _TG_PREFIX = re.compile(r"^\s*\d\d:\d\d:\d\d(\.\d+)?\s+(ERROR|WARN|INFO|DEBUG|STDERR|STDOUT)\s+(\[[^\]]*\]\s+)?")
+# Terragrunt v1: "error occurred:" then "* <cause>" bullets; "TIP (debugging-docs): ..." is generic advice
+_TG_ERROR_OCCURRED = re.compile(r"^errors? occurred:?$", re.IGNORECASE)
+_TG_TIP = re.compile(r"^TIP \([^)]*\):")
+# Absolute checkout paths in Terragrunt messages ("/home/.../infrastructure/live/dev/layer-1-projects")
+_LIVE_PATH = re.compile(r"(?:/[^\s/\"']+)*/infrastructure/live/")
 
 
 def error_lines(text: str, limit: int = 6) -> list[str]:
-    """The informative lines of a failing command's output: ``Error:`` lines first, else the tail."""
+    """The informative lines of a failing command's output: ``Error:`` lines first, else the tail.
+
+    Terragrunt v1 prints ``error occurred:`` followed by the causes as ``* ...`` bullets that carry
+    no ``Error:`` marker: those bullets are kept, the generic ``TIP (...)`` lines are dropped, and
+    absolute paths up to ``infrastructure/live/`` are shortened to the unit path.
+    """
     lines = []
     for raw in text.splitlines():
         line = _TG_PREFIX.sub("", _ANSI.sub("", raw)).strip().strip("│╷╵").strip()
-        if line and line not in lines:
+        line = _LIVE_PATH.sub("", line)
+        if line and not _TG_TIP.match(line) and line not in lines:
             lines.append(line)
-    errors = [line for line in lines if re.search(r"\bError:|\bERROR:|failed", line)]
+    after_tg_error = False
+    errors = []
+    for line in lines:
+        if _TG_ERROR_OCCURRED.match(line):
+            after_tg_error = True
+            continue
+        if re.search(r"\bError:|\bERROR:|failed", line) or (after_tg_error and line.startswith("* ")):
+            errors.append(line)
     picked = errors or [line for line in lines if re.search(r"error", line, re.I)] or lines
     return [line[:300] for line in picked[-limit:]]
 

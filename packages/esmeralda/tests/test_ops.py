@@ -481,6 +481,52 @@ def test_hints_and_error_lines():
     assert "gcloud auth expired" in str(failed) and "exit 1" in str(failed)
 
 
+# Terragrunt v1.2.2 stderr for `terragrunt plan` in layer-2-networking before layer-1-projects is applied.
+_TG_LIVE = "/home/dev/esmeralda/infrastructure/live/dev"
+TG_V1_UNAPPLIED_DEPENDENCY = "\n".join(
+    [
+        "13:55:07.775 INFO   TIP (debugging-docs): For help troubleshooting errors, visit "
+        "https://docs.terragrunt.com/troubleshooting/debugging",
+        "13:55:07.775 ERROR  error occurred:",
+        "",
+        f'* resolving dependency "projects" outputs: {_TG_LIVE}/layer-1-projects/terragrunt.hcl is a dependency '
+        f"of {_TG_LIVE}/layer-2-networking/terragrunt.hcl but detected no outputs. Either the target module has "
+        "not been applied yet, or the module has no outputs.",
+        "  ",
+        "  If this dependency is accessed before the outputs are ready (which can happen during the planning "
+        "phase of an unapplied stack), consider using mock_outputs:",
+        "  ",
+        '  dependency "projects" {',
+        '      config_path = "../layer-1-projects"',
+        "  ",
+        "      mock_outputs = {",
+        '          projects_output = "mock-projects-output"',
+        "      }",
+        "  }",
+        "  ",
+        "  For more info, see:",
+        "  https://docs.terragrunt.com/features/stacks/#unapplied-dependency-and-mock-outputs",
+        "",
+    ]
+)
+
+
+def test_error_lines_keep_terragrunt_v1_causes_and_drop_the_tip():
+    assert repo.error_lines(TG_V1_UNAPPLIED_DEPENDENCY) == [
+        '* resolving dependency "projects" outputs: dev/layer-1-projects/terragrunt.hcl is a dependency of '
+        "dev/layer-2-networking/terragrunt.hcl but detected no outputs. Either the target module has not been "
+        "applied yet, or the module has no outputs."
+    ]
+
+
+def test_unapplied_dependency_failure_names_the_cause_and_the_next_step():
+    result = subprocess.CompletedProcess([], 1, "", TG_V1_UNAPPLIED_DEPENDENCY)
+    message = str(repo.failure("terragrunt plan (layer-2-networking)", result))
+    assert "has not been applied yet" in message and "esmeralda apply" in message
+    assert "dev/layer-1-projects" in message and "/home/dev" not in message
+    assert "TIP (debugging-docs)" not in message
+
+
 def test_run_reports_missing_binary(checkout):
     with pytest.raises(OpsError, match="not found on PATH"):
         repo.run(["definitely-not-a-binary-xyz"], cwd=checkout, timeout=5, what="x")
