@@ -38,7 +38,8 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda build <agents|services|images|package|<image>> [--tag T] [--skip-tests] [--dry-run] [--verify]``
 * ``esmeralda lock [PKG...] [--dry-run] | esmeralda lock --check``
 * ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified DATE] [--dry-run]] [--json]``
-* ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--partner] [--model-armor] [--json]``
+* ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--skip-catalog] [--catalog-strict]
+  [--partner] [--model-armor] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
 * ``esmeralda guard [--staged | --diff <range> | --all] [--json]``
@@ -431,7 +432,7 @@ def _format_lock(data: dict[str, Any]) -> str:
 def _format_verify(data: dict[str, Any]) -> str:
     lines = [f"🔎 Verify '{data.get('env', 'dev')}':"]
     for step in data.get("steps") or []:
-        icon = "✅" if step.get("passed") else "❌"
+        icon = ("⚠️ " if step.get("warning") else "✅") if step.get("passed") else "❌"
         lines.append(f"  {icon} {step.get('step', ''):<28} ({step.get('seconds', 0)}s)  {step.get('detail', '')}")
     verdict = "✅ Verification passed." if data.get("passed") else "❌ Verification failed."
     lines.append(verdict)
@@ -855,6 +856,8 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
                     skip_query=args.skip_query,
                     partner=getattr(args, "partner", False),
                     model_armor=getattr(args, "model_armor", False),
+                    skip_catalog=getattr(args, "skip_catalog", False),
+                    catalog_strict=getattr(args, "catalog_strict", False),
                 )
             )
             print(json.dumps(data, indent=2) if args.json else _format_verify(data))
@@ -1149,6 +1152,16 @@ def _parser() -> argparse.ArgumentParser:
         "--model-armor",
         action="store_true",
         help="run Model Armor checks: injection on model calls, gateway tools/call inspection, long-call regression",
+    )
+    verify.add_argument(
+        "--skip-catalog",
+        action="store_true",
+        help="skip the catalog-drift step (catalog diff findings and live drift of enabled snapshot sources)",
+    )
+    verify.add_argument(
+        "--catalog-strict",
+        action="store_true",
+        help="fail verify on any catalog-drift finding (default: policy.verify.catalog_drift, warn)",
     )
     _add_common_ops_flags(verify, with_env=True)
 
