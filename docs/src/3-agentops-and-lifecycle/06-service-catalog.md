@@ -317,6 +317,8 @@ sources:
   - { name: catalog-files,   type: files, paths: [teams.yaml, policy.yaml, teams, external] }
   - { name: agent-registry,  type: agent_registry, enabled: false,    # see "Agent Registry" below
       options: { projects: [governance, ai_coe_agents, cx_agents, mcps] } }
+  - { name: backstage,       type: backstage, enabled: false,         # see "Backstage" below
+      options: { base_url: "https://backstage.example.com", token_env: ESMERALDA_BACKSTAGE_TOKEN } }
   - { name: project-labels,  type: project_labels, enabled: false,    # see "Project labels" below
       options: { team_label: team, cost_center_label: cost-center } }
 environments_dir: environments
@@ -328,13 +330,15 @@ resolved_dir: .resolved
 | Greenfield / demo | `files` only (the default) |
 | Inventory already in Agent Registry or API Hub | `agent_registry` reports what exists; `files` keeps policy, callers and grants, and adopts entries by pin |
 | Teams and cost centres in project labels or finance systems | `project_labels` maps projects to the teams declared in `files` (attribution only) |
-| Backstage, a CMDB or another catalog | A custom adapter |
+| Services and owners in Backstage | `backstage` reports components and APIs as inventory and fills team profiles; `files` adopts entities by pin |
+| A CMDB or another catalog | A custom adapter (copy the shape of the `backstage` one) |
 
 | Source type | Status | Reads (read-only) |
 | :--- | :--- | :--- |
 | `files` | built in, the default | catalog YAML under `catalog/` |
 | `project_labels` | built in, disabled in this repo | labels of the environment's projects (`gcloud projects describe`) |
 | `agent_registry` | built in, disabled in this repo | agents, MCP servers and endpoints of Agent Registry (`gcloud alpha agent-registry ... list`) |
+| `backstage` | built in, disabled in this repo | entities of the Backstage Catalog API (`/api/catalog/entities/by-query`), or a JSON export |
 
 **Discovery never grants; adoption is a repo review.** The merge rules hold for every source:
 
@@ -359,9 +363,12 @@ resolved_dir: .resolved
 - External entries land in a separate `inventory` section of the resolved catalog. Inventory is
   shown but **never compiled**: no IAM, no Agent Gateway policy, no registry entry, no allowlist.
 - A catalog file adopts an inventory entry **only through a pin**, never by name:
-  `deploy: { managed: false, endpoint: ..., registry: { source: <source name>, id: <entry id> } }`.
-  An inventory entry named like an unpinned target fails the resolve, and so does a pin whose id the
-  source doesn't report. Callers of an adopted target still come from the file.
+  `deploy: { managed: false, endpoint: ..., registry: { source: <source name>, id: <entry id> } }`,
+  or, for a Backstage entity, `backstage: { source: <source name>, ref: <Kind:namespace/name> }`.
+  One file entry may carry both pins: that is how an Agent Registry entry and a Backstage entity
+  for the same agent are joined (without it, two sources that derive the same name fail the
+  resolve). An inventory entry named like an unpinned target fails the resolve, and so does a pin
+  whose id the source doesn't report. Callers of an adopted target still come from the file.
 - **Field strategies.** `strict` fields (`kind`, `owner_team`, `deploy.endpoint`, `runtime`,
   `runtime_resource`, `registry.id`) must agree across sources, otherwise the resolve fails and
   names both origins. `first` fields (`description`, `system`, `registry.skills`, profile
@@ -441,7 +448,8 @@ uv run esmeralda catalog show --env dev --inventory                # discovered 
   layer instead, until a catalog file adopts one of its entries: then the snapshot is required.
 - **Drift.** `catalog diff` reports discovered entries no catalog file adopts, external values a
   catalog file shadows or `environments/<env>.yaml` overrides, source data that disagrees with the
-  catalog files (`label_mismatch`), and optional sources without a snapshot; `--live` adds the
+  catalog files (`label_mismatch`, `metadata_mismatch`), hints a source offers (`suggested_grant`,
+  never a grant), and optional sources without a snapshot; `--live` adds the
   entries that changed in the live source since the snapshot and, for Agent Registry, the `missing`
   entries Esmeralda registers that the live registry doesn't list.
 - **Drift in `verify`.** `esmeralda verify --env <env>` runs a `catalog-drift` step: the same
@@ -559,3 +567,80 @@ Discovered inventory, never authorization.
     projects: [governance, ai_coe_agents, cx_agents, mcps]
     names: { "<registry id>": loan-helper }
 ```
+
+### Backstage (`backstage`)
+
+Discovered inventory and team metadata from a Backstage software catalog, never authorization. It
+is the reference adapter for enterprise catalogs: a CMDB or API Hub adapter can copy its shape.
+
+- **Fetch.** `catalog fetch --env <env> --source backstage` reads the Backstage Catalog API
+  (`GET <base_url>/api/catalog/entities/by-query`, cursor pagination, Python standard library
+  only) with the filters of `options.filters` (default: the `options.component_types` Components,
+  APIs, Groups and annotated Resources). `options.file` reads a JSON export instead (a list of
+  entities, or `{"items": [...]}`), so it works fully offline. `base_url` must be `https://`
+  (`http://` only for `localhost`, for a local test instance).
+- **Token.** A Backstage external-access token scoped to `catalog.entity.read`, read at fetch time
+  from `options.token_env` (default `ESMERALDA_BACKSTAGE_TOKEN`: the environment, or
+  `~/.config/esmeralda/env` for `ESMERALDA_*` names) or `options.token_secret` (a Secret Manager
+  version, `projects/{project:<alias>}/secrets/<secret>/versions/<v>`). Without either, the
+  request is anonymous. The token is sent only to `base_url` (never on a redirect) and never
+  written to a snapshot, `sources.yaml`, a log or an error message.
+- **Mapping.**
+
+  | Backstage | Esmeralda |
+  | :--- | :--- |
+  | `Component` with `spec.type` in `component_types` (default `agent`, `mcp-server`, `service`) | inventory entry: `kind` from the `esmeralda.dev/kind` annotation (else `agent` → `a2a`, `mcp-server` → `mcp`, `service` → `http`), `owner_team` from `spec.owner`, `description`, `system`, `deploy.endpoint` from `esmeralda.dev/endpoint` or the API it provides. `spec.lifecycle: experimental` is skipped unless `include_experimental: true` |
+  | `API` | endpoint of the Component that provides it; an API no Component provides, with `esmeralda.dev/endpoint`, is an inventory entry (`http`, or its `esmeralda.dev/kind`). Definitions are never copied |
+  | `Resource` with `esmeralda.dev/kind` | inventory entry, like a standalone API |
+  | `System` | the `system` tag (descriptive, never enforced) |
+  | `Group` | a reference to a team the catalog files declare (`esmeralda.dev/team`, `options.team_map`, else the group name); fills the team profile `description`, `oncall` (`esmeralda.dev/oncall`) and `contacts` (`esmeralda.dev/contacts`; emails are dropped) where `team.yaml` leaves them unset |
+  | `consumesApis`, `dependsOn` | **never callers**: `catalog diff` lists them as `suggested_grant` for a human to declare |
+  | identity annotations | ignored: identities come from catalog files and unit outputs only |
+
+- **Names.** The catalog name is the entity's `metadata.name`; `options.names` maps an entity ref to
+  another name. Two entities with the same name fail the fetch; names never get a suffix.
+- **Resolve.** Every entity is a discovered `inventory` entry, never compiled. To adopt one, a
+  catalog file adds `backstage: { source: backstage, ref: Component:default/<name> }` (refs compare
+  case-insensitively). The adopted target takes `description` and `system` (the catalog file wins)
+  and, unless a unit deploys it, `deploy.endpoint` (must agree); `kind` and `owner_team` must agree.
+  Callers still come from the file.
+- **Teams.** Backstage never creates teams and never extends `cost_centers`. A Group, or an owner,
+  that maps to no catalog team is a `metadata_mismatch` finding, governed by
+  `policy.attribution.label_mismatch` like project labels.
+
+```yaml
+- name: backstage
+  type: backstage
+  options:
+    base_url: https://backstage.example.com
+    token_env: ESMERALDA_BACKSTAGE_TOKEN
+    component_types: [agent, mcp-server, service]
+    team_map: { mortgage-squad: ai-coe }        # Backstage group -> catalog team
+    names: { "Component:default/loan-helper": loan-helper-bs }
+    placeholders: [domain]                      # entry point domain in endpoints -> {domain}
+```
+
+```yaml
+# teams/ai-coe/agents/loan-helper.yaml (synthetic): one catalog entry joins two sources
+name: loan-helper
+kind: a2a
+owner_team: ai-coe
+deploy:
+  managed: false
+  endpoint: https://loan-helper.example.com/a2a
+  registry: { source: agent-registry, id: "<registry id>" }
+backstage: { source: backstage, ref: Component:default/loan-helper }
+callers:
+  cx-mortgage-orchestrator: {}
+```
+
+To try it without a Backstage instance, point `options.file` at a JSON export (the tests use the
+synthetic `packages/esmeralda/tests/fixtures/catalog_sources/backstage/entities.json`). For a
+manual smoke test against a local instance, run the Backstage example app in a container, register
+a few `catalog-info.yaml` entities with the annotations above, set `base_url:
+http://localhost:7007` and run `catalog fetch --source backstage --dry-run`.
+
+**Export (later).** `esmeralda catalog export --env <env> --format backstage` (Esmeralda as the
+producer: one `catalog-info.yaml` Component per target, with read-only annotations for the
+gateway, callers and who pays, for Backstage to ingest from a URL location) is planned, not
+implemented.

@@ -1,0 +1,127 @@
+{
+  "items": [
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "ai-coe",
+        "namespace": "default",
+        "description": "AI Center of Excellence, as Backstage describes it (synthetic).",
+        "annotations": {
+          "esmeralda.dev/oncall": "ai-coe-pager",
+          "esmeralda.dev/contacts": "#ai-coe-help, ai-coe@example.com"
+        },
+        "etag": "synthetic-etag-1",
+        "uid": "00000000-0000-4000-8000-000000000001"
+      },
+      "spec": {"type": "team", "profile": {"displayName": "AI CoE", "email": "ai-coe@example.com"}, "children": []}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "cx-squad",
+        "description": "Customer experience squad (synthetic).",
+        "annotations": {
+          "esmeralda.dev/team": "cx",
+          "esmeralda.dev/oncall": "cx-pager",
+          "esmeralda.dev/contacts": "#cx-help"
+        }
+      },
+      "spec": {"type": "team", "children": []}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {"name": "people-ops", "description": "Owns nothing Esmeralda imports (synthetic)."},
+      "spec": {"type": "team", "children": []}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "System",
+      "metadata": {"name": "mortgage", "description": "Mortgage underwriting (synthetic)."},
+      "spec": {"owner": "group:default/ai-coe"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "metadata": {
+        "name": "loan-helper",
+        "description": "Loan helper agent  registered in Backstage (synthetic).",
+        "annotations": {"backstage.io/source-location": "url:https://git.example.com/loan-helper"},
+        "tags": ["a2a"]
+      },
+      "spec": {
+        "type": "agent",
+        "lifecycle": "production",
+        "owner": "group:default/ai-coe",
+        "system": "mortgage",
+        "providesApis": ["loan-helper-a2a"],
+        "consumesApis": ["api:default/pricing-api"]
+      },
+      "relations": [
+        {"type": "ownedBy", "targetRef": "group:default/ai-coe"},
+        {"type": "providesApi", "targetRef": "api:default/loan-helper-a2a"},
+        {"type": "consumesApi", "targetRef": "api:default/pricing-api"}
+      ]
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "API",
+      "metadata": {
+        "name": "loan-helper-a2a",
+        "annotations": {"esmeralda.dev/endpoint": "https://loan-helper.example.com/a2a"}
+      },
+      "spec": {"type": "a2a", "lifecycle": "production", "owner": "ai-coe", "definition": "{\"large\": \"never copied\"}"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "metadata": {
+        "name": "pricing-tools",
+        "title": "Pricing tools MCP server (synthetic)",
+        "annotations": {"esmeralda.dev/endpoint": "https://pricing-tools.example.com/mcp"}
+      },
+      "spec": {"type": "mcp-server", "lifecycle": "production", "owner": "ai-coe", "system": "system:default/mortgage"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "API",
+      "metadata": {
+        "name": "pricing-api",
+        "description": "Pricing REST API that no Backstage component provides (synthetic).",
+        "annotations": {"esmeralda.dev/endpoint": "https://pricing.example.com"}
+      },
+      "spec": {"type": "openapi", "lifecycle": "production", "owner": "group:cx-squad", "system": "mortgage",
+               "definition": "openapi: 3.0.0"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "metadata": {
+        "name": "rates-model",
+        "description": "Rate prediction model endpoint (synthetic).",
+        "annotations": {"esmeralda.dev/kind": "model", "esmeralda.dev/endpoint": "https://rates.example.com/v1"}
+      },
+      "spec": {"type": "ml-model", "owner": "group:default/ai-coe"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "metadata": {"name": "rates-db", "description": "A database: no esmeralda.dev/kind, not imported."},
+      "spec": {"type": "database", "owner": "group:default/ai-coe"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "metadata": {"name": "quote-portal", "description": "Experimental, skipped by default (synthetic)."},
+      "spec": {"type": "service", "lifecycle": "experimental", "owner": "group:default/cx-squad"}
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "metadata": {"name": "marketing-site", "description": "A website: not a component type Esmeralda imports."},
+      "spec": {"type": "website", "lifecycle": "production", "owner": "group:default/people-ops"}
+    }
+  ]
+}

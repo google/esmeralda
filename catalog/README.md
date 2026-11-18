@@ -78,14 +78,15 @@ needs no network. This repository enables no external source and commits no snap
 The resolver:
 
 1. merges the enabled sources of `sources.yaml` in order. `files` is the default; `project_labels`
-   (team attribution from project labels) and `agent_registry` (discovered inventory from Agent
-   Registry, never compiled) are implemented but disabled here, and other adapters
-   (Backstage, a CMDB) register with `esmeralda.catalog.register_source`. Inside `files`, an entry
+   (team attribution from project labels), `agent_registry` (discovered inventory from Agent
+   Registry, never compiled) and `backstage` (discovered inventory and team profiles from a
+   Backstage catalog, never compiled) are implemented but disabled here, and other adapters
+   (a CMDB, API Hub) register with `esmeralda.catalog.register_source`. Inside `files`, an entry
    or a policy leaf defined twice fails. `files` comes first and is the only source that may set
    authorization data (callers and grants, identities, policy, teams and cost centres,
    `google_apis`, ...); other sources report inventory and attribution metadata within the
    capability allowlist of their type, and a catalog file adopts an external entry only through a
-   `deploy.registry` pin (see the service catalog page, "Swapping or adding sources");
+   pin, `deploy.registry` or `backstage` (see the service catalog page, "Swapping or adding sources");
 2. applies `environments/<env>.yaml` overrides (maps merge, lists replace, `null` deletes);
 3. fills unset `gateway`, `user_credential` and `observability` fields from `policy.defaults`;
 4. validates against the schema, then fails on unknown teams, callers, models or dimensions, on

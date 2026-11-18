@@ -4,8 +4,8 @@
 # `files` comes first and is the only source that may set authorization data (callers and grants,
 # identities, policy, teams and cost centres, google_apis, ...). Other sources report inventory and
 # attribution metadata within the capability allowlist of their type; a catalog file adopts an
-# external entry only through a deploy.registry pin. Duplicates inside the `files` source always
-# fail. environments/<env>.yaml overrides are applied last.
+# external entry only through a pin (deploy.registry, or backstage for a Backstage entity).
+# Duplicates inside the `files` source always fail. environments/<env>.yaml overrides are applied last.
 schema: esmeralda.catalog
 schema_version: 1
 
@@ -29,6 +29,20 @@ sources:
       projects: [governance, ai_coe_agents, cx_agents, mcps]   # aliases of layer-1 <alias>_project_id
       # names: { "<registry id>": loan-helper }   # catalog name for an entry (default: derived)
       # exclude: ["urn:agent:googleapis.com:*"]   # registry ids to skip (default: Google's global agents)
+
+  # Discovered inventory and team profile metadata from a Backstage software catalog (the Catalog
+  # API, read-only, or a JSON export). Never callers: a catalog file adopts an entity only with a
+  # `backstage: { source: backstage, ref: Component:default/<name> }` pin; Groups only reference
+  # teams declared here. `esmeralda catalog fetch --env <env> --source backstage` writes
+  # snapshots/backstage/<env>.json; the token is read at fetch time and never written.
+  - name: backstage
+    type: backstage
+    enabled: false
+    options:
+      base_url: https://backstage.example.com   # https only
+      token_env: ESMERALDA_BACKSTAGE_TOKEN      # env or ~/.config/esmeralda/env (or token_secret: <secret version>)
+      component_types: [agent, mcp-server, service]
+      # team_map: { mortgage-squad: ai-coe }    # Backstage group -> catalog team (default: same name)
 
   # Team attribution from the labels of the environment's projects (attribution only: never callers,
   # teams or cost centres). `esmeralda catalog fetch --env <env> --source project-labels` writes

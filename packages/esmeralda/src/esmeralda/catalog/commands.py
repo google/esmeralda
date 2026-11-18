@@ -23,7 +23,9 @@
 * :func:`diff_catalog` (offline unless ``live``): findings a reviewer should look at: discovered
   entries no catalog file adopts, external values shadowed by catalog files or overridden by the
   environment, source data that disagrees with the catalog files (``label_mismatch``: project
-  labels vs declared teams, cost centres and owners; listed whatever the policy), optional sources
+  labels vs declared teams, cost centres and owners; listed whatever the policy), hints a source
+  offers (``suggested_grant``: for Backstage, ``consumesApis`` that no catalog file grants; never a
+  grant), optional sources
   without a snapshot and, with ``live``, live entries that differ from the committed snapshot
   and what the live system is missing compared with the compiled catalog (``missing``: for Agent
   Registry, entries Esmeralda registers that the registry doesn't list); never written.
@@ -187,13 +189,15 @@ def _offline_findings(resolved: Any) -> list[dict[str, Any]]:
     """Findings that need no network: source findings, missing optional snapshots, discovered
     entries, and external values shadowed or overridden."""
     findings: list[dict[str, Any]] = [dict(f) for f in resolved.findings]
+    findings += [dict(s) for s in resolved.suggestions]
     for warning in resolved.warnings:
         findings.append(_finding("missing_snapshot", warning.split(":", 1)[0], "snapshot", warning))
     for row in inventory_rows(resolved):
         findings.append(_finding(
             "discovered", row["source"], f"inventory.{row['name']}",
             f"{row['kind']} '{row['id'] or row['name']}' ({row['origin']}) is not adopted by any catalog file: never "
-            "compiled; to enforce it, add a catalog file with deploy.registry: {source, id} and its callers"))
+            "compiled; to enforce it, add a catalog file with deploy.registry: {source, id} (or backstage: "
+            "{source, ref} for a Backstage entity) and its callers"))
     for key in sorted(resolved.provenance):
         record = resolved.provenance[key]
         for loser in record.get("shadowed") or []:

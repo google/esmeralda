@@ -42,7 +42,8 @@ External sources (Agent Registry, project labels, Backstage, custom adapters) ar
 committed snapshots (:class:`SnapshotSource`, ``catalog/snapshots/<source>/<env>.json``) that
 ``esmeralda catalog fetch`` writes; resolving never touches the network
 (:mod:`esmeralda.catalog.snapshot`, :mod:`esmeralda.catalog.commands`). The built-in adapters for
-live systems live in :mod:`esmeralda.catalog.adapters` (``project_labels``, ``agent_registry``).
+live systems live in :mod:`esmeralda.catalog.adapters` (``project_labels``, ``agent_registry``,
+``backstage``).
 """
 
 from esmeralda.catalog import adapters  # noqa: F401  (registers the built-in live-source adapters)

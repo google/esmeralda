@@ -21,9 +21,11 @@ these functions with recorded responses, so no test touches the network.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
+from esmeralda.catalog.schema import CatalogError
 from esmeralda.catalog.snapshot import SourceUnreachable
 
 
@@ -64,3 +66,30 @@ def gcloud_json(root: Path, args: list[str], what: str) -> Any:
         return json.loads(result.stdout or "null")
     except json.JSONDecodeError as exc:
         raise SourceUnreachable(f"{what}: unreadable gcloud output ({exc})") from exc
+
+
+_SECRET = re.compile(r"^projects/(?P<project>[^/]+)/secrets/(?P<secret>[^/]+)(?:/versions/(?P<version>[^/]+))?$")
+
+
+def secret_text(root: Path, resource: str, what: str) -> str:
+    """The value of a Secret Manager secret version (``projects/<p>/secrets/<s>[/versions/<v>]``,
+    default ``latest``) through a read-only ``gcloud secrets versions access``.
+
+    The value is returned only: never logged, and error messages carry gcloud's stderr, never stdout.
+    """
+    from esmeralda.ops import repo
+    from esmeralda.ops.repo import OpsError
+
+    match = _SECRET.match(resource)
+    if not match:
+        raise CatalogError(f"{what}: '{resource}' is not a secret resource name "
+                           "(projects/<project>/secrets/<secret>[/versions/<version>])")
+    cmd = ["gcloud", "secrets", "versions", "access", match["version"] or "latest", f"--secret={match['secret']}",
+           f"--project={match['project']}"]
+    try:
+        result = repo.run(cmd, cwd=root, timeout=60, what=what)
+    except OpsError as exc:
+        raise SourceUnreachable(f"{what}: {exc}") from None
+    if result.returncode != 0:
+        raise SourceUnreachable(f"{what} failed: {repo.short(result.stderr, 300)}")
+    return (result.stdout or "").strip()

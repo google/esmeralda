@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from esmeralda.catalog.merge import apply_override_provenance, merge_layers
+from esmeralda.catalog.merge import apply_override_provenance, merge_layers, target_pins
 from esmeralda.catalog.schema import (
     SCHEMA,
     SCHEMA_VERSION,
@@ -195,10 +195,13 @@ class Resolved:
     """A resolved catalog: the document (``esmeralda.catalog`` ``resolved`` shape) plus provenance.
 
     ``origins`` maps ``(section, name)`` to where the entry came from (a repo path for files);
-    ``adopted`` maps each target adopted through a ``deploy.registry`` pin to its source;
+    ``adopted`` maps each target adopted through a pin (``deploy.registry``, ``backstage``) to the
+    source of its first pin, ``adopted_by`` to the sources of all its pins;
     ``warnings`` are non-fatal notes (an optional source resolved without its snapshot);
     ``findings`` are where a source's data disagrees with the catalog files (``{kind, source,
-    subject, detail}``, see :meth:`Source.findings`), kept when ``label_mismatch`` is ``warn``.
+    subject, detail}``, see :meth:`Source.findings`), kept when ``label_mismatch`` is ``warn``;
+    ``suggestions`` are hints for a human (for example Backstage ``consumesApis``, never a grant;
+    see :meth:`Source.suggestions`): ``catalog diff`` lists them, they never fail the resolve.
     """
 
     env: str
@@ -207,6 +210,8 @@ class Resolved:
     adopted: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     findings: list[dict[str, Any]] = field(default_factory=list)
+    adopted_by: dict[str, list[str]] = field(default_factory=dict)
+    suggestions: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def teams(self) -> dict[str, Any]:
@@ -666,13 +671,14 @@ def _check_optional_snapshots(loaded: list[tuple[Source, Layer]]) -> list[str]:
         if isinstance(source, SnapshotSource):
             continue
         for name in sorted(layer.targets):
-            pin = ((layer.targets[name] or {}).get("deploy") or {}).get("registry") or {}
-            src = missing.get(pin.get("source"))
-            if src:
-                problems.append(f"targets.{name} ({layer.origins.get(('targets', name), source.name)}) adopts "
-                                f"'{pin.get('id')}' from '{src.name}', whose snapshot {src.snapshot_label()} is "
-                                f"missing: run `{fetch_command(src.env or '<env>', src.name)}` (an optional source "
-                                "becomes mandatory once a catalog file adopts one of its entries)")
+            for pin_field, pin_source, pin_id in target_pins(layer.targets[name] or {}):
+                src = missing.get(pin_source)
+                if src:
+                    problems.append(f"targets.{name} ({layer.origins.get(('targets', name), source.name)}) adopts "
+                                    f"'{pin_id}' from '{src.name}' ({pin_field}), whose snapshot "
+                                    f"{src.snapshot_label()} is missing: run "
+                                    f"`{fetch_command(src.env or '<env>', src.name)}` (an optional source "
+                                    "becomes mandatory once a catalog file adopts one of its entries)")
     return problems
 
 
@@ -744,7 +750,14 @@ def resolve(root: Path, env: str, *, strict_findings: bool = True) -> Resolved:
             f"'warn' (only in flag_environments); `esmeralda catalog diff --env {env}` lists every finding"
         ])
     adopted = {name: src for name, src in merged.adopted.items() if name in doc["targets"]}
-    return Resolved(env=env, document=doc, origins=origins, adopted=adopted, warnings=warnings, findings=findings)
+    adopted_by = {name: list(srcs) for name, srcs in merged.adopted_by.items() if name in doc["targets"]}
+    suggestions = [
+        {"kind": f["kind"], "source": source.name, "subject": f["subject"], "detail": f["detail"]}
+        for source in sources
+        for f in source.suggestions(doc)
+    ]
+    return Resolved(env=env, document=doc, origins=origins, adopted=adopted, warnings=warnings, findings=findings,
+                    adopted_by=adopted_by, suggestions=suggestions)
 
 
 # ------------------------------------------------------------------------------------------
@@ -1161,8 +1174,9 @@ def _external_provenance(resolved: Resolved) -> tuple[dict[str, Any], dict[str, 
     entries = {".".join(key.split(".", 2)[:2]) for key in fields}
     out = {key: provenance[key] for key in sorted(set(fields) | (entries & set(provenance)))}
     summary: dict[str, dict[str, int]] = {}
-    for src in resolved.adopted.values():
-        summary.setdefault(src, {"adopted": 0, "discovered": 0})["adopted"] += 1
+    for name in sorted(resolved.adopted):
+        for src in resolved.adopted_by.get(name) or [resolved.adopted[name]]:
+            summary.setdefault(src, {"adopted": 0, "discovered": 0})["adopted"] += 1
     for name in resolved.inventory:
         src = provenance.get(f"inventory.{name}", {}).get("source", "unknown")
         summary.setdefault(src, {"adopted": 0, "discovered": 0})["discovered"] += 1
@@ -1365,7 +1379,8 @@ def show(
                 "gateway": t.get("gateway"),
                 "ingress_backend": host_backend,
                 **({"google_apis": google_apis_of(t, resolved.policy)} if t["kind"] in WORKLOAD_KINDS else {}),
-                **({"adopted_from": resolved.adopted[name]} if name in resolved.adopted else {}),
+                **({"adopted_from": ", ".join(resolved.adopted_by.get(name) or [resolved.adopted[name]])}
+                   if name in resolved.adopted else {}),
                 "callers": entry_callers,
                 **({"provenance": entry_provenance(resolved, "targets", name)} if provenance else {}),
             }

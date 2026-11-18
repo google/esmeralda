@@ -18,12 +18,16 @@ Importing this package registers them (``esmeralda.catalog`` does it on import):
 
 * ``project_labels`` (:mod:`.project_labels`): team attribution from project labels.
 * ``agent_registry`` (:mod:`.agent_registry`): discovered inventory from Agent Registry.
+* ``backstage`` (:mod:`.backstage`): discovered inventory and team profiles from a Backstage
+  catalog (Catalog API or a JSON export; the reference adapter for enterprise catalogs).
 
 Each adapter is a :class:`esmeralda.catalog.snapshot.SnapshotSource`: ``esmeralda catalog fetch``
-calls its ``fetch()`` (read-only, through :mod:`._live`), ``resolve`` reads only the snapshot.
+calls its ``fetch()`` (read-only, through :mod:`._live` or the standard library), ``resolve`` reads
+only the snapshot.
 """
 
 from esmeralda.catalog.adapters.agent_registry import AgentRegistrySource
+from esmeralda.catalog.adapters.backstage import BackstageSource
 from esmeralda.catalog.adapters.project_labels import ProjectLabelsSource
 
-__all__ = ["AgentRegistrySource", "ProjectLabelsSource"]
+__all__ = ["AgentRegistrySource", "BackstageSource", "ProjectLabelsSource"]
