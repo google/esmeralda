@@ -331,6 +331,14 @@
             "label_mismatch": {"enum": ["fail", "warn"], "description": "Resolve-time: inventory or attribution metadata from an external source (project labels, ...) disagrees with the catalog files: fail (default) or warn. warn is accepted only in flag_environments. Separate from declared_mismatch, which is a per-request runtime rule."}
           }
         },
+        "verify": {
+          "description": "How esmeralda verify treats its checks of the catalog.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "catalog_drift": {"enum": ["warn", "fail"], "description": "The catalog-drift step (catalog diff findings, and live drift of the enabled snapshot sources): warn (default: reported, verify still passes) or fail (any finding fails verify). Unreachable sources are never a failure."}
+          }
+        },
         "defaults": {
           "type": "object",
           "additionalProperties": false,

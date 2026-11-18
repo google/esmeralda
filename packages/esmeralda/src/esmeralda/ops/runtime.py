@@ -453,6 +453,52 @@ def verify_registry_egress(root: Path, env: str) -> dict[str, Any]:
     return result
 
 
+def verify_catalog_drift(root: Path, env: str, *, strict: bool = False, live: bool = True) -> dict[str, Any]:
+    """The ``catalog-drift`` step (``esmeralda.catalog.commands.drift_report``), never raising.
+
+    Warning only: findings fail the step only when ``strict`` or ``policy.verify.catalog_drift: fail``;
+    an unreachable live source is a notice, never a failure. ``step`` is the row for ``verify``.
+    """
+    from esmeralda.catalog import commands
+
+    started = time.monotonic()
+    try:
+        report = commands.drift_report(root, env, live=live)
+    except Exception as exc:  # noqa: BLE001 - the drift check must never break verify
+        report = {"env": env, "sources": [], "mode": "warn", "findings": [], "counts": {}, "notices": [],
+                  "command": f"esmeralda catalog diff --env {env}",
+                  "error": repo.short(f"{type(exc).__name__}: {exc}", 300)}
+    mode = "fail" if strict else report.get("mode", "warn")
+    findings = report.get("findings") or []
+    error = report.get("error")
+    command = report.get("command") or f"esmeralda catalog diff --env {env}"
+    if error:
+        detail = f"catalog does not resolve: {repo.short(error, 200)} (run `{command}`)"
+    elif not report.get("sources"):
+        detail = "no external catalog sources enabled"
+    elif findings:
+        counts = ", ".join(f"{n} {kind}" for kind, n in (report.get("counts") or {}).items())
+        top = "; ".join(f"[{f['kind']}] {f['subject']}" for f in findings[:3])
+        detail = f"{len(findings)} finding(s): {counts}; {top}{' ...' if len(findings) > 3 else ''} (run `{command}`)"
+    else:
+        detail = f"no drift ({', '.join(report['sources'])})"
+    if report.get("notices"):
+        detail += "; notice: " + "; ".join(report["notices"])
+    problem = bool(error or findings)
+    report.update(
+        mode=mode,
+        seconds=round(time.monotonic() - started, 1),
+        step={
+            "step": "catalog-drift",
+            "passed": not (problem and mode == "fail"),
+            "warning": problem or bool(report.get("notices")),
+            "seconds": round(time.monotonic() - started, 1),
+            "detail": repo.short(detail, 400),
+        },
+    )
+    return report
+
+
 async def verify(
     root: Path,
     env: str,
@@ -461,10 +507,16 @@ async def verify(
     skip_query: bool = False,
     partner: bool = False,
     model_armor: bool = False,
+    skip_catalog: bool = False,
+    catalog_strict: bool = False,
     message: str = DEFAULT_VERIFY_MESSAGE,
     timeout: float = 300.0,
 ) -> dict[str, Any]:
-    """End-to-end verification: gateway conformance probes + remote queries, or partner conformance (--partner)."""
+    """End-to-end verification: gateway conformance probes + remote queries, or partner conformance (--partner).
+
+    The ``catalog-drift`` step (skipped with ``probe`` or ``skip_catalog``) only warns unless
+    ``catalog_strict`` or ``policy.verify.catalog_drift: fail``.
+    """
     started = time.monotonic()
     if model_armor:
         from esmeralda.ops.model_armor import verify_model_armor
@@ -525,6 +577,10 @@ async def verify(
                 + "".join(f"; {c['check']}: {c['detail']}" for c in (registry.get("checks") or []) if not c["ok"])[:300],
             }
         )
+    catalog_drift: dict[str, Any] | None = None
+    if not probe and not skip_catalog:
+        catalog_drift = verify_catalog_drift(root, env, strict=catalog_strict)
+        steps.append(catalog_drift.pop("step"))
     queries: dict[str, dict[str, Any]] = {}
     if not skip_query:
         for agent_name in DEFAULT_VERIFY_AGENTS:
@@ -573,6 +629,7 @@ async def verify(
         "steps": steps,
         "gateway": gw,
         **({"registry_egress": registry} if registry is not None else {}),
+        **({"catalog_drift": catalog_drift} if catalog_drift is not None else {}),
         "queries": queries,
         "seconds": round(time.monotonic() - started, 1),
     }

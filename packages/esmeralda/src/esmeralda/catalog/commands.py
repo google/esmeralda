@@ -27,6 +27,8 @@
   without a snapshot and, with ``live``, live entries that differ from the committed snapshot
   and what the live system is missing compared with the compiled catalog (``missing``: for Agent
   Registry, entries Esmeralda registers that the registry doesn't list); never written.
+* :func:`drift_report` (the ``catalog-drift`` step of ``esmeralda verify``): the same findings,
+  counted per kind, where an unreachable live source is a notice instead of an error.
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ from esmeralda.catalog.schema import CatalogError, load_schema
 from esmeralda.catalog.snapshot import SnapshotSource, SourceUnreachable, fetch_command, render_snapshot, sha256_text
 from esmeralda.catalog.sources import FilesSource, Source, build_source, source_name
 
-__all__ = ["SourceUnreachable", "describe_sources", "diff_catalog", "fetch_sources"]
+__all__ = ["CatalogError", "SourceUnreachable", "describe_sources", "diff_catalog", "drift_report", "fetch_sources"]
 
 
 def _all_sources(root: Path, env: str) -> list[tuple[dict[str, Any], Source | CatalogError]]:
@@ -181,9 +183,9 @@ def _finding(kind: str, source: str | None, subject: str, detail: str) -> dict[s
     return {"kind": kind, "source": source, "subject": subject, "detail": detail}
 
 
-def diff_catalog(root: Path, env: str, *, live: bool = False) -> dict[str, Any]:
-    """Drift findings for ``env`` (empty list: nothing to review). Offline unless ``live``."""
-    resolved = resolve(root, env, strict_findings=False)
+def _offline_findings(resolved: Any) -> list[dict[str, Any]]:
+    """Findings that need no network: source findings, missing optional snapshots, discovered
+    entries, and external values shadowed or overridden."""
     findings: list[dict[str, Any]] = [dict(f) for f in resolved.findings]
     for warning in resolved.warnings:
         findings.append(_finding("missing_snapshot", warning.split(":", 1)[0], "snapshot", warning))
@@ -200,19 +202,114 @@ def diff_catalog(root: Path, env: str, *, live: bool = False) -> dict[str, Any]:
                 kind, loser["source"], key,
                 f"{loser['source']} ({loser['origin']}) has another value (sha256 {loser['value_hash']}); "
                 f"{record['source']} ({record['origin']}) wins"))
+    return findings
+
+
+def _live_findings(src: SnapshotSource, env: str) -> list[dict[str, Any]]:
+    """Live entries that differ from the committed snapshot, plus the source's own live findings
+    (network; raises :class:`SourceUnreachable` when the live system can't be read)."""
+    findings = []
+    live_doc = src.fetch_snapshot()
+    found = src.read()
+    snapshot_entries = found[0]["entries"] if found else []
+    changes = _entry_changes(snapshot_entries, live_doc["entries"])
+    for change, ids in changes.items():
+        for entry_id in ids:
+            findings.append(_finding(
+                "live_drift", src.name, f"{src.snapshot_label()}#{entry_id}",
+                f"{change} in the live source since the snapshot: run `{fetch_command(env, src.name)}` "
+                "and review the change"))
+    for f in src.live_findings():
+        findings.append(_finding(f["kind"], src.name, f["subject"], f["detail"]))
+    return findings
+
+
+def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(findings, key=lambda f: (f["kind"], f["source"] or "", f["subject"], f["detail"]))
+
+
+def diff_catalog(root: Path, env: str, *, live: bool = False) -> dict[str, Any]:
+    """Drift findings for ``env`` (empty list: nothing to review). Offline unless ``live``."""
+    resolved = resolve(root, env, strict_findings=False)
+    findings = _offline_findings(resolved)
     if live:
         for src in _snapshot_sources(root, env, "all"):
-            live_doc = src.fetch_snapshot()
-            found = src.read()
-            snapshot_entries = found[0]["entries"] if found else []
-            changes = _entry_changes(snapshot_entries, live_doc["entries"])
-            for change, ids in changes.items():
-                for entry_id in ids:
-                    findings.append(_finding(
-                        "live_drift", src.name, f"{src.snapshot_label()}#{entry_id}",
-                        f"{change} in the live source since the snapshot: run `{fetch_command(env, src.name)}` "
-                        "and review the change"))
-            for f in src.live_findings():
-                findings.append(_finding(f["kind"], src.name, f["subject"], f["detail"]))
-    findings.sort(key=lambda f: (f["kind"], f["source"] or "", f["subject"], f["detail"]))
-    return {"env": env, "live": live, "findings": findings}
+            findings += _live_findings(src, env)
+    return {"env": env, "live": live, "findings": _sort_findings(findings)}
+
+
+DRIFT_MODES = ("warn", "fail")
+
+
+def drift_mode(policy: dict[str, Any]) -> str:
+    """``policy.verify.catalog_drift``: ``warn`` (default) or ``fail``."""
+    return (policy.get("verify") or {}).get("catalog_drift", "warn")
+
+
+def _external_sources(root: Path, env: str) -> tuple[list[str], list[str]]:
+    """Names of the enabled non-``files`` sources, and the problems building any of them."""
+    names, problems = [], []
+    for i, (spec, source) in enumerate(_all_sources(root, env)):
+        if spec.get("enabled", True) is False or spec["type"] == "files":
+            continue
+        names.append(source_name(spec, i))
+        if isinstance(source, CatalogError):
+            problems += source.problems
+    return names, problems
+
+
+def drift_report(root: Path, env: str, *, live: bool = True) -> dict[str, Any]:
+    """The ``catalog-drift`` step of ``esmeralda verify``: every offline finding of
+    :func:`diff_catalog` and, with ``live``, the live findings of each enabled snapshot source.
+
+    It never raises for drift: an unreachable source becomes a ``notice`` (the other sources are
+    still checked), and a catalog that doesn't resolve becomes an ``error``. ``mode`` is
+    ``policy.verify.catalog_drift`` (``warn`` unless the catalog says ``fail``); the caller decides
+    what a finding means. With no enabled external source it returns at once, with no findings.
+    """
+    report: dict[str, Any] = {
+        "env": env, "live": live, "sources": [], "mode": "warn", "findings": [], "counts": {}, "notices": [],
+        "command": f"esmeralda catalog diff --env {env}" + (" --live" if live else ""),
+    }
+    try:
+        names, problems = _external_sources(root, env)
+    except CatalogError as exc:
+        report["error"] = "; ".join(exc.problems)
+        return report
+    report["sources"] = names
+    if problems:
+        report["error"] = "; ".join(problems)
+        return report
+    if not names:
+        return report
+    try:
+        resolved = resolve(root, env, strict_findings=False)
+    except CatalogError as exc:
+        report["error"] = "; ".join(exc.problems)
+        return report
+    mode = drift_mode(resolved.policy)
+    report["mode"] = mode if mode in DRIFT_MODES else "warn"
+    findings = _offline_findings(resolved)
+    if live:
+        report["live_checked"] = []
+        try:
+            picked = _snapshot_sources(root, env, "all")
+        except CatalogError as exc:
+            picked = []
+            report["notices"].append(f"live check skipped: {'; '.join(exc.problems)}")
+        for src in picked:
+            try:
+                findings += _live_findings(src, env)
+            except CatalogError as exc:  # SourceUnreachable included: report it, check the rest
+                what = "unreachable" if isinstance(exc, SourceUnreachable) else "live check failed"
+                report["notices"].append(f"{src.name}: {what}: {'; '.join(exc.problems)}")
+            except Exception as exc:  # noqa: BLE001 - a broken adapter must not break verify
+                report["notices"].append(f"{src.name}: live check failed: {type(exc).__name__}: {exc}")
+            else:
+                report["live_checked"].append(src.name)
+    report["findings"] = _sort_findings(findings)
+    counts: dict[str, int] = {}
+    for f in report["findings"]:
+        counts[f["kind"]] = counts.get(f["kind"], 0) + 1
+    report["counts"] = dict(sorted(counts.items()))
+    return report

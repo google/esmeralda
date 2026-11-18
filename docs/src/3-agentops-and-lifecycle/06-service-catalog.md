@@ -30,7 +30,7 @@ Two principles shape it:
 | **teams** | cost centres, country, `external` flag | project labels, finance, CMDB |
 | **callers** (non-workload identities) | identity type + id → team | IdP groups, Apigee apps, federation config |
 | **targets** | `kind`, `owner_team`, `deploy` (`unit`, or `managed: false` + `endpoint`), `serving`, `gateway`, `callers` (tools, quota, product, allowed cost centres, gateway per caller), `user_credential`, `models`, `observability` | Agent Registry, API Hub, Backstage (inventory); Git (policy) |
-| **policy** | `attribution.unmapped_caller` (`deny` / `flag`), `attribution.declared_mismatch` (`reject` / `bill_own_team`), defaults, registered usage dimensions | platform and security |
+| **policy** | `attribution.unmapped_caller` (`deny` / `flag`), `attribution.declared_mismatch` (`reject` / `bill_own_team`), `verify.catalog_drift` (`warn` / `fail`), defaults, registered usage dimensions | platform and security |
 
 Agents call as themselves: a target of kind `a2a` or `adk` can be listed directly under another
 target's `callers`. Every other identity is declared under `callers` with its team and an
@@ -444,6 +444,13 @@ uv run esmeralda catalog show --env dev --inventory                # discovered 
   catalog files (`label_mismatch`), and optional sources without a snapshot; `--live` adds the
   entries that changed in the live source since the snapshot and, for Agent Registry, the `missing`
   entries Esmeralda registers that the live registry doesn't list.
+- **Drift in `verify`.** `esmeralda verify --env <env>` runs a `catalog-drift` step: the same
+  findings (offline, plus live for each enabled snapshot source), counted per kind, with the top
+  findings and the `catalog diff` command to run. It only warns by default; set
+  `policy.verify.catalog_drift: fail` (in `policy.yaml` or `environments/<env>.yaml`) or pass
+  `--catalog-strict` to make a finding fail verify. An unreachable source is a notice, never a
+  failure. With no external source enabled (the shipped `sources.yaml`) the step passes at once;
+  `--skip-catalog` skips it.
 
 An adapter for a live system subclasses `SnapshotSource` and implements `fetch()` (plus
 `layer_from_entries()` when its entries aren't `{id, name, inventory}`, and `placeholders()`):

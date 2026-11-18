@@ -14,6 +14,12 @@ policy:
     # Environments that may set unmapped_caller: flag (environments/<env>.yaml overrides).
     flag_environments: [dev]
 
+  # `esmeralda verify` catalog-drift step (catalog diff findings, and live drift of the enabled
+  # snapshot sources): warn (reported, verify still passes) | fail (any finding fails verify).
+  # An unreachable source is never a failure. `verify --catalog-strict` forces fail for one run.
+  verify:
+    catalog_drift: warn
+
   # Applied to every target that leaves the field unset (resolved view only; the Terraform
   # catalog map only carries what targets set explicitly).
   defaults:

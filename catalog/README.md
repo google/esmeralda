@@ -72,6 +72,8 @@ uv run esmeralda catalog diff --env dev                     # drift findings for
 External sources are read from committed snapshots (`snapshots/<source>/<env>.json`, written by
 `esmeralda catalog fetch --env <env> --source <name>`), never from the live system, so resolving
 needs no network. This repository enables no external source and commits no snapshot.
+`esmeralda verify` runs the same drift check as a warning-only `catalog-drift` step
+(`policy.verify.catalog_drift: fail` or `verify --catalog-strict` makes findings fail it).
 
 The resolver:
 
