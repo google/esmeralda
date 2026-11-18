@@ -1,0 +1,72 @@
+{
+  "entries": [
+    {
+      "id": "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "inventory": {
+        "deploy": {
+          "endpoint": "https://loan-helper.{domain}/a2a"
+        },
+        "description": "Loan helper agent on Agent Runtime (synthetic).",
+        "kind": "a2a",
+        "registry": {
+          "id": "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+          "interfaces": [
+            {
+              "protocol_binding": "HTTP+JSON",
+              "url": "https://loan-helper.{domain}/a2a"
+            }
+          ],
+          "skills": [
+            "amortize",
+            "quote"
+          ]
+        },
+        "runtime": "agent_runtime",
+        "runtime_resource": "//aiplatform.googleapis.com/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001"
+      },
+      "name": "loan-helper"
+    },
+    {
+      "id": "urn:agent:projects-{project_number:cx_agents}:projects:{project_number:cx_agents}:locations:{region}:run:services:quote-bot",
+      "inventory": {
+        "description": "Quote bot on Cloud Run, registered automatically (synthetic).",
+        "kind": "a2a",
+        "registry": {
+          "id": "urn:agent:projects-{project_number:cx_agents}:projects:{project_number:cx_agents}:locations:{region}:run:services:quote-bot",
+          "skills": [
+            "quote"
+          ]
+        },
+        "runtime": "cloud_run",
+        "runtime_resource": "//run.googleapis.com/projects/{project:cx_agents}/locations/{region}/services/quote-bot"
+      },
+      "name": "quote-bot"
+    },
+    {
+      "id": "urn:mcpServer:projects-{project_number:governance}:projects:{project_number:governance}:locations:{region}:agentregistry:services:pricing-tools",
+      "inventory": {
+        "deploy": {
+          "endpoint": "https://pricing-tools.{domain}/mcp"
+        },
+        "description": "Pricing tools registered by hand by another team (synthetic).",
+        "kind": "mcp",
+        "registry": {
+          "id": "urn:mcpServer:projects-{project_number:governance}:projects:{project_number:governance}:locations:{region}:agentregistry:services:pricing-tools",
+          "interfaces": [
+            {
+              "protocol_binding": "JSONRPC",
+              "url": "https://pricing-tools.{domain}/mcp"
+            }
+          ]
+        }
+      },
+      "name": "pricing-tools"
+    }
+  ],
+  "environment": "dev",
+  "fetched_by": "esmeralda catalog fetch --env dev --source agent-registry",
+  "schema": "esmeralda.catalog.snapshot",
+  "schema_version": 1,
+  "source": "agent-registry",
+  "type": "agent_registry"
+}

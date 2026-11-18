@@ -1,0 +1,14 @@
+# Synthetic teams and cost centres (golden multi-source fixture).
+schema: esmeralda.catalog
+schema_version: 1
+
+teams:
+  ai-coe:
+    description: AI Center of Excellence.
+    cost_centers: [cc-ai-coe]
+  cx:
+    description: Customer experience.
+    cost_centers: [cc-cx-br]
+  platform:
+    description: Platform team.
+    cost_centers: [cc-platform]

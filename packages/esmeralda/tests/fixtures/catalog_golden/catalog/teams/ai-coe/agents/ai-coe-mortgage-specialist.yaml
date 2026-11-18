@@ -1,0 +1,15 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+# A deployed agent that Backstage also describes: the pin lets Backstage add its system (never an
+# endpoint: a unit deploys it); the description below wins over the Backstage one.
+name: ai-coe-mortgage-specialist
+kind: a2a
+description: A2A mortgage underwriting specialist on Agent Runtime.
+owner_team: ai-coe
+deploy: { unit: agents/ai-coe-mortgage-specialist }
+serving: { token: access, probe: a2a }
+backstage: { source: backstage, ref: Component:default/ai-coe-mortgage-specialist }
+callers:
+  cx-mortgage-orchestrator: { cost_centers: [cc-cx-br] }
+  test-vm: {}

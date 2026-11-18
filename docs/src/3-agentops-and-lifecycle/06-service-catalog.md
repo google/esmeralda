@@ -308,6 +308,10 @@ Gateway rules beyond caller lists and observability configuration.
 
 ## 4. Swapping or adding sources
 
+The model (entry states, merge rules, invariants) is summarized in
+[2.7 Catalog Sources](07-catalog-sources.md); this section has the configuration and the details
+of each source type.
+
 `catalog/sources.yaml` lists the sources:
 
 ```yaml
@@ -488,7 +492,9 @@ class CmdbSource(SnapshotSource):
 
 The repository's `sources.yaml` keeps every network source disabled and commits no real
 snapshot; the tests use synthetic snapshots under
-`packages/esmeralda/tests/fixtures/catalog_sources/`.
+`packages/esmeralda/tests/fixtures/catalog_sources/`, and the golden multi-source catalog under
+`packages/esmeralda/tests/fixtures/catalog_golden/` shows every source type merged together (see
+[2.7 §4](07-catalog-sources.md#4-invariants)).
 
 ### Project labels (`project_labels`)
 

@@ -1,0 +1,19 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+policy:
+  attribution:
+    unmapped_caller: deny
+    declared_mismatch: reject
+    label_mismatch: fail
+    flag_environments: [dev]
+  defaults:
+    gateway: direct
+    user_credential:
+      accept: false
+    observability:
+      usage_sources: [workload]
+      content_capture: none
+  agent_gateway:
+    google_apis:
+      baseline: [telemetry]

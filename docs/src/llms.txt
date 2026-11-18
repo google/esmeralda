@@ -28,6 +28,7 @@ The running narrative follows a loan officer asking *"Can you verify Julian Ster
 - [2.4 Day-2 Operations with the `esmeralda` CLI & MCP Server](https://google.github.io/esmeralda/3-agentops-and-lifecycle/04-operating-with-agents/): day-2 operations with `uv run esmeralda`, destroy guards, contract checks, and the read-only `esmeralda mcp` server.
 - [2.5 Usage Telemetry Contract](https://google.github.io/esmeralda/3-agentops-and-lifecycle/05-usage-telemetry-contract/): the `esmeralda.usage` record (JSON Schema in `contracts/`) that any producer implements so token and tool usage lands in one chargeback view.
 - [2.6 Service Catalog](https://google.github.io/esmeralda/3-agentops-and-lifecycle/06-service-catalog/): teams, callers, targets and policy declared once in the catalog, from which Terraform, the entry point, invoker grants and `esmeralda verify` derive.
+- [2.7 Catalog Sources](https://google.github.io/esmeralda/3-agentops-and-lifecycle/07-catalog-sources/): merging Agent Registry, Backstage and project labels into the catalog through reviewed snapshots: discovered vs adopted entries, pins, merge rules, invariants and the `catalog fetch|diff` CLI.
 
 ## 3. Platform Foundations (Layers 1–3)
 

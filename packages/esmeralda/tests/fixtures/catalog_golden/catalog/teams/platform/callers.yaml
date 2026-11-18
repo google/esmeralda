@@ -1,0 +1,8 @@
+schema: esmeralda.catalog
+schema_version: 1
+
+callers:
+  test-vm:
+    team: platform
+    description: Private test VM that probes every catalog host.
+    identity: { type: service_account, ref: "layer-3-security:test_vm_sa_email" }
