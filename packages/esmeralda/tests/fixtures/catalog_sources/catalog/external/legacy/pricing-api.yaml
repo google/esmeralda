@@ -1,10 +1,12 @@
 schema: esmeralda.catalog
 schema_version: 1
 # Synthetic test fixture: a catalog file that adopts the `endpoints/pricing` entry of the
-# `inventory` snapshot source by pin (never by name). Callers still come from catalog files.
+# `inventory` snapshot source by pin (never by name). Callers still come from catalog files. An
+# example: the entry runs on Cloud Run, and adoption compiles Agent Runtime entries only.
 name: pricing-api
 kind: http
 owner_team: ai-coe
+example: true
 deploy:
   managed: false
   endpoint: https://pricing.{domain}

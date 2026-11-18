@@ -48,13 +48,16 @@ locals {
   iap_groups = ["agents", "endpoints", "mcp_servers"]
 
   # Catalog-compiled lists name identities by `<unit>:<output>` reference; the unit passes their
-  # values in identity_refs. Anything that still looks like a reference afterwards is an error.
-  # Google API entry ids may hold {region} (e.g. {region}-aiplatform), substituted here.
-  ref_pattern = "^[a-z0-9_./-]+:[a-z0-9_]+$"
+  # values in identity_refs, and adopted agents' derived principals (adopted_targets.tf) add the
+  # `adopted/<name>:agent_identity_principal` ones. Anything that still looks like a reference
+  # afterwards is an error. Google API entry ids may hold {region} (e.g. {region}-aiplatform),
+  # substituted here.
+  ref_pattern   = "^[a-z0-9_./-]+:[a-z0-9_]+$"
+  identity_refs = merge(var.identity_refs, local.adopted_principals)
   resolved_target_iap_members = {
     for group in local.iap_groups : group => {
       for target_id, members in coalesce(var.target_iap_members[group], {}) :
-      replace(target_id, "{region}", var.region) => [for m in members : lookup(var.identity_refs, m, m) if m != "" && m != null]
+      replace(target_id, "{region}", var.region) => [for m in members : lookup(local.identity_refs, m, m) if m != "" && m != null]
     }
   }
   unresolved_refs = distinct(flatten([
@@ -80,6 +83,7 @@ locals {
     for name, t in var.external_targets : name
     if !contains(keys(local.normalized_target_iap_members[lookup({ endpoint = "endpoints", mcp_server = "mcp_servers", agent = "agents" }, t.registry, "endpoints")]), name)
   ]
+  adopted_without_list = [for name, t in var.adopted_targets : name if !contains(keys(local.normalized_target_iap_members["agents"]), name)]
 
   # Agent callers of agent targets (catalog): roles/aiplatform.user for the caller's Agent Identity
   # principal on the callee agent's project. Granted here (after every agent) so agents never depend
@@ -111,11 +115,15 @@ resource "google_project_iam_member" "agent_callers_aiplatform_user" {
 }
 
 resource "null_resource" "grant_iap_egress" {
-  depends_on = [google_agent_registry_service.external]
+  depends_on = [google_agent_registry_service.external, google_agent_registry_service.adopted]
 
   triggers = {
-    registry_entries          = md5(jsonencode(sort(var.registry_service_ids)))
-    external_entries          = md5(jsonencode({ for k, v in google_agent_registry_service.external : k => v.id }))
+    registry_entries = md5(jsonencode(sort(var.registry_service_ids)))
+    # External and adopted entries (target names are unique; unchanged without adopted targets).
+    external_entries = md5(jsonencode(merge(
+      { for k, v in google_agent_registry_service.external : k => v.id },
+      { for k, v in google_agent_registry_service.adopted : k => v.id },
+    )))
     target_policies           = md5(jsonencode(local.normalized_target_iap_members))
     governance_project_number = data.google_project.governance.number
     version                   = "3"
@@ -129,6 +137,10 @@ resource "null_resource" "grant_iap_egress" {
     precondition {
       condition     = length(local.external_without_list) == 0
       error_message = "external targets without a target_iap_members list: ${join(", ", local.external_without_list)} (regenerate catalog/.resolved/<env>.json)."
+    }
+    precondition {
+      condition     = length(local.adopted_without_list) == 0
+      error_message = "adopted targets without a target_iap_members agents list: ${join(", ", local.adopted_without_list)} (regenerate catalog/.resolved/<env>.json)."
     }
   }
 

@@ -53,6 +53,47 @@ variable "domain" {
   default     = ""
 }
 
+variable "adopted_targets" {
+  description = "Governance Agent Registry entries of adopted Agent Runtime agents (catalog/.resolved/<env>.json `adopted_targets`), keyed by target name (the entry's service_id): the engine's layer-1 project alias, location and engine id, the URLs derived from its runtime resource ({region} and {project_number:<alias>} substituted here), the pinned registry id and the description. Their caller lists are target_iap_members.agents[<name>]"
+  type = map(object({
+    registry         = string
+    registry_id      = string
+    source           = string
+    runtime          = string
+    runtime_resource = string
+    project          = string
+    location         = string
+    engine           = string
+    urls             = list(string)
+    protocol_binding = string
+    description      = string
+    owner_team       = optional(string, "")
+    principal        = optional(string, "")
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for t in values(var.adopted_targets) : t.registry == "agent" && t.runtime == "agent_runtime"])
+    error_message = "adopted_targets[*] must be agent entries of agent_runtime engines (the only runtime adoption supports)."
+  }
+  validation {
+    condition     = alltrue([for t in values(var.adopted_targets) : length(t.urls) > 0 && alltrue([for u in t.urls : startswith(u, "https://")])])
+    error_message = "adopted_targets[*].urls must be a non-empty list of https URLs."
+  }
+}
+
+variable "project_ids" {
+  description = "Layer-1 project ids by alias (<alias>_project_id outputs without the suffix): the projects of adopted engines ({project_number:<alias>} and their Agent Identity trust domain)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "org_id" {
+  description = "Optional organization ID (ESMERALDA_ORG_ID) for the Agent Identity trust domain of adopted engines' projects under a folder (same handling as the agent units)"
+  type        = string
+  default     = ""
+}
+
 variable "identity_refs" {
   description = "Value of each `<unit>:<output>` reference target_iap_members may use (e.g. layer-3-security:test_vm_sa_email => the test VM SA email, agents/<name>:agent_identity_principal => its principal://). A reference without a value fails the plan; members that are not references pass through unchanged"
   type        = map(string)

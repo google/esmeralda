@@ -134,6 +134,18 @@ deletes the entry. `endpoint` is an exact `https://` URL; use `{domain}` (as `<l
 get no entry of their own: their host is a Google API entry (below). dev declares the synthetic
 `external-probe` in `environments/dev.yaml` to prove it.
 
+**Adopted targets.** A non-example target with a `deploy.registry` pin whose source reports a
+runtime adopts that runtime's registry entry instead (without a runtime it stays an external
+target). An adopted Agent Runtime agent compiles
+into `adopted_targets` (env.yaml `catalog_adopted_targets`; the block is omitted when nothing is
+adopted): the Agent Gateway reads only the governance registry, not the engine project's registry
+where Agent Runtime registered it, so the `iap-egress` unit registers a governance agent entry on
+URLs derived from the engine's `runtime_resource` and writes its callers' list
+(`iap_egress.agents[<name>]`) on it. An adopted agent listed as a caller gets a principal derived
+from its runtime resource (`adopted/<name>:agent_identity_principal`, resolved by the unit) and a
+`principal_teams` row. Cloud Run and GKE entries can't be adopted yet (the resolve fails). See the
+service catalog page, "Adopting a discovered agent".
+
 **Google APIs.** Agents reach Google APIs through the Agent Gateway too, and only the ones the
 catalog declares: `policy.agent_gateway.google_apis.baseline` in `policy.yaml` (every agent runtime:
 telemetry, `<region>-aiplatform` sessions, project lookup, credential lookups) plus each agent's own

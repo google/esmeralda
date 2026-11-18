@@ -160,6 +160,47 @@ def test_agent_card_urls_are_read():
     ) == ["https://a.example"]
 
 
+ENGINE_BASE = "https://r-aiplatform.googleapis.com/v1/projects/3/locations/r/reasoningEngines/77"
+ADOPTED_URLS = [f"{ENGINE_BASE}/", f"{ENGINE_BASE}:query", f"{ENGINE_BASE}:streamQuery"]
+ADOPTED = {"loan-pricing": {"registry": "agent", "urls": ADOPTED_URLS, "registry_id": "urn:agent:example:77"}}
+
+
+def _adopted_service(urls: list[str]) -> dict:
+    service = _service("loan-pricing", "agents", "u6")
+    service["agentSpec"] = {"content": {"supportedInterfaces": [{"url": u} for u in urls]}}
+    return service
+
+
+def test_adopted_entry_is_checked_like_a_target_and_on_its_exact_engine_urls():
+    services = [*SERVICES, _adopted_service(ADOPTED_URLS)]
+    targets = {**TARGETS, "agents": {**TARGETS["agents"], "loan-pricing": [ORCH]}}
+    kwargs = {"services": services, "target_members": targets, "adopted_entries": ADOPTED,
+              "google_api_ids": ["telemetry"]}
+    ok = _evaluate(policies={**GOOD, "loan-pricing": _policy(ORCH)}, **kwargs)
+    assert ok["adopted loan-pricing"]["ok"] and ok["entry loan-pricing"]["ok"]
+    # On the Vertex AI host, yet not a stray Google API entry.
+    assert ok["google api entries"]["ok"], ok["google api entries"]
+    # A non-listed caller on the adopted entry fails, so does a missing one.
+    assert not _evaluate(policies={**GOOD, "loan-pricing": _policy(ORCH, SPEC)}, **kwargs)["entry loan-pricing"]["ok"]
+    assert not _evaluate(policies={**GOOD, "loan-pricing": _policy()}, **kwargs)["entry loan-pricing"]["ok"]
+
+
+def test_adopted_entry_with_other_urls_or_missing_fails():
+    targets = {**TARGETS, "agents": {**TARGETS["agents"], "loan-pricing": [ORCH]}}
+    policies = {**GOOD, "loan-pricing": _policy(ORCH)}
+    wrong = [*SERVICES, _adopted_service(ADOPTED_URLS[:1] + ["https://r-aiplatform.googleapis.com"])]
+    checks = _evaluate(services=wrong, target_members=targets, policies=policies, adopted_entries=ADOPTED)
+    assert not checks["adopted loan-pricing"]["ok"]
+    checks = _evaluate(target_members=targets, policies=policies, adopted_entries=ADOPTED)
+    assert not checks["adopted loan-pricing"]["ok"] and not checks["entry loan-pricing"]["ok"]
+
+
+def test_without_adoption_any_other_entry_still_holds_no_policy():
+    services = [*SERVICES, _adopted_service(ADOPTED_URLS)]
+    left_over = _evaluate(services=services, policies={**GOOD, "loan-pricing": _policy(ORCH)})
+    assert not left_over["entry loan-pricing"]["ok"], "a removed adoption must not leave its grant behind"
+
+
 def test_check_reads_outputs_and_queries_each_entry(monkeypatch, tmp_path):
     outputs = {
         ("layer-1-projects", "governance_project_id"): "example-governance",
@@ -168,6 +209,7 @@ def test_check_reads_outputs_and_queries_each_entry(monkeypatch, tmp_path):
         ("layer-4-governance", "google_api_endpoint_ids"): ["telemetry"],
         ("layer-5-workloads/iap-egress", "target_iap_members"): TARGETS,
         ("layer-5-workloads/iap-egress", "external_registry_entries"): EXTERNAL,
+        ("layer-5-workloads/iap-egress", "adopted_registry_entries"): {},
     }
     monkeypatch.setattr(repo, "output", lambda root, env, unit, name: outputs.get((unit, name)))
     monkeypatch.setattr(repo, "env_locals", lambda root, env: 'region = "us-central1"\n')

@@ -14,3 +14,14 @@ output "external_registry_entries" {
     }
   }
 }
+
+output "adopted_registry_entries" {
+  description = "Governance Agent Registry entries of adopted Agent Runtime agents: service_id => { registry, urls, registry_id } (placeholders substituted; `esmeralda verify` checks each is registered on exactly these URLs)"
+  value = {
+    for name, t in var.adopted_targets : name => {
+      registry    = t.registry
+      urls        = local.adopted_urls[name]
+      registry_id = local.adopted_registry_ids[name]
+    }
+  }
+}

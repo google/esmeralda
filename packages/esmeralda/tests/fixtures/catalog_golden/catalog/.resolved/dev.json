@@ -1,4 +1,28 @@
 {
+  "adopted_targets": {
+    "loan-helper": {
+      "description": "Loan helper agent on Agent Runtime (synthetic). Adopted from agent-registry entry urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001. Used by: cx-mortgage-orchestrator.",
+      "engine": "5550001",
+      "location": "{region}",
+      "owner_team": "ai-coe",
+      "principal": "principal://{trust_domain:ai_coe_agents}/resources/aiplatform/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001",
+      "project": "ai_coe_agents",
+      "protocol_binding": "HTTP_JSON",
+      "registry": "agent",
+      "registry_id": "urn:agent:projects-{project_number:ai_coe_agents}:projects:{project_number:ai_coe_agents}:locations:{region}:aiplatform:reasoningEngines:5550001",
+      "runtime": "agent_runtime",
+      "runtime_resource": "//aiplatform.googleapis.com/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001",
+      "source": "agent-registry",
+      "urls": [
+        "https://{region}-aiplatform.googleapis.com/v1/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001/",
+        "https://{region}-aiplatform.googleapis.com/v1/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001:query",
+        "https://{region}-aiplatform.googleapis.com/v1/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001:streamQuery",
+        "https://{region}-aiplatform.googleapis.com/v1beta1/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001/",
+        "https://{region}-aiplatform.googleapis.com/v1beta1/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001:query",
+        "https://{region}-aiplatform.googleapis.com/v1beta1/projects/{project_number:ai_coe_agents}/locations/{region}/reasoningEngines/5550001:streamQuery"
+      ]
+    }
+  },
   "attribution": {
     "allowlists": {
       "ai-coe-mortgage-specialist": [
@@ -122,14 +146,6 @@
   "comment": "Generated from catalog/ (see catalog/README.md). Do not edit by hand.",
   "environment": "dev",
   "external_targets": {
-    "loan-helper": {
-      "description": "Loan helper agent on Agent Runtime (synthetic). Used by: cx-mortgage-orchestrator.",
-      "kind": "a2a",
-      "owner_team": "ai-coe",
-      "protocol_binding": "HTTP+JSON",
-      "registry": "agent",
-      "url": "https://loan-helper.{domain}/a2a"
-    },
     "pricing-api": {
       "description": "Pricing REST API, described for dev. Used by: ai-coe-mortgage-specialist.",
       "kind": "http",

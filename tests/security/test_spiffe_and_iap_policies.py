@@ -148,8 +148,30 @@ def test_iap_egress_module_resolves_refs_and_fails_closed_on_unmapped_ones():
     main_tf = (IAP_EGRESS_MOD_DIR / "main.tf").read_text()
     variables_tf = (IAP_EGRESS_MOD_DIR / "variables.tf").read_text()
     assert 'variable "identity_refs"' in variables_tf
-    assert "lookup(var.identity_refs, m, m)" in main_tf
+    # The unit's refs, plus the derived principals of adopted agents (adopted_targets.tf).
+    assert "identity_refs = merge(var.identity_refs, local.adopted_principals)" in main_tf
+    assert "lookup(local.identity_refs, m, m)" in main_tf
     assert "condition     = length(local.unresolved_refs) == 0" in main_tf
+
+
+def test_adopted_targets_are_governance_entries_on_their_engine_urls():
+    """Adopted Agent Runtime agents: a governance registry entry (the only registry the Agent Gateway
+    reads), derived principals through the shared trust-domain module, and a caller list each."""
+    text = (IAP_EGRESS_MOD_DIR / "adopted_targets.tf").read_text()
+    code = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+    assert 'resource "google_agent_registry_service" "adopted"' in code
+    assert "project      = var.governance_project_id" in code
+    assert 'source     = "../../_shared/agent_identity_trust_domain"' in code
+    assert "org_id     = var.org_id" in code
+    assert '"adopted/${name}:agent_identity_principal"' in code
+    assert "depends_on = [null_resource.require_closed_registry_root]" in code
+    main_tf = (IAP_EGRESS_MOD_DIR / "main.tf").read_text()
+    assert "length(local.adopted_without_list) == 0" in main_tf
+    for env in ("dev", "prd"):
+        unit = (REPO_ROOT / f"infrastructure/live/{env}/layer-5-workloads/iap-egress/terragrunt.hcl").read_text()
+        assert re.search(r"^\s*adopted_targets\s*=\s*local\.env_vars\.locals\.catalog_adopted_targets\s*$", unit, re.M)
+        env_yaml = (REPO_ROOT / f"infrastructure/live/{env}/env.yaml").read_text()
+        assert '"adopted_targets", {})' in env_yaml, env
 
 
 @pytest.mark.parametrize(
@@ -233,7 +255,7 @@ def test_external_entries_wait_for_a_closed_registry_root():
     assert 'IAP_MODE              = "check-root"' in text
     assert "depends_on = [null_resource.require_closed_registry_root]" in text
     main_tf = (IAP_EGRESS_MOD_DIR / "main.tf").read_text()
-    assert "depends_on = [google_agent_registry_service.external]" in main_tf
+    assert "depends_on = [google_agent_registry_service.external, google_agent_registry_service.adopted]" in main_tf
 
 
 # ------------------------------------------------------------------------------------------

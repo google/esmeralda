@@ -18,7 +18,7 @@
 locals {
   principal_rows = [
     for r in var.principal_teams_rows : {
-      principal      = lookup(var.identity_refs, r.principal, r.principal)
+      principal      = lookup(local.identity_refs, r.principal, r.principal)
       principal_type = r.principal_type
       team           = r.team
     }

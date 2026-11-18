@@ -140,8 +140,9 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["managed", "endpoint"],
-          "description": "A target Esmeralda does not deploy (brownfield API, agent on another cloud, external gateway). Non-example ones get their own Agent Registry entry (http and non-Google model: endpoint; mcp: MCP server; a2a: agent card) and a per-target roles/iap.egressor list compiled from callers; Google API hosts (*.googleapis.com) are layer-4 Google API entries instead, reachable only by the agents that declare the API in google_apis.",
+          "required": ["managed"],
+          "anyOf": [{"required": ["endpoint"]}, {"required": ["registry"]}],
+          "description": "A target Esmeralda does not deploy (brownfield API, agent on another cloud, external gateway). Non-example ones get their own Agent Registry entry (http and non-Google model: endpoint; mcp: MCP server; a2a: agent card) and a per-target roles/iap.egressor list compiled from callers; Google API hosts (*.googleapis.com) are layer-4 Google API entries instead, reachable only by the agents that declare the API in google_apis. With a registry pin the target adopts a discovered registry entry instead (the source fills endpoint, runtime, runtime_resource and description when unset); an adopted Agent Runtime agent gets a governance registry entry on its engine's URLs and its callers' list.",
           "properties": {
             "managed": {"const": false},
             "endpoint": {

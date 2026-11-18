@@ -24,8 +24,11 @@ what the layers compiled:
   (``iap-egress`` unit output ``target_iap_members``) lists exactly its callers, an empty list
   meaning an empty policy;
 * each external target (``external_registry_entries``) is registered with its exact URL and type;
+* each adopted Agent Runtime agent (``adopted_registry_entries``) is registered as an agent entry
+  on exactly the URLs derived from its engine resource; its policy is checked like any target's;
 * the Google API entries registered are exactly the ones the catalog declares (layer 4
-  ``google_api_endpoint_ids``): no stray ``*.googleapis.com`` entry, none missing;
+  ``google_api_endpoint_ids``): no stray ``*.googleapis.com`` entry, none missing (adopted entries,
+  which sit on the Vertex AI regional host, aside);
 * any other entry holds no policy at all (nobody can reach it through the Agent Gateway).
 
 This is the policy-level egress probe: a listed caller is on the entry's policy and a caller
@@ -110,13 +113,17 @@ def evaluate(
     target_members: dict[str, dict[str, list[str]]],
     external_entries: dict[str, dict[str, str]],
     google_api_ids: list[str] | None = None,
+    adopted_entries: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """The checks, from the live registry (``services``, ``policies`` by service id, root policy).
 
     ``google_api_ids`` (layer 4 ``google_api_endpoint_ids``, ``None`` for an older layer 4) adds the
     Google API registration check: the ``*.googleapis.com`` entries are exactly the declared ones.
+    ``adopted_entries`` (iap-egress ``adopted_registry_entries``) are the governance entries of
+    adopted Agent Runtime agents: each must be an agent entry on exactly its derived URLs.
     """
     index = index_services(services)
+    adopted_entries = adopted_entries or {}
     checks: list[dict[str, Any]] = []
 
     def add(name: str, ok: bool, detail: str) -> None:
@@ -128,7 +135,8 @@ def evaluate(
 
     if google_api_ids is not None:
         declared = set(google_api_ids)
-        registered = {sid for sid, e in index.items() if any(is_google_api_url(u) for u in e["urls"])}
+        registered = {sid for sid, e in index.items()
+                      if sid not in adopted_entries and any(is_google_api_url(u) for u in e["urls"])}
         stray, missing = sorted(registered - declared), sorted(declared - set(index))
         detail = f"{len(declared)} declared, {len(registered)} registered"
         if stray:
@@ -152,6 +160,18 @@ def evaluate(
                 f"[{entry['url']}]")
         else:
             add(f"external {sid}", True, f"{want} entry for {entry['url']}")
+
+    for sid, entry in sorted(adopted_entries.items()):
+        found = index.get(sid)
+        want = REGISTRY_COLLECTION.get(entry["registry"], entry["registry"])
+        urls = sorted(set(entry["urls"]))
+        if not found:
+            add(f"adopted {sid}", False, f"not registered (expected {want} entry for {entry.get('registry_id')})")
+        elif found["collection"] != want or sorted(set(found["urls"])) != urls:
+            add(f"adopted {sid}", False, f"registered as {found['collection']} {sorted(set(found['urls']))}, expected "
+                f"{want} {urls}")
+        else:
+            add(f"adopted {sid}", True, f"{want} entry on {len(urls)} engine URL(s) of {entry.get('registry_id')}")
 
     for sid in sorted(set(expected) | set(index)):
         found = index.get(sid)
@@ -194,6 +214,7 @@ def check(root: Path, env: str, *, workers: int = 8, gcloud: Callable[..., Any] 
     google_api_ids = repo.output(root, env, L4, "google_api_endpoint_ids")
     target_members = repo.output(root, env, IAP_UNIT, "target_iap_members")
     external = repo.output(root, env, IAP_UNIT, "external_registry_entries") or {}
+    adopted = repo.output(root, env, IAP_UNIT, "adopted_registry_entries") or {}
     if not project or not region:
         raise OpsError(f"No governance project or region for {env} (deploy layer 1 first)")
     if system_ids is None or system_members is None:
@@ -230,6 +251,7 @@ def check(root: Path, env: str, *, workers: int = 8, gcloud: Callable[..., Any] 
         target_members=target_members,
         external_entries=external,
         google_api_ids=google_api_ids,
+        adopted_entries=adopted,
     )
     failed = [c for c in checks if not c["ok"]]
     return {

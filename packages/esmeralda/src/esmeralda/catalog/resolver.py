@@ -188,6 +188,22 @@ PRINCIPAL_TYPE = {
 }
 # principal_type of an agent's Agent Identity principal (principal://.../reasoningEngines/<id>).
 AGENT_PRINCIPAL_TYPE = "agent_runtime"
+# Runtimes whose adopted registry entries compile (grant and derived principal). Cloud Run and GKE
+# adoption is future work: adopting such an entry fails the resolve, so nothing is granted silently.
+ADOPTABLE_RUNTIMES = frozenset({"agent_runtime"})
+# Reference of an adopted agent's derived principal (``adopted/<target>:agent_identity_principal``):
+# the iap-egress unit computes its value from ``adopted_targets`` (trust domain, project number).
+ADOPTED_REF = "adopted/{name}:" + WORKLOAD_PRINCIPAL_OUTPUT
+# Agent Runtime engine resource of an adopted entry (snapshot form: the project number is a layer-1
+# alias placeholder, the location usually {region}).
+_ENGINE_RESOURCE = re.compile(
+    r"^//aiplatform\.googleapis\.com/projects/\{project_number:(?P<project>[a-z][a-z0-9_-]{0,62})\}"
+    r"/locations/(?P<location>\{region\}|[a-z0-9-]+)/reasoningEngines/(?P<engine>[0-9]+)$"
+)
+# URLs an adopted Agent Runtime engine is reached on (the Vertex AI REST surface), per API version:
+# its sub-resources (`/`: A2A, sessions, ...) and the :query / :streamQuery methods.
+ENGINE_API_VERSIONS = ("v1", "v1beta1")
+ENGINE_URL_SUFFIXES = ("/", ":query", ":streamQuery")
 
 
 @dataclass
@@ -353,13 +369,72 @@ def _check_google_apis(doc: dict[str, Any], where: Any) -> list[str]:
 
 
 def _is_external(target: dict[str, Any]) -> bool:
-    """A non-example ``managed: false`` target that gets its own Agent Registry entry and caller list."""
+    """A non-example ``managed: false`` target that gets its own Agent Registry entry and caller list.
+
+    Adopted runtime entries (``deploy.registry`` pin, ``runtime`` reported) are not external targets:
+    see :func:`_is_adopted`. A pinned entry without a runtime (a manual registration, a CMDB
+    endpoint) stays an external target.
+    """
     return (
         not target.get("example")
         and target["deploy"].get("managed") is False
+        and not _is_adopted(target)
         and target["kind"] in EXTERNAL_REGISTRY
         and not _is_system_endpoint(target)
     )
+
+
+def _is_adopted(target: dict[str, Any]) -> bool:
+    """A non-example ``managed: false`` target adopting a runtime's registry entry: a
+    ``deploy.registry`` pin whose source reports the runtime (``runtime``) it runs on."""
+    return (
+        not target.get("example")
+        and target["deploy"].get("managed") is False
+        and bool(target["deploy"].get("registry"))
+        and bool(target.get("runtime"))
+    )
+
+
+def _is_adopted_agent(target: dict[str, Any]) -> bool:
+    """An adopted target that compiles: an agent on a runtime adoption supports (Agent Runtime)."""
+    return _is_adopted(target) and target.get("runtime") in ADOPTABLE_RUNTIMES
+
+
+def engine_resource(runtime_resource: str) -> dict[str, str]:
+    """``{project, location, engine}`` of an Agent Runtime engine resource in snapshot form
+    (``//aiplatform.googleapis.com/projects/{project_number:<alias>}/locations/<loc>/reasoningEngines/<id>``)."""
+    match = _ENGINE_RESOURCE.match(runtime_resource or "")
+    if not match:
+        raise CatalogError(f"runtime_resource '{runtime_resource}' is not an Agent Runtime engine of a layer-1 project "
+                           "(//aiplatform.googleapis.com/projects/{project_number:<alias>}/locations/<location>/"
+                           "reasoningEngines/<id>)")
+    return match.groupdict()
+
+
+def runtime_principal(runtime: str | None, runtime_resource: str) -> str:
+    """The principal a runtime resource calls out as: a pure function of ``runtime_resource``.
+
+    Agent Runtime: the engine's Agent Identity,
+    ``principal://{trust_domain:<alias>}/resources/aiplatform/projects/{project_number:<alias>}/locations/<loc>/reasoningEngines/<id>``.
+    The placeholders stay for the iap-egress unit to resolve (the project's Agent Identity trust
+    domain, organization- or project-scoped, and its number). Other runtimes are not supported yet.
+    """
+    if runtime not in ADOPTABLE_RUNTIMES:
+        raise CatalogError(f"runtime '{runtime}' is not supported for adoption yet (supported: "
+                           f"{', '.join(sorted(ADOPTABLE_RUNTIMES))})")
+    parts = engine_resource(runtime_resource)
+    return (f"principal://{{trust_domain:{parts['project']}}}/resources/aiplatform/projects/"
+            f"{{project_number:{parts['project']}}}/locations/{parts['location']}/reasoningEngines/{parts['engine']}")
+
+
+def engine_urls(runtime_resource: str) -> list[str]:
+    """The URLs an Agent Runtime engine is called on (Vertex AI REST), derived from its resource:
+    for each API version, the engine's sub-resources (trailing ``/``) and its ``:query`` /
+    ``:streamQuery`` methods. Placeholders stay for the iap-egress unit to substitute."""
+    parts = engine_resource(runtime_resource)
+    host = f"https://{parts['location']}-aiplatform.googleapis.com"
+    base = f"projects/{{project_number:{parts['project']}}}/locations/{parts['location']}/reasoningEngines/{parts['engine']}"
+    return [f"{host}/{version}/{base}{suffix}" for version in ENGINE_API_VERSIONS for suffix in ENGINE_URL_SUFFIXES]
 
 
 def _registry_group(target: dict[str, Any]) -> str | None:
@@ -368,6 +443,8 @@ def _registry_group(target: dict[str, Any]) -> str | None:
         return IAP_GROUPS.get(target["kind"])
     if _is_external(target):
         return REGISTRY_GROUPS[EXTERNAL_REGISTRY[target["kind"]][0]]
+    if _is_adopted_agent(target):
+        return "agents"
     return None
 
 
@@ -394,8 +471,8 @@ def registry_description(text: str, callers: list[str], *, baseline: bool = Fals
 
 
 def _has_registry_entry(target: dict[str, Any]) -> bool:
-    """A target Esmeralda registers or routes as an Agent Registry entry (deployed or external)."""
-    return _is_compiled(target) or _is_external(target)
+    """A target Esmeralda registers or routes as an Agent Registry entry (deployed, external or adopted)."""
+    return _is_compiled(target) or _is_external(target) or _is_adopted_agent(target)
 
 
 def _check_descriptions(doc: dict[str, Any], where: Any) -> list[str]:
@@ -553,7 +630,51 @@ def _check_references(doc: dict[str, Any], origins: dict[tuple[str, str], str]) 
         if dim not in dimensions:
             problems.append(f"policy.defaults.observability: unknown dimension '{dim}'")
     return (problems + _check_external_hosts(doc, where) + _check_google_apis(doc, where)
-            + _check_descriptions(doc, where))
+            + _check_descriptions(doc, where) + _check_adoption(doc, where))
+
+
+def _check_adoption(doc: dict[str, Any], where: Any) -> list[str]:
+    """Adopted registry entries: a supported runtime with an engine resource, and no grant Esmeralda
+    can't make whole.
+
+    * Only Agent Runtime entries compile for now; adopting a ``cloud_run`` / ``gke`` entry fails, so
+      nothing is granted silently. (A pinned entry without a runtime stays an external target.)
+    * An adopted agent that is a caller may call targets the Agent Gateway alone enforces (external
+      and adopted targets); a deployed target would also need IAM grants (``run.invoker``,
+      ``aiplatform.user``) and its in-process allowlist, which adopted agents don't get yet.
+    """
+    problems: list[str] = []
+    targets = doc["targets"]
+    for name in sorted(targets):
+        target = targets[name]
+        if not _is_adopted(target):
+            continue
+        label = where("targets", name)
+        pin = target["deploy"]["registry"]
+        runtime = target.get("runtime")
+        if runtime not in ADOPTABLE_RUNTIMES:
+            shown = f"runtime '{runtime}'" if runtime else "no runtime"
+            problems.append(f"{label}: adopts '{pin['id']}' from '{pin['source']}', which reports {shown}: only "
+                            f"{', '.join(sorted(ADOPTABLE_RUNTIMES))} entries are supported for adoption yet (Cloud "
+                            "Run and GKE adoption are planned); nothing is granted, remove the pin or mark the "
+                            "target example")
+            continue
+        if target["kind"] != "a2a":
+            problems.append(f"{label}: an adopted {runtime} entry is an agent (kind a2a), not kind {target['kind']}")
+        try:
+            engine_resource(target.get("runtime_resource") or "")
+        except CatalogError as exc:
+            problems += [f"{label}: {p}" for p in exc.problems]
+    for name in sorted(targets):
+        target = targets[name]
+        if target.get("example") or not _is_compiled(target):
+            continue
+        for caller in target.get("callers") or {}:
+            if caller in targets and _is_adopted(targets[caller]):
+                problems.append(f"{where('targets', name)}: caller '{caller}' is an adopted agent; it may call "
+                                "external and adopted targets (Agent Gateway policy only), not a deployed target, "
+                                "whose IAM grants and caller allowlist Esmeralda doesn't compile for adopted agents yet")
+    return problems
 
 
 def _check_external_hosts(doc: dict[str, Any], where: Any) -> list[str]:
@@ -564,9 +685,13 @@ def _check_external_hosts(doc: dict[str, Any], where: Any) -> list[str]:
     hosts: dict[str, str] = {}
     for name in sorted(targets):
         target = targets[name]
-        if target.get("example") or target["deploy"].get("managed") is not False:
+        if target.get("example") or target["deploy"].get("managed") is not False or _is_adopted(target):
             continue
         label = where("targets", name)
+        if "endpoint" not in target["deploy"]:
+            problems.append(f"{label}: deploy.endpoint is required (the pinned source reports no https interface "
+                            "to fill it); set it in the catalog file")
+            continue
         found = _external_problems(label, name, target)
         problems += found
         if found or not _is_external(target):
@@ -766,11 +891,16 @@ def resolve(root: Path, env: str, *, strict_findings: bool = True) -> Resolved:
 
 
 def _compiled_callers(resolved: Resolved, target: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Callers that become IAM members (agents with a unit, service-account callers), and the rest."""
+    """Callers that become IAM members (agents with a unit, service-account callers), and the rest.
+
+    Adopted agents count as compiled callers too (their principal is derived from the runtime
+    resource); the resolve only lets them call targets the Agent Gateway alone enforces.
+    """
     compiled, other = [], []
     for caller in target.get("callers") or {}:
         if caller in resolved.targets:
-            (compiled if _is_compiled(resolved.targets[caller]) else other).append(caller)
+            agent = resolved.targets[caller]
+            (compiled if _is_compiled(agent) or _is_adopted_agent(agent) else other).append(caller)
         elif resolved.callers[caller]["identity"]["type"] == "service_account":
             compiled.append(caller)
         else:
@@ -816,8 +946,14 @@ def _identity_member(identity: dict[str, Any] | None) -> str | None:
     return identity.get("ref") or identity.get("id")
 
 
-def _agent_members(agent: dict[str, Any]) -> list[str]:
-    """An agent caller on an Agent Gateway list: its Agent Identity principal, then its service account."""
+def _agent_members(name: str, agent: dict[str, Any]) -> list[str]:
+    """An agent caller on an Agent Gateway list: its Agent Identity principal, then its service account.
+
+    An adopted agent has no unit: its principal is the ``adopted/<name>:agent_identity_principal``
+    reference, derived from its runtime resource by the iap-egress unit (``adopted_targets``).
+    """
+    if _is_adopted_agent(agent):
+        return [ADOPTED_REF.format(name=name)]
     members = [f"{agent['deploy']['unit']}:{WORKLOAD_PRINCIPAL_OUTPUT}"]
     member = _identity_member(agent.get("identity"))
     if member:
@@ -904,10 +1040,12 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
             continue
         callers, _ = _compiled_callers(resolved, target)
         workload: list[str] = []
+        adopted: list[str] = []
         others: list[str] = []
         for caller in callers:
             if caller in resolved.targets:
-                workload += _agent_members(resolved.targets[caller])
+                agent = resolved.targets[caller]
+                (adopted if _is_adopted_agent(agent) else workload).extend(_agent_members(caller, agent))
             else:
                 if resolved.callers[caller].get("agent_gateway") is False:
                     continue  # reaches the target directly (e.g. Apigee): IAM only, no gateway grant
@@ -917,12 +1055,12 @@ def compile_iap_egress(resolved: Resolved) -> dict[str, dict[str, list[str]]]:
         members = list(workload)
         if workload and shared and group != "endpoints" and target["kind"] in shared.get("kinds", []):
             members.append(shared["ref"])
-        members += others
+        members += adopted + others
         out[group][name] = list(dict.fromkeys(members))
     for service_id, entry in compile_google_apis(resolved).items():
         if entry["grant"] != "callers":
             continue
-        members = [m for agent in entry["callers"] for m in _agent_members(resolved.targets[agent])]
+        members = [m for agent in entry["callers"] for m in _agent_members(agent, resolved.targets[agent])]
         out["endpoints"][service_id] = list(dict.fromkeys(members))
     return out
 
@@ -951,6 +1089,47 @@ def compile_external_targets(resolved: Resolved) -> dict[str, dict[str, Any]]:
             "protocol_binding": binding,
             "description": registry_description(target.get("description") or "", list(target.get("callers") or {})),
             "owner_team": target["owner_team"],
+        }
+    return out
+
+
+def compile_adopted_targets(resolved: Resolved) -> dict[str, dict[str, Any]]:
+    """The governance Agent Registry entries of adopted Agent Runtime agents (``adopted_targets``).
+
+    The Agent Gateway reads only the governance registry, while a runtime registers an engine in its
+    own project's registry, which the gateway never consults. So an adopted engine gets an
+    Esmeralda-owned agent entry in the governance registry, keyed by target name (its
+    ``service_id``), whose URLs are derived from the engine resource alone (:func:`engine_urls`):
+    longest-prefix matching makes them win over the host-level ``{region}-aiplatform`` Google API
+    entry for that engine. Its caller list is ``iap_egress.agents[<name>]``. Entry: ``registry``
+    (``agent``), ``registry_id`` and ``source`` (the pin), ``runtime``, ``runtime_resource``,
+    ``project`` (layer-1 alias), ``location``, ``engine``, ``urls``, ``protocol_binding``,
+    ``description`` (catalog description, the adopted entry, then "Used by"), ``owner_team`` and
+    ``principal`` (:func:`runtime_principal`, the agent's identity when it is a caller). Placeholders
+    stay for the iap-egress unit. Discovered entries, example targets and other runtimes are left out.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for name in sorted(resolved.targets):
+        target = resolved.targets[name]
+        if not _is_adopted_agent(target):
+            continue
+        pin = target["deploy"]["registry"]
+        parts = engine_resource(target["runtime_resource"])
+        text = f"{target.get('description') or ''} Adopted from {pin['source']} entry {pin['id']}."
+        out[name] = {
+            "registry": "agent",
+            "registry_id": pin["id"],
+            "source": pin["source"],
+            "runtime": target["runtime"],
+            "runtime_resource": target["runtime_resource"],
+            "project": parts["project"],
+            "location": parts["location"],
+            "engine": parts["engine"],
+            "urls": engine_urls(target["runtime_resource"]),
+            "protocol_binding": "HTTP_JSON",
+            "description": registry_description(text, list(target.get("callers") or {})),
+            "owner_team": target["owner_team"],
+            "principal": runtime_principal(target["runtime"], target["runtime_resource"]),
         }
     return out
 
@@ -1013,7 +1192,9 @@ def compile_principal_teams(resolved: Resolved) -> list[dict[str, Any]]:
     ``group:<email>`` or ``<issuer>#<subject>``), ``principal_type`` (``agent_runtime``,
     ``service_account``, ``spiffe``, ``group``, ``apigee_app``, ``oidc``), ``caller`` (catalog caller
     or agent target), ``team`` and the team's ``cost_centers``. Deployed agents contribute their
-    Agent Identity principal and the service account they call out as. Callers contribute their
+    Agent Identity principal and the service account they call out as; an adopted agent that a
+    target lists as a caller contributes its derived principal (``adopted/<name>:agent_identity_principal``).
+    Callers contribute their
     identity when a target of the environment lists them, or when the identity is not a unit output
     (groups, literal ids): a unit-output identity no target uses may not exist in the environment.
     Example entries are left out, and so is the policy's shared workload identity: several agents
@@ -1046,6 +1227,9 @@ def compile_principal_teams(resolved: Resolved) -> list[dict[str, Any]]:
         if target["kind"] in WORKLOAD_KINDS and _is_compiled(target):
             for principal, principal_type in _workload_principals(target):
                 add(principal, principal_type, name, target["owner_team"])
+        elif _is_adopted_agent(target) and name in referenced:
+            # An adopted agent that is a caller: its principal derived from the runtime resource.
+            add(ADOPTED_REF.format(name=name), AGENT_PRINCIPAL_TYPE, name, target["owner_team"])
     for name in sorted(resolved.callers):
         entry = resolved.callers[name]
         if entry.get("example"):
@@ -1201,6 +1385,9 @@ def render_resolved_file(resolved: Resolved) -> str:
         "iap_egress": compile_iap_egress(resolved),
         "attribution": compile_attribution(resolved),
     }
+    adopted = compile_adopted_targets(resolved)
+    if adopted:  # omitted without adopted agents, so such catalogs compile byte-identically
+        doc["adopted_targets"] = adopted
     provenance, summary = _external_provenance(resolved)
     if provenance or summary:
         doc["provenance"] = provenance
@@ -1260,6 +1447,8 @@ def render_hcl(resolved: Resolved) -> str:
 def _registry_entry(target: dict[str, Any]) -> str | None:
     """Where the Agent Gateway finds this target, for ``show``."""
     group = _registry_group(target)
+    if group and _is_adopted_agent(target):
+        return f"{group} (adopted: governance entry on the engine's URLs, per-target caller list)"
     if group:
         return f"{group} (per-target caller list)"
     if not target.get("example") and target["deploy"].get("managed") is False and _is_system_endpoint(target):
@@ -1351,7 +1540,7 @@ def show(
                         or (resolved.teams.get(team) or {}).get("cost_centers", []),
                     },
                     "enforced": c in compiled_callers and (
-                        _is_compiled(t) or _is_external(t) or (
+                        _is_compiled(t) or _is_external(t) or _is_adopted_agent(t) or (
                             google_api is not None and c in resolved.targets
                             and google_api in google_apis_of(resolved.targets[c], resolved.policy)
                         )

@@ -24,10 +24,11 @@ locals {
 }
 
 resource "null_resource" "require_closed_registry_root" {
-  count = length(var.external_targets) > 0 ? 1 : 0
+  count = length(var.external_targets) + length(var.adopted_targets) > 0 ? 1 : 0
 
   triggers = {
-    external_urls = md5(jsonencode(local.external_urls))
+    # External and adopted (adopted_targets.tf) entry URLs; unchanged without adopted targets.
+    external_urls = md5(jsonencode(merge(local.external_urls, local.adopted_urls)))
     version       = "1"
   }
 
