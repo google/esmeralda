@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Offline Terraform unit tests for Layer 4 GEAP Semantic Governance (NLC) & UAP policies."""
+"""Offline Terraform unit tests for the Layer 4 Semantic Governance (NLC) policy manifest.
+
+The module only compiles and publishes a manifest; these tests check its content, not runtime
+enforcement (no component enforces the manifest today).
+"""
 
 from __future__ import annotations
 

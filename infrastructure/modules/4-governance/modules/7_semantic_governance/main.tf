@@ -1,9 +1,15 @@
 # ==============================================================================
-# SUBMODULE 7: GEAP SEMANTIC GOVERNANCE (NATURAL LANGUAGE CONSTRAINTS) & UAPs
+# SUBMODULE 7: SEMANTIC GOVERNANCE (NATURAL LANGUAGE CONSTRAINTS) POLICY MANIFEST
 # ==============================================================================
-# Declares Natural Language Constraints (NLC) and Unified Access Policies (UAPs)
-# enforced at the Central Agent Gateway boundary to ensure AI agent tool
-# invocations align with user intent and organizational business constraints:
+# Compiles Natural Language Constraints (NLC) and access bindings (uap_bindings)
+# into a versioned policy manifest (geap.semantic-governance/v1), exposed as an
+# output and optionally published to Secret Manager.
+#
+# MANIFEST ONLY, NOT ENFORCED: this module configures nothing on the Central
+# Agent Gateway or any other component. No tool call is evaluated against these
+# constraints today. Access is enforced by the per-target IAP egress grants
+# (layer-5-workloads/iap-egress) and optional Model Armor (6_agent_gateway).
+# The manifest is a contract for a future or external enforcement point:
 #   - https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern/policies/semantic-governance-overview
 #   - https://docs.cloud.google.com/gemini-enterprise-agent-platform/govern/policies/overview-uap
 
@@ -72,8 +78,9 @@ locals {
     local.custom_semantic_governance_policies,
   )
 
-  # Unified Access Policies (UAPs) pairing deterministic SPIFFE principal
-  # allowlists with semantic NLC policies at the Central Agent Gateway.
+  # Access bindings pairing SPIFFE principals with targets and NLC policy refs.
+  # Descriptive only: the enforced caller lists are the catalog callers
+  # (per-target roles/iap.egressor, iap-egress unit).
   uap_bindings = {
     "a2a-ai-coe-mortgage-specialist" = {
       uap_id               = "a2a-ai-coe-mortgage-specialist"

@@ -1,5 +1,5 @@
 # ==============================================================================
-# SUBMODULE 7: GEAP SEMANTIC GOVERNANCE POLICIES (NLC) & UNIFIED ACCESS POLICIES
+# SUBMODULE 7: SEMANTIC GOVERNANCE (NLC) POLICY MANIFEST (manifest only, not enforced)
 # ==============================================================================
 
 variable "governance_project_id" {
@@ -23,13 +23,13 @@ variable "region" {
 variable "enable_semantic_governance" {
   type        = bool
   default     = false
-  description = "Toggle to publish the compiled GEAP Semantic Governance (NLC) and Unified Access Policy (UAP) bundle to Secret Manager in the governance project."
+  description = "Toggle to publish the compiled Semantic Governance (NLC) policy manifest to Secret Manager in the governance project. Publishing does not enforce it."
 }
 
 variable "enforcement_mode" {
   type        = string
   default     = "ENFORCE"
-  description = "Default GEAP Semantic Governance enforcement mode across Natural Language Constraints (ENFORCE or DRY_RUN)."
+  description = "enforcement_mode value written into the manifest for each NLC policy (ENFORCE or DRY_RUN). No effect today: nothing enforces the manifest."
 
   validation {
     condition     = contains(["ENFORCE", "DRY_RUN"], var.enforcement_mode)
@@ -65,5 +65,5 @@ variable "custom_policies" {
   }))
   default     = {}
   nullable    = false
-  description = "Optional custom Natural Language Constraint (NLC) policies merged with the default mortgage underwriting policies."
+  description = "Optional custom Natural Language Constraint (NLC) policies merged into the manifest with the default mortgage underwriting policies (manifest only, not enforced)."
 }

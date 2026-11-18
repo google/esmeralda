@@ -136,7 +136,7 @@ output "google_api_endpoint_ids" {
 
 output "semantic_governance_manifest" {
   value       = module.semantic_governance.manifest
-  description = "Compiled GEAP Semantic Governance (Natural Language Constraints) and Unified Access Policy (UAP) manifest for the Central Agent Gateway."
+  description = "Compiled Semantic Governance (Natural Language Constraints) policy manifest (geap.semantic-governance/v1) for a future or external enforcement point. Manifest only: not consumed or enforced by the Central Agent Gateway."
 }
 
 
