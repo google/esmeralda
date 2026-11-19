@@ -204,6 +204,40 @@ Agents mint outbound tokens as their own Agent Identity: each callee grants the 
   * Enforces path normalization, rejects encoded slashes, strips upstream timing headers, and applies a per-`X-API-Key` local rate limit (120 req/min per instance).
 * **Offline & Sandbox Test Harnesses:** `make test-gateway-unit` renders the Terraform config and tests a real Envoy 1.40 binary against a mock metadata server and TLS upstreams ([`tests/gateway`](../../../tests/gateway)).
 
+#### Usage records
+
+Envoy writes one `esmeralda.usage` `gateway.request` JSON record per completed request to stdout.
+It includes the gateway product, target workload when known, HTTP method, original caller-facing
+path (without the query string), numeric response code and latency, and a valid W3C `trace_id`
+when supplied. Local errors, such as a missing route, rate limit or upstream TLS failure, are
+recorded too. The existing schema-keyed usage sink routes these records to the usage dataset;
+Cloud Run stdout is already among the landing tables read by `usage_events`.
+
+The production module enables `token_validated_by_cloud_run_iam` because its Cloud Run service
+requires IAM invoker authentication and internal ingress. A Lua filter reads the platform-validated
+caller **before** `gcp_authn` replaces the upstream Authorization credential. As in the library's
+caller guard, `X-Serverless-Authorization` takes precedence over `Authorization`, even when empty or
+malformed. A service-account email or subject becomes `caller.principal`; Agent Identity subjects
+are normalized from `spiffe://` to `principal://`. Team attribution is resolved by the existing
+principal-to-team table. Missing or unusable identities remain `caller.verified: false`.
+
+The standalone config defaults this trust setting to **false**: Envoy itself does not validate
+caller tokens. Do not enable it on a public or unauthenticated Envoy deployment. Self-declared
+agent names, API keys and billing headers never establish a verified identity. Records contain
+no tokens, API keys, request/response bodies or query strings.
+
+The filter embeds the MIT-licensed [rxi/json.lua](https://github.com/rxi/json.lua) 0.1.2 decoder
+(`config/json.lua`, license retained) into the mounted configuration, so no image dependency is
+needed. `make test-gateway-unit` validates real emitted records against
+`contracts/usage-event.schema.json` and exercises the identity trust boundary using synthetic tokens.
+This simulates the result of Cloud Run IAM validation; it does not test IAM itself.
+
+After deploying an Envoy-enabled environment, run `esmeralda verify --env dev`, then check Cloud
+Logging for `jsonPayload.schema="esmeralda.usage"` and `jsonPayload.gateway.product="envoy"`.
+Confirm the same request's `trace_id` appears in the usage dataset's `usage_events` view. This
+last check requires a deployed Google Cloud environment; the offline harness does not prove
+BigQuery delivery.
+
 ### 7. Apigee X (`apigee/platform/` & `apigee/capabilities/*`, optional partner front door)
 
 When an environment needs to expose curated agents or MCP tools to **external B2B partners** with commercial API Products (`bronze`, `silver`, `gold`), developer app API keys/OAuth, per-partner `<LLMTokenQuota>` enforcement (`HTTP 429`), and token monetization analytics, Esmeralda provides a complete **Apigee X** integration:

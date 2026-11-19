@@ -449,11 +449,11 @@ resource "google_monitoring_alert_policy" "gateway_5xx_ratio" {
 
 #### 🛠️ Immediate On-Call Action Plan:
 1. Find the failing routes in the Envoy access logs (gateway project):
-   `resource.type="cloud_run_revision" AND resource.labels.service_name="${var.gateway_service_name}" AND jsonPayload.status>=500`
-   `upstream_cluster` names the target (MCP server or Reasoning Engine).
-2. Read `response_flags`: `UF`/`URX`/`UH` = Envoy could not connect (upstream down, DNS, upstream TLS verification);
-   `UT` = upstream timeout (120 s per route); `UC` = upstream closed the connection; no flag = the upstream itself
-   returned the 5xx (check that MCP server's or Reasoning Engine's logs).
+   `resource.type="cloud_run_revision" AND resource.labels.service_name="${var.gateway_service_name}" AND jsonPayload.schema="esmeralda.usage" AND jsonPayload.http."response.status_code">=500`
+   `workload.name` names the target (MCP server or Reasoning Engine); `http.route` is the caller-facing path.
+2. Correlate the record's `trace_id` with the target service's logs. If no request reached the target,
+   inspect Envoy's diagnostic logs for connection, DNS or upstream TLS failures. A 504 may indicate
+   the upstream exceeded the route timeout (120 s for non-streaming routes).
 3. 5xx in the Cloud Run request logs without a matching Envoy log line: Cloud Run could not serve the request
    (crash loop, failed revision). Check the revision's logs and the latest gateway deploy.
 EOF

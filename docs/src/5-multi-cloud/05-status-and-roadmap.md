@@ -55,7 +55,7 @@ Multi-cloud support in Esmeralda is being delivered in small steps, each one dep
 | Verified attribution, internal hops: principal → team table compiled from the catalog, catalog caller guard on MCP servers (`unmapped_caller: deny`, flag in dev first), unregistered-caller and declared-mismatch probes, unattributed alarm on | ✅ | Turns chargeback from declared to verified. The caller guard, the unregistered-caller probe and the principal → team load are off in `prd` by default. See [5.3 §5](./03-unified-observability-and-chargeback.md#5-verified-attribution-on-internal-hops-end-to-end). |
 | Verified attribution, partner hop: Apigee apps and cross-cloud `iss#sub` callers in the same table and policy | 🗺️ | Follows the cross-cloud shared flow. |
 | Reference OpenTelemetry Collector configuration and GenAI-span-to-record processor for non-Python workloads on other clouds | 🗺️ | [5.3 §2](./03-unified-observability-and-chargeback.md#2-producers-on-every-cloud) shows a starting point. |
-| Gateway records from Envoy in the `esmeralda.usage` shape | 🗺️ | JSON access-log template. |
+| Gateway records from Envoy in the `esmeralda.usage` shape | ✅ | Structured access logs, with schema validation in the offline gateway harness. See [Envoy usage records](../2-workloads-and-catalog/01-ingress-gateways.md#usage-records). |
 
 ### Catalog
 
