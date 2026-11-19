@@ -28,6 +28,9 @@ module "config" {
   }
   apex_domain           = var.apex_domain
   rate_limit_per_minute = var.rate_limit_per_minute
+  # This service requires IAM invoker auth and internal ingress (below). Match the caller guard's
+  # cloud_run_iam trust model; the config module defaults off for standalone/local Envoy.
+  token_validated_by_cloud_run_iam = true
 }
 
 locals {

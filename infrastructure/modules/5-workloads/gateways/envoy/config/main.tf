@@ -162,19 +162,37 @@ locals {
     typed_config = {
       "@type" = "type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog"
       log_format = {
+        omit_empty_values = true
         json_format = {
-          severity         = "INFO"
-          method           = "%REQ(:METHOD)%"
-          authority        = "%REQ(X-ENVOY-ORIGINAL-HOST?:AUTHORITY)%"
-          path             = "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-          status           = "%RESPONSE_CODE%"
-          response_flags   = "%RESPONSE_FLAGS%"
-          upstream_cluster = "%UPSTREAM_CLUSTER%"
-          duration_ms      = "%DURATION%"
-          api_key          = "%REQ(X-API-KEY)%"
-          traceparent      = "%REQ(TRACEPARENT)%"
-          request_id       = "%REQ(X-REQUEST-ID)%"
+          schema         = "esmeralda.usage"
+          schema_version = 1
+          event          = "gateway.request"
+          timestamp      = "%EMIT_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%"
+          source         = "gateway"
+          gateway        = { product = "envoy" }
+          workload       = { name = "%UPSTREAM_CLUSTER%" }
+          caller         = "%DYNAMIC_METADATA(esmeralda.usage:caller)%"
+          trace_id       = "%DYNAMIC_METADATA(esmeralda.usage:trace_id)%"
+          http = {
+            "request.method"       = "%REQ(:METHOD):16%"
+            "response.status_code" = "%TYPED_CEL(has(response.code) && response.code >= 100 && response.code <= 599 ? response.code : null)%"
+            route                  = "%DYNAMIC_METADATA(esmeralda.usage:route)%"
+          }
+          status     = "%TYPED_CEL(has(response.code) && response.code >= 100 && response.code < 400 ? 'ok' : 'error')%"
+          latency_ms = "%DURATION%"
         }
+      }
+    }
+  }
+
+  # Capture the original caller before gcp_authn replaces Authorization. Production enables the
+  # Cloud Run IAM trust boundary; the standalone/local config must not trust arbitrary JWT claims.
+  usage = {
+    name = "envoy.filters.http.lua"
+    typed_config = {
+      "@type" = "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
+      default_source_code = {
+        inline_string = "local token_validated_by_cloud_run_iam = ${var.token_validated_by_cloud_run_iam}\nlocal json = (function()\n${file("${path.module}/json.lua")}\nend)()\n${file("${path.module}/usage.lua")}"
       }
     }
   }
@@ -253,7 +271,7 @@ locals {
                 request_headers_to_remove  = ["x-envoy-original-path", "x-envoy-original-host"]
                 response_headers_to_remove = ["x-envoy-upstream-service-time"]
               }
-              http_filters = [local.rate_limit, local.gcp_authn, local.router]
+              http_filters = [local.usage, local.rate_limit, local.gcp_authn, local.router]
             }
           }]
         }]

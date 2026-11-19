@@ -203,15 +203,15 @@ class EnvoyProcess:
                 return int(value)
         return 0
 
-    def access_log_entry(self, traceparent: str, timeout_s: float = 5) -> dict:
-        """The JSON access-log line of the request that carried ``traceparent`` (waits for the flush)."""
+    def access_log_entry(self, marker: str, timeout_s: float = 5) -> dict:
+        """The JSON access-log line containing a unique path or trace id (waits for the flush)."""
         deadline = time.monotonic() + timeout_s
         while True:
             for line in self.log_file.read_text().splitlines():
-                if line.startswith("{") and traceparent in line:
+                if line.startswith("{") and marker in line:
                     return json.loads(line)
             if time.monotonic() > deadline:
-                raise AssertionError(f"no access-log line with traceparent {traceparent}")
+                raise AssertionError(f"no access-log line with marker {marker}")
             time.sleep(0.1)
 
 
