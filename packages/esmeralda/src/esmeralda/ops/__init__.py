@@ -22,6 +22,7 @@ Every function returns a small JSON-serialisable dict, never raw Terraform or lo
   (plan-first apply with destroy guard);
 * ``logs``: ``agent_logs`` (Cloud Logging, tracebacks collapsed, repeats deduplicated);
 * ``runtime``: ``query_agent`` (Agent Runtime), ``test_gateway`` (probes from the test VM), and ``verify``;
+* ``drift``: ``check`` (read-only drift of settings written outside Terraform, starting with IAP egress);
 * ``testvm``: resolves the test VM, entry point and internal CA, and runs a bash payload on the VM
   over IAP SSH;
 * ``partner_load``: the partner load test (``make load-test-partner``): Locust on the test VM;

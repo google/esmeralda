@@ -42,7 +42,7 @@ This guide shows how `esmeralda` bridges both worlds cleanly, and which building
 | Agent-specific plugins (BigQuery analytics, ...) | `esmeralda.create_app(root_agent, plugins=[...])` |
 | Agent-specific process setup | `esmeralda.prepare([*esmeralda.lifecycle.PREPARE, my_step])` |
 | Run or test an agent, locally or deployed | `esmeralda query`, or `make query AGENT=<agent>` (add `TARGET=remote` or `TARGET=<url>`) |
-| Inspect, plan, apply, verify, or check logs of an environment | `uv run esmeralda status / doctor / units / plan / apply / verify / logs / contracts / guard` |
+| Inspect, plan, apply, verify, or check logs of an environment | `uv run esmeralda status / doctor / units / plan / apply / verify / drift / logs / contracts / guard` |
 | Let a coding agent inspect and check a deployment (read-only) | `esmeralda mcp` as an MCP server: [Operating a checkout from an agent](#operating-a-checkout-from-an-agent-esmeralda-mcp) |
 
 ## Add the library to an agent
