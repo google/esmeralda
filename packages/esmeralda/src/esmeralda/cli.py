@@ -40,6 +40,7 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda release status|promote [--version vX.Y.Z --source dev-<sha> [--verified DATE] [--dry-run]] [--json]``
 * ``esmeralda verify [--env dev|prd] [--probe <name>] [--skip-query] [--skip-catalog] [--catalog-strict]
   [--partner] [--model-armor] [--json]``
+* ``esmeralda drift [--env dev|prd] [--json]``
 * ``esmeralda logs <target> [--env dev|prd] [--minutes 30] [--severity DEFAULT] [--limit 50] [--json]``
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
 * ``esmeralda guard [--staged | --diff <range> | --all] [--json]``
@@ -65,7 +66,7 @@ from esmeralda import certs
 
 USAGE = (
     "usage: esmeralda {run,serve,query,mcp,status,doctor,units,plan,apply,deploy,destroy,build,lock,release,verify,"
-    "logs,contracts,guard,catalog} ...  "
+    "drift,logs,contracts,guard,catalog} ...  "
     "(esmeralda run -- <command> [args...])"
 )
 
@@ -604,6 +605,16 @@ def _format_catalog_diff(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_drift(data: dict[str, Any]) -> str:
+    checks = data.get("checks") or []
+    if not checks:
+        return ""
+    lines = [f"⚠️  {data.get('failed', len(checks))} drift finding(s) for '{data.get('env', 'dev')}':"]
+    for check in checks:
+        lines.append(f"• [{check['source']}] {check['check']}: {check['detail']}")
+    return "\n".join(lines)
+
+
 def _catalog_error(args: argparse.Namespace, exc: Exception, code: int) -> int:
     problems = getattr(exc, "problems", None) or [str(exc)]
     if getattr(args, "json", False):
@@ -862,6 +873,18 @@ def _ops_dispatch(args: argparse.Namespace) -> int:
             )
             print(json.dumps(data, indent=2) if args.json else _format_verify(data))
             return 0 if data.get("passed") else 1
+
+        if args.cmd == "drift":
+            from esmeralda.ops import drift
+
+            data = drift.check(root, args.env)
+            if args.json:
+                print(json.dumps(data, indent=2))
+            else:
+                text = _format_drift(data)
+                if text:
+                    print(text)
+            return 0 if data["passed"] else 1
 
         if args.cmd == "logs":
             data = logs.agent_logs(
@@ -1164,6 +1187,12 @@ def _parser() -> argparse.ArgumentParser:
         help="fail verify on any catalog-drift finding (default: policy.verify.catalog_drift, warn)",
     )
     _add_common_ops_flags(verify, with_env=True)
+
+    drift_p = sub.add_parser(
+        "drift",
+        help="report drift in settings written outside Terraform (Agent Registry IAP egress policies)",
+    )
+    _add_common_ops_flags(drift_p, with_env=True)
 
     logs_p = sub.add_parser(
         "logs",

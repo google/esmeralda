@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 from esmeralda import cli
-from esmeralda.ops import envfile, guard, logs, repo, runtime
+from esmeralda.ops import drift, envfile, guard, logs, repo, runtime
 
 ENGINE = "projects/demo-cx/locations/us-central1/reasoningEngines/123"
 DIGEST = "us-central1-docker.pkg.dev/demo/repo/legacy-dms@sha256:" + "ab" * 32
@@ -178,6 +178,9 @@ def test_parser_subcommands_and_flags():
     ns = parser.parse_args(["verify", "--env", "dev", "--probe", "legacy-dms", "--skip-query", "--json"])
     assert ns.cmd == "verify" and ns.probe == "legacy-dms" and ns.skip_query is True and ns.json is True
 
+    ns = parser.parse_args(["drift", "--env", "prd", "--json"])
+    assert ns.cmd == "drift" and ns.env == "prd" and ns.json is True
+
     ns = parser.parse_args(
         ["logs", "cx-mortgage-orchestrator", "--env", "dev", "--minutes", "15", "--severity", "ERROR", "--limit", "25"]
     )
@@ -244,6 +247,52 @@ def test_cli_contracts_sections_human_and_json(ops_checkout, capsys):
 
     assert cli.main(["contracts", "--section", "entrypoint"]) == 0
     assert "=== entrypoint ===" in capsys.readouterr().out
+
+
+def _drift_result(*, passed: bool) -> dict:
+    checks = [] if passed else [
+        {"check": "entry legacy-dms", "ok": False, "detail": "manual member added", "source": "iap-egress"}
+    ]
+    return {
+        "env": "dev",
+        "passed": passed,
+        "sources": ["iap-egress"],
+        "ok_count": 3 if passed else 2,
+        "failed": 0 if passed else 1,
+        "checks": checks,
+        "seconds": 0.4,
+    }
+
+
+def test_cli_drift_clean_prints_nothing(ops_checkout, monkeypatch, capsys):
+    monkeypatch.setattr(drift, "check", lambda root, env: _drift_result(passed=True))
+
+    assert cli.main(["drift", "--env", "dev"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_cli_drift_reports_findings_and_exits_one(ops_checkout, monkeypatch, capsys):
+    monkeypatch.setattr(drift, "check", lambda root, env: _drift_result(passed=False))
+
+    assert cli.main(["drift", "--env", "dev"]) == 1
+    out = capsys.readouterr().out
+    assert "1 drift finding(s) for 'dev'" in out
+    assert "[iap-egress] entry legacy-dms: manual member added" in out
+
+
+def test_cli_drift_json_and_read_error(ops_checkout, monkeypatch, capsys):
+    monkeypatch.setattr(drift, "check", lambda root, env: _drift_result(passed=False))
+
+    assert cli.main(["drift", "--env", "dev", "--json"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["passed"] is False and data["failed"] == 1
+
+    def fail(root, env):
+        raise repo.OpsError("cannot read registry policy")
+
+    monkeypatch.setattr(drift, "check", fail)
+    assert cli.main(["drift", "--env", "dev"]) == 2
+    assert "cannot read registry policy" in capsys.readouterr().err
 
 
 # ------------------------------------------------------------------------------------------
