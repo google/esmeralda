@@ -151,13 +151,16 @@ class EnvoyProcess:
     def __init__(self, config: RenderedConfig, log_file: pathlib.Path):
         self.config = config
         self.log_file = log_file
+        self.stderr_file = log_file.with_suffix(".stderr.log")
         self.admin_port = config.data["admin"]["address"]["socket_address"]["port_value"]
         self.listener_port = config.data["static_resources"]["listeners"][0]["address"]["socket_address"]["port_value"]
         self._proc: subprocess.Popen | None = None
         self._log = None
+        self._stderr = None
 
     def __enter__(self) -> EnvoyProcess:
         self._log = self.log_file.open("w")
+        self._stderr = self.stderr_file.open("w")
         self._proc = subprocess.Popen(
             [
                 tool("envoy"),
@@ -165,13 +168,16 @@ class EnvoyProcess:
                 *("--file-flush-interval-msec", "100"),  # access-log lines reach the file within 0.1 s
             ],
             stdout=self._log,
-            stderr=subprocess.STDOUT,
+            stderr=self._stderr,
         )
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
-                self._log.close()
-                raise AssertionError(f"envoy exited with {self._proc.returncode}:\n{self.log_file.read_text()}")
+                self.__exit__()
+                raise AssertionError(
+                    f"envoy exited with {self._proc.returncode}:\n"
+                    f"{self.log_file.read_text()}\n{self.stderr_file.read_text()}"
+                )
             try:
                 ready = httpx.get(f"http://127.0.0.1:{self.admin_port}/ready", timeout=1, trust_env=False)
                 if ready.status_code == 200:
@@ -180,7 +186,9 @@ class EnvoyProcess:
                 pass
             time.sleep(0.1)
         self.__exit__()
-        raise AssertionError(f"envoy not ready after 30 s:\n{self.log_file.read_text()}")
+        raise AssertionError(
+            f"envoy not ready after 30 s:\n{self.log_file.read_text()}\n{self.stderr_file.read_text()}"
+        )
 
     def __exit__(self, *exc) -> None:
         if self._proc and self._proc.poll() is None:
@@ -192,6 +200,8 @@ class EnvoyProcess:
                 self._proc.wait()
         if self._log:
             self._log.close()
+        if self._stderr:
+            self._stderr.close()
 
     def counter(self, name: str) -> int:
         """Value of one counter from the admin ``/stats`` endpoint (0 if absent)."""

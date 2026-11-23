@@ -16,6 +16,7 @@
 
 import base64
 import json
+import re
 import socket
 import time
 import uuid
@@ -83,6 +84,35 @@ def test_record_matches_usage_contract(gateway, mcp_upstream, validator):
     assert record["latency_ms"] >= 40  # milliseconds, including the upstream's 50 ms delay
     assert started <= datetime.fromisoformat(record["timestamp"]) <= datetime.now(timezone.utc)
     assert record["caller"] == {"verified": False}
+    sinks = (
+        Path(__file__).resolve().parents[2] / "infrastructure/modules/4-governance/modules/1_telemetry_sinks/main.tf"
+    )
+    match = re.search(r'usage_sink_filter\s*=\s*("(?:\\.|[^"\\])*")', sinks.read_text())
+    assert match is not None
+    assert json.loads(match[1]) == f'jsonPayload.schema="{record["schema"]}"'
+
+
+def test_usage_records_are_single_line_json_on_stdout(iam_gateway, mcp_upstream, validator):
+    paths = []
+    for _ in range(2):
+        response, record = request_record(
+            iam_gateway,
+            validator,
+            headers={"Authorization": "Bearer " + token({"sub": 'caller"with\nnewline'})},
+        )
+        assert response.status_code == 200
+        assert record["caller"] == {"principal": 'caller"with\nnewline', "verified": True}
+        paths.append(record["http"]["route"])
+
+    # Parse each physical stdout line independently, as Cloud Logging does. An escaped newline
+    # in a claim must remain inside that line, rather than splitting the record across lines.
+    records = [json.loads(line) for line in iam_gateway.envoy.log_file.read_text().splitlines()]
+    matching = [record for record in records if record.get("http", {}).get("route") in paths]
+    assert len(matching) == len(paths)
+    for record in matching:
+        assert record["schema"] == "esmeralda.usage"
+        validator.validate(record)
+    assert all(path not in iam_gateway.envoy.stderr_file.read_text() for path in paths)
 
 
 @pytest.mark.parametrize(
