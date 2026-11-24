@@ -15,6 +15,7 @@
 """Documented limits of Gemini model families, checked when an agent starts."""
 
 import logging
+from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,13 @@ MODEL_LIMITS = {
 }
 
 
-def check_model_settings(model, thinking=None, max_output_tokens=None, location=None):
+def check_model_settings(
+    model: str,
+    thinking: Mapping[str, object] | None = None,
+    max_output_tokens: int | None = None,
+    location: str | None = None,
+) -> None:
+    """Raise ValueError for unsupported settings or log a warning for an unknown model."""
     limits = MODEL_LIMITS.get(model)
     if limits is None:
         logger.warning("No documented limits for model %r: settings not checked", model)
