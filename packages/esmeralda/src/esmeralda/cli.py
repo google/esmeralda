@@ -98,6 +98,7 @@ def _query(args: argparse.Namespace) -> int:
 
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     try:
+        q.validate_targets(url=args.url, engine=args.engine)
         config = AgentConfig.load(args.agent_dir)
         user_token = getattr(args, "user_token", None) or os.environ.get("ESMERALDA_USER_TOKEN") or None
         request = q.Query(
@@ -960,7 +961,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     query.add_argument("--timeout", type=float, default=300.0, help="HTTP timeout in seconds (default: 300)")
     query.add_argument("--fail-on-tool-error", action="store_true", help="exit non-zero if a tool call errored")
-    query.add_argument("--verbose", "-v", action="store_true", help="print raw events")
+    query.add_argument("--verbose", "-v", action="store_true", help="print raw events and tracebacks")
 
     mcp = sub.add_parser("mcp", help="read-only MCP server (stdio) to operate this checkout")
     mcp.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO, else the checkout containing cwd)")

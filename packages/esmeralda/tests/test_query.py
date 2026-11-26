@@ -392,3 +392,119 @@ def test_cli_query_exit_codes(agent_dir, capsys):
     assert "PASSED" in capsys.readouterr().out
     assert cli.main(["query", "--agent-dir", str(agent_dir / "missing"), "hi"]) == 2
     assert cli.main(["query", "--url", "http://a", "--engine", "projects/p/locations/l/reasoningEngines/1", "hi"]) == 2
+
+
+@pytest.mark.parametrize(
+    "flag,value",
+    [
+        ("--engine", ""),
+        ("--engine", "   "),
+        ("--url", ""),
+        ("--url", "   "),
+    ],
+)
+def test_cli_query_rejects_empty_target_flags(agent_dir, capsys, monkeypatch, flag, value):
+    async def fail_if_called(*args, **kwargs):
+        pytest.fail("in-process run must not start when a target flag is empty")
+
+    monkeypatch.setattr(q, "query_in_process", fail_if_called)
+
+    rc = cli.main(["query", "--agent-dir", str(agent_dir), flag, value, "hi"])
+    captured = capsys.readouterr()
+
+    assert rc != 0
+    assert f"{flag} is empty" in captured.err
+    assert "in-process" not in captured.out
+
+
+@pytest.mark.parametrize("kwargs", [{"engine": ""}, {"url": ""}, {"engine": "   "}, {"url": "   "}])
+def test_run_rejects_empty_target_flags(agent_dir, monkeypatch, kwargs):
+    async def fail_if_called(*args, **kwargs):
+        pytest.fail("in-process run must not start when url or engine is empty")
+
+    monkeypatch.setattr(q, "query_in_process", fail_if_called)
+    config = AgentConfig.load(agent_dir)
+
+    with pytest.raises(ValueError, match="is empty"):
+        asyncio.run(q.run(config, q.Query("hi"), report(), **kwargs))
+
+
+def test_in_process_failed_toolsets_fail_without_tracebacks_unless_verbose(tmp_path, monkeypatch):
+    import logging
+
+    (tmp_path / "agent.yaml").write_text("name: broken-toolsets-agent\nframework: google-adk\n")
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "agent" / "__init__.py").write_text(
+        textwrap.dedent("""
+            from google.adk.agents import Agent
+            from google.adk.models.base_llm import BaseLlm
+            from google.adk.models.llm_response import LlmResponse
+            from google.adk.tools.base_toolset import BaseToolset
+            from google.genai import types
+            import esmeralda
+
+            class BrokenToolset(BaseToolset):
+                async def get_tools(self, readonly_context=None):
+                    raise ConnectionError("Failed to create MCP session: refused")
+
+            class TwoTurnLlm(BaseLlm):
+                async def generate_content_async(self, llm_request, stream=False):
+                    # Two-event turn won't reload, but calling runner twice tests deduplication below.
+                    yield LlmResponse(
+                        content=types.Content(role="model", parts=[types.Part(text="tools unavailable")]),
+                    )
+
+            root_agent = Agent(
+                name="broken_agent",
+                model=TwoTurnLlm(model="fake-model"),
+                tools=[
+                    BrokenToolset(tool_name_prefix="dms"),
+                    BrokenToolset(tool_name_prefix="email"),
+                ],
+            )
+            app = esmeralda.create_app(root_agent)
+        """)
+    )
+    for name in [m for m in sys.modules if m == "agent" or m.startswith("agent.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "local")
+
+    stderr_buf = io.StringIO()
+    handler = logging.StreamHandler(stderr_buf)
+    handler.setLevel(logging.WARNING)
+    adk_logger = logging.getLogger("google_adk")
+    adk_logger.addHandler(handler)
+    try:
+        config = AgentConfig.load(tmp_path)
+
+        quiet_report = report()
+        asyncio.run(q.run(config, q.Query("hi"), quiet_report))
+        # Re-run with the same report to verify duplicate toolset failures are reported once.
+        asyncio.run(q.run(config, q.Query("hi again"), quiet_report))
+        quiet_rc = quiet_report.summary()
+        quiet_out = quiet_report.stream.getvalue()
+        quiet_logs = stderr_buf.getvalue()
+
+        assert quiet_rc == 1
+        assert list(quiet_report.failed_toolsets) == ["dms", "email"]
+        assert "2 failed to load: dms, email" in quiet_out
+        assert "PASSED" not in quiet_out and "FAILED" in quiet_out
+        assert quiet_out.count("✗ toolset dms failed to load:") == 1
+        assert quiet_out.count("✗ toolset email failed to load:") == 1
+        assert "Traceback" not in quiet_logs
+
+        stderr_buf.truncate(0)
+        stderr_buf.seek(0)
+
+        verbose_report = Report(stream=io.StringIO(), verbose=True, color=False)
+        asyncio.run(q.run(config, q.Query("hi"), verbose_report))
+        verbose_rc = verbose_report.summary()
+        verbose_logs = stderr_buf.getvalue()
+
+        assert verbose_rc == 1
+        assert list(verbose_report.failed_toolsets) == ["dms", "email"]
+        assert "Traceback" in verbose_logs
+    finally:
+        adk_logger.removeHandler(handler)
+        sys.modules.pop("agent", None)

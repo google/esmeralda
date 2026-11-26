@@ -390,7 +390,7 @@ esmeralda query [--agent-dir DIR] [--url URL | --engine RESOURCE | --local-mcp] 
 | `--fail-on-tool-error` | off | Also fail when a tool call returned an error |
 | `--verbose` | off | Print raw events and tracebacks |
 
-Without `--url` or `--engine`, the agent runs in-process with `env` + `local_env` applied. Exit codes: `0` passed, `1` failed run, `2` usage or configuration error.
+Without `--url` or `--engine`, the agent runs in-process with `env` + `local_env` applied. Exit codes: `0` passed, `1` failed run (including failed toolset loads), `2` usage or configuration error (including empty `--url` or `--engine`).
 
 ```text
 esmeralda serve [--agent-dir DIR] [--host HOST] [--port PORT] [--local | --local-mcp] [--web] [--otel-to-cloud]

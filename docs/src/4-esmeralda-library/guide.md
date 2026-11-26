@@ -330,7 +330,7 @@ The same applies to `finalize`, with `esmeralda.lifecycle.FINALIZE`. When you pa
 | A running server | `... --url http://localhost:8080 "message"` | ADK: `POST /api/stream_reasoning_engine` (`async_stream_query`). A2A: agent card, then `message:send` |
 | The deployed agent | `... --engine projects/P/locations/L/reasoningEngines/ID "message"` | The same calls through the Agent Runtime API, with your gcloud credentials |
 
-Every run prints the same report: the events as they arrive (agent transfers, tool calls and results, text), then the answer, tool and token counts, and a verdict. The exit code is `0` on success, and `1` if the agent reported an error, returned no answer, or (A2A) the task didn't complete. Add `--fail-on-tool-error` to also fail when a tool call returned an error.
+Every run prints the same report: the events as they arrive (agent transfers, tool calls and results, text), then the answer, tool and token counts, and a verdict. The exit code is `0` on success, and `1` if the agent reported an error, returned no answer, failed to load a toolset, or (A2A) the task didn't complete. Add `--fail-on-tool-error` to also fail when a tool call returned an error.
 
 The caller context is always sent, as `<project>/esmeralda_cli` by default (override with `--caller project/agent`). Pass `--user-token <token>` (or set `$ESMERALDA_USER_TOKEN`) to forward an end-user OAuth token as `temp:user_auth_token` (ADK) or `user_auth_token` in A2A metadata. Other options: `--user`, `--session` (continue a conversation), `--timeout`, `--verbose` (raw events).
 
