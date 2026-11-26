@@ -28,9 +28,9 @@ from esmeralda.ops import repo
 
 GATEWAY_DOC = Path("docs/src/2-workloads-and-catalog/01-ingress-gateways.md")
 SECTIONS = {
-    "gateway_contract": "The Gateway Contract",
-    "gateways_block": "The `gateways` Block",
-    "entrypoint": "The Entry Point",
+    "gateway_contract": ("The Gateway Contract", "The Backend Contract"),
+    "gateways_block": ("The `gateways` Block",),
+    "entrypoint": ("The Entry Point",),
 }
 VALID_SECTIONS = ("all", "entrypoint", "gateway_adapter", "agent_card", "env_yaml")
 SECTION_LIMIT = 2500
@@ -45,20 +45,33 @@ _DEFAULT_AGENT_CARD_CONTRACT = (
 )
 
 
-def section(markdown: str, title: str) -> str:
-    """The body of the first heading containing ``title``, up to the next heading of any level ≤ its own."""
+def section(markdown: str, titles: str | tuple[str, ...]) -> str:
+    """The body of the first heading that starts with one of ``titles`` (case-insensitive, any leading
+    ``1.`` numbering ignored), up to the next heading of any level ≤ its own. A bold lead-in line
+    (``**Title ...**``) followed by a table also counts, and ends with the table."""
+    wanted = tuple(t.casefold() for t in ([titles] if isinstance(titles, str) else titles))
     lines = markdown.splitlines()
-    for index, line in enumerate(lines):
-        match = re.match(r"^(#+)\s+(.*)$", line)
-        if match and title in match.group(2):
-            level = len(match.group(1))
-            body = []
-            for following in lines[index + 1 :]:
-                heading = re.match(r"^(#+)\s", following)
-                if heading and len(heading.group(1)) <= level:
-                    break
-                body.append(following)
-            return _compact("\n".join(body))
+    for target in wanted:
+        for index, line in enumerate(lines):
+            match = re.match(r"^(#+)\s+(?:\d+\.\s+)?(.*)$", line)
+            if match and match.group(2).casefold().startswith(target):
+                level = len(match.group(1))
+                body = []
+                for following in lines[index + 1 :]:
+                    heading = re.match(r"^(#+)\s", following)
+                    if heading and len(heading.group(1)) <= level:
+                        break
+                    body.append(following)
+                return _compact("\n".join(body))
+            bold = re.match(r"^\*\*(.+)\*\*:?$", line.strip())
+            if bold and bold.group(1).casefold().startswith(target):
+                body = []
+                for following in lines[index + 1 :]:
+                    stripped = following.strip()
+                    if stripped and not stripped.startswith("|"):
+                        break
+                    body.append(following)
+                return _compact("\n".join(body))
     return ""
 
 

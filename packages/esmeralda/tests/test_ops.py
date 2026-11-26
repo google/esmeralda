@@ -897,6 +897,21 @@ def test_describe_contracts(checkout):
     assert "scaled-a2a" in warned["agent_card"]["warnings"][0]
 
 
+def test_describe_contracts_resolves_every_section_from_the_real_docs():
+    """A renamed heading in the gateway docs must not turn a section into ``null`` again."""
+    result = contracts.describe_contracts(REPO_ROOT)
+    assert result["entrypoint"] and "URL map" in result["entrypoint"]
+    assert result["gateway_adapter"] and "backend_service_id" in result["gateway_adapter"]
+    assert result["env_yaml"] and "host_rules" in result["env_yaml"]
+    for name in ("entrypoint", "gateway_adapter", "env_yaml"):
+        assert contracts.describe_contracts(REPO_ROOT, section_name=name)[name]
+
+
+def test_section_ignores_heading_case_and_numbering():
+    markdown = "## How the Entry Point spans layers\nwrong\n### 3. The entry point (`x/`)\nright\n### 4. Next\nno\n"
+    assert contracts.section(markdown, "The Entry Point") == "right"
+
+
 # ---- MCP server -----------------------------------------------------------------------------
 
 EXPECTED_TOOLS = {
