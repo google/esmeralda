@@ -44,7 +44,8 @@ Repository & platform operations (backed by ``esmeralda.ops``):
 * ``esmeralda contracts [--section all|entrypoint|gateway_adapter|agent_card|env_yaml] [--json]``
 * ``esmeralda guard [--staged | --diff <range> | --all] [--json]``
 * ``esmeralda catalog resolve [--env <env>|all] [--format json|hcl|terraform] [--write | --check]``
-* ``esmeralda catalog show [--env <env>] [--target <name>] [--caller <name>] [--provenance] [--inventory] [--json]``
+* ``esmeralda catalog show [--env <env>] [--target <name>] [--caller <name>] [--provenance] [--inventory]
+  [--format table|tree] [--legend | --no-legend] [--json]``
 * ``esmeralda catalog sources [--env <env>] [--json]``
 * ``esmeralda catalog fetch --source <name>|all [--env <env>] [--dry-run] [--json]``
 * ``esmeralda catalog diff [--env <env>] [--live] [--json]``
@@ -491,53 +492,22 @@ def _format_guard(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_catalog_show(data: dict[str, Any]) -> str:
-    policy = data.get("policy") or {}
-    lines = [
-        f"📇 Catalog '{data.get('env')}' (unmapped_caller={policy.get('unmapped_caller', '-')}, "
-        f"declared_mismatch={policy.get('declared_mismatch', '-')}):"
-    ]
-    for t in data.get("targets") or []:
-        flags = " [example]" if t.get("example") else ""
-        flags += "" if t.get("compiled") or t.get("registry") else " [not compiled]"
-        ingress = f" ingress={t['ingress_backend']}" if t.get("ingress_backend") else ""
-        registry = f" registry={t['registry']}" if t.get("registry") and not t.get("compiled") else ""
-        adopted = f" adopted from {t['adopted_from']}" if t.get("adopted_from") else ""
-        lines.append(
-            f"🎯 {t['target']} ({t['kind']}, owner {t['owner_team']}) {t.get('deploy')} "
-            f"gateway={t.get('gateway') or '-'}{ingress}{registry}{adopted}{flags}"
-        )
-        if t.get("provenance"):
-            lines += _format_provenance(t["provenance"])
-        if not t.get("callers"):
-            lines.append("   (no callers)")
-        for c in t.get("callers") or []:
-            pays = c.get("pays") or {}
-            extra = "".join(f" {k}={c[k]}" for k in ("product", "tools", "quota") if c.get(k))
-            enforced = "" if c.get("enforced") or not t.get("compiled") else " [not enforced yet]"
-            lines.append(
-                f"   • {c['caller']:<28} {c['identity']:<16} via {c.get('gateway') or '-':<13} "
-                f"pays: {pays.get('team')} {', '.join(pays.get('cost_centers') or [])}{extra}{enforced}"
-            )
-    for team in data.get("teams") or []:
-        projects = f" projects={', '.join(team['projects'])}" if team.get("projects") else ""
-        lines.append(f"👥 {team['team']} (cost centres {', '.join(team.get('cost_centers') or []) or '-'}){projects}")
-        if team.get("provenance"):
-            lines += _format_provenance(team["provenance"])
-    return "\n".join(lines)
+def _format_catalog_show(
+    data: dict[str, Any],
+    *,
+    fmt: str = "table",
+    legend: bool = True,
+    color: bool | None = None,
+) -> str:
+    from esmeralda.catalog.format import format_show
+
+    return format_show(data, fmt=fmt, legend=legend, color=color)
 
 
 def _format_provenance(prov: dict[str, Any]) -> list[str]:
-    lines = []
-    entry = prov.get("entry") or {}
-    if entry:
-        lines.append(f"   ↳ from {entry.get('source')} ({entry.get('origin')})")
-    for path, record in (prov.get("fields") or {}).items():
-        shadowed = record.get("shadowed") or []
-        losers = f"; shadows {', '.join(s['source'] for s in shadowed)}" if shadowed else ""
-        where = f"{record.get('origin')}, {record.get('strategy', '-')}{losers}"
-        lines.append(f"     {path}: {record.get('source')} ({where})")
-    return lines
+    from esmeralda.catalog.format import format_provenance
+
+    return format_provenance(prov)
 
 
 def _format_catalog_inventory(data: dict[str, Any]) -> str:
@@ -699,7 +669,10 @@ def _catalog(args: argparse.Namespace) -> int:
                 ingress = {}
             data = catalog.show(resolved, target=args.target, caller=args.caller, ingress=ingress,
                                 provenance=args.provenance)
-            print(json.dumps(data, indent=2) if args.json else _format_catalog_show(data))
+            if args.json:
+                print(json.dumps(data, indent=2))
+            else:
+                print(_format_catalog_show(data, fmt=args.format, legend=args.legend))
             return 0
     except (catalog.CatalogError, OpsError, NotImplementedError) as exc:
         return _catalog_error(args, exc, 1 if args.catalog_cmd in ("sources", "fetch", "diff") else 2)
@@ -1219,7 +1192,31 @@ def _parser() -> argparse.ArgumentParser:
     resolve_mode.add_argument("--write", action="store_true", help="write catalog/.resolved/<env>.json")
     resolve_mode.add_argument("--check", action="store_true", help="exit 1 if catalog/.resolved/<env>.json is stale")
     resolve_p.add_argument("--repo", help="repository root (default: $ESMERALDA_REPO or git checkout root)")
-    show_p = catalog_sub.add_parser("show", help="who can call each target, through which gateway, and who pays")
+    show_p = catalog_sub.add_parser(
+        "show",
+        help="who can call each target, through which gateway, and who pays",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Display each target in the resolved catalog with its deploy unit/endpoint, route, "
+            "registry entry, status badges, and allowed callers (identity, route, paying team/cost centers)."
+        ),
+        epilog=(
+            "Fields and badges:\n"
+            "  route / via      Catalog gateway (direct, apigee, agent_gateway) and deployed env.yaml\n"
+            "                   entry-point backend (ingress). Prints one value when they match, or\n"
+            "                   both highlighted when they differ.\n"
+            "  registry         Agent Registry location for non-compiled targets: per-target caller list,\n"
+            "                   adopted engine URLs, or layer-4 Google API entry (agents opt in via\n"
+            "                   google_apis).\n"
+            "  identity         workload (agent) = agent's own Agent Identity; service_account, group,\n"
+            "                   apigee_app, federated (OIDC), or spiffe.\n"
+            "  policy           unmapped_caller (deny|flag) and declared_mismatch (reject|bill_own_team)\n"
+            "                   govern the in-process caller guard.\n"
+            "  badges           [enforced] = compiled into IAM/gateway; [declared only] = not enforced;\n"
+            "                   [example] / [not compiled] = illustrative only; [adopted from <src>]\n"
+            "                   = merged via external source pin."
+        ),
+    )
     show_p.add_argument("--target", help="only this target")
     show_p.add_argument("--caller", help="only what this caller can call")
     show_p.add_argument("--provenance", action="store_true",
@@ -1227,6 +1224,18 @@ def _parser() -> argparse.ArgumentParser:
                         "projects)")
     show_p.add_argument("--inventory", action="store_true",
                         help="show the discovered inventory (external entries no catalog file adopts; never compiled)")
+    show_p.add_argument(
+        "--format",
+        choices=["table", "tree"],
+        default="table",
+        help="human output layout: aligned callers table (default) or compact tree",
+    )
+    show_p.add_argument(
+        "--legend",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="include the field and badge legend at the end (default: enabled; use --no-legend to omit)",
+    )
     _add_common_ops_flags(show_p, with_env=True)
     sources_p = catalog_sub.add_parser(
         "sources", help="list catalog sources: type, enabled, capabilities, snapshot path, sha256 and entry count"

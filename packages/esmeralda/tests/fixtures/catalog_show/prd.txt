@@ -1,0 +1,56 @@
+📇 Catalog 'prd' · policy: unmapped_caller=deny, declared_mismatch=reject
+
+🎯 ai-coe-mortgage-specialist · a2a · owner ai-coe
+   agents/ai-coe-mortgage-specialist · route: direct
+   caller                    identity          via     pays (team / cost centers)  extras
+   cx-mortgage-orchestrator  workload (agent)  direct  cx / cc-cx-br, cc-cx-mx     [enforced]
+   test-vm                   service_account   direct  platform / cc-platform      [enforced]
+
+🎯 corporate-email · mcp · owner ai-coe
+   services/corporate-email · route: direct
+   caller                      identity          via     pays (team / cost centers)  extras
+   ai-coe-mortgage-specialist  workload (agent)  direct  ai-coe / cc-ai-coe          [enforced]
+   test-vm                     service_account   direct  platform / cc-platform      [enforced]
+
+🎯 cx-mortgage-orchestrator · adk · owner cx
+   agents/cx-mortgage-orchestrator · route: direct
+   (no callers)
+
+🎯 example-core-banking · http · owner platform
+   https://core-banking.example.com · route: apigee · [example] [not compiled]
+   caller                      identity          via     pays (team / cost centers)  extras
+   ai-coe-mortgage-specialist  workload (agent)  apigee  ai-coe / cc-ai-coe          product=tier-internal
+                                                                                     [declared only]
+   aws-underwriter             federated         apigee  example-cloud-underwriting  product=tier-premium
+                                                         / cc-underwriting-example   [declared only]
+
+🎯 gemini-flash · model · owner platform
+   https://aiplatform.googleapis.com · route: direct · registry: Google API entry (agents opt in via google_apis)
+   caller                      identity          via     pays (team / cost centers)  extras
+   ai-coe-mortgage-specialist  workload (agent)  direct  ai-coe / cc-ai-coe          [enforced]
+   cx-mortgage-orchestrator    workload (agent)  direct  cx / cc-cx-br, cc-cx-mx     [enforced]
+
+🎯 income-verification · mcp · owner ai-coe
+   services/income-verification · route: direct
+   caller                      identity          via     pays (team / cost centers)  extras
+   ai-coe-mortgage-specialist  workload (agent)  direct  ai-coe / cc-ai-coe          [enforced]
+   test-vm                     service_account   direct  platform / cc-platform      [enforced]
+
+🎯 legacy-dms · mcp · owner ai-coe
+   services/legacy-dms · route: direct
+   caller                      identity          via     pays (team / cost centers)  extras
+   ai-coe-mortgage-specialist  workload (agent)  direct  ai-coe / cc-ai-coe          [enforced]
+   test-vm                     service_account   direct  platform / cc-platform      [enforced]
+
+Summary: 7 targets · 12 grants · 1 example
+
+Legend:
+  route / via   direct = entry point directly to Cloud Run / Agent Runtime; apigee = Apigee gateway;
+                agent_gateway = outbound Central Agent Gateway (mismatch shows gateway != ingress)
+  identity      workload (agent) = agent's own Agent Identity; non-agent: service_account, group,
+                apigee_app, federated (OIDC), spiffe
+  pays          calling team / cost centers this caller may declare
+  policy        unmapped_caller=deny|flag (guard action on unknown caller);
+                declared_mismatch=reject|bill_own_team (foreign cost center handling)
+  badges        [enforced] compiled into IAM/gateway; [declared only] not enforced;
+                [example] [not compiled] skipped from enforcement; [adopted from <src>] pinned entry
