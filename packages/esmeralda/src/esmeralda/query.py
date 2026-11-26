@@ -30,10 +30,13 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 import os
 import re
 import sys
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,6 +46,87 @@ from esmeralda.report import Report
 
 _ENGINE = re.compile(r"^projects/[^/]+/locations/(?P<location>[^/]+)/reasoningEngines/[^/]+$")
 _CLOUD_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+_TOOLSET_FAILURE_RE = re.compile(
+    r"^Agent (?P<agent>\S+) will run without the tools from toolset (?P<cls>\S+?)"
+    r"(?: \(prefix '(?P<prefix>[^']+)'\))?, which failed to load:\s*(?P<reason>.*)$",
+    re.DOTALL,
+)
+_LLM_AGENT_LOGGERS = (
+    "google_adk.google.adk.agents.llm_agent",
+    "google.adk.agents.llm_agent",
+)
+_MCP_TOOLSET_LOGGERS = (
+    "google_adk.google.adk.tools.mcp_tool.mcp_toolset",
+    "google.adk.tools.mcp_tool.mcp_toolset",
+)
+
+
+def _parse_toolset_failure(record: logging.LogRecord) -> tuple[str, str, str] | None:
+    """Extracts ``(agent, toolset_name, reason)`` from ADK's toolset load error log, if matched."""
+    args = record.args
+    if isinstance(args, tuple) and len(args) >= 4 and "will run without the tools from toolset" in str(record.msg):
+        agent, cls_name, prefix_part, exc = args[0], args[1], str(args[2]), args[3]
+        prefix = prefix_part[len(" (prefix ") : -1].strip("'\"") if prefix_part.startswith(" (prefix ") else ""
+        reason = str(exc).strip() or (type(exc).__name__ if isinstance(exc, BaseException) else str(cls_name))
+        return str(agent), prefix or str(cls_name), reason
+
+    match = _TOOLSET_FAILURE_RE.match(record.getMessage())
+    if match is None:
+        return None
+    name = match.group("prefix") or match.group("cls")
+    reason = match.group("reason").strip() or match.group("cls")
+    return match.group("agent"), name, reason
+
+
+class _ToolsetFailureFilter(logging.Filter):
+    def __init__(self, report: Report) -> None:
+        super().__init__()
+        self.report = report
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        parsed = _parse_toolset_failure(record)
+        if parsed is None:
+            return True
+        agent, toolset_name, reason = parsed
+        self.report.toolset_failure(toolset_name, reason, agent=agent)
+        # ADK logs toolset failures with exc_info=True; only emit tracebacks in --verbose mode.
+        return self.report.verbose
+
+
+class _MuteMcpTracebackFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Exception during MCP session execution:" not in str(record.msg)
+
+
+@contextmanager
+def _capture_toolset_failures(report: Report) -> Iterator[None]:
+    """Records toolset load failures on ``report`` and hides ADK tracebacks unless verbose."""
+    toolset_filter = _ToolsetFailureFilter(report)
+    mcp_filter = _MuteMcpTracebackFilter() if not report.verbose else None
+    attached: list[tuple[logging.Logger, logging.Filter]] = []
+    for name in _LLM_AGENT_LOGGERS:
+        log = logging.getLogger(name)
+        log.addFilter(toolset_filter)
+        attached.append((log, toolset_filter))
+    if mcp_filter is not None:
+        for name in _MCP_TOOLSET_LOGGERS:
+            log = logging.getLogger(name)
+            log.addFilter(mcp_filter)
+            attached.append((log, mcp_filter))
+    try:
+        yield
+    finally:
+        for log, filt in attached:
+            log.removeFilter(filt)
+
+
+def validate_targets(*, url: str | None = None, engine: str | None = None) -> None:
+    """Rejects explicit empty ``--url`` / ``--engine`` values before falling back to in-process."""
+    for flag, value in (("--url", url), ("--engine", engine)):
+        if value is not None and not value.strip():
+            raise ValueError(f"{flag} is empty (did you forget to set the variable?)")
+    if url and engine:
+        raise ValueError("Use either --url or --engine, not both")
 
 
 @dataclass(frozen=True)
@@ -163,13 +247,14 @@ async def query_in_process(config: AgentConfig, query: Query, report: Report) ->
         await sessions.create_session(app_name=app.name, user_id=query.user_id, session_id=session_id)
     report.kv("session", session_id)
     report.section("📡 Events")
-    async for event in runner.run_async(
-        user_id=query.user_id,
-        session_id=session_id,
-        new_message=types.Content(role="user", parts=[types.Part(text=query.message)]),
-        state_delta=query.state_delta(),
-    ):
-        report.adk_event(_redacted(query, event.model_dump(mode="json", exclude_none=True)))
+    with _capture_toolset_failures(report):
+        async for event in runner.run_async(
+            user_id=query.user_id,
+            session_id=session_id,
+            new_message=types.Content(role="user", parts=[types.Part(text=query.message)]),
+            state_delta=query.state_delta(),
+        ):
+            report.adk_event(_redacted(query, event.model_dump(mode="json", exclude_none=True)))
 
 
 def _redacted(query: Query, event: Any) -> Any:
@@ -292,8 +377,7 @@ async def run(
 
 
 async def _run(config: AgentConfig, query: Query, report: Report, *, url: str | None, engine: str | None) -> None:
-    if url and engine:
-        raise ValueError("Use either --url or --engine, not both")
+    validate_targets(url=url, engine=engine)
 
     report.section(f"🧪 {config.name} ({config.framework})")
     report.kv("target", engine or url or "in-process")

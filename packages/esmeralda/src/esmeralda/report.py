@@ -55,6 +55,7 @@ class Report:
 
     events: int = 0
     errors: list[Any] = field(default_factory=list)
+    failed_toolsets: dict[str, str] = field(default_factory=dict)
     tool_calls: int = 0
     tool_errors: int = 0
     tool_names: list[str] = field(default_factory=list)
@@ -197,12 +198,22 @@ class Report:
         mark = self._c("31", "✗ error") if failed else self._c("32", "✓")
         self._trace(author, self._c("2", f"← {name} ") + mark + " " + self._c("2", _short(response, 90)))
 
+    def toolset_failure(self, name: str, reason: str, *, agent: str | None = None) -> None:
+        """Records a failed toolset load once and emits a single trace line."""
+        if name in self.failed_toolsets:
+            return
+        self.failed_toolsets[name] = reason
+        self._trace(agent or "?", self._c("31", f"✗ toolset {name} failed to load: ") + _short(reason, 160))
+
     # ---- summary --------------------------------------------------------------------------
 
     def failures(self, *, fail_on_tool_error: bool = False) -> list[str]:
         problems = []
         if self.errors:
             problems.append(f"{len(self.errors)} error(s) reported by the agent")
+        if self.failed_toolsets:
+            names = ", ".join(self.failed_toolsets)
+            problems.append(f"{len(self.failed_toolsets)} toolset(s) failed to load ({names})")
         if not self.answer:
             problems.append("the agent returned no text answer")
         if fail_on_tool_error and self.tool_errors:
@@ -225,6 +236,9 @@ class Report:
         self.kv("agents", " → ".join(self.authors) or "-")
         tools = str(self.tool_calls) + (self._c("31", f" ({self.tool_errors} errored)") if self.tool_errors else "")
         self.kv("tool calls", tools)
+        if self.failed_toolsets:
+            names = ", ".join(self.failed_toolsets)
+            self.kv("toolsets", self._c("31", f"{len(self.failed_toolsets)} failed to load: {names}"))
         self.kv(
             "tokens", f"prompt={self.tokens['prompt']}  output={self.tokens['output']}  total={self.tokens['total']}"
         )
