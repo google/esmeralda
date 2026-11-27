@@ -99,6 +99,8 @@ uv run esmeralda catalog resolve --env dev --format hcl     # the Terraform cata
 uv run esmeralda catalog resolve --env all --write          # regenerate catalog/.resolved/*.json
 uv run esmeralda catalog resolve --env all --check          # exit 1 when a generated file is stale
 uv run esmeralda catalog show --env dev                     # who can call what, via which gateway, who pays
+uv run esmeralda catalog show --env dev --format tree       # compact tree layout instead of callers tables
+uv run esmeralda catalog show --env dev --no-legend         # omit the trailing field and badge legend
 uv run esmeralda catalog show --env dev --caller test-vm    # everything one caller can call
 ```
 

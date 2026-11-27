@@ -662,7 +662,7 @@ def test_cli_show_json_and_text(capsys):
     assert {t["target"] for t in data["targets"]} >= set(LEGACY_MAP)
     assert cli.main(["catalog", "show", "--env", "dev", "--target", "legacy-dms", "--repo", str(REPO)]) == 0
     out = capsys.readouterr().out
-    assert "legacy-dms" in out and "pays: platform" in out
+    assert "legacy-dms" in out and "platform / cc-platform" in out
 
 
 def test_cli_reports_catalog_errors(capsys):
