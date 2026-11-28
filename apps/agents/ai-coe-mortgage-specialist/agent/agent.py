@@ -26,6 +26,7 @@ from google.genai import types
 
 from agent.prompt import MORTGAGE_ASSISTANT_INSTRUCTION
 from agent.tools import dms_toolset, email_toolset, income_toolset
+from esmeralda import models_limits
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +109,19 @@ def _generate_content_config() -> types.GenerateContentConfig | None:
     """
     kwargs: dict[str, Any] = {}
     thinking = _thinking_config_kwargs(os.environ.get("MODEL_THINKING", "low"))
+    max_tokens = _max_output_tokens(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "2048"))
+    models_limits.check_model_settings(
+        os.environ.get("MODEL_NAME", "gemini-3.7-flash"),
+        thinking=thinking,
+        max_output_tokens=max_tokens,
+        location=os.environ.get("MODEL_LOCATION", "global"),
+    )
     if thinking:
         kwargs["thinking_config"] = types.ThinkingConfig(**thinking)
-    max_tokens = _max_output_tokens(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "2048"))
     if max_tokens:
         kwargs["max_output_tokens"] = max_tokens
     return types.GenerateContentConfig(**kwargs) if kwargs else None
+
 
 mortgage_assistant_agent = Agent(
     model=os.environ.get("MODEL_NAME", "gemini-3.7-flash"),

@@ -46,6 +46,10 @@ Returns an ADK `App` whose plugins are `EsmeraldaTelemetryPlugin()` followed by 
 
 When `ESMERALDA_MODEL_GATEWAY_URL` is set, it first calls `esmeralda.models.route_models(root_agent)`.
 
+## `esmeralda.models_limits`
+
+`check_model_settings(model, thinking=None, max_output_tokens=None, location=None)` validates the thinking level, output token limit, and location at startup. It raises `ValueError` for unsupported settings on a known model. For an unknown model it logs a warning and returns.
+
 ## `esmeralda.models`
 
 Model egress through a model gateway ([Apigee `llm-gateway`](../2-workloads-and-catalog/04-apigee-partner-gateway.md)). A no-op unless `ESMERALDA_MODEL_GATEWAY_URL` is set.
