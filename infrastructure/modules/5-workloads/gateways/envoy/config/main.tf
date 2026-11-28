@@ -157,24 +157,56 @@ locals {
     }
   }
 
-  access_log = {
+  usage_record = {
+    schema         = "esmeralda.usage"
+    schema_version = 1
+    event          = "gateway.request"
+    timestamp      = "%EMIT_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%"
+    source         = "gateway"
+    severity       = "INFO"
+    gateway        = { product = "envoy" }
+    workload       = { name = "%UPSTREAM_CLUSTER%" }
+    caller         = "%DYNAMIC_METADATA(esmeralda.usage:caller)%"
+    trace_id       = "%DYNAMIC_METADATA(esmeralda.usage:trace_id)%"
+    http = {
+      "request.method"       = "%REQ(:METHOD):16%"
+      "response.status_code" = "%TYPED_CEL(has(response.code) && response.code >= 100 && response.code <= 599 ? response.code : null)%"
+      route                  = "%DYNAMIC_METADATA(esmeralda.usage:route)%"
+    }
+    latency_ms = "%DURATION%"
+  }
+
+  # Envoy treats a missing response code as 0 in these filters. The ranges
+  # are disjoint and cover every request, including downstream disconnects.
+  access_logs = [for ok in [true, false] : {
     name = "envoy.access_loggers.stdout"
+    filter = {
+      (ok ? "and_filter" : "or_filter") = {
+        filters = [for op, code in(ok ? { GE = 100, LE = 399 } : { LE = 99, GE = 400 }) : {
+          status_code_filter = { comparison = { op = op, value = { default_value = code } } }
+        }]
+      }
+    }
     typed_config = {
       "@type" = "type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog"
       log_format = {
-        json_format = {
-          severity         = "INFO"
-          method           = "%REQ(:METHOD)%"
-          authority        = "%REQ(X-ENVOY-ORIGINAL-HOST?:AUTHORITY)%"
-          path             = "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-          status           = "%RESPONSE_CODE%"
-          response_flags   = "%RESPONSE_FLAGS%"
-          upstream_cluster = "%UPSTREAM_CLUSTER%"
-          duration_ms      = "%DURATION%"
-          api_key          = "%REQ(X-API-KEY)%"
-          traceparent      = "%REQ(TRACEPARENT)%"
-          request_id       = "%REQ(X-REQUEST-ID)%"
-        }
+        omit_empty_values = true
+        json_format = merge(local.usage_record,
+          { status = ok ? "ok" : "error" },
+          ok ? {} : { error_type = "%RESPONSE_FLAGS%" },
+        )
+      }
+    }
+  }]
+
+  # Capture the original caller before gcp_authn replaces Authorization. The Cloud Run module enables the
+  # IAM trust boundary; the standalone/local config must not trust arbitrary JWT claims.
+  usage = {
+    name = "envoy.filters.http.lua"
+    typed_config = {
+      "@type" = "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
+      default_source_code = {
+        inline_string = "local token_validated_by_cloud_run_iam = ${var.token_validated_by_cloud_run_iam}\n${file("${path.module}/usage.lua")}"
       }
     }
   }
@@ -244,7 +276,7 @@ locals {
               strip_trailing_host_dot          = true
               # Close streams that stay idle for longer than this.
               stream_idle_timeout = var.stream_idle_timeout
-              access_log          = [local.access_log]
+              access_log          = local.access_logs
               route_config = {
                 name          = "gateway"
                 virtual_hosts = local.virtual_hosts
@@ -253,7 +285,7 @@ locals {
                 request_headers_to_remove  = ["x-envoy-original-path", "x-envoy-original-host"]
                 response_headers_to_remove = ["x-envoy-upstream-service-time"]
               }
-              http_filters = [local.rate_limit, local.gcp_authn, local.router]
+              http_filters = [local.usage, local.rate_limit, local.gcp_authn, local.router]
             }
           }]
         }]

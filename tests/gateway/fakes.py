@@ -281,7 +281,12 @@ class MockUpstream(_BackgroundServer):
                     return self.stream_sse(upstream.sse_events, upstream.sse_gap_s)
                 if upstream.delay_s:
                     time.sleep(upstream.delay_s)
-                self.reply(200, json.dumps({"method": self.command, "path": parsed.path}).encode(), "application/json")
+                try:
+                    self.reply(
+                        200, json.dumps({"method": self.command, "path": parsed.path}).encode(), "application/json"
+                    )
+                except (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError):
+                    pass  # the disconnect test closes the client while this upstream is delayed
 
             def stream_sse(self, events: int, gap_s: float) -> None:
                 self.send_response(200)

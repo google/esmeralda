@@ -410,6 +410,75 @@ def _render(tmp_path, template: str, variables: str) -> str:
     return res.stdout
 
 
+def test_envoy_stdout_lands_in_usage_events_with_typed_fields(tmp_path):
+    tf = _tf_binary()
+    if tf is None:
+        pytest.skip("terraform not available")
+    variables = _read(GOVERNANCE / "variables.tf")
+    landing_tables = re.search(r'^variable\s+"usage_landing_tables"\s*\{.*?^\}', variables, re.MULTILINE | re.DOTALL)
+    assert landing_tables is not None
+    (tmp_path / "main.tf").write_text(_read(SINKS_DIR / "usage_schema.tf") + "\n" + landing_tables[0])
+    expression = "jsonencode({tables = var.usage_landing_tables, schema = local.usage_landing_schema})"
+    result = subprocess.run(
+        [tf, f"-chdir={tmp_path}", "console"], input=expression, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    landing = json.loads(json.loads(result.stdout))
+    assert "run_googleapis_com_stdout" in landing["tables"]
+
+    root = _read(GOVERNANCE / "main.tf")
+    assert re.search(r"\busage_landing_tables\s*=\s*var\.usage_landing_tables\b", root)
+    assert re.search(r"\busage_landing_tables\s*=\s*module\.telemetry_sinks\.usage_landing_table_ids\b", root)
+    outputs = _read(SINKS_DIR / "outputs.tf")
+    assert re.search(
+        r"\[\s*for\s+t\s+in\s+var\.usage_landing_tables\s*:\s*"
+        r"google_bigquery_table\.usage_landing\s*\[\s*t\s*\]\.table_id\s*\]",
+        outputs,
+    )
+    assert re.search(r"\bfor_each\s*=\s*toset\(\s*var\.usage_landing_tables\s*\)", _read(SINKS_DIR / "main.tf"))
+    assert re.search(r"\blanding_tables\s*=\s*var\.usage_landing_tables\b", _read(FINOPS_TF))
+
+    rendered = _render(
+        tmp_path,
+        "usage_events.sql.tpl",
+        '{usage_dataset_id = "usage", landing_tables = ["run_googleapis_com_stdout"]}',
+    )
+    assert "FROM `usage.run_googleapis_com_stdout`" in rendered
+    fields = {field["name"]: field for field in landing["schema"]}
+    assert fields["timestamp"]["type"] == "TIMESTAMP"
+    assert fields["severity"]["type"] == "STRING"
+    for path, field_type, projection in (
+        ("schema", "STRING", "jsonPayload.schema AS schema"),
+        ("schema_version", "FLOAT", "SAFE_CAST(jsonPayload.schema_version AS INT64) AS schema_version"),
+        ("event", "STRING", "jsonPayload.event AS event"),
+        ("source", "STRING", "jsonPayload.source AS source"),
+        (
+            "trace_id",
+            "STRING",
+            "COALESCE(jsonPayload.trace_id, REGEXP_EXTRACT(trace, r'/traces/([0-9a-fA-F]+)$')) AS trace_id",
+        ),
+        ("error_type", "STRING", "jsonPayload.error_type AS error_type"),
+        ("caller.principal", "STRING", "jsonPayload.caller.principal AS caller_principal"),
+        ("caller.verified", "BOOLEAN", "COALESCE(jsonPayload.caller.verified, FALSE) AS caller_verified"),
+        ("workload.name", "STRING", "jsonPayload.workload.name AS workload_name"),
+        ("gateway.product", "STRING", "jsonPayload.gateway.product AS gateway_product"),
+        ("http.request_method", "STRING", "jsonPayload.http.request_method AS http_method"),
+        (
+            "http.response_status_code",
+            "FLOAT",
+            "SAFE_CAST(jsonPayload.http.response_status_code AS INT64) AS http_status_code",
+        ),
+        ("http.route", "STRING", "jsonPayload.http.route AS http_route"),
+        ("status", "STRING", "jsonPayload.status AS status"),
+        ("latency_ms", "FLOAT", "jsonPayload.latency_ms AS latency_ms"),
+    ):
+        field = fields["jsonPayload"]
+        for part in path.split("."):
+            field = next(child for child in field["fields"] if child["name"] == part)
+        assert field["type"] == field_type, path
+        assert projection in rendered, path
+
+
 def test_normalized_template_renders_project_numbers(tmp_path):
     rendered = _render(
         tmp_path,

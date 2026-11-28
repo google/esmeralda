@@ -94,9 +94,9 @@ def test_access_log_records_what_the_caller_sent(gateway, specialist_upstream):
 
     gateway.get(SPECIALIST_HOST, "/v1/card", headers={"traceparent": traceparent, **forged})
 
-    entry = gateway.envoy.access_log_entry(traceparent)
-    assert (entry["path"], entry["authority"]) == ("/v1/card", SPECIALIST_HOST)
-    assert entry["upstream_cluster"] == "ai-coe-mortgage-specialist"
+    entry = gateway.envoy.access_log_entry(traceparent.split("-")[1])
+    assert entry["http"]["route"] == "/v1/card"
+    assert entry["workload"]["name"] == "ai-coe-mortgage-specialist"
     assert specialist_upstream.last.headers.get("x-envoy-original-path") != "/forged"
 
 

@@ -39,6 +39,12 @@ variable "apex_domain" {
   default     = "esmeralda.internal"
 }
 
+variable "token_validated_by_cloud_run_iam" {
+  description = "Trust the Cloud Run IAM-validated identity header for usage attribution. Enable only behind required IAM invoker auth and internal ingress; local Envoy does not authenticate callers."
+  type        = bool
+  default     = false
+}
+
 variable "listener_port" {
   description = "Port Envoy listens on (the Cloud Run container port)"
   type        = number
