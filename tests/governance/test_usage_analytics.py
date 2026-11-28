@@ -415,9 +415,9 @@ def test_envoy_stdout_lands_in_usage_events_with_typed_fields(tmp_path):
     if tf is None:
         pytest.skip("terraform not available")
     variables = _read(GOVERNANCE / "variables.tf")
-    start = variables.index('variable "usage_landing_tables" {')
-    end = variables.index("\n}", start) + 2
-    (tmp_path / "main.tf").write_text(_read(SINKS_DIR / "usage_schema.tf") + "\n" + variables[start:end])
+    landing_tables = re.search(r'^variable\s+"usage_landing_tables"\s*\{.*?^\}', variables, re.MULTILINE | re.DOTALL)
+    assert landing_tables is not None
+    (tmp_path / "main.tf").write_text(_read(SINKS_DIR / "usage_schema.tf") + "\n" + landing_tables[0])
     expression = "jsonencode({tables = var.usage_landing_tables, schema = local.usage_landing_schema})"
     result = subprocess.run(
         [tf, f"-chdir={tmp_path}", "console"], input=expression, capture_output=True, text=True, check=False
@@ -427,12 +427,16 @@ def test_envoy_stdout_lands_in_usage_events_with_typed_fields(tmp_path):
     assert "run_googleapis_com_stdout" in landing["tables"]
 
     root = _read(GOVERNANCE / "main.tf")
-    assert re.search(r"usage_landing_tables\s*=\s*var.usage_landing_tables", root)
-    assert re.search(r"usage_landing_tables\s*=\s*module.telemetry_sinks.usage_landing_table_ids", root)
+    assert re.search(r"\busage_landing_tables\s*=\s*var\.usage_landing_tables\b", root)
+    assert re.search(r"\busage_landing_tables\s*=\s*module\.telemetry_sinks\.usage_landing_table_ids\b", root)
     outputs = _read(SINKS_DIR / "outputs.tf")
-    assert "[for t in var.usage_landing_tables : google_bigquery_table.usage_landing[t].table_id]" in outputs
-    assert "for_each            = toset(var.usage_landing_tables)" in _read(SINKS_DIR / "main.tf")
-    assert "landing_tables   = var.usage_landing_tables" in _read(FINOPS_TF)
+    assert re.search(
+        r"\[\s*for\s+t\s+in\s+var\.usage_landing_tables\s*:\s*"
+        r"google_bigquery_table\.usage_landing\s*\[\s*t\s*\]\.table_id\s*\]",
+        outputs,
+    )
+    assert re.search(r"\bfor_each\s*=\s*toset\(\s*var\.usage_landing_tables\s*\)", _read(SINKS_DIR / "main.tf"))
+    assert re.search(r"\blanding_tables\s*=\s*var\.usage_landing_tables\b", _read(FINOPS_TF))
 
     rendered = _render(
         tmp_path,
@@ -442,6 +446,7 @@ def test_envoy_stdout_lands_in_usage_events_with_typed_fields(tmp_path):
     assert "FROM `usage.run_googleapis_com_stdout`" in rendered
     fields = {field["name"]: field for field in landing["schema"]}
     assert fields["timestamp"]["type"] == "TIMESTAMP"
+    assert fields["severity"]["type"] == "STRING"
     for path, field_type, projection in (
         ("schema", "STRING", "jsonPayload.schema AS schema"),
         ("schema_version", "FLOAT", "SAFE_CAST(jsonPayload.schema_version AS INT64) AS schema_version"),
@@ -452,6 +457,7 @@ def test_envoy_stdout_lands_in_usage_events_with_typed_fields(tmp_path):
             "STRING",
             "COALESCE(jsonPayload.trace_id, REGEXP_EXTRACT(trace, r'/traces/([0-9a-fA-F]+)$')) AS trace_id",
         ),
+        ("error_type", "STRING", "jsonPayload.error_type AS error_type"),
         ("caller.principal", "STRING", "jsonPayload.caller.principal AS caller_principal"),
         ("caller.verified", "BOOLEAN", "COALESCE(jsonPayload.caller.verified, FALSE) AS caller_verified"),
         ("workload.name", "STRING", "jsonPayload.workload.name AS workload_name"),

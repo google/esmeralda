@@ -89,3 +89,16 @@ def test_unregistered_probe_never_reaches_a_compiled_binding():
         assert "probe_unregistered" not in path.read_text(), path
     for path in (REPO / "catalog/.resolved").glob("*.json"):
         assert "probe_unregistered" not in path.read_text(), path
+
+
+def test_envoy_iam_claim_trust_requires_internal_load_balancer_ingress():
+    main = (REPO / "infrastructure/modules/5-workloads/gateways/envoy/main.tf").read_text(encoding="utf-8")
+    config = re.search(r'^module\s+"config"\s*\{(.*?)^\}', main, re.MULTILINE | re.DOTALL)
+    service = re.search(
+        r'^resource\s+"google_cloud_run_v2_service"\s+"gateway"\s*\{(.*?)^\}', main, re.MULTILINE | re.DOTALL
+    )
+    assert config is not None and service is not None
+    assert re.search(r"^\s*token_validated_by_cloud_run_iam\s*=\s*true\b", config[1], re.MULTILINE)
+    assert re.search(r'^\s*ingress\s*=\s*"INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"\s*$', service[1], re.MULTILINE), (
+        "Envoy may trust Cloud Run IAM claims only with internal load balancer ingress"
+    )

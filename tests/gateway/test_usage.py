@@ -38,22 +38,33 @@ def validator():
     return jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker())
 
 
+def validate_usage_log(validator, record):
+    # Cloud Logging promotes severity to the LogEntry envelope.
+    assert record["severity"] == "INFO"
+    validator.validate({key: value for key, value in record.items() if key != "severity"})
+
+
 def request_record(gateway, validator, *, host=HOST, headers=None, query="", body=None):
     path = f"/usage/{uuid.uuid4().hex}"
     lua_errors = gateway.envoy.counter("http.ingress.lua.errors")
     response = gateway.post(host, path + query, headers=headers or {}, json=body or {})
     record = gateway.envoy.access_log_entry(path)
-    validator.validate(record)
+    validate_usage_log(validator, record)
     assert gateway.envoy.counter("http.ingress.lua.errors") == lua_errors
     return response, record
 
 
 def token(claims):
+    return token_payload(json.dumps(claims))
+
+
+def token_payload(payload):
     def encode(value):
-        return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip("=")
+        return base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
 
     # Local tests simulate Cloud Run's prior IAM validation; this is not a valid credential.
-    return f"{encode({'alg': 'RS256'})}.{encode(claims)}.SIGNATURE_REMOVED_BY_GOOGLE"
+    header = encode(json.dumps({"alg": "RS256"}))
+    return f"{header}.{encode(payload)}.SIGNATURE_REMOVED_BY_GOOGLE"
 
 
 @pytest.fixture(scope="module")
@@ -80,6 +91,7 @@ def test_record_matches_usage_contract(gateway, mcp_upstream, validator):
     assert record["trace_id"] == TRACE_ID
     assert "span_id" not in record  # traceparent carries the caller's span, not an Envoy span
     assert record["status"] == "ok"
+    assert "error_type" not in record
     assert type(record["latency_ms"]) in (int, float) and record["latency_ms"] >= 0
     assert record["latency_ms"] >= 40  # milliseconds, including the upstream's 50 ms delay
     assert started <= datetime.fromisoformat(record["timestamp"]) <= datetime.now(timezone.utc)
@@ -111,7 +123,7 @@ def test_usage_records_are_single_line_json_on_stdout(iam_gateway, mcp_upstream,
     assert len(matching) == len(paths)
     for record in matching:
         assert record["schema"] == "esmeralda.usage"
-        validator.validate(record)
+        validate_usage_log(validator, record)
     assert all(path not in iam_gateway.envoy.stderr_file.read_text() for path in paths)
 
 
@@ -147,6 +159,45 @@ def test_cloud_run_caller_survives_token_swap(iam_gateway, mcp_upstream, validat
     assert record["caller"] == {"principal": principal, "verified": True}
     assert bearer(mcp_upstream.last) != credential
     assert credential not in json.dumps(record)
+
+
+@pytest.mark.parametrize(
+    ("payload", "principal"),
+    [
+        (r'{"sub":"a\"quoted\\and\/slash,}:value"}', 'a"quoted\\and/slash,}:value'),
+        (r'{"\u0073ub":"\u00e9\u5b57\ud83d\ude00","iat":1.7e9,"exp":1700000060}', "é字😀"),
+        (' { "email": "ignore@example.com", "email_verified": false, "sub": "123", "nbf": -1.5E+2 } ', "123"),
+    ],
+)
+def test_scalar_claims_decode_json_escapes(iam_gateway, mcp_upstream, validator, payload, principal):
+    _, record = request_record(iam_gateway, validator, headers={"Authorization": "Bearer " + token_payload(payload)})
+    assert record["caller"] == {"principal": principal, "verified": True}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"sub":"caller",}',
+        '{"sub":"caller"} trailing',
+        '{"sub":"caller\nwithout an escape"}',
+        r'{"sub":"caller\q"}',
+        r'{"sub":"caller\u12zz"}',
+        r'{"sub":"caller\ud83d"}',
+        r'{"sub":"caller\ude00"}',
+        '{"sub":"caller","iat":01}',
+        '{"sub":"caller","iat":1.}',
+        '{"sub":"caller","iat":1e}',
+        '{"sub":"caller","email_verified":trueish}',
+        '{"sub":"caller","other":{"sub":"unrelated"}}',
+        '{"sub":"first","sub":"second"}',
+    ],
+)
+def test_malformed_or_non_flat_claims_remain_unverified(iam_gateway, mcp_upstream, validator, payload):
+    response, record = request_record(
+        iam_gateway, validator, headers={"Authorization": "Bearer " + token_payload(payload)}
+    )
+    assert response.status_code == 200
+    assert record["caller"] == {"verified": False}
 
 
 @pytest.mark.parametrize("signature", ["synthetic-signature", ""])
@@ -227,6 +278,7 @@ def test_local_404_is_recorded(gateway, validator):
     response, record = request_record(gateway, validator, host="unknown.esmeralda.internal")
     assert response.status_code == record["http"]["response.status_code"] == 404
     assert record["status"] == "error"
+    assert record["error_type"] == "NR"
 
 
 def test_rate_limited_request_is_recorded(start_variant, mcp_upstream, validator):
@@ -236,12 +288,14 @@ def test_rate_limited_request_is_recorded(start_variant, mcp_upstream, validator
     response, record = request_record(gateway, validator, headers=headers)
     assert response.status_code == record["http"]["response.status_code"] == 429
     assert record["status"] == "error"
+    assert record["error_type"] == "RL"
 
 
 def test_tls_failure_is_recorded(gateway, upstreams, validator):
     response, record = request_record(gateway, validator, host="untrusted.esmeralda.internal")
     assert response.status_code == record["http"]["response.status_code"] == 503
     assert record["status"] == "error"
+    assert "UF" in record["error_type"].split(",")
 
 
 def test_disconnected_request_has_no_zero_http_status(gateway, mcp_upstream, validator):
@@ -255,6 +309,6 @@ def test_disconnected_request_has_no_zero_http_status(gateway, mcp_upstream, val
             time.sleep(0.01)
         assert mcp_upstream.requests, "the request never reached the upstream"
     record = gateway.envoy.access_log_entry(path)
-    validator.validate(record)
+    validate_usage_log(validator, record)
     assert "response.status_code" not in record["http"]
     assert record["status"] == "error"
